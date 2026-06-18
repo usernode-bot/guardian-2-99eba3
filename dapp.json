@@ -2,10 +2,10 @@
   "name": "Guardian",
   "secrets": [],
   "tests": [
-    { "name": "Home loads", "path": "/", "expectSelector": "#conversationsView" },
-    { "name": "Chat thread loads", "path": "/", "expectSelector": "#messageList" },
-    { "name": "Discover contacts loads", "path": "/", "expectText": "Find contacts" },
-    { "name": "Sidebar toggles", "path": "/", "expectSelector": "#sidebar" },
-    { "name": "FAB visible", "path": "/", "expectSelector": "#fabBtn" }
+    { "name": "Home conversation list loads", "path": "/", "expectSelector": "#convList" },
+    { "name": "Conversation cards display", "path": "/", "expectText": "staging-demo" },
+    { "name": "Header search and new conversation buttons", "path": "/", "expectSelector": "#searchBtn" },
+    { "name": "Empty state fallback renders", "path": "/", "expectText": "Start Secure Conversation" },
+    { "name": "FAB button visible", "path": "/", "expectSelector": "#fabBtn" }
   ]
 }
