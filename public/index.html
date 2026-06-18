@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  
+
   <script>
   // usernode-dev-console@1
   (function () {
@@ -63,22 +63,86 @@
     try { post('info', ['[dev-console ready]'], { kind: 'ready' }); } catch (_) {}
   })();
   </script>
-  <title>Guardian 2</title>
+  <title>Guardian</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config = { darkMode: 'class' }</script>
 </head>
-<body class="bg-zinc-950 text-zinc-100 min-h-screen flex flex-col items-center justify-center gap-8 p-4">
-  <h1 class="text-2xl font-bold">Guardian 2</h1>
+<body class="bg-zinc-950 text-zinc-100 min-h-screen flex flex-col">
+  <div id="app" class="flex flex-col flex-1 relative">
+    <!-- Header -->
+    <div id="header" class="bg-zinc-900 border-b border-zinc-800 px-4 py-3 flex items-center gap-3 sticky top-0 z-40">
+      <button id="backBtn" class="text-sm text-violet-400 hover:text-violet-300 hidden">← Back</button>
+      <h1 id="headerTitle" class="text-lg font-semibold flex-1">Guardian</h1>
+      <div id="headerRight" class="text-sm text-zinc-500"></div>
+    </div>
 
-  <button id="press-btn" class="w-32 h-32 rounded-full bg-violet-600 hover:bg-violet-500 active:scale-95 transition-all text-white text-xl font-bold shadow-lg shadow-violet-600/30">
-    Press!
-  </button>
+    <!-- Main content -->
+    <div id="content" class="flex-1 overflow-auto flex flex-col">
+      <!-- Conversations List (initial view) -->
+      <div id="conversationsView" class="flex flex-col flex-1">
+        <div id="convList" class="flex-1 overflow-auto divide-y divide-zinc-800">
+          <div class="text-center py-8 text-zinc-500">Loading conversations...</div>
+        </div>
+        <button id="discoverBtn" class="m-4 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition">
+          Discover contacts
+        </button>
+      </div>
 
-  <div id="count" class="text-lg text-zinc-400">0 total presses</div>
+      <!-- Chat View -->
+      <div id="chatView" class="hidden flex flex-col flex-1">
+        <div id="messageList" class="flex-1 overflow-auto space-y-2 p-4"></div>
+      </div>
 
-  <div class="w-full max-w-sm">
-    <h2 class="text-sm font-medium text-zinc-500 mb-2 text-center">Leaderboard</h2>
-    <div id="leaderboard" class="space-y-1"></div>
+      <!-- Discover View -->
+      <div id="discoverView" class="hidden flex flex-col flex-1 p-4">
+        <input id="searchInput" type="text" placeholder="Search users..." class="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-violet-500 mb-4">
+        <div id="searchResults" class="flex-1 overflow-auto space-y-2"></div>
+      </div>
+    </div>
+
+    <!-- Chat Input (shown only in chat view) -->
+    <div id="inputFooter" class="hidden bg-zinc-900 border-t border-zinc-800 p-4 space-y-2">
+      <div class="flex gap-2">
+        <input id="msgInput" type="text" placeholder="Type a message..." class="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-violet-500">
+        <button id="sendBtn" class="px-3 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition">Send</button>
+      </div>
+      <div class="flex gap-2">
+        <button id="imageBtn" class="flex-1 px-2 py-2 bg-zinc-800 hover:bg-zinc-700 text-sm rounded-lg transition">📷 Image</button>
+        <button id="tokenBtn" class="flex-1 px-2 py-2 bg-zinc-800 hover:bg-zinc-700 text-sm rounded-lg transition">💰 Token</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modals -->
+  <!-- Image Lightbox -->
+  <div id="imageLightbox" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 hidden">
+    <div class="relative max-w-2xl max-h-[90vh]">
+      <img id="lightboxImage" src="" alt="Message image" class="max-w-full max-h-[90vh] rounded-lg">
+      <button id="closeLightbox" class="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white w-8 h-8 rounded-full flex items-center justify-center transition">✕</button>
+    </div>
+  </div>
+
+  <!-- Token Transfer Modal -->
+  <div id="tokenModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-zinc-900 border border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
+      <h2 class="text-xl font-semibold">Send Tokens</h2>
+      <div class="space-y-2">
+        <label class="text-sm text-zinc-400">Recipient</label>
+        <div id="tokenRecipient" class="px-3 py-2 bg-zinc-800 rounded-lg text-zinc-300"></div>
+      </div>
+      <div class="space-y-2">
+        <label class="text-sm text-zinc-400">Amount</label>
+        <input id="tokenAmount" type="number" placeholder="0" class="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-violet-500">
+      </div>
+      <div class="space-y-2">
+        <label class="text-sm text-zinc-400">Memo (optional)</label>
+        <input id="tokenMemo" type="text" placeholder="Add a note..." class="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-violet-500">
+      </div>
+      <div class="flex gap-2">
+        <button id="tokenCancel" class="flex-1 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition">Cancel</button>
+        <button id="tokenSend" class="flex-1 px-3 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition">Send</button>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -86,36 +150,325 @@
     const token = params.get('token') || '';
     const headers = token ? { 'x-usernode-token': token } : {};
 
-    async function loadLeaderboard() {
-      const res = await fetch('/api/leaderboard', { headers });
-      if (!res.ok) return;
-      const { leaderboard } = await res.json();
-      const el = document.getElementById('leaderboard');
-      if (!leaderboard.length) {
-        el.innerHTML = '<p class="text-center text-zinc-600 text-sm">No presses yet</p>';
-        return;
+    let currentUser = null;
+    let currentConvId = null;
+    let currentOtherId = null;
+    let pollInterval = null;
+
+    async function apiCall(path, opts = {}) {
+      const response = await fetch(path, {
+        ...opts,
+        headers: { 'Content-Type': 'application/json', ...headers, ...opts.headers }
+      });
+      if (response.status === 401) {
+        alert('Not authenticated');
+        return null;
       }
-      el.innerHTML = leaderboard.map((r, i) =>
-        '<div class="flex justify-between px-3 py-1 rounded ' + (i === 0 ? 'bg-violet-600/20 text-violet-300' : 'text-zinc-400') + '">' +
-        '<span>' + (i + 1) + '. ' + r.username + '</span>' +
-        '<span class="font-mono">' + r.presses + '</span></div>'
-      ).join('');
-      const total = leaderboard.reduce((s, r) => s + parseInt(r.presses), 0);
-      document.getElementById('count').textContent = total + ' total presses';
+      return response.ok ? response.json() : null;
     }
 
-    document.getElementById('press-btn').addEventListener('click', async () => {
-      try {
-        const res = await fetch('/api/press', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...headers },
-        });
-        if (res.ok) loadLeaderboard();
-        else if (res.status === 401) document.getElementById('count').textContent = 'Sign in to press!';
-      } catch {}
-    });
+    async function init() {
+      const user = await apiCall('/api/user');
+      if (!user) {
+        console.error('Failed to load user');
+        return;
+      }
+      currentUser = user;
+      loadConversations();
+      setupEventListeners();
+    }
 
-    loadLeaderboard();
+    function setupEventListeners() {
+      document.getElementById('backBtn').addEventListener('click', () => {
+        currentConvId = null;
+        showConversationsView();
+      });
+
+      document.getElementById('discoverBtn').addEventListener('click', showDiscoverView);
+      document.getElementById('searchInput').addEventListener('input', (e) => searchUsers(e.target.value));
+
+      document.getElementById('msgInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        }
+      });
+
+      document.getElementById('sendBtn').addEventListener('click', sendMessage);
+      document.getElementById('imageBtn').addEventListener('click', () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.onchange = (e) => handleImageUpload(e.target.files[0]);
+        input.click();
+      });
+
+      document.getElementById('tokenBtn').addEventListener('click', showTokenModal);
+      document.getElementById('tokenCancel').addEventListener('click', hideTokenModal);
+      document.getElementById('tokenSend').addEventListener('click', sendToken);
+
+      document.getElementById('closeLightbox').addEventListener('click', () => {
+        document.getElementById('imageLightbox').classList.add('hidden');
+      });
+
+      document.getElementById('imageLightbox').addEventListener('click', (e) => {
+        if (e.target === document.getElementById('imageLightbox')) {
+          document.getElementById('imageLightbox').classList.add('hidden');
+        }
+      });
+    }
+
+    async function loadConversations() {
+      const data = await apiCall('/api/conversations');
+      if (!data) return;
+
+      const list = document.getElementById('convList');
+      if (data.conversations.length === 0) {
+        list.innerHTML = '<div class="text-center py-8 text-zinc-500 col-span-full">No conversations yet. <br>Start one by discovering contacts.</div>';
+        return;
+      }
+
+      list.innerHTML = data.conversations.map(conv => `
+        <div class="p-3 hover:bg-zinc-900 cursor-pointer transition" onclick="openConversation(${conv.id}, ${conv.otherId}, '${conv.username}')">
+          <div class="flex justify-between items-start gap-2">
+            <div class="flex-1 min-w-0">
+              <div class="font-medium truncate">${conv.username} <span class="text-sm text-zinc-500">✓</span></div>
+              <div class="text-sm text-zinc-400 truncate">${conv.lastMessage || 'No messages'}</div>
+            </div>
+            <div class="text-xs text-zinc-500 text-right flex-shrink-0">
+              ${conv.lastMessageAt ? formatTime(new Date(conv.lastMessageAt)) : ''}
+              ${conv.unreadCount > 0 ? `<div class="mt-1 inline-block px-2 py-0.5 bg-violet-600 rounded-full text-white text-xs">${conv.unreadCount}</div>` : ''}
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function formatTime(date) {
+      const now = new Date();
+      const diff = now - date;
+      if (diff < 60000) return 'now';
+      if (diff < 3600000) return Math.floor(diff / 60000) + 'm';
+      if (diff < 86400000) return Math.floor(diff / 3600000) + 'h';
+      return Math.floor(diff / 86400000) + 'd';
+    }
+
+    async function openConversation(convId, otherId, username) {
+      currentConvId = convId;
+      currentOtherId = otherId;
+      document.getElementById('headerTitle').textContent = username + ' ✓';
+      document.getElementById('backBtn').classList.remove('hidden');
+      showChatView();
+      loadMessages();
+
+      if (pollInterval) clearInterval(pollInterval);
+      pollInterval = setInterval(loadMessages, 3000);
+    }
+
+    async function loadMessages() {
+      if (!currentConvId) return;
+      const data = await apiCall(`/api/conversations/${currentConvId}?limit=50`);
+      if (!data) return;
+
+      const list = document.getElementById('messageList');
+      if (data.messages.length === 0) {
+        list.innerHTML = '<div class="text-center text-zinc-500 py-4">No messages yet</div>';
+        return;
+      }
+
+      list.innerHTML = data.messages.map(msg => renderMessage(msg)).join('');
+      list.scrollTop = list.scrollHeight;
+
+      await apiCall(`/api/conversations/${currentConvId}/read`, {
+        method: 'PUT',
+        body: JSON.stringify({ readUpTo: new Date().toISOString() })
+      });
+    }
+
+    function renderMessage(msg) {
+      const isOwn = msg.senderId === currentUser.id;
+      const baseClass = isOwn ? 'ml-auto bg-violet-600 text-white' : 'mr-auto bg-zinc-800 text-zinc-100';
+      const alignClass = isOwn ? 'justify-end' : 'justify-start';
+
+      if (msg.type === 'text') {
+        return `
+          <div class="flex ${alignClass}">
+            <div class="max-w-xs px-3 py-2 rounded-lg ${baseClass}">
+              <div class="text-xs text-zinc-400 mb-1">${msg.senderUsername}</div>
+              ${msg.content.text}
+              <div class="text-xs mt-1 opacity-70">${formatTime(new Date(msg.createdAt))}</div>
+            </div>
+          </div>
+        `;
+      }
+
+      if (msg.type === 'image') {
+        return `
+          <div class="flex ${alignClass}">
+            <div class="max-w-xs rounded-lg overflow-hidden ${baseClass}">
+              <img src="${msg.content.imageUrl}" alt="Message image" class="max-w-xs cursor-pointer hover:opacity-80 transition" onclick="showLightbox('${msg.content.imageUrl}')">
+              <div class="text-xs text-zinc-400 px-3 py-1">${msg.senderUsername}</div>
+            </div>
+          </div>
+        `;
+      }
+
+      if (msg.type === 'token') {
+        const c = msg.content;
+        return `
+          <div class="flex ${alignClass}">
+            <div class="max-w-xs px-3 py-2 rounded-lg ${baseClass} border border-yellow-500/30">
+              <div class="text-xs text-zinc-400 mb-1">💰 Token Transfer</div>
+              <div class="font-semibold">${c.amount} tokens</div>
+              <div class="text-xs text-zinc-400 mt-1">${c.memo || 'No memo'}</div>
+              <div class="text-xs mt-1 opacity-70">${c.status === 'confirmed' ? '✓ Confirmed' : '⏳ Pending'}</div>
+              <div class="text-xs mt-1 opacity-50">${formatTime(new Date(msg.createdAt))}</div>
+            </div>
+          </div>
+        `;
+      }
+
+      return '';
+    }
+
+    async function sendMessage() {
+      const input = document.getElementById('msgInput');
+      const text = input.value.trim();
+      if (!text || !currentConvId) return;
+
+      input.value = '';
+      const data = await apiCall(`/api/conversations/${currentConvId}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({ type: 'text', content: { text } })
+      });
+
+      if (data) {
+        loadMessages();
+      }
+    }
+
+    async function handleImageUpload(file) {
+      if (!file || !currentConvId) return;
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const dataUri = e.target.result;
+        const data = await apiCall(`/api/conversations/${currentConvId}/messages`, {
+          method: 'POST',
+          body: JSON.stringify({ type: 'image', content: { imageUrl: dataUri } })
+        });
+        if (data) loadMessages();
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function showTokenModal() {
+      const otherId = currentOtherId;
+      const otherUsers = (async () => {
+        const u = await apiCall(`/api/users/${otherId}`);
+        return u ? u.username : 'Unknown';
+      })();
+      apiCall(`/api/users/${currentOtherId}`).then(u => {
+        document.getElementById('tokenRecipient').textContent = u ? u.username : 'Unknown';
+      });
+      document.getElementById('tokenModal').classList.remove('hidden');
+    }
+
+    function hideTokenModal() {
+      document.getElementById('tokenModal').classList.add('hidden');
+      document.getElementById('tokenAmount').value = '';
+      document.getElementById('tokenMemo').value = '';
+    }
+
+    async function sendToken() {
+      const amount = document.getElementById('tokenAmount').value;
+      if (!amount || !currentConvId || !currentOtherId) return;
+
+      const data = await apiCall('/api/tokens/send', {
+        method: 'POST',
+        body: JSON.stringify({ recipientId: currentOtherId, amount: parseInt(amount), memo: document.getElementById('tokenMemo').value })
+      });
+
+      if (data) {
+        await apiCall(`/api/conversations/${currentConvId}/messages`, {
+          method: 'POST',
+          body: JSON.stringify({
+            type: 'token',
+            content: { recipientId: currentOtherId, amount: parseInt(amount), memo: document.getElementById('tokenMemo').value, txHash: data.txHash, status: data.status }
+          })
+        });
+        hideTokenModal();
+        loadMessages();
+      }
+    }
+
+    function showLightbox(imageUrl) {
+      document.getElementById('lightboxImage').src = imageUrl;
+      document.getElementById('imageLightbox').classList.remove('hidden');
+    }
+
+    async function searchUsers(query) {
+      if (!query.trim()) {
+        document.getElementById('searchResults').innerHTML = '';
+        return;
+      }
+
+      const data = await apiCall(`/api/search/users?q=${encodeURIComponent(query)}`);
+      if (!data) return;
+
+      const results = document.getElementById('searchResults');
+      if (data.users.length === 0) {
+        results.innerHTML = '<div class="text-center text-zinc-500 py-4">No users found</div>';
+        return;
+      }
+
+      results.innerHTML = data.users.map(user => `
+        <div class="p-3 bg-zinc-800 rounded-lg cursor-pointer hover:bg-zinc-700 transition" onclick="startConversation(${user.id}, '${user.username}')">
+          <div class="font-medium">${user.username} ${user.verified ? '✓' : ''}</div>
+          <div class="text-sm text-zinc-400">${user.mutualCount} mutual connections</div>
+        </div>
+      `).join('');
+    }
+
+    async function startConversation(userId, username) {
+      const data = await apiCall('/api/conversations', {
+        method: 'POST',
+        body: JSON.stringify({ participantId: userId })
+      });
+
+      if (data) {
+        openConversation(data.id, userId, username);
+      }
+    }
+
+    function showConversationsView() {
+      document.getElementById('conversationsView').classList.remove('hidden');
+      document.getElementById('chatView').classList.add('hidden');
+      document.getElementById('discoverView').classList.add('hidden');
+      document.getElementById('inputFooter').classList.add('hidden');
+      document.getElementById('headerTitle').textContent = 'Guardian';
+      document.getElementById('backBtn').classList.add('hidden');
+      if (pollInterval) clearInterval(pollInterval);
+      loadConversations();
+    }
+
+    function showChatView() {
+      document.getElementById('conversationsView').classList.add('hidden');
+      document.getElementById('chatView').classList.remove('hidden');
+      document.getElementById('discoverView').classList.add('hidden');
+      document.getElementById('inputFooter').classList.remove('hidden');
+    }
+
+    function showDiscoverView() {
+      document.getElementById('conversationsView').classList.add('hidden');
+      document.getElementById('chatView').classList.add('hidden');
+      document.getElementById('discoverView').classList.remove('hidden');
+      document.getElementById('inputFooter').classList.add('hidden');
+      document.getElementById('headerTitle').textContent = 'Find contacts';
+      document.getElementById('backBtn').classList.remove('hidden');
+      document.getElementById('searchInput').focus();
+    }
+
+    init();
   </script>
 </body>
 </html>
