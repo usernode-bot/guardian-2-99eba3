@@ -510,8 +510,8 @@ async function start() {
     if (IS_STAGING) {
       const alice = 1, bob = 2, charlie = 3, diana = 4, eve = 5;
 
-      // Create test users
-      await pool.query(`
+      // Create test users - verify they exist before proceeding
+      const userCheck = await pool.query(`
         INSERT INTO users (id, username, verified_at, created_at) VALUES
           ($1, 'staging-demo-alice', NOW(), NOW()),
           ($2, 'staging-demo-bob', NOW(), NOW()),
@@ -520,6 +520,12 @@ async function start() {
           ($5, 'staging-demo-eve', NOW(), NOW())
         ON CONFLICT DO NOTHING
       `, [alice, bob, charlie, diana, eve]);
+
+      // Verify users were created
+      const usersExist = await pool.query(`SELECT COUNT(*) as count FROM users WHERE id IN ($1, $2, $3, $4, $5)`, [alice, bob, charlie, diana, eve]);
+      if (usersExist.rows[0].count < 5) {
+        console.warn('Warning: Not all staging users were created. Count:', usersExist.rows[0].count);
+      }
 
       // Helper to create conversations with messages and read receipts
       const createConversation = async (user1, user2, messageSpecs, readStatusSpecs) => {
@@ -608,6 +614,10 @@ async function start() {
         { userId: alice, lastReadAt: eveThreeHoursRead },
         { userId: eve, lastReadAt: now },
       ]);
+
+      // Verify conversations were seeded
+      const convCheck = await pool.query(`SELECT COUNT(*) as count FROM conversations WHERE participant_a_id = $1`, [alice]);
+      console.log(`Staging seed complete: ${convCheck.rows[0].count} conversations for alice`);
     }
 
     app.listen(port, () => console.log(`Listening on :${port}`));
