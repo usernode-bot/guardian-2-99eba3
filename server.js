@@ -22,14 +22,22 @@ function checkRateLimit(key, limit, windowMs) {
   return true;
 }
 
-const PUBLIC_API_PATHS = new Set(['/health']);
+const PUBLIC_API_PATHS = new Set(['/health', '/favicon.ico']);
 
 app.use(express.json());
 app.use((req, res, next) => {
   const token = req.query.token || req.headers['x-usernode-token'];
   if (token && JWT_SECRET) {
-    try { req.user = jwt.verify(token, JWT_SECRET); } catch {}
+    try { req.user = jwt.verify(token, JWT_SECRET); } catch (e) {
+      console.error('JWT verification failed:', e.message);
+    }
   }
+
+  // In staging, provide a default test user if no valid token
+  if (IS_STAGING && !req.user) {
+    req.user = { id: 1, username: 'staging-demo-alice', verified_at: new Date() };
+  }
+
   if (req.method !== 'GET' || req.path.startsWith('/api/')) {
     if (PUBLIC_API_PATHS.has(req.path)) return next();
     if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
@@ -39,9 +47,16 @@ app.use((req, res, next) => {
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
+app.get('/favicon.ico', (_req, res) => {
+  res.status(204).send();
+});
+
 // ===== USER ENDPOINTS =====
 
-app.get('/api/user', (_req, res) => {
+app.get('/api/user', (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
   res.json({
     id: req.user.id,
     username: req.user.username,
@@ -53,6 +68,10 @@ app.get('/api/user', (_req, res) => {
 
 app.get('/api/conversations', async (req, res) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
     const offset = parseInt(req.query.offset || 0);
     const includeArchived = req.query.includeArchived === 'true';
@@ -105,6 +124,10 @@ app.get('/api/conversations', async (req, res) => {
 
 app.post('/api/conversations', async (req, res) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
     const { participantId } = req.body;
     const userId = req.user.id;
 
@@ -176,6 +199,10 @@ app.get('/api/conversations/:convId', async (req, res) => {
 
 app.post('/api/conversations/:convId/messages', async (req, res) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
     const { convId } = req.params;
     const { type, content } = req.body;
     const userId = req.user.id;
@@ -296,6 +323,10 @@ app.post('/api/upload/image', (req, res) => {
 
 app.post('/api/tokens/send', async (req, res) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
     const { recipientId, amount, memo } = req.body;
     const userId = req.user.id;
 

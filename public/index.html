@@ -169,7 +169,10 @@
 
     async function init() {
       const user = await apiCall('/api/user');
-      if (!user) return;
+      if (!user) {
+        console.error('Failed to load user');
+        return;
+      }
       currentUser = user;
       loadConversations();
       setupEventListeners();
