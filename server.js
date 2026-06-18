@@ -91,9 +91,10 @@ app.get('/api/conversations', async (req, res) => {
     const result = await Promise.all(conversations.map(async (conv) => {
       const otherId = conv.participant_a_id === userId ? conv.participant_b_id : conv.participant_a_id;
 
-      // Get other user's username
-      const userRes = await pool.query(`SELECT username FROM users WHERE id = $1`, [otherId]);
+      // Get other user's username and verified status
+      const userRes = await pool.query(`SELECT username, verified_at FROM users WHERE id = $1`, [otherId]);
       const username = userRes.rows[0]?.username || 'Unknown';
+      const verified = !!userRes.rows[0]?.verified_at;
 
       // Get last message
       const msgRes = await pool.query(`
@@ -128,6 +129,7 @@ app.get('/api/conversations', async (req, res) => {
         id: conv.id,
         otherId,
         username,
+        verified,
         lastMessage,
         lastMessageAt,
         unreadCount,
@@ -506,62 +508,106 @@ async function start() {
 
     // Seed staging data
     if (IS_STAGING) {
-      const alice = 1, bob = 2;
+      const alice = 1, bob = 2, charlie = 3, diana = 4, eve = 5;
 
       // Create test users
       await pool.query(`
         INSERT INTO users (id, username, verified_at, created_at) VALUES
           ($1, 'staging-demo-alice', NOW(), NOW()),
-          ($2, 'staging-demo-bob', NOW(), NOW())
+          ($2, 'staging-demo-bob', NOW(), NOW()),
+          ($3, 'staging-demo-charlie', NOW(), NOW()),
+          ($4, 'staging-demo-diana', NOW(), NOW()),
+          ($5, 'staging-demo-eve', NOW(), NOW())
         ON CONFLICT DO NOTHING
-      `, [alice, bob]);
+      `, [alice, bob, charlie, diana, eve]);
 
-      // Create conversation
-      const { rows: convRows } = await pool.query(`
-        SELECT id FROM conversations WHERE participant_a_id = $1 AND participant_b_id = $2
-      `, [alice, bob]);
+      // Helper to create conversations with messages and read receipts
+      const createConversation = async (user1, user2, messageSpecs, readStatusSpecs) => {
+        const [a, b] = [user1, user2].sort((x, y) => x - y);
+        const { rows: convRows } = await pool.query(`
+          SELECT id FROM conversations WHERE participant_a_id = $1 AND participant_b_id = $2
+        `, [a, b]);
 
-      let convId;
-      if (convRows.length === 0) {
-        const result = await pool.query(`
-          INSERT INTO conversations (participant_a_id, participant_b_id, created_at)
-          VALUES ($1, $2, NOW())
-          RETURNING id
-        `, [alice, bob]);
-        convId = result.rows[0].id;
-      } else {
-        convId = convRows[0].id;
-      }
+        let convId;
+        if (convRows.length === 0) {
+          const result = await pool.query(`
+            INSERT INTO conversations (participant_a_id, participant_b_id, created_at)
+            VALUES ($1, $2, NOW())
+            RETURNING id
+          `, [a, b]);
+          convId = result.rows[0].id;
+        } else {
+          convId = convRows[0].id;
+        }
 
-      // Seed messages
-      const baseTime = new Date(Date.now() - 3600000);
-      const messages = [
+        const baseTime = new Date(Date.now() - 3600000);
+        for (const msg of messageSpecs) {
+          await pool.query(`
+            INSERT INTO messages (conversation_id, sender_id, type, content, created_at)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT DO NOTHING
+          `, [convId, msg.sender, msg.type, JSON.stringify(msg.content), new Date(baseTime.getTime() + msg.offset)]);
+        }
+
+        // Set read receipts
+        for (const rs of readStatusSpecs) {
+          await pool.query(`
+            INSERT INTO read_receipts (user_id, conversation_id, last_read_at)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (user_id, conversation_id) DO UPDATE SET last_read_at = EXCLUDED.last_read_at
+          `, [rs.userId, convId, rs.lastReadAt]);
+        }
+
+        return convId;
+      };
+
+      const now = new Date();
+
+      // Conversation 1: Alice ↔ Bob (recent text, 0 unread, 5 minutes ago)
+      await createConversation(alice, bob, [
         { offset: 0, sender: alice, type: 'text', content: { text: '[Staging] Hey Bob!' } },
         { offset: 60000, sender: bob, type: 'text', content: { text: '[Staging] Hi Alice! How are you?' } },
         { offset: 120000, sender: alice, type: 'text', content: { text: '[Staging] Doing great, thanks!' } },
-        { offset: 180000, sender: alice, type: 'image', content: { imageUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mP8z8DwHwMxxGAIwAAADkkBkMTjF4UAAAAASUVORK5CYII=' } },
-        { offset: 240000, sender: bob, type: 'text', content: { text: '[Staging] Nice photo!' } },
-        { offset: 300000, sender: alice, type: 'token', content: { recipientId: bob, amount: 100, memo: '[Staging] Here is a gift', txHash: 'staging-tx-001', status: 'confirmed' } },
-        { offset: 360000, sender: bob, type: 'text', content: { text: '[Staging] Thanks for the tokens!' } },
-        { offset: 420000, sender: bob, type: 'image', content: { imageUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mNkYPhfwcDAwMjIyMjIyAgAEq4DBaIjqKQAAAAASUVORK5CYII=' } },
-        { offset: 480000, sender: alice, type: 'token', content: { recipientId: bob, amount: 50, memo: '[Staging] bonus', txHash: 'staging-tx-002', status: 'confirmed' } },
-        { offset: 540000, sender: bob, type: 'text', content: { text: '[Staging] This is awesome!' } },
-      ];
+      ], [
+        { userId: alice, lastReadAt: now },
+        { userId: bob, lastReadAt: now },
+      ]);
 
-      for (const msg of messages) {
-        await pool.query(`
-          INSERT INTO messages (conversation_id, sender_id, type, content, created_at)
-          VALUES ($1, $2, $3, $4, $5)
-          ON CONFLICT DO NOTHING
-        `, [convId, msg.sender, msg.type, JSON.stringify(msg.content), new Date(baseTime.getTime() + msg.offset)]);
-      }
+      // Conversation 2: Alice ↔ Charlie (image message, 2 unread, 2 hours ago)
+      const twoHoursAgo = new Date(now - 2 * 3600000);
+      const charlie2HoursRead = new Date(twoHoursAgo - 1800000);
+      await createConversation(alice, charlie, [
+        { offset: 0, sender: alice, type: 'text', content: { text: '[Staging] Check this out!' } },
+        { offset: 60000, sender: charlie, type: 'image', content: { imageUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mP8z8DwHwMxxGAIwAAADkkBkMTjF4UAAAAASUVORK5CYII=' } },
+        { offset: 120000, sender: charlie, type: 'text', content: { text: '[Staging] What do you think?' } },
+      ], [
+        { userId: alice, lastReadAt: charlie2HoursRead },
+        { userId: charlie, lastReadAt: now },
+      ]);
 
-      // Initialize read receipts
-      await pool.query(`
-        INSERT INTO read_receipts (user_id, conversation_id, last_read_at)
-        VALUES ($1, $2, NOW()), ($3, $2, NOW())
-        ON CONFLICT DO NOTHING
-      `, [alice, convId, bob]);
+      // Conversation 3: Alice ↔ Diana (token transfer, 1 unread, 1 day ago)
+      const oneDayAgo = new Date(now - 86400000);
+      const dianaOneDayRead = new Date(oneDayAgo - 3600000);
+      await createConversation(alice, diana, [
+        { offset: 0, sender: alice, type: 'text', content: { text: '[Staging] Here is a gift' } },
+        { offset: 60000, sender: alice, type: 'token', content: { recipientId: diana, amount: 100, memo: '[Staging] for you', txHash: 'staging-tx-001', status: 'confirmed' } },
+        { offset: 120000, sender: diana, type: 'text', content: { text: '[Staging] Thanks so much!' } },
+      ], [
+        { userId: alice, lastReadAt: dianaOneDayRead },
+        { userId: diana, lastReadAt: now },
+      ]);
+
+      // Conversation 4: Alice ↔ Eve (varied messages with some unread)
+      const threeHoursAgo = new Date(now - 3 * 3600000);
+      const eveThreeHoursRead = new Date(threeHoursAgo - 1800000);
+      await createConversation(alice, eve, [
+        { offset: 0, sender: eve, type: 'text', content: { text: '[Staging] Hey Alice!' } },
+        { offset: 60000, sender: alice, type: 'text', content: { text: '[Staging] Hi Eve! Long time!' } },
+        { offset: 120000, sender: eve, type: 'text', content: { text: '[Staging] How have you been?' } },
+      ], [
+        { userId: alice, lastReadAt: eveThreeHoursRead },
+        { userId: eve, lastReadAt: now },
+      ]);
     }
 
     app.listen(port, () => console.log(`Listening on :${port}`));

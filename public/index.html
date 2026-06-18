@@ -127,6 +127,16 @@
       </button>
       <button id="backBtn" class="text-sm text-cyan-400 hover:text-cyan-300 hidden transition">← Back</button>
       <h1 id="headerTitle" class="text-lg font-semibold flex-1">Guardian</h1>
+      <button id="searchBtn" class="text-cyan-400 hover:text-cyan-300 transition" title="Search conversations" onclick="showDiscoverView()">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+      </button>
+      <button id="newConvBtn" class="text-cyan-400 hover:text-cyan-300 transition" title="New conversation" onclick="showDiscoverView()">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+        </svg>
+      </button>
       <div id="headerRight" class="text-sm text-zinc-500"></div>
     </div>
 
@@ -349,24 +359,50 @@
 
       const list = document.getElementById('convList');
       if (data.conversations.length === 0) {
-        list.innerHTML = '<div class="text-center py-8 text-zinc-500">No conversations yet. <br>Tap the + button to discover contacts.</div>';
+        list.innerHTML = `
+          <div class="flex-1 flex flex-col items-center justify-center p-8">
+            <svg class="w-16 h-16 text-cyan-500/40 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <h2 class="text-xl font-semibold text-zinc-100 mb-2">No conversations yet</h2>
+            <p class="text-sm text-zinc-400 mb-6">Start a secure conversation to connect</p>
+            <button onclick="showDiscoverView()" class="px-6 py-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition font-medium">
+              Start Secure Conversation
+            </button>
+          </div>
+        `;
+        list.classList.add('flex');
         return;
       }
 
-      list.innerHTML = data.conversations.map(conv => `
-        <div class="p-4 hover:bg-zinc-900 cursor-pointer transition" onclick="openConversation(${conv.id}, ${conv.otherId}, '${conv.username}')">
-          <div class="flex justify-between items-start gap-2">
-            <div class="flex-1 min-w-0">
-              <div class="font-medium truncate">${conv.username} <span class="text-sm text-zinc-500">✓</span></div>
-              <div class="text-sm text-zinc-400 truncate">${conv.lastMessage || 'No messages'}</div>
-            </div>
-            <div class="text-xs text-zinc-500 text-right flex-shrink-0">
-              ${conv.lastMessageAt ? formatTime(new Date(conv.lastMessageAt)) : ''}
-              ${conv.unreadCount > 0 ? `<div class="mt-1 inline-block px-2 py-0.5 bg-cyan-600 rounded-full text-white text-xs">${conv.unreadCount}</div>` : ''}
+      list.classList.remove('flex');
+      list.innerHTML = data.conversations.map(conv => {
+        const initials = conv.username.split('-').pop().substring(0, 2).toUpperCase();
+        const verifiedBadge = conv.verified ? '<span class="text-cyan-400 ml-1">✓</span>' : '';
+        const unreadBadge = conv.unreadCount > 0 ? `<span class="inline-flex items-center justify-center w-5 h-5 text-xs font-bold bg-cyan-600 text-white rounded-full">${conv.unreadCount > 99 ? '99+' : conv.unreadCount}</span>` : '';
+        const lastMessageText = (conv.lastMessage || 'No messages').substring(0, 60) + (conv.lastMessage && conv.lastMessage.length > 60 ? '...' : '');
+
+        return `
+          <div class="px-4 py-3 hover:bg-zinc-900 cursor-pointer transition border-b border-zinc-800 last:border-b-0" onclick="openConversation(${conv.id}, ${conv.otherId}, '${conv.username.replace(/'/g, "\\'")}')">
+            <div class="flex items-start gap-3">
+              <div class="flex-shrink-0 w-12 h-12 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white font-semibold text-sm">
+                ${initials}
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-1">
+                  <span class="font-semibold text-zinc-100 truncate">${conv.username}</span>
+                  ${verifiedBadge}
+                </div>
+                <div class="text-sm text-zinc-400 truncate mt-0.5">${lastMessageText}</div>
+              </div>
+              <div class="flex-shrink-0 text-right">
+                <div class="text-xs text-zinc-500">${conv.lastMessageAt ? formatTime(new Date(conv.lastMessageAt)) : ''}</div>
+                ${unreadBadge ? `<div class="mt-1">${unreadBadge}</div>` : ''}
+              </div>
             </div>
           </div>
-        </div>
-      `).join('');
+        `;
+      }).join('');
     }
 
     function formatTime(date) {
