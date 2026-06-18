@@ -66,56 +66,154 @@
   <title>Guardian</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config = { darkMode: 'class' }</script>
+  <style>
+    @keyframes slideInLeft {
+      from {
+        transform: translateX(-100%);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    @keyframes slideOutLeft {
+      from {
+        transform: translateX(0);
+        opacity: 1;
+      }
+      to {
+        transform: translateX(-100%);
+        opacity: 0;
+      }
+    }
+
+    @keyframes fabPulse {
+      0%, 100% {
+        box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.7);
+      }
+      50% {
+        box-shadow: 0 0 0 10px rgba(34, 211, 238, 0);
+      }
+    }
+
+    .sidebar-enter {
+      animation: slideInLeft 0.3s ease-out;
+    }
+
+    .sidebar-exit {
+      animation: slideOutLeft 0.3s ease-out;
+    }
+
+    .fab-pulse {
+      animation: fabPulse 2s infinite;
+    }
+
+    .message-bubble {
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+    }
+  </style>
 </head>
 <body class="bg-zinc-950 text-zinc-100 min-h-screen flex flex-col">
-  <div id="app" class="flex flex-col flex-1 relative">
+  <div id="app" class="flex flex-col flex-1 relative h-screen overflow-hidden">
     <!-- Header -->
     <div id="header" class="bg-zinc-900 border-b border-zinc-800 px-4 py-3 flex items-center gap-3 sticky top-0 z-40">
-      <button id="backBtn" class="text-sm text-violet-400 hover:text-violet-300 hidden">← Back</button>
+      <button id="menuBtn" class="text-cyan-400 hover:text-cyan-300 transition" title="Toggle sidebar">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+      </button>
+      <button id="backBtn" class="text-sm text-cyan-400 hover:text-cyan-300 hidden transition">← Back</button>
       <h1 id="headerTitle" class="text-lg font-semibold flex-1">Guardian</h1>
       <div id="headerRight" class="text-sm text-zinc-500"></div>
     </div>
 
+    <!-- Sidebar Overlay -->
+    <div id="sidebarOverlay" class="hidden fixed inset-0 bg-black/50 z-30 transition-opacity duration-300" onclick="toggleSidebar()"></div>
+
+    <!-- Sidebar -->
+    <div id="sidebar" class="hidden fixed left-0 top-0 w-64 h-full bg-zinc-900 border-r border-zinc-800 z-40 flex flex-col overflow-y-auto">
+      <div class="p-4 border-b border-zinc-800">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold">Guardian</h2>
+          <button onclick="toggleSidebar()" class="text-zinc-500 hover:text-zinc-300 transition">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <nav class="flex-1 px-2 py-4 space-y-2">
+        <button onclick="showConversationsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-800 transition text-cyan-400 hover:text-cyan-300">
+          <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          </svg>
+          Conversations
+        </button>
+        <button onclick="showDiscoverView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-800 transition hover:text-cyan-300">
+          <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          Find Contacts
+        </button>
+      </nav>
+
+      <div id="sidebarUser" class="p-4 border-t border-zinc-800">
+        <div class="text-sm text-zinc-400">Logged in as</div>
+        <div id="sidebarUsername" class="font-medium text-cyan-400 mt-1">Loading...</div>
+      </div>
+    </div>
+
     <!-- Main content -->
-    <div id="content" class="flex-1 overflow-auto flex flex-col">
+    <div id="content" class="flex-1 overflow-hidden flex flex-col">
       <!-- Conversations List (initial view) -->
-      <div id="conversationsView" class="flex flex-col flex-1">
-        <div id="convList" class="flex-1 overflow-auto divide-y divide-zinc-800">
+      <div id="conversationsView" class="flex flex-col flex-1 overflow-hidden">
+        <div id="convList" class="flex-1 overflow-y-auto divide-y divide-zinc-800">
           <div class="text-center py-8 text-zinc-500">Loading conversations...</div>
         </div>
-        <button id="discoverBtn" class="m-4 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition">
-          Discover contacts
-        </button>
+        <div class="p-4 border-t border-zinc-800">
+          <button onclick="showDiscoverView()" class="w-full px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition font-medium">Find contacts</button>
+        </div>
       </div>
 
       <!-- Chat View -->
-      <div id="chatView" class="hidden flex flex-col flex-1">
-        <div id="messageList" class="flex-1 overflow-auto space-y-2 p-4"></div>
+      <div id="chatView" class="hidden flex flex-col flex-1 overflow-hidden">
+        <div id="messageList" class="flex-1 overflow-y-auto space-y-3 p-4"></div>
       </div>
 
       <!-- Discover View -->
-      <div id="discoverView" class="hidden flex flex-col flex-1 p-4">
-        <input id="searchInput" type="text" placeholder="Search users..." class="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-violet-500 mb-4">
-        <div id="searchResults" class="flex-1 overflow-auto space-y-2"></div>
+      <div id="discoverView" class="hidden flex flex-col flex-1 p-4 overflow-hidden">
+        <input id="searchInput" type="text" placeholder="Search users..." class="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 mb-4 transition">
+        <div id="searchResults" class="flex-1 overflow-y-auto space-y-2"></div>
       </div>
     </div>
 
     <!-- Chat Input (shown only in chat view) -->
     <div id="inputFooter" class="hidden bg-zinc-900 border-t border-zinc-800 p-4 space-y-2">
       <div class="flex gap-2">
-        <input id="msgInput" type="text" placeholder="Type a message..." class="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-violet-500">
-        <button id="sendBtn" class="px-3 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition">Send</button>
+        <input id="msgInput" type="text" placeholder="Type a message..." class="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+        <button id="sendBtn" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition font-medium">Send</button>
       </div>
       <div class="flex gap-2">
         <button id="imageBtn" class="flex-1 px-2 py-2 bg-zinc-800 hover:bg-zinc-700 text-sm rounded-lg transition">📷 Image</button>
         <button id="tokenBtn" class="flex-1 px-2 py-2 bg-zinc-800 hover:bg-zinc-700 text-sm rounded-lg transition">💰 Token</button>
       </div>
     </div>
+
+    <!-- Floating Action Button -->
+    <button id="fabBtn" class="fixed bottom-6 right-6 w-14 h-14 bg-cyan-500 hover:bg-cyan-400 rounded-full flex items-center justify-center text-white shadow-lg transition-transform hover:scale-110 z-20" title="Discover new contacts" onclick="showDiscoverView()">
+      <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+      </svg>
+    </button>
   </div>
 
   <!-- Modals -->
   <!-- Image Lightbox -->
-  <div id="imageLightbox" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 hidden">
+  <div id="imageLightbox" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
     <div class="relative max-w-2xl max-h-[90vh]">
       <img id="lightboxImage" src="" alt="Message image" class="max-w-full max-h-[90vh] rounded-lg">
       <button id="closeLightbox" class="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white w-8 h-8 rounded-full flex items-center justify-center transition">✕</button>
@@ -132,15 +230,15 @@
       </div>
       <div class="space-y-2">
         <label class="text-sm text-zinc-400">Amount</label>
-        <input id="tokenAmount" type="number" placeholder="0" class="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-violet-500">
+        <input id="tokenAmount" type="number" placeholder="0" class="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
       </div>
       <div class="space-y-2">
         <label class="text-sm text-zinc-400">Memo (optional)</label>
-        <input id="tokenMemo" type="text" placeholder="Add a note..." class="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-violet-500">
+        <input id="tokenMemo" type="text" placeholder="Add a note..." class="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
       </div>
       <div class="flex gap-2">
         <button id="tokenCancel" class="flex-1 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition">Cancel</button>
-        <button id="tokenSend" class="flex-1 px-3 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition">Send</button>
+        <button id="tokenSend" class="flex-1 px-3 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition font-medium">Send</button>
       </div>
     </div>
   </div>
@@ -154,6 +252,7 @@
     let currentConvId = null;
     let currentOtherId = null;
     let pollInterval = null;
+    let sidebarOpen = false;
 
     async function apiCall(path, opts = {}) {
       const response = await fetch(path, {
@@ -167,6 +266,29 @@
       return response.ok ? response.json() : null;
     }
 
+    function toggleSidebar() {
+      sidebarOpen = !sidebarOpen;
+      const sidebar = document.getElementById('sidebar');
+      const overlay = document.getElementById('sidebarOverlay');
+
+      if (sidebarOpen) {
+        sidebar.classList.remove('hidden');
+        overlay.classList.remove('hidden');
+        setTimeout(() => {
+          sidebar.classList.add('sidebar-enter');
+          overlay.style.opacity = '1';
+        }, 0);
+      } else {
+        sidebar.classList.add('sidebar-exit');
+        overlay.style.opacity = '0';
+        setTimeout(() => {
+          sidebar.classList.add('hidden');
+          overlay.classList.add('hidden');
+          sidebar.classList.remove('sidebar-enter', 'sidebar-exit');
+        }, 300);
+      }
+    }
+
     async function init() {
       const user = await apiCall('/api/user');
       if (!user) {
@@ -174,17 +296,18 @@
         return;
       }
       currentUser = user;
+      document.getElementById('sidebarUsername').textContent = user.username + (user.verified ? ' ✓' : '');
       loadConversations();
       setupEventListeners();
     }
 
     function setupEventListeners() {
+      document.getElementById('menuBtn').addEventListener('click', toggleSidebar);
       document.getElementById('backBtn').addEventListener('click', () => {
         currentConvId = null;
         showConversationsView();
       });
 
-      document.getElementById('discoverBtn').addEventListener('click', showDiscoverView);
       document.getElementById('searchInput').addEventListener('input', (e) => searchUsers(e.target.value));
 
       document.getElementById('msgInput').addEventListener('keydown', (e) => {
@@ -216,6 +339,8 @@
           document.getElementById('imageLightbox').classList.add('hidden');
         }
       });
+
+      document.getElementById('sidebarOverlay').addEventListener('click', toggleSidebar);
     }
 
     async function loadConversations() {
@@ -224,12 +349,12 @@
 
       const list = document.getElementById('convList');
       if (data.conversations.length === 0) {
-        list.innerHTML = '<div class="text-center py-8 text-zinc-500 col-span-full">No conversations yet. <br>Start one by discovering contacts.</div>';
+        list.innerHTML = '<div class="text-center py-8 text-zinc-500">No conversations yet. <br>Tap the + button to discover contacts.</div>';
         return;
       }
 
       list.innerHTML = data.conversations.map(conv => `
-        <div class="p-3 hover:bg-zinc-900 cursor-pointer transition" onclick="openConversation(${conv.id}, ${conv.otherId}, '${conv.username}')">
+        <div class="p-4 hover:bg-zinc-900 cursor-pointer transition" onclick="openConversation(${conv.id}, ${conv.otherId}, '${conv.username}')">
           <div class="flex justify-between items-start gap-2">
             <div class="flex-1 min-w-0">
               <div class="font-medium truncate">${conv.username} <span class="text-sm text-zinc-500">✓</span></div>
@@ -237,7 +362,7 @@
             </div>
             <div class="text-xs text-zinc-500 text-right flex-shrink-0">
               ${conv.lastMessageAt ? formatTime(new Date(conv.lastMessageAt)) : ''}
-              ${conv.unreadCount > 0 ? `<div class="mt-1 inline-block px-2 py-0.5 bg-violet-600 rounded-full text-white text-xs">${conv.unreadCount}</div>` : ''}
+              ${conv.unreadCount > 0 ? `<div class="mt-1 inline-block px-2 py-0.5 bg-cyan-600 rounded-full text-white text-xs">${conv.unreadCount}</div>` : ''}
             </div>
           </div>
         </div>
@@ -258,6 +383,7 @@
       currentOtherId = otherId;
       document.getElementById('headerTitle').textContent = username + ' ✓';
       document.getElementById('backBtn').classList.remove('hidden');
+      document.getElementById('menuBtn').classList.add('hidden');
       showChatView();
       loadMessages();
 
@@ -287,16 +413,16 @@
 
     function renderMessage(msg) {
       const isOwn = msg.senderId === currentUser.id;
-      const baseClass = isOwn ? 'ml-auto bg-violet-600 text-white' : 'mr-auto bg-zinc-800 text-zinc-100';
+      const baseClass = isOwn ? 'ml-auto bg-cyan-600 text-white' : 'mr-auto bg-zinc-800 text-zinc-100';
       const alignClass = isOwn ? 'justify-end' : 'justify-start';
 
       if (msg.type === 'text') {
         return `
           <div class="flex ${alignClass}">
-            <div class="max-w-xs px-3 py-2 rounded-lg ${baseClass}">
-              <div class="text-xs text-zinc-400 mb-1">${msg.senderUsername}</div>
-              ${msg.content.text}
-              <div class="text-xs mt-1 opacity-70">${formatTime(new Date(msg.createdAt))}</div>
+            <div class="max-w-xs px-4 py-2 rounded-2xl ${baseClass} message-bubble">
+              <div class="text-xs text-zinc-300 mb-1 opacity-80">${msg.senderUsername}</div>
+              <div>${msg.content.text}</div>
+              <div class="text-xs mt-2 opacity-70">${formatTime(new Date(msg.createdAt))}</div>
             </div>
           </div>
         `;
@@ -305,9 +431,9 @@
       if (msg.type === 'image') {
         return `
           <div class="flex ${alignClass}">
-            <div class="max-w-xs rounded-lg overflow-hidden ${baseClass}">
+            <div class="max-w-xs rounded-2xl overflow-hidden ${baseClass}">
               <img src="${msg.content.imageUrl}" alt="Message image" class="max-w-xs cursor-pointer hover:opacity-80 transition" onclick="showLightbox('${msg.content.imageUrl}')">
-              <div class="text-xs text-zinc-400 px-3 py-1">${msg.senderUsername}</div>
+              <div class="text-xs text-zinc-300 px-4 py-2 opacity-80">${msg.senderUsername}</div>
             </div>
           </div>
         `;
@@ -317,12 +443,12 @@
         const c = msg.content;
         return `
           <div class="flex ${alignClass}">
-            <div class="max-w-xs px-3 py-2 rounded-lg ${baseClass} border border-yellow-500/30">
-              <div class="text-xs text-zinc-400 mb-1">💰 Token Transfer</div>
-              <div class="font-semibold">${c.amount} tokens</div>
-              <div class="text-xs text-zinc-400 mt-1">${c.memo || 'No memo'}</div>
-              <div class="text-xs mt-1 opacity-70">${c.status === 'confirmed' ? '✓ Confirmed' : '⏳ Pending'}</div>
-              <div class="text-xs mt-1 opacity-50">${formatTime(new Date(msg.createdAt))}</div>
+            <div class="max-w-xs px-4 py-2 rounded-2xl ${baseClass} border-2 border-yellow-500/40 message-bubble">
+              <div class="text-xs text-zinc-300 mb-1">💰 Token Transfer</div>
+              <div class="font-bold text-lg">${c.amount} tokens</div>
+              <div class="text-xs text-zinc-300 mt-1">${c.memo || 'No memo'}</div>
+              <div class="text-xs mt-2 font-medium">${c.status === 'confirmed' ? '✓ Confirmed' : '⏳ Pending'}</div>
+              <div class="text-xs mt-1 opacity-70">${formatTime(new Date(msg.createdAt))}</div>
             </div>
           </div>
         `;
@@ -362,11 +488,6 @@
     }
 
     function showTokenModal() {
-      const otherId = currentOtherId;
-      const otherUsers = (async () => {
-        const u = await apiCall(`/api/users/${otherId}`);
-        return u ? u.username : 'Unknown';
-      })();
       apiCall(`/api/users/${currentOtherId}`).then(u => {
         document.getElementById('tokenRecipient').textContent = u ? u.username : 'Unknown';
       });
@@ -422,9 +543,9 @@
       }
 
       results.innerHTML = data.users.map(user => `
-        <div class="p-3 bg-zinc-800 rounded-lg cursor-pointer hover:bg-zinc-700 transition" onclick="startConversation(${user.id}, '${user.username}')">
-          <div class="font-medium">${user.username} ${user.verified ? '✓' : ''}</div>
-          <div class="text-sm text-zinc-400">${user.mutualCount} mutual connections</div>
+        <div class="p-4 bg-zinc-800 rounded-lg cursor-pointer hover:bg-zinc-700 transition" onclick="startConversation(${user.id}, '${user.username}')">
+          <div class="font-medium text-cyan-400">${user.username} ${user.verified ? '✓' : ''}</div>
+          <div class="text-sm text-zinc-400 mt-1">${user.mutualCount} mutual connections</div>
         </div>
       `).join('');
     }
@@ -447,6 +568,8 @@
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('headerTitle').textContent = 'Guardian';
       document.getElementById('backBtn').classList.add('hidden');
+      document.getElementById('menuBtn').classList.remove('hidden');
+      document.getElementById('fabBtn').classList.remove('hidden');
       if (pollInterval) clearInterval(pollInterval);
       loadConversations();
     }
@@ -456,6 +579,7 @@
       document.getElementById('chatView').classList.remove('hidden');
       document.getElementById('discoverView').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('hidden');
+      document.getElementById('fabBtn').classList.add('hidden');
     }
 
     function showDiscoverView() {
@@ -465,6 +589,8 @@
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('headerTitle').textContent = 'Find contacts';
       document.getElementById('backBtn').classList.remove('hidden');
+      document.getElementById('menuBtn').classList.add('hidden');
+      document.getElementById('fabBtn').classList.add('hidden');
       document.getElementById('searchInput').focus();
     }
 

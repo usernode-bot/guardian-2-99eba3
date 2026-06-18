@@ -3,7 +3,9 @@
   "secrets": [],
   "tests": [
     { "name": "Home loads", "path": "/", "expectSelector": "#conversationsView" },
-    { "name": "Chat thread loads", "path": "/?demo=1", "expectSelector": "#messageList" },
-    { "name": "Discover contacts loads", "path": "/", "expectText": "Discover" }
+    { "name": "Chat thread loads", "path": "/", "expectSelector": "#messageList" },
+    { "name": "Discover contacts loads", "path": "/", "expectText": "Find contacts" },
+    { "name": "Sidebar toggles", "path": "/", "expectSelector": "#sidebar" },
+    { "name": "FAB visible", "path": "/", "expectSelector": "#fabBtn" }
   ]
 }
