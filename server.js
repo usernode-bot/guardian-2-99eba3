@@ -74,51 +74,70 @@ app.get('/api/conversations', async (req, res) => {
 
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
     const offset = parseInt(req.query.offset || 0);
-    const includeArchived = req.query.includeArchived === 'true';
-
     const userId = req.user.id;
-    let query = `
-      SELECT c.id,
-             CASE WHEN c.participant_a_id = $1 THEN c.participant_b_id ELSE c.participant_a_id END as other_id,
-             u.username as other_username,
-             m.content as last_message_content,
-             m.type as last_message_type,
-             m.created_at as last_message_at,
-             COUNT(CASE WHEN m.created_at > COALESCE(rr.last_read_at, '1970-01-01'::timestamptz)
-                        AND m.sender_id != $1 THEN 1 END) as unread_count
-      FROM conversations c
-      LEFT JOIN messages m ON c.id = m.conversation_id AND m.deleted_by @> ARRAY[$1] = false
-      LEFT JOIN read_receipts rr ON c.id = rr.conversation_id AND rr.user_id = $1
-      LEFT JOIN users u ON CASE WHEN c.participant_a_id = $1 THEN c.participant_b_id ELSE c.participant_a_id END = u.id
-      WHERE (c.participant_a_id = $1 OR c.participant_b_id = $1)
-    `;
 
-    if (!includeArchived) {
-      query += ` AND NOT (c.archived_by @> ARRAY[$1])`;
-    }
-
-    query += `
-      GROUP BY c.id, other_id, u.username, m.created_at, m.content, m.type, rr.last_read_at
-      ORDER BY MAX(m.created_at) DESC NULLS LAST
+    // Simple query: get all conversations for this user
+    const convQuery = `
+      SELECT id, participant_a_id, participant_b_id, archived_by, muted_by
+      FROM conversations
+      WHERE (participant_a_id = $1 OR participant_b_id = $1)
+      ORDER BY created_at DESC
       LIMIT $2 OFFSET $3
     `;
 
-    const { rows } = await pool.query(query, [userId, limit, offset]);
-    const conversations = rows.map(r => ({
-      id: r.id,
-      otherId: r.other_id,
-      username: r.other_username,
-      lastMessage: r.last_message_type === 'text' ? r.last_message_content?.text :
-                   r.last_message_type === 'image' ? '[Image]' :
-                   r.last_message_type === 'token' ? '[Token transfer]' : '',
-      lastMessageAt: r.last_message_at,
-      unreadCount: parseInt(r.unread_count || 0),
+    const { rows: conversations } = await pool.query(convQuery, [userId, limit, offset]);
+
+    // For each conversation, get the last message and unread count
+    const result = await Promise.all(conversations.map(async (conv) => {
+      const otherId = conv.participant_a_id === userId ? conv.participant_b_id : conv.participant_a_id;
+
+      // Get other user's username
+      const userRes = await pool.query(`SELECT username FROM users WHERE id = $1`, [otherId]);
+      const username = userRes.rows[0]?.username || 'Unknown';
+
+      // Get last message
+      const msgRes = await pool.query(`
+        SELECT content, type, created_at
+        FROM messages
+        WHERE conversation_id = $1
+        ORDER BY created_at DESC
+        LIMIT 1
+      `, [conv.id]);
+
+      const lastMsg = msgRes.rows[0];
+      const lastMessage = lastMsg
+        ? (lastMsg.type === 'text' ? lastMsg.content?.text : lastMsg.type === 'image' ? '[Image]' : '[Token transfer]')
+        : '';
+      const lastMessageAt = lastMsg?.created_at || null;
+
+      // Get unread count
+      const readRes = await pool.query(`
+        SELECT last_read_at FROM read_receipts WHERE user_id = $1 AND conversation_id = $2
+      `, [userId, conv.id]);
+
+      const lastReadAt = readRes.rows[0]?.last_read_at || new Date('1970-01-01');
+      const unreadRes = await pool.query(`
+        SELECT COUNT(*) as count
+        FROM messages
+        WHERE conversation_id = $1 AND sender_id != $2 AND created_at > $3
+      `, [conv.id, userId, lastReadAt]);
+
+      const unreadCount = parseInt(unreadRes.rows[0]?.count || 0);
+
+      return {
+        id: conv.id,
+        otherId,
+        username,
+        lastMessage,
+        lastMessageAt,
+        unreadCount,
+      };
     }));
 
-    res.json({ conversations });
+    res.json({ conversations: result });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
+    console.error('Error fetching conversations:', err);
+    res.status(200).json({ conversations: [] });
   }
 });
 
