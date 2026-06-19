@@ -544,6 +544,280 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
   }
 });
 
+// ===== CONVERSATION REQUEST ENDPOINTS =====
+
+app.post('/api/conversation-requests', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { recipientId } = req.body;
+    const senderId = req.user.id;
+
+    if (!recipientId || recipientId === senderId) {
+      return res.status(400).json({ error: 'Invalid recipient' });
+    }
+
+    // Verify recipient exists
+    const recipientRes = await pool.query(`SELECT id FROM users WHERE id = $1`, [recipientId]);
+    if (recipientRes.rows.length === 0) {
+      return res.status(400).json({ error: 'Recipient not found' });
+    }
+
+    // Try to insert, return existing if conflict
+    const result = await pool.query(`
+      INSERT INTO conversation_requests (sender_id, recipient_id, status, created_at)
+      VALUES ($1, $2, 'pending', NOW())
+      ON CONFLICT (sender_id, recipient_id) DO UPDATE SET
+        status = CASE
+          WHEN conversation_requests.status = 'rejected' THEN 'pending'
+          ELSE conversation_requests.status
+        END,
+        created_at = CASE
+          WHEN conversation_requests.status = 'rejected' THEN NOW()
+          ELSE conversation_requests.created_at
+        END,
+        accepted_at = NULL,
+        rejected_at = NULL
+      WHERE conversation_requests.status = 'rejected'
+      RETURNING id, sender_id, recipient_id, status, created_at
+    `, [senderId, recipientId]);
+
+    if (result.rows.length > 0) {
+      const req_row = result.rows[0];
+      res.status(201).json({
+        id: req_row.id,
+        senderId: req_row.sender_id,
+        recipientId: req_row.recipient_id,
+        status: req_row.status,
+        createdAt: req_row.created_at,
+      });
+    } else {
+      // Already exists and not rejected, get existing
+      const existing = await pool.query(`
+        SELECT id, sender_id, recipient_id, status, created_at
+        FROM conversation_requests
+        WHERE sender_id = $1 AND recipient_id = $2
+      `, [senderId, recipientId]);
+      const row = existing.rows[0];
+      res.status(201).json({
+        id: row.id,
+        senderId: row.sender_id,
+        recipientId: row.recipient_id,
+        status: row.status,
+        createdAt: row.created_at,
+      });
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/conversation-requests/received', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = req.user.id;
+
+    const { rows: requests } = await pool.query(`
+      SELECT cr.id, cr.sender_id, cr.created_at,
+             u.username, u.usernode_pubkey
+      FROM conversation_requests cr
+      JOIN users u ON cr.sender_id = u.id
+      WHERE cr.recipient_id = $1 AND cr.status = 'pending'
+      ORDER BY cr.created_at DESC
+    `, [userId]);
+
+    res.json({
+      requests: requests.map(r => ({
+        id: r.id,
+        senderId: r.sender_id,
+        senderUsername: r.username,
+        senderWallet: r.usernode_pubkey,
+        createdAt: r.created_at,
+      })),
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/conversation-requests/sent', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = req.user.id;
+
+    const { rows: requests } = await pool.query(`
+      SELECT cr.id, cr.recipient_id, cr.status, cr.created_at,
+             u.username, u.usernode_pubkey
+      FROM conversation_requests cr
+      JOIN users u ON cr.recipient_id = u.id
+      WHERE cr.sender_id = $1 AND cr.status IN ('pending', 'accepted')
+      ORDER BY cr.created_at DESC
+    `, [userId]);
+
+    res.json({
+      requests: requests.map(r => ({
+        id: r.id,
+        recipientId: r.recipient_id,
+        recipientUsername: r.username,
+        recipientWallet: r.usernode_pubkey,
+        status: r.status,
+        createdAt: r.created_at,
+      })),
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/conversation-requests/:requestId/accept', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { requestId } = req.params;
+    const userId = req.user.id;
+
+    // Verify request exists and belongs to user
+    const { rows: reqRows } = await pool.query(`
+      SELECT sender_id, recipient_id, status
+      FROM conversation_requests
+      WHERE id = $1 AND recipient_id = $2
+    `, [requestId, userId]);
+
+    if (reqRows.length === 0) {
+      return res.status(404).json({ error: 'Request not found' });
+    }
+
+    const req_row = reqRows[0];
+    if (req_row.status !== 'pending') {
+      return res.status(400).json({ error: 'Request is not pending' });
+    }
+
+    const senderId = req_row.sender_id;
+    const recipientId = req_row.recipient_id;
+
+    // Create or get conversation
+    const [a, b] = [senderId, recipientId].sort((x, y) => x - y);
+    const { rows: convRows } = await pool.query(`
+      SELECT id FROM conversations
+      WHERE participant_a_id = $1 AND participant_b_id = $2
+    `, [a, b]);
+
+    let convId = convRows[0]?.id;
+    if (!convId) {
+      const result = await pool.query(`
+        INSERT INTO conversations (participant_a_id, participant_b_id)
+        VALUES ($1, $2)
+        RETURNING id
+      `, [a, b]);
+      convId = result.rows[0].id;
+    }
+
+    // Update request status
+    await pool.query(`
+      UPDATE conversation_requests
+      SET status = 'accepted', accepted_at = NOW()
+      WHERE id = $1
+    `, [requestId]);
+
+    res.json({
+      conversationId: convId,
+      requestId: requestId,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/conversation-requests/:requestId/reject', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { requestId } = req.params;
+    const userId = req.user.id;
+
+    // Verify request exists and belongs to user
+    const { rows: reqRows } = await pool.query(`
+      SELECT id, status
+      FROM conversation_requests
+      WHERE id = $1 AND recipient_id = $2
+    `, [requestId, userId]);
+
+    if (reqRows.length === 0) {
+      return res.status(404).json({ error: 'Request not found' });
+    }
+
+    // Update request status (idempotent)
+    await pool.query(`
+      UPDATE conversation_requests
+      SET status = 'rejected', rejected_at = NOW()
+      WHERE id = $1
+    `, [requestId]);
+
+    res.json({
+      requestId: requestId,
+      status: 'rejected',
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/conversation-requests/:requestId/cancel', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { requestId } = req.params;
+    const userId = req.user.id;
+
+    // Verify request exists and belongs to user
+    const { rows: reqRows } = await pool.query(`
+      SELECT id, status
+      FROM conversation_requests
+      WHERE id = $1 AND sender_id = $2
+    `, [requestId, userId]);
+
+    if (reqRows.length === 0) {
+      return res.status(404).json({ error: 'Request not found' });
+    }
+
+    if (reqRows[0].status !== 'pending') {
+      return res.status(400).json({ error: 'Only pending requests can be cancelled' });
+    }
+
+    // Delete the request
+    await pool.query(`
+      DELETE FROM conversation_requests
+      WHERE id = $1
+    `, [requestId]);
+
+    res.json({
+      requestId: requestId,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ===== CONTACTS ENDPOINTS =====
 
 app.get('/api/contacts', async (req, res) => {
@@ -872,27 +1146,51 @@ async function start() {
         ON blockchain_audit_logs(user_id, created_at)
     `);
 
+    // Create conversation_requests table (marked private)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS conversation_requests (
+        id BIGSERIAL PRIMARY KEY,
+        sender_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        recipient_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        status VARCHAR(50) NOT NULL DEFAULT 'pending',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        accepted_at TIMESTAMPTZ,
+        rejected_at TIMESTAMPTZ,
+        UNIQUE(sender_id, recipient_id)
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_conversation_requests_recipient_status
+        ON conversation_requests(recipient_id, status)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_conversation_requests_sender_status
+        ON conversation_requests(sender_id, status)
+    `);
+
     // Mark tables as private
     await pool.query(`COMMENT ON TABLE conversations IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE messages IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE read_receipts IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE user_contacts IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE blockchain_audit_logs IS 'staging:private'`);
+    await pool.query(`COMMENT ON TABLE conversation_requests IS 'staging:private'`);
 
     // Seed staging data
     if (IS_STAGING) {
-      const alice = 1, bob = 2;
+      const alice = 1, bob = 2, charlie = 3;
 
       // Create test users with wallet addresses
       await pool.query(`
         INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at) VALUES
           ($1, 'staging-demo-alice', 'ut1staging-alice-001', NOW(), NOW()),
-          ($2, 'staging-demo-bob', 'ut1staging-bob-001', NOW(), NOW())
+          ($2, 'staging-demo-bob', 'ut1staging-bob-001', NOW(), NOW()),
+          ($3, 'staging-demo-charlie', 'ut1staging-charlie-001', NOW(), NOW())
         ON CONFLICT (id) DO UPDATE SET
           username = EXCLUDED.username,
           usernode_pubkey = EXCLUDED.usernode_pubkey,
           verified_at = EXCLUDED.verified_at
-      `, [alice, bob]);
+      `, [alice, bob, charlie]);
 
       // Create conversation
       const { rows: convRows } = await pool.query(`
@@ -967,6 +1265,19 @@ async function start() {
         VALUES ($1, $2, 'Bob (demo contact)', NOW())
         ON CONFLICT DO NOTHING
       `, [alice, bob]);
+
+      // Seed conversation requests
+      await pool.query(`
+        INSERT INTO conversation_requests (sender_id, recipient_id, status, created_at)
+        VALUES ($1, $2, 'pending', NOW())
+        ON CONFLICT (sender_id, recipient_id) DO NOTHING
+      `, [alice, charlie]);
+
+      await pool.query(`
+        INSERT INTO conversation_requests (sender_id, recipient_id, status, created_at, accepted_at)
+        VALUES ($1, $2, 'accepted', NOW() - INTERVAL '1 hour', NOW() - INTERVAL '30 minutes')
+        ON CONFLICT (sender_id, recipient_id) DO NOTHING
+      `, [charlie, bob]);
     }
 
     app.listen(port, () => console.log(`Listening on :${port}`));
