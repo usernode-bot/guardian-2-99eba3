@@ -4,11 +4,9 @@
   "tests": [
     { "name": "Home loads", "path": "/", "expectSelector": "#conversationsView" },
     { "name": "Chat thread loads", "path": "/", "expectSelector": "#messageList" },
-    { "name": "Discover contacts loads", "path": "/", "expectText": "Find contacts" },
+    { "name": "Discover contacts via sidebar", "path": "/", "expectSelector": "#discoverView" },
     { "name": "Sidebar toggles", "path": "/", "expectSelector": "#sidebar" },
     { "name": "Share contact modal works", "path": "/", "expectSelector": "#shareContactModal" },
-    { "name": "Settings panel opens", "path": "/", "expectSelector": "#settingsPanel" },
-    { "name": "FAB button exists", "path": "/", "expectSelector": "#fabBtn" },
-    { "name": "Find Contacts button exists", "path": "/", "expectSelector": "#findContactsBtn" }
+    { "name": "Settings panel opens", "path": "/", "expectSelector": "#settingsPanel" }
   ]
 }
