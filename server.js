@@ -1401,19 +1401,21 @@ async function start() {
 
     // Seed staging data
     if (IS_STAGING) {
-      const alice = 1, bob = 2, charlie = 3;
+      const alice = 1, bob = 2, charlie = 3, david = 4, emma = 5;
 
       // Create test users with wallet addresses
       await pool.query(`
         INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at) VALUES
           ($1, 'staging-demo-alice', 'ut1staging-alice-001', NOW(), NOW()),
           ($2, 'staging-demo-bob', 'ut1staging-bob-001', NOW(), NOW()),
-          ($3, 'staging-demo-charlie', 'ut1staging-charlie-001', NOW(), NOW())
+          ($3, 'staging-demo-charlie', 'ut1staging-charlie-001', null, NOW()),
+          ($4, 'staging-demo-david', 'ut1staging-david-001', NOW(), NOW()),
+          ($5, 'staging-demo-emma', 'ut1staging-emma-001', NOW(), NOW())
         ON CONFLICT (id) DO UPDATE SET
           username = EXCLUDED.username,
           usernode_pubkey = EXCLUDED.usernode_pubkey,
           verified_at = EXCLUDED.verified_at
-      `, [alice, bob, charlie]);
+      `, [alice, bob, charlie, david, emma]);
 
       // Create conversation
       const { rows: convRows } = await pool.query(`
@@ -1488,12 +1490,16 @@ async function start() {
         ON CONFLICT DO NOTHING
       `, [alice, convId, bob]);
 
-      // Seed contacts
+      // Seed contacts for alice
       await pool.query(`
         INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
-        VALUES ($1, $2, 'Bob (demo contact)', NOW())
+        VALUES
+          ($1, $2, 'Bob (demo contact)', NOW()),
+          ($1, $3, null, NOW()),
+          ($1, $4, 'David the Dev', NOW()),
+          ($1, $5, null, NOW())
         ON CONFLICT DO NOTHING
-      `, [alice, bob]);
+      `, [alice, bob, charlie, david, emma]);
 
       // Seed conversation requests
       await pool.query(`
