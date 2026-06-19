@@ -26,18 +26,20 @@ const PUBLIC_API_PATHS = new Set(['/health', '/favicon.ico']);
 const PUBLIC_PREFIXES = ['/explorer-api/'];
 
 // Send transaction to blockchain via bridge
-async function sendTransactionToBridge(payload) {
+async function sendTransactionToBridge(payload, network = 'testnet') {
   try {
     if (IS_STAGING) {
-      // Mock implementation: return immediate confirmation
-      const txHash = 'ut1staging-tx-' + Date.now();
+      // Mock implementation: return immediate confirmation with network prefix
+      const networkPrefix = network === 'mainnet' ? 'ut1staging-mainnet-tx-' : 'ut1staging-testnet-tx-';
+      const txHash = networkPrefix + Date.now();
       return { txHash, status: 'pending' };
     }
 
     // In production: call the real bridge sendTransaction
-    // This would integrate with usernode-bridge.js
-    // For now, simulate with a unique tx hash
-    const txHash = 'ut1tx-' + Math.random().toString(36).substr(2, 9);
+    // This would integrate with usernode-bridge.js with network parameter
+    // For now, simulate with a unique tx hash including network
+    const networkPrefix = network === 'mainnet' ? 'ut1mainnet-tx-' : 'ut1testnet-tx-';
+    const txHash = networkPrefix + Math.random().toString(36).substr(2, 9);
     return { txHash, status: 'pending' };
   } catch (err) {
     console.error('Error sending transaction to bridge:', err);
@@ -126,16 +128,43 @@ app.get('/favicon.ico', (_req, res) => {
 
 // ===== USER ENDPOINTS =====
 
-app.get('/api/user', (req, res) => {
+app.get('/api/user', async (req, res) => {
   if (!req.user) {
     return res.status(401).json({ error: 'Not authenticated' });
   }
-  res.json({
-    id: req.user.id,
-    username: req.user.username,
-    usernode_pubkey: req.user.usernode_pubkey || null,
-    verified: !!req.user.verified_at,
-  });
+  try {
+    const userRes = await pool.query(`SELECT network FROM users WHERE id = $1`, [req.user.id]);
+    const network = userRes.rows[0]?.network || 'testnet';
+    res.json({
+      id: req.user.id,
+      username: req.user.username,
+      usernode_pubkey: req.user.usernode_pubkey || null,
+      verified: !!req.user.verified_at,
+      network: network,
+    });
+  } catch (err) {
+    console.error('Error fetching user:', err);
+    res.status(500).json({ error: 'Failed to fetch user' });
+  }
+});
+
+app.put('/api/user/network', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { network } = req.body;
+    if (!network || !['testnet', 'mainnet'].includes(network)) {
+      return res.status(400).json({ error: 'Invalid network. Must be "testnet" or "mainnet"' });
+    }
+
+    await pool.query(`UPDATE users SET network = $1 WHERE id = $2`, [network, req.user.id]);
+    res.json({ network: network, status: 'updated' });
+  } catch (err) {
+    console.error('Error updating network:', err);
+    res.status(500).json({ error: 'Failed to update network' });
+  }
 });
 
 // ===== CONVERSATION ENDPOINTS =====
@@ -330,16 +359,22 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       return res.status(400).json({ error: 'Invalid message' });
     }
 
+    // Fetch user's network preference
+    const userRes = await pool.query(`SELECT network FROM users WHERE id = $1`, [userId]);
+    const network = userRes.rows[0]?.network || 'testnet';
+
     // Prepare transaction payload
     const transactionPayload = {
       type: 'message',
       messageType: type,
       content: content,
-      senderUserId: userId
+      senderUserId: userId,
+      network: network
     };
 
     // Create audit log entry first with placeholder tx hash
-    const placeholderTxHash = IS_STAGING ? 'ut1staging-tx-msg-' + Date.now() : 'ut1tx-msg-' + Math.random().toString(36).substr(2, 9);
+    const networkPrefix = network === 'mainnet' ? 'mainnet-' : 'testnet-';
+    const placeholderTxHash = IS_STAGING ? 'ut1staging-' + networkPrefix + 'tx-msg-' + Date.now() : 'ut1-' + networkPrefix + 'tx-msg-' + Math.random().toString(36).substr(2, 9);
     const auditRes = await pool.query(`
       INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $6)
@@ -363,7 +398,7 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
     // Async: submit to blockchain in the background
     (async () => {
       try {
-        const result = await sendTransactionToBridge(transactionPayload);
+        const result = await sendTransactionToBridge(transactionPayload, network);
         // Update audit log with real tx hash
         await pool.query(`
           UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
@@ -501,17 +536,23 @@ app.post('/api/tokens/send', async (req, res) => {
       return res.status(429).json({ error: 'Rate limited' });
     }
 
+    // Fetch user's network preference
+    const userRes = await pool.query(`SELECT network FROM users WHERE id = $1`, [userId]);
+    const network = userRes.rows[0]?.network || 'testnet';
+
     // Prepare transaction payload
     const transactionPayload = {
       type: 'token_transfer',
       sender: userId,
       recipient: recipientId,
       amount: parseInt(amount),
-      memo: memo || ''
+      memo: memo || '',
+      network: network
     };
 
     // Create audit log entry with placeholder tx hash
-    const placeholderTxHash = IS_STAGING ? 'ut1staging-tx-token-' + Date.now() : 'ut1tx-token-' + Math.random().toString(36).substr(2, 9);
+    const networkPrefix = network === 'mainnet' ? 'mainnet-' : 'testnet-';
+    const placeholderTxHash = IS_STAGING ? 'ut1staging-' + networkPrefix + 'tx-token-' + Date.now() : 'ut1-' + networkPrefix + 'tx-token-' + Math.random().toString(36).substr(2, 9);
     const auditRes = await pool.query(`
       INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $6)
@@ -522,7 +563,7 @@ app.post('/api/tokens/send', async (req, res) => {
     // Async: submit to blockchain in the background
     (async () => {
       try {
-        const result = await sendTransactionToBridge(transactionPayload);
+        const result = await sendTransactionToBridge(transactionPayload, network);
         // Update audit log with real tx hash
         await pool.query(`
           UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
@@ -624,7 +665,8 @@ app.post('/api/blockchain-audit/:auditLogId/retry', async (req, res) => {
     (async () => {
       try {
         const payload = JSON.parse(auditLog.transaction_payload);
-        const result = await sendTransactionToBridge(payload);
+        const network = payload.network || 'testnet';
+        const result = await sendTransactionToBridge(payload, network);
         // Update audit log with new tx hash
         await pool.query(`
           UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
@@ -1214,6 +1256,11 @@ async function start() {
     // Add usernode_pubkey column if it doesn't exist (idempotent migration)
     await pool.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS usernode_pubkey VARCHAR(100) UNIQUE
+    `);
+
+    // Add network column if it doesn't exist (idempotent migration)
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS network VARCHAR(50) DEFAULT 'testnet'
     `);
 
     // Create conversations table (marked private)

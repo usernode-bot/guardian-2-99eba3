@@ -322,6 +322,15 @@
             <button id="layoutCompact" onclick="applyLayout('compact')" class="flex-1 px-3 py-2 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-transparent hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Compact</button>
           </div>
         </div>
+
+        <!-- Network -->
+        <div class="space-y-2">
+          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Network</label>
+          <select id="networkSelect" onchange="applyNetwork(this.value)" class="w-full px-3 py-2 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500">
+            <option value="testnet">Testnet</option>
+            <option value="mainnet">Mainnet</option>
+          </select>
+        </div>
       </div>
     </div>
 
@@ -495,12 +504,15 @@
     let pendingDeleteContactId = null;
 
     // Settings functions
+    let currentNetwork = 'testnet';
+
     function loadSettings() {
       if (!currentUser) return {};
       const stored = JSON.parse(localStorage.getItem(`guardian_settings_${currentUser.id}`) || '{}');
       return {
         theme: stored.theme || 'system',
         layout: stored.layout || 'comfortable',
+        network: stored.network || 'testnet',
       };
     }
 
@@ -509,11 +521,17 @@
       localStorage.setItem(`guardian_settings_${currentUser.id}`, JSON.stringify(settings));
     }
 
+    function getCurrentNetwork() {
+      return currentNetwork;
+    }
+
     function initSettings() {
       const settings = loadSettings();
       applyTheme(settings.theme);
       applyLayout(settings.layout);
+      currentNetwork = settings.network;
       document.getElementById('themeSelect').value = settings.theme;
+      document.getElementById('networkSelect').value = settings.network;
       updateLayoutButtons(settings.layout);
       window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
         if (loadSettings().theme === 'system') {
@@ -565,6 +583,35 @@
         compact.classList.remove('border-transparent');
         comfortable.classList.remove('border-cyan-600', 'dark:border-cyan-500');
         comfortable.classList.add('border-transparent');
+      }
+    }
+
+    async function applyNetwork(network) {
+      if (!['testnet', 'mainnet'].includes(network)) {
+        console.error('Invalid network:', network);
+        return;
+      }
+
+      const previousNetwork = currentNetwork;
+      try {
+        const response = await apiCall('/api/user/network', {
+          method: 'PUT',
+          body: JSON.stringify({ network })
+        });
+
+        if (response && response.error) {
+          console.error('Failed to update network:', response.error);
+          document.getElementById('networkSelect').value = previousNetwork;
+          return;
+        }
+
+        currentNetwork = network;
+        const settings = loadSettings();
+        settings.network = network;
+        saveSettings(settings);
+      } catch (err) {
+        console.error('Error applying network:', err);
+        document.getElementById('networkSelect').value = previousNetwork;
       }
     }
 
@@ -693,6 +740,7 @@
         return;
       }
       currentUser = user;
+      currentNetwork = user.network || 'testnet';
       document.getElementById('sidebarUsername').textContent = user.username + (user.verified ? ' ✓' : '');
       document.getElementById('sidebarWallet').textContent = user.usernode_pubkey || 'No wallet linked';
       initSettings();
