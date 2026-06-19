@@ -41,11 +41,15 @@ function checkRateLimit(key, limit, windowMs) {
   return true;
 }
 
-// User cache with TTL (5 minutes)
+// User cache with TTL (5 minutes for individual users, 30 minutes for leaderboard)
 const userCache = new Map();
+const leaderboardCache = { data: null, timestamp: 0 };
+const LEADERBOARD_TTL = 30 * 60 * 1000; // 30 minutes
+const USER_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 function getCachedUser(userId) {
   const cached = userCache.get(userId);
-  if (cached && Date.now() - cached.timestamp < 300000) {
+  if (cached && Date.now() - cached.timestamp < USER_CACHE_TTL) {
     return cached.data;
   }
   return null;
@@ -54,7 +58,82 @@ function cacheUser(userId, userData) {
   userCache.set(userId, { data: userData, timestamp: Date.now() });
 }
 
-// Fetch a single Usernode user by ID (from registry or cache)
+function getCachedLeaderboard() {
+  if (leaderboardCache.data && Date.now() - leaderboardCache.timestamp < LEADERBOARD_TTL) {
+    return leaderboardCache.data;
+  }
+  return null;
+}
+function cacheLeaderboard(leaderboardData) {
+  leaderboardCache.data = leaderboardData;
+  leaderboardCache.timestamp = Date.now();
+}
+
+// Scrape Usernode leaderboard HTML and extract user data
+async function scrapeLeaderboard() {
+  const cached = getCachedLeaderboard();
+  if (cached) return cached;
+
+  try {
+    const response = await fetch('https://leaderboard.usernodelabs.org/leaderboard');
+    if (!response.ok) {
+      console.log('Failed to fetch leaderboard');
+      return [];
+    }
+    const html = await response.text();
+
+    // Extract user data from HTML using regex and DOM parsing
+    // Look for user entries in the leaderboard table
+    const users = [];
+
+    // Match usernames in the format they appear in the leaderboard
+    // Looking for patterns like <td>username</td> or similar common HTML structures
+    const usernamePattern = /(?:>([a-zA-Z0-9._-]+)<|\"username\"\s*:\s*\"([a-zA-Z0-9._-]+)\")/g;
+    let match;
+    const uniqueUsernames = new Set();
+
+    while ((match = usernamePattern.exec(html)) !== null) {
+      const username = match[1] || match[2];
+      if (username && username.length > 2 && !username.startsWith('staging-') && !uniqueUsernames.has(username)) {
+        uniqueUsernames.add(username);
+        // Create a user object with the scraped data
+        users.push({
+          id: users.length + 1000, // Use offset IDs to avoid collision with local IDs
+          username: username,
+          usernode_pubkey: null, // Wallet address may not be visible in leaderboard
+          verified_at: new Date(),
+        });
+      }
+    }
+
+    if (users.length === 0) {
+      // If regex failed, try a simpler approach looking for common patterns
+      const simplePattern = /([a-zA-Z0-9]{3,}(?:\.[a-zA-Z0-9]{2,})?)/g;
+      while ((match = simplePattern.exec(html)) !== null) {
+        const username = match[1];
+        if (username.length > 3 && !username.startsWith('staging-') && !uniqueUsernames.has(username)) {
+          uniqueUsernames.add(username);
+          users.push({
+            id: users.length + 1000,
+            username: username,
+            usernode_pubkey: null,
+            verified_at: new Date(),
+          });
+          if (users.length >= 50) break; // Limit to 50 users
+        }
+      }
+    }
+
+    cacheLeaderboard(users);
+    console.log(`Scraped ${users.length} users from Usernode leaderboard`);
+    return users;
+  } catch (err) {
+    console.error('Error scraping Usernode leaderboard:', err.message);
+    return [];
+  }
+}
+
+// Fetch a single Usernode user from scraped leaderboard
 async function fetchUsernodeUser(userId) {
   const cached = getCachedUser(userId);
   if (cached) return cached;
@@ -68,39 +147,39 @@ async function fetchUsernodeUser(userId) {
     return null;
   }
 
-  // In production, query the real Usernode leaderboard API
+  // In production, search the scraped leaderboard for the user
   try {
-    const response = await fetch(`https://leaderboard.usernodelabs.org/api/users/${userId}`);
-    if (!response.ok) {
-      console.log(`User ${userId} not found in Usernode registry`);
-      return null;
+    const leaderboard = await scrapeLeaderboard();
+    const user = leaderboard.find(u => u.id === userId);
+    if (user) {
+      cacheUser(userId, user);
+      return user;
     }
-    const user = await response.json();
-    cacheUser(userId, user);
-    return user;
+    return null;
   } catch (err) {
     console.error('Error fetching Usernode user:', err.message);
     return null;
   }
 }
 
-// Search Usernode users by username query
+// Search Usernode users by username query (from scraped leaderboard)
 async function searchUsernodeUsers(query, limit = 20) {
   if (IS_STAGING) {
     const q = query.toLowerCase();
     return MOCK_USERNODE_USERS.filter(u => u.username.toLowerCase().includes(q)).slice(0, limit);
   }
 
-  // In production, query the real Usernode leaderboard API
+  // In production, search the scraped leaderboard
   try {
-    const response = await fetch(
-      `https://leaderboard.usernodelabs.org/api/search?q=${encodeURIComponent(query)}&limit=${limit}`
-    );
-    if (!response.ok) {
-      console.log('Usernode leaderboard search failed, falling back to local database');
+    const leaderboard = await scrapeLeaderboard();
+    const q = query.toLowerCase();
+    const results = leaderboard.filter(u => u.username.toLowerCase().includes(q)).slice(0, limit);
+
+    if (results.length === 0) {
+      console.log('No leaderboard results, will fall back to local database');
       return null;
     }
-    return await response.json();
+    return results;
   } catch (err) {
     console.error('Error searching Usernode leaderboard:', err.message);
     return null;
