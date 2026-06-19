@@ -377,7 +377,8 @@
           <!-- Empty state (shown when no search results) -->
           <div id="emptyState" class="flex-1 flex flex-col items-center justify-center text-center space-y-4">
             <div class="text-zinc-600 dark:text-zinc-400">
-              <p class="text-sm">Search for users above to add as contacts.</p>
+              <p class="text-sm mb-2">Search for users above, or add a contact directly.</p>
+              <button onclick="toggleAddContactModal()" class="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 font-medium">Create New Contact</button>
             </div>
           </div>
           <!-- Search results -->
