@@ -919,17 +919,7 @@
           const displayName = conv.nickname ? `${conv.nickname} (${conv.username} ✓)` : `${conv.username} ✓`;
           return `
           <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer transition" onclick="openConversation(${conv.id}, ${conv.otherId}, '${conv.username}', '${conv.nickname || ''}')">
-            <div class="flex justify-between items-start gap-2">
-              <div class="flex-1 min-w-0">
-                <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${displayName}</div>
-                <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${conv.usernode_pubkey || 'No wallet'}</div>
-                <div class="text-sm text-zinc-600 dark:text-zinc-400 truncate">${conv.lastMessage || 'No messages'}</div>
-              </div>
-              <div class="text-xs text-zinc-600 dark:text-zinc-500 text-right flex-shrink-0">
-                ${conv.lastMessageAt ? formatTime(new Date(conv.lastMessageAt)) : ''}
-                ${conv.unreadCount > 0 ? `<div class="mt-1 inline-block px-2 py-0.5 bg-cyan-600 rounded-full text-white text-xs">${conv.unreadCount}</div>` : ''}
-              </div>
-            </div>
+            <div class="font-medium text-zinc-900 dark:text-zinc-100">${displayName}</div>
           </div>
         `;
         }).join('');
