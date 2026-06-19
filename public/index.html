@@ -235,6 +235,10 @@
     .dark .menu-item.delete-item:hover {
       background-color: #7f1d1d;
     }
+
+    .menu-item.icon-only {
+      padding: 0.25rem 0.5rem;
+    }
   </style>
 </head>
 <body class="bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100 min-h-screen flex flex-col">
@@ -255,7 +259,7 @@
           </svg>
         </button>
         <div id="contactMenu" class="hidden contact-menu top-full right-0 mt-1">
-          <button onclick="openContactDeleteModal()" class="menu-item delete-item">🗑️</button>
+          <button onclick="openContactDeleteModal()" class="menu-item delete-item icon-only">🗑️</button>
         </div>
       </div>
     </div>
