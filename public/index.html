@@ -429,12 +429,6 @@
             <span>Send Token</span>
           </div>
         </button>
-        <button onclick="handleAttachmentSelect('blockchain')" class="w-full px-4 py-4 text-left text-zinc-900 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition">
-          <div class="flex items-center gap-3">
-            <span class="text-2xl">⛓️</span>
-            <span>Record on Blockchain</span>
-          </div>
-        </button>
       </div>
     </div>
 
@@ -725,8 +719,6 @@
         input.click();
       } else if (type === 'token') {
         showTokenModal();
-      } else if (type === 'blockchain') {
-        document.getElementById('blockchainToggle').checked = !document.getElementById('blockchainToggle').checked;
       }
     }
 
