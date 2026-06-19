@@ -265,6 +265,12 @@
           </svg>
           Find Contacts
         </button>
+        <button onclick="showRequestsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
+          <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8a6 6 0 0112 0v.993a.5.5 0 00.823.4l3.293-2.46a.5.5 0 00-.823-.4L15.823 8.6A.5.5 0 0015 8.2V8a6 6 0 11-12 0z" />
+          </svg>
+          Requests<span id="requestBadge" class="hidden ml-2 inline-block px-2 py-0.5 bg-cyan-600 dark:bg-cyan-600 text-white text-xs rounded-full"></span>
+        </button>
         <button onclick="openSettingsPanel()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
           <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -323,15 +329,14 @@
     <div id="content" class="flex-1 overflow-hidden flex flex-col">
       <!-- Conversations List (initial view) -->
       <div id="conversationsView" class="flex flex-col flex-1 overflow-hidden">
-        <!-- Tabs -->
-        <div class="flex gap-0 border-b border-zinc-300 dark:border-zinc-800 px-4 pt-3 bg-white dark:bg-zinc-900">
-          <button onclick="showConversationsTab()" id="convTab" class="px-4 py-2 border-b-2 border-cyan-600 dark:border-cyan-500 text-cyan-600 dark:text-cyan-400 font-medium transition">Conversations</button>
-          <button onclick="showRequestsTab()" id="reqTab" class="px-4 py-2 border-b-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 font-medium transition">Requests<span id="requestBadge" class="hidden ml-2 inline-block px-2 py-0.5 bg-cyan-600 dark:bg-cyan-600 text-white text-xs rounded-full"></span></button>
-        </div>
         <div id="convList" class="flex-1 overflow-y-auto divide-y divide-zinc-300 dark:divide-zinc-800">
           <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading conversations...</div>
         </div>
-        <div id="requestList" class="hidden flex-1 overflow-y-auto divide-y divide-zinc-300 dark:divide-zinc-800">
+      </div>
+
+      <!-- Requests View -->
+      <div id="requestsView" class="hidden flex flex-col flex-1 overflow-hidden">
+        <div id="requestList" class="flex-1 overflow-y-auto divide-y divide-zinc-300 dark:divide-zinc-800">
           <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading requests...</div>
         </div>
       </div>
@@ -1104,6 +1109,7 @@
       if (data && !data.error) {
         alert(`Conversation request sent to ${username}`);
         showConversationsView();
+        loadConversations();
       } else if (data === null) {
         alert('Not authenticated. Please log in.');
         button.disabled = false;
@@ -1119,32 +1125,27 @@
       document.getElementById('conversationsView').classList.remove('hidden');
       document.getElementById('chatView').classList.add('hidden');
       document.getElementById('discoverView').classList.add('hidden');
+      document.getElementById('requestsView').classList.add('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('headerTitle').textContent = 'Guardian';
       document.getElementById('backBtn').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('deleteContactBtn').classList.add('hidden');
       if (pollInterval) clearInterval(pollInterval);
-      showConversationsTab();
-    }
-
-    function showConversationsTab() {
-      document.getElementById('convList').classList.remove('hidden');
-      document.getElementById('requestList').classList.add('hidden');
-      document.getElementById('convTab').classList.add('border-cyan-600', 'dark:border-cyan-500', 'text-cyan-600', 'dark:text-cyan-400');
-      document.getElementById('convTab').classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400', 'hover:text-zinc-800', 'dark:hover:text-zinc-200');
-      document.getElementById('reqTab').classList.remove('border-cyan-600', 'dark:border-cyan-500', 'text-cyan-600', 'dark:text-cyan-400');
-      document.getElementById('reqTab').classList.add('border-transparent', 'text-zinc-600', 'dark:text-zinc-400', 'hover:text-zinc-800', 'dark:hover:text-zinc-200');
       loadConversations();
     }
 
-    function showRequestsTab() {
-      document.getElementById('convList').classList.add('hidden');
-      document.getElementById('requestList').classList.remove('hidden');
-      document.getElementById('convTab').classList.remove('border-cyan-600', 'dark:border-cyan-500', 'text-cyan-600', 'dark:text-cyan-400');
-      document.getElementById('convTab').classList.add('border-transparent', 'text-zinc-600', 'dark:text-zinc-400', 'hover:text-zinc-800', 'dark:hover:text-zinc-200');
-      document.getElementById('reqTab').classList.add('border-cyan-600', 'dark:border-cyan-500', 'text-cyan-600', 'dark:text-cyan-400');
-      document.getElementById('reqTab').classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400', 'hover:text-zinc-800', 'dark:hover:text-zinc-200');
+    function showRequestsView() {
+      document.getElementById('conversationsView').classList.add('hidden');
+      document.getElementById('chatView').classList.add('hidden');
+      document.getElementById('discoverView').classList.add('hidden');
+      document.getElementById('requestsView').classList.remove('hidden');
+      document.getElementById('inputFooter').classList.add('hidden');
+      document.getElementById('headerTitle').textContent = 'Requests';
+      document.getElementById('backBtn').classList.remove('hidden');
+      document.getElementById('menuBtn').classList.add('hidden');
+      document.getElementById('deleteContactBtn').classList.add('hidden');
+      if (pollInterval) clearInterval(pollInterval);
       loadRequestsTab();
     }
 
@@ -1192,7 +1193,7 @@
         const convData = await apiCall(`/api/conversations/${data.conversationId}`);
         if (convData && !convData.error) {
           const requests = await apiCall('/api/conversation-requests/sent');
-          showConversationsTab();
+          showConversationsView();
         }
       }
     }
@@ -1212,6 +1213,7 @@
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.remove('hidden');
       document.getElementById('discoverView').classList.add('hidden');
+      document.getElementById('requestsView').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('hidden');
     }
 
@@ -1220,6 +1222,7 @@
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.add('hidden');
       document.getElementById('discoverView').classList.remove('hidden');
+      document.getElementById('requestsView').classList.add('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('headerTitle').textContent = 'Find contacts';
       document.getElementById('backBtn').classList.remove('hidden');
