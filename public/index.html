@@ -249,7 +249,16 @@
       </button>
       <button id="backBtn" class="text-sm text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 hidden transition">← Back</button>
       <h1 id="headerTitle" class="text-lg font-semibold flex-1">Guardian</h1>
-      <div id="headerRight" class="text-sm text-zinc-600 dark:text-zinc-500"></div>
+      <div id="headerRight" class="text-sm text-zinc-600 dark:text-zinc-500 relative">
+        <button id="contactMenuBtn" class="hidden text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition p-1" title="Contact options" onclick="toggleContactHeaderMenu(event)">
+          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM16 12a2 2 0 100-4 2 2 0 000 4z" />
+          </svg>
+        </button>
+        <div id="contactMenu" class="hidden contact-menu top-full right-0 mt-1">
+          <button onclick="openContactDeleteModal()" class="menu-item delete-item">🗑️ Delete Contact</button>
+        </div>
+      </div>
     </div>
 
     <!-- Sidebar Overlay -->
@@ -536,6 +545,9 @@
     let currentUser = null;
     let currentConvId = null;
     let currentOtherId = null;
+    let currentContactId = null;
+    let currentContactName = null;
+    let currentContactAddress = null;
     let pollInterval = null;
     let sidebarOpen = false;
     let openContactMenu = null;
@@ -791,6 +803,8 @@
         const contacts = JSON.parse(localStorage.getItem(`guardian_contacts_${currentUser.id}`) || '[]');
         const filtered = contacts.filter(c => c.id !== contactId);
         localStorage.setItem(`guardian_contacts_${currentUser.id}`, JSON.stringify(filtered));
+        hideContactHeaderMenu();
+        currentContactId = null;
         loadContacts();
       }
     }
@@ -851,6 +865,15 @@
           closeAttachmentSheet();
           closeContactMenu();
           hideDeleteContactModal();
+          hideContactHeaderMenu();
+        }
+      });
+
+      document.addEventListener('click', (e) => {
+        const contactMenuBtn = document.getElementById('contactMenuBtn');
+        const contactMenu = document.getElementById('contactMenu');
+        if (contactMenuBtn && contactMenu && !contactMenuBtn.contains(e.target) && !contactMenu.contains(e.target)) {
+          hideContactHeaderMenu();
         }
       });
     }
@@ -872,7 +895,7 @@
               <div class="flex justify-between items-start gap-2">
                 <div class="flex-1 min-w-0">
                   <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${req.recipientUsername} <span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span></div>
-                  <div class="text-xs text-zinc-600 dark:text-zinc-500 truncate">${req.recipientWallet || 'No wallet'}</div>
+                  <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${req.recipientWallet || 'No wallet'}</div>
                   <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">Awaiting response</div>
                 </div>
                 <button onclick="cancelRequest(${req.id})" class="text-zinc-600 dark:text-zinc-500 hover:text-red-600 dark:hover:text-red-400 text-xs">Cancel</button>
@@ -894,7 +917,7 @@
             <div class="flex justify-between items-start gap-2">
               <div class="flex-1 min-w-0">
                 <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${conv.username} <span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span></div>
-                <div class="text-xs text-zinc-600 dark:text-zinc-500 truncate">${conv.usernode_pubkey || 'No wallet'}</div>
+                <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${conv.usernode_pubkey || 'No wallet'}</div>
                 <div class="text-sm text-zinc-600 dark:text-zinc-400 truncate">${conv.lastMessage || 'No messages'}</div>
               </div>
               <div class="text-xs text-zinc-600 dark:text-zinc-500 text-right flex-shrink-0">
@@ -932,9 +955,14 @@
     async function openConversation(convId, otherId, username) {
       currentConvId = convId;
       currentOtherId = otherId;
+      currentContactName = username;
       document.getElementById('headerTitle').textContent = username + ' ✓';
       document.getElementById('backBtn').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
+
+      // Fetch and display contact menu
+      await fetchAndShowContactMenu(otherId, username);
+
       showChatView();
       loadMessages();
 
@@ -1148,7 +1176,7 @@
       results.innerHTML = data.users.map(user => `
         <div class="p-4 bg-zinc-200 dark:bg-zinc-800 rounded-lg hover:bg-zinc-300 dark:hover:bg-zinc-700 transition">
           <div class="font-medium text-cyan-600 dark:text-cyan-400">${user.username} ${user.verified ? '✓' : ''}</div>
-          <div class="text-xs text-zinc-600 dark:text-zinc-500 mt-1">${user.usernode_pubkey || 'No wallet'}</div>
+          <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-1">${user.usernode_pubkey || 'No wallet'}</div>
           <div class="text-sm text-zinc-600 dark:text-zinc-400 mt-1">${user.mutualCount} mutual connections</div>
           <button data-user-id="${user.id}" data-username="${user.username}" onclick="sendConversationRequest(event)" class="mt-3 w-full px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white text-sm rounded-lg transition font-medium">Send Request</button>
         </div>
@@ -1206,6 +1234,8 @@
       document.getElementById('headerTitle').textContent = 'Guardian';
       document.getElementById('backBtn').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
+      document.getElementById('contactMenuBtn').classList.add('hidden');
+      hideContactHeaderMenu();
       if (pollInterval) clearInterval(pollInterval);
       updateFabVisibility();
       showConversationsTab();
@@ -1252,7 +1282,7 @@
           <div class="flex justify-between items-start gap-2 mb-3">
             <div class="flex-1 min-w-0">
               <div class="font-medium text-zinc-900 dark:text-zinc-100">${req.senderUsername} <span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span></div>
-              <div class="text-xs text-zinc-600 dark:text-zinc-500 truncate">${req.senderWallet || 'No wallet'}</div>
+              <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${req.senderWallet || 'No wallet'}</div>
               <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">${formatTime(new Date(req.createdAt))}</div>
             </div>
           </div>
@@ -1308,6 +1338,8 @@
       document.getElementById('headerTitle').textContent = 'Contacts';
       document.getElementById('backBtn').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
+      document.getElementById('contactMenuBtn').classList.add('hidden');
+      hideContactHeaderMenu();
       updateFabVisibility();
       loadContacts();
     }
@@ -1321,6 +1353,8 @@
       document.getElementById('headerTitle').textContent = 'Find contacts';
       document.getElementById('backBtn').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
+      document.getElementById('contactMenuBtn').classList.add('hidden');
+      hideContactHeaderMenu();
       updateFabVisibility();
       document.getElementById('searchInput').focus();
     }
@@ -1342,7 +1376,7 @@
           <div class="flex-1 min-w-0">
             <div class="font-medium text-zinc-900 dark:text-zinc-100">${contact.username} ${contact.verified ? '<span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
             ${contact.nickname ? `<div class="text-xs text-cyan-600 dark:text-cyan-400 truncate">${contact.nickname}</div>` : ''}
-            <div class="text-xs text-zinc-600 dark:text-zinc-500 truncate">${contact.usernode_pubkey || 'No wallet'}</div>
+            <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${contact.usernode_pubkey || 'No wallet'}</div>
           </div>
           <div class="relative">
             <button onclick="toggleContactMenu(${contact.id}, event)" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 opacity-0 group-hover:opacity-100 transition ml-2 p-1" title="Contact options">
@@ -1451,6 +1485,56 @@
     function hideQRCodeModal() {
       document.getElementById('qrModal').classList.add('hidden');
       showShareContactModal();
+    }
+
+    // ===== CONTACT MENU FUNCTIONS (in chat header) =====
+
+    async function fetchAndShowContactMenu(otherId, username) {
+      const contactMenuBtn = document.getElementById('contactMenuBtn');
+
+      // Fetch user details to get wallet address
+      const userRes = await apiCall(`/api/users/${otherId}`);
+      if (!userRes) return;
+
+      currentContactAddress = userRes.usernode_pubkey || 'No wallet linked';
+
+      // Try to find the contact ID from the saved contacts
+      const contactRes = await apiCall('/api/contacts');
+      if (contactRes && contactRes.contacts) {
+        const contact = contactRes.contacts.find(c => c.userId === otherId);
+        if (contact) {
+          currentContactId = contact.id;
+        }
+      }
+
+      // Show the menu button (name and address already in header title)
+      contactMenuBtn.classList.remove('hidden');
+    }
+
+    function toggleContactHeaderMenu(event) {
+      event.stopPropagation();
+      closeContactMenu();
+      const menu = document.getElementById('contactMenu');
+      menu.classList.toggle('hidden');
+      if (!menu.classList.contains('hidden')) {
+        openContactMenu = { menu };
+      }
+    }
+
+    function openContactDeleteModal() {
+      if (!currentContactId) {
+        alert('Contact not found. Delete from Contacts view instead.');
+        closeContactMenu();
+        return;
+      }
+      showDeleteContactModal(currentContactId, currentContactName);
+      closeContactMenu();
+    }
+
+    function hideContactHeaderMenu() {
+      const menu = document.getElementById('contactMenu');
+      menu.classList.add('hidden');
+      openContactMenu = null;
     }
 
     init();
