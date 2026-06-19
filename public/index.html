@@ -348,15 +348,12 @@
 
       <!-- Requests View (with search and request list) -->
       <div id="requestsView" class="hidden flex flex-col flex-1 overflow-hidden">
-        <!-- Search Section -->
-        <div class="px-4 py-3 bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-300 dark:border-zinc-800 space-y-3">
-          <input id="searchInput" type="text" placeholder="Search for users..." class="w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition" oninput="searchUsers(this.value)">
-          <button onclick="toggleAddContactModal()" class="w-full px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium text-sm">+ Create New Contact</button>
+        <!-- Add Request Button -->
+        <div class="px-4 py-3 bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-300 dark:border-zinc-800">
+          <button onclick="toggleSendRequestModal()" class="w-full px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium text-sm">+ Add Request</button>
         </div>
-        <!-- Search Results -->
-        <div id="searchResults" class="px-4 py-3 space-y-3 overflow-y-auto" style="max-height: 250px; overflow-y: auto;"></div>
         <!-- Requests Section -->
-        <div class="flex-1 flex flex-col overflow-hidden border-t border-zinc-300 dark:border-zinc-800">
+        <div class="flex-1 flex flex-col overflow-hidden">
           <div class="px-4 py-3 bg-zinc-100 dark:bg-zinc-800 sticky top-0 z-10">
             <h2 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Pending Requests</h2>
           </div>
@@ -520,24 +517,19 @@
     </div>
   </div>
 
-  <!-- Add Contact Modal -->
-  <div id="addContactModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onclick="if(event.target.id === 'addContactModal') toggleAddContactModal()">
+  <!-- Send Request Modal -->
+  <div id="sendRequestModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onclick="if(event.target.id === 'sendRequestModal') toggleSendRequestModal()">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
       <div class="flex justify-between items-start">
-        <h2 class="text-xl font-semibold text-zinc-900 dark:text-white">Add Contact</h2>
-        <button onclick="toggleAddContactModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
+        <h2 class="text-xl font-semibold text-zinc-900 dark:text-white">Send Request</h2>
+        <button onclick="toggleSendRequestModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
       </div>
       <div class="space-y-3">
-        <div>
-          <input id="addContactAddress" type="text" placeholder="Usernode address (ut1...)" class="w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-500 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
-        </div>
-        <div>
-          <input id="addContactNickname" type="text" placeholder="Nickname (optional)" class="w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-500 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
-        </div>
+        <input id="modalSearchInput" type="text" placeholder="Search for users..." class="w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition" oninput="searchUsersInModal(this.value)">
+        <div id="modalSearchResults" class="space-y-2 max-h-60 overflow-y-auto"></div>
       </div>
       <div class="flex gap-2">
-        <button onclick="toggleAddContactModal()" class="flex-1 px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
-        <button onclick="addContact()" class="flex-1 px-3 py-1.5 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium text-sm">Start Conversation</button>
+        <button onclick="toggleSendRequestModal()" class="flex-1 px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
       </div>
     </div>
   </div>
@@ -846,9 +838,9 @@
         if (e.key === 'Escape') {
           closeAttachmentSheet();
           hideDeleteContactModal();
-          const addContactModal = document.getElementById('addContactModal');
-          if (!addContactModal.classList.contains('hidden')) {
-            toggleAddContactModal();
+          const sendRequestModal = document.getElementById('sendRequestModal');
+          if (!sendRequestModal.classList.contains('hidden')) {
+            toggleSendRequestModal();
           }
         }
       });
@@ -1175,12 +1167,38 @@
       }
     }
 
-    function toggleAddContactModal() {
-      const modal = document.getElementById('addContactModal');
+    function toggleSendRequestModal() {
+      const modal = document.getElementById('sendRequestModal');
       modal.classList.toggle('hidden');
       if (!modal.classList.contains('hidden')) {
-        document.getElementById('addContactAddress').focus();
+        document.getElementById('modalSearchInput').focus();
+        document.getElementById('modalSearchResults').innerHTML = '';
       }
+    }
+
+    async function searchUsersInModal(query) {
+      if (!query.trim()) {
+        document.getElementById('modalSearchResults').innerHTML = '';
+        return;
+      }
+
+      const data = await apiCall(`/api/search/users?q=${encodeURIComponent(query)}`);
+      if (!data) return;
+
+      const results = document.getElementById('modalSearchResults');
+      if (data.users.length === 0) {
+        results.innerHTML = '<div class="text-center text-zinc-600 dark:text-zinc-500 py-4">No users found</div>';
+        return;
+      }
+
+      results.innerHTML = data.users.map(user => `
+        <div class="p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition">
+          <div class="font-medium text-cyan-600 dark:text-cyan-400">${user.username} ${user.verified ? '✓' : ''}</div>
+          <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-1">${user.usernode_pubkey || 'No wallet'}</div>
+          <div class="text-sm text-zinc-600 dark:text-zinc-400 mt-1">${user.mutualCount} mutual connections</div>
+          <button data-user-id="${user.id}" data-username="${user.username}" onclick="sendConversationRequestFromModal(event)" class="mt-2 w-full px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white text-sm rounded-lg transition font-medium">Send Request</button>
+        </div>
+      `).join('');
     }
 
     async function searchUsers(query) {
@@ -1255,6 +1273,38 @@
       }
     }
 
+    async function sendConversationRequestFromModal(event) {
+      const button = event.target.closest('button');
+      if (!button) return;
+
+      const userId = button.getAttribute('data-user-id');
+      const username = button.getAttribute('data-username');
+      const originalText = button.textContent;
+
+      button.disabled = true;
+      button.textContent = 'Sending...';
+
+      const data = await apiCall('/api/conversation-requests', {
+        method: 'POST',
+        body: JSON.stringify({ recipientId: userId })
+      });
+
+      if (data && !data.error) {
+        alert(`Request sent to ${username}`);
+        toggleSendRequestModal();
+        showRequestsView();
+        loadRequestsTab();
+      } else if (data === null) {
+        alert('Not authenticated. Please log in.');
+        button.disabled = false;
+        button.textContent = originalText;
+      } else if (data && data.error) {
+        alert('Failed to send request: ' + data.error);
+        button.disabled = false;
+        button.textContent = originalText;
+      }
+    }
+
     function showConversationsView() {
       document.getElementById('conversationsView').classList.remove('hidden');
       document.getElementById('chatView').classList.add('hidden');
@@ -1280,8 +1330,6 @@
       document.getElementById('menuBtn').classList.add('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
       if (pollInterval) clearInterval(pollInterval);
-      document.getElementById('searchInput').focus();
-      document.getElementById('searchResults').innerHTML = '';
       loadRequestsTab();
     }
 
@@ -1368,37 +1416,6 @@
     }
 
 
-    async function addContact() {
-      const address = document.getElementById('addContactAddress').value.trim();
-      const nickname = document.getElementById('addContactNickname').value.trim();
-
-      if (!address) {
-        alert('Please enter a Usernode address');
-        return;
-      }
-
-      if (!address.startsWith('ut1')) {
-        alert('Address must start with ut1');
-        return;
-      }
-
-      const data = await apiCall('/api/contacts', {
-        method: 'POST',
-        body: JSON.stringify({ usernode_pubkey: address, nickname: nickname || null })
-      });
-
-      if (!data) return;
-
-      const contacts = JSON.parse(localStorage.getItem(`guardian_contacts_${currentUser.id}`) || '[]');
-      contacts.push(data);
-      localStorage.setItem(`guardian_contacts_${currentUser.id}`, JSON.stringify(contacts));
-
-      await startConversation(data.userId, data.username);
-      document.getElementById('addContactAddress').value = '';
-      document.getElementById('addContactNickname').value = '';
-      toggleAddContactModal();
-      loadContactsList();
-    }
 
     async function loadContactsList() {
       const data = await apiCall('/api/contacts');
