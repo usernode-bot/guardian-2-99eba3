@@ -234,12 +234,6 @@
       </div>
     </div>
 
-    <!-- Floating Action Button -->
-    <button id="fabBtn" class="fixed bottom-6 right-6 w-14 h-14 bg-cyan-500 hover:bg-cyan-400 rounded-full flex items-center justify-center text-white shadow-lg transition-transform hover:scale-110 z-20" title="Discover new contacts" onclick="showDiscoverView()">
-      <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-      </svg>
-    </button>
   </div>
 
   <!-- Modals -->
@@ -422,7 +416,7 @@
 
       const list = document.getElementById('convList');
       if (data.conversations.length === 0) {
-        list.innerHTML = '<div class="text-center py-8 text-zinc-500">No conversations yet. <br>Tap the + button to discover contacts.</div>';
+        list.innerHTML = '<div class="text-center py-8 text-zinc-500">No conversations yet.</div>';
         return;
       }
 
@@ -696,7 +690,6 @@
       document.getElementById('headerTitle').textContent = 'Guardian';
       document.getElementById('backBtn').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
-      document.getElementById('fabBtn').classList.remove('hidden');
       if (pollInterval) clearInterval(pollInterval);
       loadConversations();
     }
@@ -706,7 +699,6 @@
       document.getElementById('chatView').classList.remove('hidden');
       document.getElementById('discoverView').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('hidden');
-      document.getElementById('fabBtn').classList.add('hidden');
     }
 
     function showContactsView() {
@@ -718,7 +710,6 @@
       document.getElementById('headerTitle').textContent = 'Contacts';
       document.getElementById('backBtn').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
-      document.getElementById('fabBtn').classList.add('hidden');
       loadContacts();
     }
 
@@ -731,7 +722,6 @@
       document.getElementById('headerTitle').textContent = 'Find contacts';
       document.getElementById('backBtn').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
-      document.getElementById('fabBtn').classList.add('hidden');
       document.getElementById('searchInput').focus();
     }
 
