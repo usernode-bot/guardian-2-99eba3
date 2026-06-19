@@ -66,6 +66,7 @@
   <title>Guardian</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config = { darkMode: 'class' }</script>
+  <script src="/usernode-usernames.js"></script>
   <style>
     @keyframes slideInLeft {
       from {
@@ -116,10 +117,10 @@
     }
   </style>
 </head>
-<body class="bg-zinc-950 text-zinc-100 min-h-screen flex flex-col">
+<body class="bg-zinc-950 text-zinc-100 dark:bg-zinc-950 dark:text-zinc-100 light:bg-white light:text-gray-900 min-h-screen flex flex-col">
   <div id="app" class="flex flex-col flex-1 relative h-screen overflow-hidden">
     <!-- Header -->
-    <div id="header" class="bg-zinc-900 border-b border-zinc-800 px-4 py-3 flex items-center gap-3 sticky top-0 z-40">
+    <div id="header" class="bg-zinc-900 dark:bg-zinc-900 light:bg-white border-b border-zinc-800 dark:border-zinc-800 light:border-gray-200 px-4 py-3 flex items-center gap-3 sticky top-0 z-40">
       <button id="menuBtn" class="text-cyan-400 hover:text-cyan-300 transition" title="Toggle sidebar">
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
@@ -127,18 +128,23 @@
       </button>
       <button id="backBtn" class="text-sm text-cyan-400 hover:text-cyan-300 hidden transition">← Back</button>
       <h1 id="headerTitle" class="text-lg font-semibold flex-1">Guardian</h1>
-      <div id="headerRight" class="text-sm text-zinc-500"></div>
+      <button id="themeToggle" class="text-sm text-zinc-400 dark:text-zinc-400 light:text-gray-600 hover:text-cyan-400 dark:hover:text-cyan-400 light:hover:text-cyan-500 transition" title="Toggle theme">
+        <svg id="themeIcon" class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        </svg>
+      </button>
+      <div id="headerRight" class="text-sm text-zinc-500 dark:text-zinc-500 light:text-gray-400"></div>
     </div>
 
     <!-- Sidebar Overlay -->
     <div id="sidebarOverlay" class="hidden fixed inset-0 bg-black/50 z-30 transition-opacity duration-300" onclick="toggleSidebar()"></div>
 
     <!-- Sidebar -->
-    <div id="sidebar" class="hidden fixed left-0 top-0 w-64 h-full bg-zinc-900 border-r border-zinc-800 z-40 flex flex-col overflow-y-auto">
-      <div class="p-4 border-b border-zinc-800">
+    <div id="sidebar" class="hidden fixed left-0 top-0 w-64 h-full bg-zinc-900 dark:bg-zinc-900 light:bg-white border-r border-zinc-800 dark:border-zinc-800 light:border-gray-200 z-40 flex flex-col overflow-y-auto">
+      <div class="p-4 border-b border-zinc-800 dark:border-zinc-800 light:border-gray-200">
         <div class="flex items-center justify-between">
           <h2 class="text-lg font-semibold">Guardian</h2>
-          <button onclick="toggleSidebar()" class="text-zinc-500 hover:text-zinc-300 transition">
+          <button onclick="toggleSidebar()" class="text-zinc-500 dark:text-zinc-500 light:text-gray-400 hover:text-zinc-300 dark:hover:text-zinc-300 light:hover:text-gray-600 transition">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -147,22 +153,28 @@
       </div>
 
       <nav class="flex-1 px-2 py-4 space-y-2">
-        <button onclick="showConversationsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-800 transition text-cyan-400 hover:text-cyan-300">
+        <button onclick="showConversationsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-800 dark:hover:bg-zinc-800 light:hover:bg-gray-100 transition text-cyan-400 hover:text-cyan-300">
           <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
           </svg>
           Conversations
         </button>
-        <button onclick="showDiscoverView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-800 transition hover:text-cyan-300">
+        <button onclick="showDiscoverView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-800 dark:hover:bg-zinc-800 light:hover:bg-gray-100 transition hover:text-cyan-300">
           <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
-          Find Contacts
+          Discover Campaigns
+        </button>
+        <button onclick="showProfileView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-800 dark:hover:bg-zinc-800 light:hover:bg-gray-100 transition hover:text-cyan-300">
+          <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+          My Profile
         </button>
       </nav>
 
-      <div id="sidebarUser" class="p-4 border-t border-zinc-800">
-        <div class="text-sm text-zinc-400">Logged in as</div>
+      <div id="sidebarUser" class="p-4 border-t border-zinc-800 dark:border-zinc-800 light:border-gray-200">
+        <div class="text-sm text-zinc-400 dark:text-zinc-400 light:text-gray-600">Logged in as</div>
         <div id="sidebarUsername" class="font-medium text-cyan-400 mt-1">Loading...</div>
       </div>
     </div>
@@ -171,10 +183,10 @@
     <div id="content" class="flex-1 overflow-hidden flex flex-col">
       <!-- Conversations List (initial view) -->
       <div id="conversationsView" class="flex flex-col flex-1 overflow-hidden">
-        <div id="convList" class="flex-1 overflow-y-auto divide-y divide-zinc-800">
-          <div class="text-center py-8 text-zinc-500">Loading conversations...</div>
+        <div id="convList" class="flex-1 overflow-y-auto divide-y divide-zinc-800 dark:divide-zinc-800 light:divide-gray-200">
+          <div class="text-center py-8 text-zinc-500 dark:text-zinc-500 light:text-gray-400">Loading conversations...</div>
         </div>
-        <div class="p-4 border-t border-zinc-800">
+        <div class="p-4 border-t border-zinc-800 dark:border-zinc-800 light:border-gray-200">
           <button onclick="showDiscoverView()" class="w-full px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition font-medium">Find contacts</button>
         </div>
       </div>
@@ -184,27 +196,74 @@
         <div id="messageList" class="flex-1 overflow-y-auto space-y-3 p-4"></div>
       </div>
 
-      <!-- Discover View -->
+      <!-- Discover Campaigns View -->
       <div id="discoverView" class="hidden flex flex-col flex-1 p-4 overflow-hidden">
-        <input id="searchInput" type="text" placeholder="Search users..." class="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 mb-4 transition">
-        <div id="searchResults" class="flex-1 overflow-y-auto space-y-2"></div>
+        <div id="campaignsList" class="flex-1 overflow-y-auto space-y-3"></div>
+      </div>
+
+      <!-- Campaign Detail View -->
+      <div id="campaignDetailView" class="hidden flex flex-col flex-1 overflow-hidden">
+        <div class="flex-1 overflow-y-auto p-4 space-y-4">
+          <div id="campaignHeader" class="space-y-2">
+            <h2 id="campaignTitle" class="text-2xl font-bold"></h2>
+            <div class="text-sm text-zinc-400 dark:text-zinc-400 light:text-gray-600">
+              <span>By </span><span id="campaignCreator" class="text-cyan-400 font-medium"></span>
+            </div>
+            <p id="campaignDescription" class="text-sm"></p>
+          </div>
+
+          <div id="campaignProgress" class="space-y-2">
+            <div class="flex justify-between text-sm">
+              <span>Raised</span>
+              <span id="campaignAmount" class="font-medium"></span>
+            </div>
+            <div class="w-full bg-zinc-800 dark:bg-zinc-800 light:bg-gray-200 rounded-full h-2">
+              <div id="progressBar" class="bg-cyan-500 h-2 rounded-full transition-all duration-300"></div>
+            </div>
+          </div>
+
+          <div id="backersList" class="space-y-2">
+            <h3 class="font-semibold text-sm text-zinc-400 dark:text-zinc-400 light:text-gray-600 uppercase">Backers</h3>
+            <div id="backersContent" class="space-y-2"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Profile View -->
+      <div id="profileView" class="hidden flex flex-col flex-1 p-4 overflow-hidden">
+        <div class="flex-1 overflow-y-auto space-y-4">
+          <div id="profileHeader" class="space-y-2 pb-4 border-b border-zinc-800 dark:border-zinc-800 light:border-gray-200">
+            <h2 id="profileUsername" class="text-2xl font-bold text-cyan-400"></h2>
+            <p id="profileAddress" class="text-xs text-zinc-500 dark:text-zinc-500 light:text-gray-400 font-mono"></p>
+          </div>
+          <div id="profileContent" class="space-y-4"></div>
+        </div>
       </div>
     </div>
 
     <!-- Chat Input (shown only in chat view) -->
-    <div id="inputFooter" class="hidden bg-zinc-900 border-t border-zinc-800 p-4 space-y-2">
+    <div id="inputFooter" class="hidden bg-zinc-900 dark:bg-zinc-900 light:bg-white border-t border-zinc-800 dark:border-zinc-800 light:border-gray-200 p-4 space-y-2">
       <div class="flex gap-2">
-        <input id="msgInput" type="text" placeholder="Type a message..." class="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+        <input id="msgInput" type="text" placeholder="Type a message..." class="flex-1 px-3 py-2 bg-zinc-800 dark:bg-zinc-800 light:bg-gray-100 border border-zinc-700 dark:border-zinc-700 light:border-gray-300 rounded-lg text-zinc-100 dark:text-zinc-100 light:text-gray-900 placeholder-zinc-500 dark:placeholder-zinc-500 light:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
         <button id="sendBtn" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition font-medium">Send</button>
       </div>
       <div class="flex gap-2">
-        <button id="imageBtn" class="flex-1 px-2 py-2 bg-zinc-800 hover:bg-zinc-700 text-sm rounded-lg transition">📷 Image</button>
-        <button id="tokenBtn" class="flex-1 px-2 py-2 bg-zinc-800 hover:bg-zinc-700 text-sm rounded-lg transition">💰 Token</button>
+        <button id="imageBtn" class="flex-1 px-2 py-2 bg-zinc-800 dark:bg-zinc-800 light:bg-gray-200 hover:bg-zinc-700 dark:hover:bg-zinc-700 light:hover:bg-gray-300 text-sm rounded-lg transition">📷 Image</button>
+        <button id="tokenBtn" class="flex-1 px-2 py-2 bg-zinc-800 dark:bg-zinc-800 light:bg-gray-200 hover:bg-zinc-700 dark:hover:bg-zinc-700 light:hover:bg-gray-300 text-sm rounded-lg transition">💰 Token</button>
       </div>
     </div>
 
+    <!-- Campaign Contribution Footer (shown only in campaign detail) -->
+    <div id="contributionFooter" class="hidden bg-zinc-900 dark:bg-zinc-900 light:bg-white border-t border-zinc-800 dark:border-zinc-800 light:border-gray-200 p-4 space-y-2">
+      <div class="flex gap-2">
+        <input id="contributionAmount" type="number" placeholder="Amount..." class="flex-1 px-3 py-2 bg-zinc-800 dark:bg-zinc-800 light:bg-gray-100 border border-zinc-700 dark:border-zinc-700 light:border-gray-300 rounded-lg text-zinc-100 dark:text-zinc-100 light:text-gray-900 placeholder-zinc-500 dark:placeholder-zinc-500 light:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+        <button id="contributeBtn" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition font-medium">Contribute</button>
+      </div>
+      <div id="contributionStatus" class="text-sm text-zinc-400 dark:text-zinc-400 light:text-gray-600 text-center hidden"></div>
+    </div>
+
     <!-- Floating Action Button -->
-    <button id="fabBtn" class="fixed bottom-6 right-6 w-14 h-14 bg-cyan-500 hover:bg-cyan-400 rounded-full flex items-center justify-center text-white shadow-lg transition-transform hover:scale-110 z-20" title="Discover new contacts" onclick="showDiscoverView()">
+    <button id="fabBtn" class="fixed bottom-6 right-6 w-14 h-14 bg-cyan-500 hover:bg-cyan-400 rounded-full flex items-center justify-center text-white shadow-lg transition-transform hover:scale-110 z-20" title="Discover campaigns" onclick="showDiscoverView()">
       <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
       </svg>
@@ -222,22 +281,22 @@
 
   <!-- Token Transfer Modal -->
   <div id="tokenModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-    <div class="bg-zinc-900 border border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
+    <div class="bg-zinc-900 dark:bg-zinc-900 light:bg-white border border-zinc-700 dark:border-zinc-700 light:border-gray-300 rounded-lg p-6 w-full max-w-sm space-y-4">
       <h2 class="text-xl font-semibold">Send Tokens</h2>
       <div class="space-y-2">
-        <label class="text-sm text-zinc-400">Recipient</label>
-        <div id="tokenRecipient" class="px-3 py-2 bg-zinc-800 rounded-lg text-zinc-300"></div>
+        <label class="text-sm text-zinc-400 dark:text-zinc-400 light:text-gray-600">Recipient</label>
+        <div id="tokenRecipient" class="px-3 py-2 bg-zinc-800 dark:bg-zinc-800 light:bg-gray-100 rounded-lg text-zinc-300 dark:text-zinc-300 light:text-gray-700"></div>
       </div>
       <div class="space-y-2">
-        <label class="text-sm text-zinc-400">Amount</label>
-        <input id="tokenAmount" type="number" placeholder="0" class="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+        <label class="text-sm text-zinc-400 dark:text-zinc-400 light:text-gray-600">Amount</label>
+        <input id="tokenAmount" type="number" placeholder="0" class="w-full px-3 py-2 bg-zinc-800 dark:bg-zinc-800 light:bg-gray-100 border border-zinc-700 dark:border-zinc-700 light:border-gray-300 rounded-lg text-zinc-100 dark:text-zinc-100 light:text-gray-900 placeholder-zinc-500 dark:placeholder-zinc-500 light:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
       </div>
       <div class="space-y-2">
-        <label class="text-sm text-zinc-400">Memo (optional)</label>
-        <input id="tokenMemo" type="text" placeholder="Add a note..." class="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+        <label class="text-sm text-zinc-400 dark:text-zinc-400 light:text-gray-600">Memo (optional)</label>
+        <input id="tokenMemo" type="text" placeholder="Add a note..." class="w-full px-3 py-2 bg-zinc-800 dark:bg-zinc-800 light:bg-gray-100 border border-zinc-700 dark:border-zinc-700 light:border-gray-300 rounded-lg text-zinc-100 dark:text-zinc-100 light:text-gray-900 placeholder-zinc-500 dark:placeholder-zinc-500 light:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
       </div>
       <div class="flex gap-2">
-        <button id="tokenCancel" class="flex-1 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition">Cancel</button>
+        <button id="tokenCancel" class="flex-1 px-3 py-2 bg-zinc-800 dark:bg-zinc-800 light:bg-gray-200 hover:bg-zinc-700 dark:hover:bg-zinc-700 light:hover:bg-gray-300 rounded-lg transition">Cancel</button>
         <button id="tokenSend" class="flex-1 px-3 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition font-medium">Send</button>
       </div>
     </div>
@@ -251,8 +310,58 @@
     let currentUser = null;
     let currentConvId = null;
     let currentOtherId = null;
+    let currentCampaignId = null;
     let pollInterval = null;
     let sidebarOpen = false;
+
+    // Theme management
+    function initTheme() {
+      const savedTheme = localStorage.getItem('theme') || 'dark';
+      setTheme(savedTheme);
+    }
+
+    function setTheme(theme) {
+      const html = document.documentElement;
+      if (theme === 'light') {
+        html.classList.remove('dark');
+        localStorage.setItem('theme', 'light');
+      } else {
+        html.classList.add('dark');
+        localStorage.setItem('theme', 'dark');
+      }
+      updateThemeIcon();
+    }
+
+    function toggleTheme() {
+      const isDark = document.documentElement.classList.contains('dark');
+      setTheme(isDark ? 'light' : 'dark');
+    }
+
+    function updateThemeIcon() {
+      const isDark = document.documentElement.classList.contains('dark');
+      const icon = document.getElementById('themeIcon');
+      if (isDark) {
+        icon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />';
+      } else {
+        icon.innerHTML = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+      }
+    }
+
+    // Username display helper
+    async function getDisplayName(pubkey, fallbackUsername, fallbackAddress) {
+      if (!pubkey) return fallbackUsername || 'Unknown';
+
+      const cached = UsernodeUsernames.cache.get(pubkey);
+      if (cached) return cached;
+
+      if (fallbackUsername) return fallbackUsername;
+
+      if (fallbackAddress) {
+        return fallbackAddress.substring(0, 6) + '...' + fallbackAddress.substring(fallbackAddress.length - 4);
+      }
+
+      return pubkey.substring(0, 6) + '...' + pubkey.substring(pubkey.length - 4);
+    }
 
     async function apiCall(path, opts = {}) {
       const response = await fetch(path, {
@@ -290,25 +399,31 @@
     }
 
     async function init() {
+      await UsernodeUsernames.initialize();
+
       const user = await apiCall('/api/user');
       if (!user) {
         console.error('Failed to load user');
         return;
       }
       currentUser = user;
-      document.getElementById('sidebarUsername').textContent = user.username + (user.verified ? ' ✓' : '');
+
+      const displayName = await getDisplayName(user.usernode_pubkey, user.username);
+      document.getElementById('sidebarUsername').textContent = displayName + (user.verified ? ' ✓' : '');
+
       loadConversations();
       setupEventListeners();
+      initTheme();
     }
 
     function setupEventListeners() {
       document.getElementById('menuBtn').addEventListener('click', toggleSidebar);
+      document.getElementById('themeToggle').addEventListener('click', toggleTheme);
       document.getElementById('backBtn').addEventListener('click', () => {
         currentConvId = null;
+        currentCampaignId = null;
         showConversationsView();
       });
-
-      document.getElementById('searchInput').addEventListener('input', (e) => searchUsers(e.target.value));
 
       document.getElementById('msgInput').addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -341,6 +456,7 @@
       });
 
       document.getElementById('sidebarOverlay').addEventListener('click', toggleSidebar);
+      document.getElementById('contributeBtn').addEventListener('click', contributeToCampaign);
     }
 
     async function loadConversations() {
@@ -349,24 +465,163 @@
 
       const list = document.getElementById('convList');
       if (data.conversations.length === 0) {
-        list.innerHTML = '<div class="text-center py-8 text-zinc-500">No conversations yet. <br>Tap the + button to discover contacts.</div>';
+        list.innerHTML = '<div class="text-center py-8 text-zinc-500 dark:text-zinc-500 light:text-gray-400">No conversations yet. <br>Tap the + button to discover contacts.</div>';
         return;
       }
 
       list.innerHTML = data.conversations.map(conv => `
-        <div class="p-4 hover:bg-zinc-900 cursor-pointer transition" onclick="openConversation(${conv.id}, ${conv.otherId}, '${conv.username}')">
+        <div class="p-4 hover:bg-zinc-900 dark:hover:bg-zinc-900 light:hover:bg-gray-50 cursor-pointer transition" onclick="openConversation(${conv.id}, ${conv.otherId}, '${conv.username}')">
           <div class="flex justify-between items-start gap-2">
             <div class="flex-1 min-w-0">
-              <div class="font-medium truncate">${conv.username} <span class="text-sm text-zinc-500">✓</span></div>
-              <div class="text-sm text-zinc-400 truncate">${conv.lastMessage || 'No messages'}</div>
+              <div class="font-medium truncate">${conv.username} <span class="text-sm text-zinc-500 dark:text-zinc-500 light:text-gray-400">✓</span></div>
+              <div class="text-sm text-zinc-400 dark:text-zinc-400 light:text-gray-600 truncate">${conv.lastMessage || 'No messages'}</div>
             </div>
-            <div class="text-xs text-zinc-500 text-right flex-shrink-0">
+            <div class="text-xs text-zinc-500 dark:text-zinc-500 light:text-gray-400 text-right flex-shrink-0">
               ${conv.lastMessageAt ? formatTime(new Date(conv.lastMessageAt)) : ''}
               ${conv.unreadCount > 0 ? `<div class="mt-1 inline-block px-2 py-0.5 bg-cyan-600 rounded-full text-white text-xs">${conv.unreadCount}</div>` : ''}
             </div>
           </div>
         </div>
       `).join('');
+    }
+
+    async function loadCampaigns() {
+      const data = await apiCall('/api/campaigns?limit=50');
+      if (!data) return;
+
+      const list = document.getElementById('campaignsList');
+      if (data.campaigns.length === 0) {
+        list.innerHTML = '<div class="text-center py-8 text-zinc-500 dark:text-zinc-500 light:text-gray-400">No campaigns yet.</div>';
+        return;
+      }
+
+      const campaignsHtml = await Promise.all(data.campaigns.map(async (camp) => {
+        const creatorDisplay = await getDisplayName(camp.creator_address, camp.creator_username);
+        const progress = camp.goal_amount > 0 ? Math.min((camp.current_amount / camp.goal_amount) * 100, 100) : 0;
+
+        return `
+          <div class="p-4 bg-zinc-800 dark:bg-zinc-800 light:bg-gray-100 rounded-lg cursor-pointer hover:bg-zinc-700 dark:hover:bg-zinc-700 light:hover:bg-gray-200 transition" onclick="openCampaign(${camp.id})">
+            <h3 class="font-semibold mb-1">${camp.title}</h3>
+            <p class="text-xs text-zinc-400 dark:text-zinc-400 light:text-gray-600 mb-2">by ${creatorDisplay}</p>
+            <p class="text-sm text-zinc-300 dark:text-zinc-300 light:text-gray-700 mb-3">${camp.description || 'No description'}</p>
+            <div class="space-y-2">
+              <div class="flex justify-between text-xs text-zinc-400 dark:text-zinc-400 light:text-gray-600">
+                <span>${camp.current_amount} / ${camp.goal_amount}</span>
+                <span>${Math.round(progress)}%</span>
+              </div>
+              <div class="w-full bg-zinc-700 dark:bg-zinc-700 light:bg-gray-300 rounded-full h-2">
+                <div class="bg-cyan-500 h-2 rounded-full" style="width: ${progress}%"></div>
+              </div>
+            </div>
+          </div>
+        `;
+      }));
+
+      list.innerHTML = campaignsHtml.join('');
+    }
+
+    async function openCampaign(campaignId) {
+      currentCampaignId = campaignId;
+      const data = await apiCall(`/api/campaigns/${campaignId}`);
+      if (!data) return;
+
+      const creatorDisplay = await getDisplayName(data.creator_address, data.creator_username);
+      const progress = data.goal_amount > 0 ? Math.min((data.current_amount / data.goal_amount) * 100, 100) : 0;
+
+      document.getElementById('campaignTitle').textContent = data.title;
+      document.getElementById('campaignCreator').textContent = creatorDisplay;
+      document.getElementById('campaignDescription').textContent = data.description || 'No description';
+      document.getElementById('campaignAmount').textContent = `${data.current_amount} / ${data.goal_amount}`;
+      document.getElementById('progressBar').style.width = progress + '%';
+
+      const backersContent = document.getElementById('backersContent');
+      if (data.backers.length === 0) {
+        backersContent.innerHTML = '<div class="text-xs text-zinc-500 dark:text-zinc-500 light:text-gray-400">No backers yet</div>';
+      } else {
+        const backersHtml = await Promise.all(data.backers.map(async (backer) => {
+          const backerDisplay = await getDisplayName(backer.contributor_address, backer.contributor_username);
+          return `<div class="text-sm"><span class="text-cyan-400">${backerDisplay}</span> backed <span class="font-medium">${backer.amount}</span>${backer.memo ? ` - ${backer.memo}` : ''}</div>`;
+        }));
+        backersContent.innerHTML = backersHtml.join('');
+      }
+
+      document.getElementById('headerTitle').textContent = data.title;
+      document.getElementById('backBtn').classList.remove('hidden');
+      document.getElementById('menuBtn').classList.add('hidden');
+      document.getElementById('contributionAmount').value = '';
+      document.getElementById('contributionStatus').classList.add('hidden');
+
+      showCampaignDetailView();
+    }
+
+    async function contributeToCamera() {
+      const amount = parseInt(document.getElementById('contributionAmount').value);
+      if (!amount || !currentCampaignId) return;
+
+      const statusEl = document.getElementById('contributionStatus');
+      statusEl.textContent = 'Pending confirmation…';
+      statusEl.classList.remove('hidden');
+
+      const data = await apiCall(`/api/campaigns/${currentCampaignId}/contribute`, {
+        method: 'POST',
+        body: JSON.stringify({ amount })
+      });
+
+      if (data) {
+        const txHash = 'staging-tx-' + Date.now();
+        await apiCall(`/api/campaigns/${currentCampaignId}/contributions/${data.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ tx_hash: txHash, status: 'confirmed' })
+        });
+
+        statusEl.textContent = '✓ Contribution confirmed!';
+        setTimeout(() => {
+          openCampaign(currentCampaignId);
+        }, 1000);
+      } else {
+        statusEl.textContent = 'Failed to contribute';
+      }
+    }
+
+    function contributeToCamera() {
+      const amount = parseInt(document.getElementById('contributionAmount').value);
+      if (!amount || !currentCampaignId) return;
+
+      const statusEl = document.getElementById('contributionStatus');
+      statusEl.textContent = 'Pending confirmation…';
+      statusEl.classList.remove('hidden');
+
+      apiCall(`/api/campaigns/${currentCampaignId}/contribute`, {
+        method: 'POST',
+        body: JSON.stringify({ amount })
+      }).then(data => {
+        if (data) {
+          const txHash = 'staging-tx-' + Date.now();
+          return apiCall(`/api/campaigns/${currentCampaignId}/contributions/${data.id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ tx_hash: txHash, status: 'confirmed' })
+          });
+        }
+        return null;
+      }).then(result => {
+        if (result) {
+          statusEl.textContent = '✓ Contribution confirmed!';
+          setTimeout(() => {
+            openCampaign(currentCampaignId);
+          }, 1000);
+        } else {
+          statusEl.textContent = 'Failed to contribute';
+        }
+      });
+    }
+
+    async function loadProfile() {
+      const profileContent = document.getElementById('profileContent');
+      const displayName = await getDisplayName(currentUser.usernode_pubkey, currentUser.username);
+      document.getElementById('profileUsername').textContent = displayName;
+      document.getElementById('profileAddress').textContent = currentUser.usernode_pubkey || 'No address linked';
+
+      profileContent.innerHTML = '<div class="text-center text-zinc-500 dark:text-zinc-500 light:text-gray-400">Profile features coming soon</div>';
     }
 
     function formatTime(date) {
@@ -398,7 +653,7 @@
 
       const list = document.getElementById('messageList');
       if (data.messages.length === 0) {
-        list.innerHTML = '<div class="text-center text-zinc-500 py-4">No messages yet</div>';
+        list.innerHTML = '<div class="text-center text-zinc-500 dark:text-zinc-500 light:text-gray-400 py-4">No messages yet</div>';
         return;
       }
 
@@ -413,14 +668,14 @@
 
     function renderMessage(msg) {
       const isOwn = msg.senderId === currentUser.id;
-      const baseClass = isOwn ? 'ml-auto bg-cyan-600 text-white' : 'mr-auto bg-zinc-800 text-zinc-100';
+      const baseClass = isOwn ? 'ml-auto bg-cyan-600 text-white' : 'mr-auto bg-zinc-800 dark:bg-zinc-800 light:bg-gray-200 text-zinc-100 dark:text-zinc-100 light:text-gray-900';
       const alignClass = isOwn ? 'justify-end' : 'justify-start';
 
       if (msg.type === 'text') {
         return `
           <div class="flex ${alignClass}">
             <div class="max-w-xs px-4 py-2 rounded-2xl ${baseClass} message-bubble">
-              <div class="text-xs text-zinc-300 mb-1 opacity-80">${msg.senderUsername}</div>
+              <div class="text-xs text-zinc-300 dark:text-zinc-300 light:text-gray-600 mb-1 opacity-80">${msg.senderUsername}</div>
               <div>${msg.content.text}</div>
               <div class="text-xs mt-2 opacity-70">${formatTime(new Date(msg.createdAt))}</div>
             </div>
@@ -433,7 +688,7 @@
           <div class="flex ${alignClass}">
             <div class="max-w-xs rounded-2xl overflow-hidden ${baseClass}">
               <img src="${msg.content.imageUrl}" alt="Message image" class="max-w-xs cursor-pointer hover:opacity-80 transition" onclick="showLightbox('${msg.content.imageUrl}')">
-              <div class="text-xs text-zinc-300 px-4 py-2 opacity-80">${msg.senderUsername}</div>
+              <div class="text-xs text-zinc-300 dark:text-zinc-300 light:text-gray-700 px-4 py-2 opacity-80">${msg.senderUsername}</div>
             </div>
           </div>
         `;
@@ -444,9 +699,9 @@
         return `
           <div class="flex ${alignClass}">
             <div class="max-w-xs px-4 py-2 rounded-2xl ${baseClass} border-2 border-yellow-500/40 message-bubble">
-              <div class="text-xs text-zinc-300 mb-1">💰 Token Transfer</div>
+              <div class="text-xs text-zinc-300 dark:text-zinc-300 light:text-gray-700 mb-1">💰 Token Transfer</div>
               <div class="font-bold text-lg">${c.amount} tokens</div>
-              <div class="text-xs text-zinc-300 mt-1">${c.memo || 'No memo'}</div>
+              <div class="text-xs text-zinc-300 dark:text-zinc-300 light:text-gray-700 mt-1">${c.memo || 'No memo'}</div>
               <div class="text-xs mt-2 font-medium">${c.status === 'confirmed' ? '✓ Confirmed' : '⏳ Pending'}</div>
               <div class="text-xs mt-1 opacity-70">${formatTime(new Date(msg.createdAt))}</div>
             </div>
@@ -527,45 +782,14 @@
       document.getElementById('imageLightbox').classList.remove('hidden');
     }
 
-    async function searchUsers(query) {
-      if (!query.trim()) {
-        document.getElementById('searchResults').innerHTML = '';
-        return;
-      }
-
-      const data = await apiCall(`/api/search/users?q=${encodeURIComponent(query)}`);
-      if (!data) return;
-
-      const results = document.getElementById('searchResults');
-      if (data.users.length === 0) {
-        results.innerHTML = '<div class="text-center text-zinc-500 py-4">No users found</div>';
-        return;
-      }
-
-      results.innerHTML = data.users.map(user => `
-        <div class="p-4 bg-zinc-800 rounded-lg cursor-pointer hover:bg-zinc-700 transition" onclick="startConversation(${user.id}, '${user.username}')">
-          <div class="font-medium text-cyan-400">${user.username} ${user.verified ? '✓' : ''}</div>
-          <div class="text-sm text-zinc-400 mt-1">${user.mutualCount} mutual connections</div>
-        </div>
-      `).join('');
-    }
-
-    async function startConversation(userId, username) {
-      const data = await apiCall('/api/conversations', {
-        method: 'POST',
-        body: JSON.stringify({ participantId: userId })
-      });
-
-      if (data) {
-        openConversation(data.id, userId, username);
-      }
-    }
-
     function showConversationsView() {
       document.getElementById('conversationsView').classList.remove('hidden');
       document.getElementById('chatView').classList.add('hidden');
       document.getElementById('discoverView').classList.add('hidden');
+      document.getElementById('campaignDetailView').classList.add('hidden');
+      document.getElementById('profileView').classList.add('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
+      document.getElementById('contributionFooter').classList.add('hidden');
       document.getElementById('headerTitle').textContent = 'Guardian';
       document.getElementById('backBtn').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
@@ -578,7 +802,10 @@
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.remove('hidden');
       document.getElementById('discoverView').classList.add('hidden');
+      document.getElementById('campaignDetailView').classList.add('hidden');
+      document.getElementById('profileView').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('hidden');
+      document.getElementById('contributionFooter').classList.add('hidden');
       document.getElementById('fabBtn').classList.add('hidden');
     }
 
@@ -586,12 +813,41 @@
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.add('hidden');
       document.getElementById('discoverView').classList.remove('hidden');
+      document.getElementById('campaignDetailView').classList.add('hidden');
+      document.getElementById('profileView').classList.add('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
-      document.getElementById('headerTitle').textContent = 'Find contacts';
+      document.getElementById('contributionFooter').classList.add('hidden');
+      document.getElementById('headerTitle').textContent = 'Discover Campaigns';
       document.getElementById('backBtn').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
       document.getElementById('fabBtn').classList.add('hidden');
-      document.getElementById('searchInput').focus();
+      loadCampaigns();
+    }
+
+    function showCampaignDetailView() {
+      document.getElementById('conversationsView').classList.add('hidden');
+      document.getElementById('chatView').classList.add('hidden');
+      document.getElementById('discoverView').classList.add('hidden');
+      document.getElementById('campaignDetailView').classList.remove('hidden');
+      document.getElementById('profileView').classList.add('hidden');
+      document.getElementById('inputFooter').classList.add('hidden');
+      document.getElementById('contributionFooter').classList.remove('hidden');
+      document.getElementById('fabBtn').classList.add('hidden');
+    }
+
+    function showProfileView() {
+      document.getElementById('conversationsView').classList.add('hidden');
+      document.getElementById('chatView').classList.add('hidden');
+      document.getElementById('discoverView').classList.add('hidden');
+      document.getElementById('campaignDetailView').classList.add('hidden');
+      document.getElementById('profileView').classList.remove('hidden');
+      document.getElementById('inputFooter').classList.add('hidden');
+      document.getElementById('contributionFooter').classList.add('hidden');
+      document.getElementById('headerTitle').textContent = 'My Profile';
+      document.getElementById('backBtn').classList.remove('hidden');
+      document.getElementById('menuBtn').classList.add('hidden');
+      document.getElementById('fabBtn').classList.add('hidden');
+      loadProfile();
     }
 
     init();

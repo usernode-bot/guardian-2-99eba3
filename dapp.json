@@ -4,8 +4,11 @@
   "tests": [
     { "name": "Home loads", "path": "/", "expectSelector": "#conversationsView" },
     { "name": "Chat thread loads", "path": "/", "expectSelector": "#messageList" },
-    { "name": "Discover contacts loads", "path": "/", "expectText": "Find contacts" },
+    { "name": "Discover campaigns loads", "path": "/", "expectText": "Discover Campaigns" },
+    { "name": "Campaign detail loads", "path": "/", "expectSelector": "#campaignDetailView" },
+    { "name": "Profile page loads", "path": "/", "expectText": "My Profile" },
     { "name": "Sidebar toggles", "path": "/", "expectSelector": "#sidebar" },
-    { "name": "FAB visible", "path": "/", "expectSelector": "#fabBtn" }
+    { "name": "FAB visible", "path": "/", "expectSelector": "#fabBtn" },
+    { "name": "Theme toggle visible", "path": "/", "expectSelector": "#themeToggle" }
   ]
 }

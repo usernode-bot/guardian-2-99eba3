@@ -9,6 +9,13 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const JWT_SECRET = process.env.JWT_SECRET;
 const IS_STAGING = process.env.USERNODE_ENV === 'staging';
 
+// Demo usernames for staging
+const DEMO_USERNAMES = {
+  'alice-pubkey': 'alice',
+  'bob-pubkey': 'bob',
+  'charlie-pubkey': 'charlie'
+};
+
 // Rate limit tracking (in-memory; could use Redis for production)
 const rateLimits = new Map();
 function checkRateLimit(key, limit, windowMs) {
@@ -22,7 +29,7 @@ function checkRateLimit(key, limit, windowMs) {
   return true;
 }
 
-const PUBLIC_API_PATHS = new Set(['/health', '/favicon.ico']);
+const PUBLIC_API_PATHS = new Set(['/health', '/favicon.ico', '/__usernames/state']);
 
 app.use(express.json());
 app.use((req, res, next) => {
@@ -35,11 +42,12 @@ app.use((req, res, next) => {
 
   // In staging, provide a default test user if no valid token
   if (IS_STAGING && !req.user) {
-    req.user = { id: 1, username: 'staging-demo-alice', verified_at: new Date() };
+    req.user = { id: 1, username: 'staging-demo-alice', verified_at: new Date(), usernode_pubkey: 'alice-pubkey' };
   }
 
   if (req.method !== 'GET' || req.path.startsWith('/api/')) {
     if (PUBLIC_API_PATHS.has(req.path)) return next();
+    if (req.path.startsWith('/api/usernames/')) return next();
     if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
   }
   next();
@@ -61,7 +69,186 @@ app.get('/api/user', (req, res) => {
     id: req.user.id,
     username: req.user.username,
     verified: !!req.user.verified_at,
+    usernode_pubkey: req.user.usernode_pubkey || null,
   });
+});
+
+// ===== USERNAME ENDPOINTS =====
+
+app.get('/__usernames/state', (req, res) => {
+  res.json(DEMO_USERNAMES);
+});
+
+app.get('/api/usernames/:pubkey', (req, res) => {
+  const { pubkey } = req.params;
+  const username = DEMO_USERNAMES[pubkey] || null;
+  res.json({ pubkey, username });
+});
+
+// ===== CAMPAIGN ENDPOINTS =====
+
+app.get('/api/campaigns', async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit || 20), 100);
+    const offset = parseInt(req.query.offset || 0);
+
+    const { rows: campaigns } = await pool.query(`
+      SELECT id, creator_address, creator_username, title, description, goal_amount, current_amount, created_at
+      FROM campaigns
+      WHERE is_active = true
+      ORDER BY created_at DESC
+      LIMIT $1 OFFSET $2
+    `, [limit, offset]);
+
+    const { rows: totalRows } = await pool.query(`
+      SELECT COUNT(*) as count FROM campaigns WHERE is_active = true
+    `);
+
+    res.json({
+      campaigns,
+      hasMore: campaigns.length === limit,
+      total: parseInt(totalRows[0].count)
+    });
+  } catch (err) {
+    console.error('Error fetching campaigns:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/campaigns/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const { rows: campaignRows } = await pool.query(`
+      SELECT id, creator_address, creator_username, title, description, goal_amount, current_amount, created_at, is_active
+      FROM campaigns
+      WHERE id = $1
+    `, [id]);
+
+    if (!campaignRows.length) {
+      return res.status(404).json({ error: 'Campaign not found' });
+    }
+
+    const campaign = campaignRows[0];
+
+    const { rows: backers } = await pool.query(`
+      SELECT contributor_address, contributor_username, amount, memo, created_at
+      FROM contributions
+      WHERE campaign_id = $1 AND status = 'confirmed'
+      ORDER BY created_at DESC
+    `, [id]);
+
+    res.json({
+      ...campaign,
+      backers
+    });
+  } catch (err) {
+    console.error('Error fetching campaign:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/campaigns', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { title, description, goal_amount } = req.body;
+    if (!title || !goal_amount) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const creator_address = req.user.usernode_pubkey;
+    const creator_username = req.user.username;
+
+    const { rows } = await pool.query(`
+      INSERT INTO campaigns (creator_address, creator_username, title, description, goal_amount, created_at)
+      VALUES ($1, $2, $3, $4, $5, NOW())
+      RETURNING id, created_at
+    `, [creator_address, creator_username, title, description, goal_amount]);
+
+    res.json({ id: rows[0].id, created_at: rows[0].created_at });
+  } catch (err) {
+    console.error('Error creating campaign:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ===== CONTRIBUTION ENDPOINTS =====
+
+app.post('/api/campaigns/:id/contribute', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { id } = req.params;
+    const { amount, memo } = req.body;
+
+    if (!amount) {
+      return res.status(400).json({ error: 'Amount is required' });
+    }
+
+    const contributor_address = req.user.usernode_pubkey;
+    const contributor_username = req.user.username;
+
+    const { rows } = await pool.query(`
+      INSERT INTO contributions (campaign_id, contributor_address, contributor_username, amount, memo, status, created_at)
+      VALUES ($1, $2, $3, $4, $5, 'pending', NOW())
+      RETURNING id
+    `, [id, contributor_address, contributor_username, amount, memo || null]);
+
+    res.json({
+      id: rows[0].id,
+      status: 'pending',
+      tx_hash: ''
+    });
+  } catch (err) {
+    console.error('Error recording contribution:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/campaigns/:campaignId/contributions/:contributionId', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { campaignId, contributionId } = req.params;
+    const { tx_hash, status } = req.body;
+
+    if (!tx_hash) {
+      return res.status(400).json({ error: 'tx_hash is required' });
+    }
+
+    // Update contribution
+    await pool.query(`
+      UPDATE contributions
+      SET tx_hash = $1, status = $2
+      WHERE id = $3 AND campaign_id = $4
+    `, [tx_hash, status || 'confirmed', contributionId, campaignId]);
+
+    // Get the contribution amount to update campaign total
+    const { rows: contribRows } = await pool.query(`
+      SELECT amount FROM contributions WHERE id = $1
+    `, [contributionId]);
+
+    if (contribRows.length && status === 'confirmed') {
+      const amount = contribRows[0].amount;
+      await pool.query(`
+        UPDATE campaigns
+        SET current_amount = current_amount + $1
+        WHERE id = $2
+      `, [amount, campaignId]);
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error updating contribution:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ===== CONVERSATION ENDPOINTS =====
@@ -460,6 +647,36 @@ async function start() {
       )
     `);
 
+    // Create campaigns table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS campaigns (
+        id BIGSERIAL PRIMARY KEY,
+        creator_address VARCHAR(255) NOT NULL,
+        creator_username VARCHAR(255),
+        title VARCHAR(500) NOT NULL,
+        description TEXT,
+        goal_amount BIGINT NOT NULL,
+        current_amount BIGINT DEFAULT 0,
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    // Create contributions table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS contributions (
+        id BIGSERIAL PRIMARY KEY,
+        campaign_id BIGINT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+        contributor_address VARCHAR(255) NOT NULL,
+        contributor_username VARCHAR(255),
+        amount BIGINT NOT NULL,
+        memo TEXT,
+        tx_hash VARCHAR(500),
+        status VARCHAR(50) DEFAULT 'pending',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
     // Create conversations table (marked private)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS conversations (
@@ -515,6 +732,23 @@ async function start() {
           ($2, 'staging-demo-bob', NOW(), NOW())
         ON CONFLICT DO NOTHING
       `, [alice, bob]);
+
+      // Seed campaigns
+      await pool.query(`
+        INSERT INTO campaigns (creator_address, creator_username, title, description, goal_amount, current_amount, created_at) VALUES
+          ('alice-pubkey', 'alice', '[Staging] Clean Water Initiative', '[Staging] Provide clean water to communities', 100000, 50000, NOW()),
+          ('bob-pubkey', 'bob', '[Staging] Tech Education Fund', '[Staging] Support coding education programs', 50000, 30000, NOW())
+        ON CONFLICT DO NOTHING
+      `);
+
+      // Seed contributions
+      await pool.query(`
+        INSERT INTO contributions (campaign_id, contributor_address, contributor_username, amount, status, tx_hash, created_at) VALUES
+          (1, 'bob-pubkey', 'bob', 30000, 'confirmed', 'staging-contrib-001', NOW()),
+          (1, 'charlie-pubkey', 'charlie', 20000, 'confirmed', 'staging-contrib-002', NOW()),
+          (2, 'alice-pubkey', 'alice', 30000, 'confirmed', 'staging-contrib-003', NOW())
+        ON CONFLICT DO NOTHING
+      `);
 
       // Create conversation
       const { rows: convRows } = await pool.query(`
