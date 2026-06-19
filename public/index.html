@@ -358,14 +358,19 @@
 
       <!-- Discover View -->
       <div id="discoverView" class="hidden flex flex-col flex-1 p-4 overflow-hidden">
-        <!-- Add Contact Card -->
-        <div class="bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg p-4 mb-4 space-y-3">
-          <h3 class="font-semibold text-cyan-600 dark:text-cyan-400">Add Contact</h3>
-          <input id="addContactAddress" type="text" placeholder="Usernode address (ut1...)" class="w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-500 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
-          <input id="addContactNickname" type="text" placeholder="Nickname (optional)" class="w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-500 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
-          <button onclick="addContact()" class="w-full px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Start Conversation</button>
+        <!-- Header with search and New Contact button -->
+        <div class="flex gap-2 items-center mb-4">
+          <input id="searchInput" type="text" placeholder="Search users..." class="flex-1 px-3 py-2 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+          <button onclick="toggleAddContactModal()" class="px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium text-sm">+ New</button>
         </div>
-        <input id="searchInput" type="text" placeholder="Search users..." class="w-full px-3 py-2 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 mb-4 transition">
+        <!-- Empty state (shown when no search results) -->
+        <div id="emptyState" class="flex-1 flex flex-col items-center justify-center text-center space-y-4">
+          <div class="text-zinc-600 dark:text-zinc-400">
+            <p class="text-sm mb-2">Search for users above, or add a contact directly.</p>
+            <button onclick="toggleAddContactModal()" class="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 font-medium">Create New Contact</button>
+          </div>
+        </div>
+        <!-- Search results -->
         <div id="searchResults" class="flex-1 overflow-y-auto space-y-2"></div>
       </div>
     </div>
@@ -484,6 +489,28 @@
       <div class="flex gap-2">
         <button id="deleteContactCancel" class="flex-1 px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
         <button id="deleteContactConfirm" class="flex-1 px-3 py-2 bg-red-600 hover:bg-red-700 dark:hover:bg-red-500 text-white rounded-lg transition font-medium">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Contact Modal -->
+  <div id="addContactModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onclick="if(event.target.id === 'addContactModal') toggleAddContactModal()">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
+      <div class="flex justify-between items-start">
+        <h2 class="text-xl font-semibold text-zinc-900 dark:text-white">Add Contact</h2>
+        <button onclick="toggleAddContactModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
+      </div>
+      <div class="space-y-3">
+        <div>
+          <input id="addContactAddress" type="text" placeholder="Usernode address (ut1...)" class="w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-500 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+        </div>
+        <div>
+          <input id="addContactNickname" type="text" placeholder="Nickname (optional)" class="w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-500 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+        </div>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="toggleAddContactModal()" class="flex-1 px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
+        <button onclick="addContact()" class="flex-1 px-3 py-1.5 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium text-sm">Start Conversation</button>
       </div>
     </div>
   </div>
@@ -789,6 +816,10 @@
         if (e.key === 'Escape') {
           closeAttachmentSheet();
           hideDeleteContactModal();
+          const addContactModal = document.getElementById('addContactModal');
+          if (!addContactModal.classList.contains('hidden')) {
+            toggleAddContactModal();
+          }
         }
       });
     }
@@ -1100,9 +1131,29 @@
       }
     }
 
+    function updateEmptyState() {
+      const searchResults = document.getElementById('searchResults');
+      const emptyState = document.getElementById('emptyState');
+      const hasResults = searchResults.innerHTML.trim() !== '' && !searchResults.innerHTML.includes('No users found');
+      if (hasResults) {
+        emptyState.classList.add('hidden');
+      } else {
+        emptyState.classList.remove('hidden');
+      }
+    }
+
+    function toggleAddContactModal() {
+      const modal = document.getElementById('addContactModal');
+      modal.classList.toggle('hidden');
+      if (!modal.classList.contains('hidden')) {
+        document.getElementById('addContactAddress').focus();
+      }
+    }
+
     async function searchUsers(query) {
       if (!query.trim()) {
         document.getElementById('searchResults').innerHTML = '';
+        updateEmptyState();
         return;
       }
 
@@ -1112,6 +1163,7 @@
       const results = document.getElementById('searchResults');
       if (data.users.length === 0) {
         results.innerHTML = '<div class="text-center text-zinc-600 dark:text-zinc-500 py-4">No users found</div>';
+        updateEmptyState();
         return;
       }
 
@@ -1123,6 +1175,7 @@
           <button data-user-id="${user.id}" data-username="${user.username}" onclick="sendConversationRequest(event)" class="mt-3 w-full px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white text-sm rounded-lg transition font-medium">Send Request</button>
         </div>
       `).join('');
+      updateEmptyState();
     }
 
     async function startConversation(userId, username) {
@@ -1308,6 +1361,7 @@
       await startConversation(data.userId, data.username);
       document.getElementById('addContactAddress').value = '';
       document.getElementById('addContactNickname').value = '';
+      toggleAddContactModal();
     }
 
     async function startConversationWithContact(userId, username) {
