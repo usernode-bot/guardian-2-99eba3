@@ -105,6 +105,11 @@ app.use(async (req, res, next) => {
             ELSE users.verified_at
           END
       `, [req.user.id, req.user.username, req.user.usernode_pubkey || null, req.user.verified_at || null]);
+
+      // Update last_seen_at for activity tracking
+      await pool.query(`
+        UPDATE users SET last_seen_at = NOW(), is_online = TRUE WHERE id = $1
+      `, [req.user.id]);
     } catch (err) {
       console.error('Error upserting user:', err);
     }
@@ -1111,6 +1116,48 @@ app.get('/api/user/contact-info', (req, res) => {
   }
 });
 
+app.get('/api/friends/status', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = req.user.id;
+    const activityWindowMs = 2 * 60 * 1000;
+    const now = new Date();
+
+    const { rows } = await pool.query(`
+      SELECT uc.id, u.id as user_id, u.username, u.usernode_pubkey, u.verified_at, u.avatar_url, u.last_seen_at, uc.nickname
+      FROM user_contacts uc
+      JOIN users u ON uc.contact_user_id = u.id
+      WHERE uc.user_id = $1
+      ORDER BY COALESCE(u.last_seen_at, u.created_at) DESC
+    `, [userId]);
+
+    const friends = rows.map(r => {
+      const lastSeenAt = r.last_seen_at || r.created_at || new Date('1970-01-01');
+      const timeSinceLastSeen = now.getTime() - new Date(lastSeenAt).getTime();
+      const isOnline = timeSinceLastSeen < activityWindowMs;
+
+      return {
+        id: r.id,
+        userId: r.user_id,
+        username: r.username,
+        nickname: r.nickname,
+        usernode_pubkey: r.usernode_pubkey || null,
+        isOnline: isOnline,
+        lastSeenAt: lastSeenAt,
+        verified: !!r.verified_at,
+      };
+    });
+
+    res.json({ friends });
+  } catch (err) {
+    console.error('Error fetching friends status:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ===== SEARCH & PROFILE ENDPOINTS =====
 
 app.get('/api/search/users', async (req, res) => {
@@ -1214,6 +1261,14 @@ async function start() {
     // Add usernode_pubkey column if it doesn't exist (idempotent migration)
     await pool.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS usernode_pubkey VARCHAR(100) UNIQUE
+    `);
+
+    // Add last_seen_at and is_online columns if they don't exist (idempotent migration)
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ DEFAULT NOW()
+    `);
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_online BOOLEAN DEFAULT FALSE
     `);
 
     // Create conversations table (marked private)
@@ -1441,12 +1496,23 @@ async function start() {
         ON CONFLICT DO NOTHING
       `, [alice, convId, bob]);
 
-      // Seed contacts
+      // Seed contacts (Alice has Bob and Charlie as contacts)
       await pool.query(`
         INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
-        VALUES ($1, $2, 'Bob (demo contact)', NOW())
+        VALUES ($1, $2, 'Bob (demo contact)', NOW()), ($1, $3, NULL, NOW())
         ON CONFLICT DO NOTHING
-      `, [alice, bob]);
+      `, [alice, bob, charlie]);
+
+      // Update online status for demo (Alice online, Bob offline, Charlie online)
+      await pool.query(`
+        UPDATE users SET is_online = TRUE, last_seen_at = NOW() WHERE id = $1
+      `, [alice]);
+      await pool.query(`
+        UPDATE users SET is_online = FALSE, last_seen_at = NOW() - INTERVAL '30 minutes' WHERE id = $1
+      `, [bob]);
+      await pool.query(`
+        UPDATE users SET is_online = TRUE, last_seen_at = NOW() - INTERVAL '5 minutes' WHERE id = $1
+      `, [charlie]);
 
       // Seed conversation requests
       await pool.query(`

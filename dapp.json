@@ -9,6 +9,8 @@
     { "name": "Share contact modal works", "path": "/", "expectSelector": "#shareContactModal" },
     { "name": "Settings panel opens", "path": "/", "expectSelector": "#settingsPanel" },
     { "name": "FAB button exists", "path": "/", "expectSelector": "#fabBtn" },
-    { "name": "Find Contacts button exists", "path": "/", "expectSelector": "#findContactsBtn" }
+    { "name": "Find Contacts button exists", "path": "/", "expectSelector": "#findContactsBtn" },
+    { "name": "Friends sidebar visible", "path": "/", "expectSelector": "#friendsSidebar" },
+    { "name": "Friends list loads", "path": "/", "expectSelector": "#friendsList" }
   ]
 }
