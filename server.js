@@ -448,6 +448,147 @@ app.get('/api/users/:userId', async (req, res) => {
   }
 });
 
+// ===== CONTACT ENDPOINTS =====
+
+app.get('/api/contacts', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const limit = Math.min(parseInt(req.query.limit || 50), 100);
+    const offset = parseInt(req.query.offset || 0);
+    const userId = req.user.id;
+
+    const { rows: contacts } = await pool.query(`
+      SELECT c.id, c.user_id, u.username, u.verified_at, u.usernode_pubkey, c.created_at
+      FROM contacts c
+      JOIN users u ON c.contact_user_id = u.id
+      WHERE c.user_id = $1
+      ORDER BY u.username ASC
+      LIMIT $2 OFFSET $3
+    `, [userId, limit, offset]);
+
+    const result = contacts.map(c => ({
+      id: c.id,
+      userId: c.contact_user_id,
+      username: c.username,
+      usernode_pubkey: c.usernode_pubkey || null,
+      verified: !!c.verified_at,
+      savedAt: c.created_at,
+    }));
+
+    res.json({ contacts: result });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/contacts', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { contactUserId } = req.body;
+    const userId = req.user.id;
+
+    if (!contactUserId || contactUserId === userId) {
+      return res.status(400).json({ error: 'Invalid contact user ID' });
+    }
+
+    // Check if contact user exists
+    const userRes = await pool.query(`SELECT id FROM users WHERE id = $1`, [contactUserId]);
+    if (!userRes.rows.length) {
+      return res.status(400).json({ error: 'User not found' });
+    }
+
+    // Insert contact
+    const { rows } = await pool.query(`
+      INSERT INTO contacts (user_id, contact_user_id, created_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (user_id, contact_user_id) DO NOTHING
+      RETURNING id, created_at
+    `, [userId, contactUserId]);
+
+    if (rows.length === 0) {
+      return res.status(400).json({ error: 'Contact already exists' });
+    }
+
+    // Return the newly added contact
+    const contactRes = await pool.query(`
+      SELECT c.id, c.user_id, u.username, u.verified_at, u.usernode_pubkey, c.created_at
+      FROM contacts c
+      JOIN users u ON c.contact_user_id = u.id
+      WHERE c.id = $1
+    `, [rows[0].id]);
+
+    const c = contactRes.rows[0];
+    res.json({
+      id: c.id,
+      userId: c.contact_user_id,
+      username: c.username,
+      usernode_pubkey: c.usernode_pubkey || null,
+      verified: !!c.verified_at,
+      savedAt: c.created_at,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/contacts/:contactId', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { contactId } = req.params;
+    const userId = req.user.id;
+
+    const result = await pool.query(`
+      DELETE FROM contacts
+      WHERE id = $1 AND user_id = $2
+    `, [contactId, userId]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/contacts/bulk-check', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { userIds } = req.body;
+    if (!Array.isArray(userIds)) {
+      return res.status(400).json({ error: 'userIds must be an array' });
+    }
+
+    const userId = req.user.id;
+    const { rows } = await pool.query(`
+      SELECT contact_user_id FROM contacts
+      WHERE user_id = $1 AND contact_user_id = ANY($2)
+    `, [userId, userIds]);
+
+    const saved = rows.map(r => r.contact_user_id);
+    res.json({ saved });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ===== STATIC & FALLBACK =====
 
 app.use(express.static(path.join(__dirname, 'public')));
@@ -530,10 +671,24 @@ async function start() {
       )
     `);
 
+    // Create contacts table (marked private)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS contacts (
+        id BIGSERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        contact_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(user_id, contact_user_id),
+        CHECK (user_id != contact_user_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_contacts_user_id ON contacts(user_id)
+    `);
+
     // Mark tables as private
     await pool.query(`COMMENT ON TABLE conversations IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE messages IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE read_receipts IS 'staging:private'`);
+    await pool.query(`COMMENT ON TABLE contacts IS 'staging:private'`);
 
     // Seed staging data
     if (IS_STAGING) {
@@ -596,6 +751,13 @@ async function start() {
         VALUES ($1, $2, NOW()), ($3, $2, NOW())
         ON CONFLICT DO NOTHING
       `, [alice, convId, bob]);
+
+      // Seed contact: alice has bob as a contact
+      await pool.query(`
+        INSERT INTO contacts (user_id, contact_user_id, created_at)
+        VALUES ($1, $2, NOW())
+        ON CONFLICT (user_id, contact_user_id) DO NOTHING
+      `, [alice, bob]);
     }
 
     app.listen(port, () => console.log(`Listening on :${port}`));

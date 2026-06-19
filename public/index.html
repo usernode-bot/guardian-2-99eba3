@@ -153,6 +153,12 @@
           </svg>
           Conversations
         </button>
+        <button onclick="showContactsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-800 transition hover:text-cyan-300">
+          <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.856-1.487M15 10a3 3 0 11-6 0 3 3 0 016 0zM6 20a9 9 0 0118 0v2h2v-2a11 11 0 10-20 0v2h2v-2z" />
+          </svg>
+          Contacts
+        </button>
         <button onclick="showDiscoverView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-800 transition hover:text-cyan-300">
           <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -183,6 +189,16 @@
       <!-- Chat View -->
       <div id="chatView" class="hidden flex flex-col flex-1 overflow-hidden">
         <div id="messageList" class="flex-1 overflow-y-auto space-y-3 p-4"></div>
+      </div>
+
+      <!-- Contacts View -->
+      <div id="contactsView" class="hidden flex flex-col flex-1 overflow-hidden">
+        <div id="contactList" class="flex-1 overflow-y-auto divide-y divide-zinc-800">
+          <div class="text-center py-8 text-zinc-500">Loading contacts...</div>
+        </div>
+        <div class="p-4 border-t border-zinc-800">
+          <button onclick="showDiscoverView()" class="w-full px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition font-medium">Add contacts</button>
+        </div>
       </div>
 
       <!-- Discover View -->
@@ -254,6 +270,7 @@
     let currentOtherId = null;
     let pollInterval = null;
     let sidebarOpen = false;
+    let savedContactUserIds = new Set();
 
     async function apiCall(path, opts = {}) {
       const response = await fetch(path, {
@@ -299,6 +316,7 @@
       currentUser = user;
       document.getElementById('sidebarUsername').textContent = user.username + (user.verified ? ' ✓' : '');
       document.getElementById('sidebarWallet').textContent = user.usernode_pubkey || 'No wallet linked';
+      loadContacts();
       loadConversations();
       setupEventListeners();
     }
@@ -370,6 +388,74 @@
           </div>
         </div>
       `).join('');
+    }
+
+    async function loadContacts() {
+      const data = await apiCall('/api/contacts');
+      if (!data) return;
+
+      savedContactUserIds.clear();
+      data.contacts.forEach(c => savedContactUserIds.add(c.userId));
+
+      const list = document.getElementById('contactList');
+      if (data.contacts.length === 0) {
+        list.innerHTML = '<div class="text-center py-8 text-zinc-500">No saved contacts yet.</div>';
+        return;
+      }
+
+      list.innerHTML = data.contacts.map(contact => `
+        <div class="p-4 hover:bg-zinc-900 transition">
+          <div class="flex justify-between items-start gap-2">
+            <div class="flex-1 min-w-0 cursor-pointer" onclick="startConversation(${contact.userId}, '${contact.username}')">
+              <div class="font-medium truncate">${contact.username} ${contact.verified ? '✓' : ''}</div>
+              <div class="text-xs text-zinc-500 truncate">${contact.usernode_pubkey || 'No wallet'}</div>
+            </div>
+            <button onclick="removeContact(${contact.id})" class="text-zinc-500 hover:text-red-400 transition text-sm px-2 py-1">Remove</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function addContact(userId) {
+      const data = await apiCall('/api/contacts', {
+        method: 'POST',
+        body: JSON.stringify({ contactUserId: userId })
+      });
+
+      if (data) {
+        savedContactUserIds.add(userId);
+        updateSearchResultButtons();
+      }
+    }
+
+    async function removeContact(contactId) {
+      if (!confirm('Remove this contact?')) return;
+
+      const data = await apiCall(`/api/contacts/${contactId}`, {
+        method: 'DELETE'
+      });
+
+      if (data) {
+        loadContacts();
+      }
+    }
+
+    function updateSearchResultButtons() {
+      document.querySelectorAll('[data-user-id]').forEach(el => {
+        const userId = parseInt(el.getAttribute('data-user-id'));
+        const btn = el.querySelector('[data-contact-btn]');
+        if (btn) {
+          if (savedContactUserIds.has(userId)) {
+            btn.textContent = '✓ Saved';
+            btn.disabled = true;
+            btn.classList.add('opacity-50', 'cursor-default');
+          } else {
+            btn.textContent = 'Add Contact';
+            btn.disabled = false;
+            btn.classList.remove('opacity-50', 'cursor-default');
+          }
+        }
+      });
     }
 
     function formatTime(date) {
@@ -546,12 +632,18 @@
       }
 
       results.innerHTML = data.users.map(user => `
-        <div class="p-4 bg-zinc-800 rounded-lg cursor-pointer hover:bg-zinc-700 transition" onclick="startConversation(${user.id}, '${user.username}')">
-          <div class="font-medium text-cyan-400">${user.username} ${user.verified ? '✓' : ''}</div>
-          <div class="text-xs text-zinc-500 mt-1">${user.usernode_pubkey || 'No wallet'}</div>
-          <div class="text-sm text-zinc-400 mt-1">${user.mutualCount} mutual connections</div>
+        <div class="p-4 bg-zinc-800 rounded-lg hover:bg-zinc-700 transition" data-user-id="${user.id}">
+          <div class="flex justify-between items-start gap-2">
+            <div class="flex-1 min-w-0 cursor-pointer" onclick="startConversation(${user.id}, '${user.username}')">
+              <div class="font-medium text-cyan-400">${user.username} ${user.verified ? '✓' : ''}</div>
+              <div class="text-xs text-zinc-500 mt-1">${user.usernode_pubkey || 'No wallet'}</div>
+              <div class="text-sm text-zinc-400 mt-1">${user.mutualCount} mutual connections</div>
+            </div>
+            <button data-contact-btn onclick="addContact(${user.id}); event.stopPropagation();" class="px-3 py-1 bg-cyan-600 hover:bg-cyan-500 text-white text-sm rounded-lg transition flex-shrink-0">${savedContactUserIds.has(user.id) ? '✓ Saved' : 'Add Contact'}</button>
+          </div>
         </div>
       `).join('');
+      updateSearchResultButtons();
     }
 
     async function startConversation(userId, username) {
@@ -568,6 +660,7 @@
     function showConversationsView() {
       document.getElementById('conversationsView').classList.remove('hidden');
       document.getElementById('chatView').classList.add('hidden');
+      document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('discoverView').classList.add('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('headerTitle').textContent = 'Guardian';
@@ -578,9 +671,24 @@
       loadConversations();
     }
 
+    function showContactsView() {
+      document.getElementById('conversationsView').classList.add('hidden');
+      document.getElementById('chatView').classList.add('hidden');
+      document.getElementById('contactsView').classList.remove('hidden');
+      document.getElementById('discoverView').classList.add('hidden');
+      document.getElementById('inputFooter').classList.add('hidden');
+      document.getElementById('headerTitle').textContent = 'Contacts';
+      document.getElementById('backBtn').classList.add('hidden');
+      document.getElementById('menuBtn').classList.remove('hidden');
+      document.getElementById('fabBtn').classList.remove('hidden');
+      if (pollInterval) clearInterval(pollInterval);
+      loadContacts();
+    }
+
     function showChatView() {
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.remove('hidden');
+      document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('discoverView').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('hidden');
       document.getElementById('fabBtn').classList.add('hidden');
@@ -589,6 +697,7 @@
     function showDiscoverView() {
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.add('hidden');
+      document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('discoverView').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('headerTitle').textContent = 'Find contacts';
