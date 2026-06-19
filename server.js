@@ -52,62 +52,23 @@ async function scrapeLeaderboard() {
     }
     const html = await response.text();
 
-    // Parse the HTML to extract usernames from the leaderboard table
+    // Extract all valid usernames from the HTML
+    // Matches usernames: alphanumeric with dots, dashes, underscores, 3+ chars
+    // Examples: naamah8064, Marc.nl, exjobless, mpp4tunru, syd._
+    const usernamePattern = /\b([a-zA-Z0-9][a-zA-Z0-9._\-]{2,})\b/g;
+
     const users = [];
     const seen = new Set();
-
-    // Try multiple patterns to extract usernames
-    // Pattern 1: data-username or similar attributes: data-username="username"
-    const attrRegex = /(?:data-)?username\s*=\s*"([^"]+)"/gi;
     let match;
-    while ((match = attrRegex.exec(html)) !== null && users.length < 50) {
-      const username = match[1].trim();
-      if (isValidUsername(username) && !seen.has(username)) {
-        seen.add(username);
-        users.push({
-          id: users.length + 1000,
-          username: username,
-          usernode_pubkey: null,
-          verified_at: new Date(),
-        });
-      }
-    }
 
-    // Pattern 2: JSON format: "username":"naamah8064"
-    const jsonRegex = /"username"\s*:\s*"([^"]+)"/gi;
-    while ((match = jsonRegex.exec(html)) !== null && users.length < 50) {
-      const username = match[1].trim();
-      if (isValidUsername(username) && !seen.has(username)) {
-        seen.add(username);
-        users.push({
-          id: users.length + 1000,
-          username: username,
-          usernode_pubkey: null,
-          verified_at: new Date(),
-        });
-      }
-    }
+    while ((match = usernamePattern.exec(html)) !== null && users.length < 50) {
+      const username = match[1];
 
-    // Pattern 3: Text nodes in table cells/divs: >username<
-    const textRegex = />([a-zA-Z0-9._\-]{3,})</g;
-    while ((match = textRegex.exec(html)) !== null && users.length < 50) {
-      const username = match[1].trim();
-      if (isValidUsername(username) && !seen.has(username)) {
-        seen.add(username);
-        users.push({
-          id: users.length + 1000,
-          username: username,
-          usernode_pubkey: null,
-          verified_at: new Date(),
-        });
-      }
-    }
-
-    // Pattern 4: href links or paths containing usernames: /user/naamah8064 or href="/naamah8064"
-    const hrefRegex = /(?:href|to)\s*=\s*"\/([a-zA-Z0-9._\-]+)"/gi;
-    while ((match = hrefRegex.exec(html)) !== null && users.length < 50) {
-      const username = match[1].trim();
-      if (isValidUsername(username) && !seen.has(username)) {
+      // Validate username: not all digits, not all special chars, has alphanumeric
+      if (!seen.has(username) &&
+          username.length >= 3 &&
+          /[a-zA-Z0-9]/.test(username) &&
+          !/^[\d._\-]+$/.test(username)) {
         seen.add(username);
         users.push({
           id: users.length + 1000,
@@ -125,15 +86,6 @@ async function scrapeLeaderboard() {
     console.error('Error scraping leaderboard:', err.message);
     return [];
   }
-}
-
-// Helper function to validate username format
-function isValidUsername(username) {
-  if (!username || typeof username !== 'string') return false;
-  // Valid: alphanumeric with dots, dashes, underscores, 3+ chars
-  // Examples: naamah8064, Marc.nl, exjobless, mpp4tunru, syd._
-  return /^[a-zA-Z0-9._\-]{3,}$/.test(username) &&
-         !username.match(/^[\d._\-]+$/); // Can't be all digits/special chars
 }
 
 // Fetch a single Usernode user from leaderboard
