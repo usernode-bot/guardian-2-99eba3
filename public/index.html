@@ -344,6 +344,12 @@
           <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Find Contacts Button</label>
           <input id="findContactsToggle" type="checkbox" checked onchange="applyFindContactsVisibility()" class="w-4 h-4 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded accent-cyan-600 dark:accent-cyan-500 cursor-pointer">
         </div>
+
+        <!-- Show FAB Toggle -->
+        <div class="flex items-center justify-between">
+          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Show FAB</label>
+          <input id="fabToggle" type="checkbox" checked onchange="applyFabVisibility()" class="w-4 h-4 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded accent-cyan-600 dark:accent-cyan-500 cursor-pointer">
+        </div>
       </div>
     </div>
 
@@ -543,6 +549,7 @@
         theme: stored.theme || 'system',
         layout: stored.layout || 'comfortable',
         findContactsVisible: stored.findContactsVisible !== undefined ? stored.findContactsVisible : true,
+        fabVisible: stored.fabVisible !== undefined ? stored.fabVisible : true,
       };
     }
 
@@ -556,8 +563,10 @@
       applyTheme(settings.theme);
       applyLayout(settings.layout);
       applyFindContactsVisibility(settings.findContactsVisible);
+      applyFabVisibility(settings.fabVisible);
       document.getElementById('themeSelect').value = settings.theme;
       document.getElementById('findContactsToggle').checked = settings.findContactsVisible;
+      document.getElementById('fabToggle').checked = settings.fabVisible;
       updateLayoutButtons(settings.layout);
       window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
         if (loadSettings().theme === 'system') {
@@ -606,6 +615,18 @@
       saveSettings(settings);
     }
 
+    function applyFabVisibility(visible) {
+      const settings = loadSettings();
+      settings.fabVisible = typeof visible === 'boolean' ? visible : document.getElementById('fabToggle').checked;
+      const fab = document.getElementById('fabBtn');
+      if (fab) {
+        const chatView = document.getElementById('chatView');
+        const isChatOpen = !chatView.classList.contains('hidden');
+        fab.classList.toggle('fab-hidden', !settings.fabVisible || isChatOpen);
+      }
+      saveSettings(settings);
+    }
+
     function updateLayoutButtons(layout) {
       const comfortable = document.getElementById('layoutComfort');
       const compact = document.getElementById('layoutCompact');
@@ -626,7 +647,8 @@
       const fab = document.getElementById('fabBtn');
       const chatView = document.getElementById('chatView');
       const isConversationOpen = !chatView.classList.contains('hidden');
-      if (isConversationOpen) {
+      const settings = loadSettings();
+      if (isConversationOpen || !settings.fabVisible) {
         fab.classList.add('fab-hidden');
       } else {
         fab.classList.remove('fab-hidden');
