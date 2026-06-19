@@ -396,6 +396,150 @@ app.post('/api/tokens/send', async (req, res) => {
   }
 });
 
+// ===== CONTACTS ENDPOINTS =====
+
+app.get('/api/contacts', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = req.user.id;
+    const { rows } = await pool.query(`
+      SELECT uc.id, u.id as user_id, u.username, u.usernode_pubkey, u.verified_at, u.avatar_url, uc.nickname
+      FROM user_contacts uc
+      JOIN users u ON uc.contact_user_id = u.id
+      WHERE uc.user_id = $1
+      ORDER BY uc.created_at DESC
+    `, [userId]);
+
+    const contacts = rows.map(r => ({
+      id: r.id,
+      userId: r.user_id,
+      username: r.username,
+      usernode_pubkey: r.usernode_pubkey || null,
+      nickname: r.nickname,
+      verified: !!r.verified_at,
+      avatar_url: r.avatar_url || null,
+    }));
+
+    res.json({ contacts });
+  } catch (err) {
+    console.error('Error fetching contacts:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/contacts', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { usernode_pubkey, nickname } = req.body;
+    const userId = req.user.id;
+
+    if (!usernode_pubkey) {
+      return res.status(400).json({ error: 'usernode_pubkey is required' });
+    }
+
+    if (!usernode_pubkey.startsWith('ut1')) {
+      return res.status(400).json({ error: 'Invalid Usernode address format' });
+    }
+
+    // Find user by wallet address
+    const userRes = await pool.query(`
+      SELECT id, username, usernode_pubkey, verified_at, avatar_url
+      FROM users
+      WHERE usernode_pubkey = $1
+    `, [usernode_pubkey]);
+
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const contactUser = userRes.rows[0];
+    const contactUserId = contactUser.id;
+
+    if (contactUserId === userId) {
+      return res.status(400).json({ error: 'Cannot add yourself as a contact' });
+    }
+
+    // Check if contact already exists
+    const existRes = await pool.query(`
+      SELECT id FROM user_contacts
+      WHERE user_id = $1 AND contact_user_id = $2
+    `, [userId, contactUserId]);
+
+    if (existRes.rows.length > 0) {
+      return res.status(409).json({ error: 'Contact already saved' });
+    }
+
+    // Add contact
+    const result = await pool.query(`
+      INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
+      VALUES ($1, $2, $3, NOW())
+      RETURNING id
+    `, [userId, contactUserId, nickname || null]);
+
+    res.json({
+      id: result.rows[0].id,
+      userId: contactUserId,
+      username: contactUser.username,
+      usernode_pubkey: contactUser.usernode_pubkey,
+      nickname: nickname || null,
+      verified: !!contactUser.verified_at,
+      avatar_url: contactUser.avatar_url || null,
+    });
+  } catch (err) {
+    console.error('Error adding contact:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/contacts/:contactId', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { contactId } = req.params;
+    const userId = req.user.id;
+
+    const result = await pool.query(`
+      DELETE FROM user_contacts
+      WHERE id = $1 AND user_id = $2
+    `, [contactId, userId]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error deleting contact:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/user/contact-info', (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    res.json({
+      username: req.user.username,
+      usernode_pubkey: req.user.usernode_pubkey || null,
+      verified: !!req.user.verified_at,
+      shareLink: `${req.protocol}://${req.get('host')}/?contact=${encodeURIComponent(req.user.usernode_pubkey || '')}`,
+    });
+  } catch (err) {
+    console.error('Error getting contact info:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ===== SEARCH & PROFILE ENDPOINTS =====
 
 app.get('/api/search/users', async (req, res) => {
@@ -530,10 +674,27 @@ async function start() {
       )
     `);
 
+    // Create user_contacts table (marked private)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_contacts (
+        id BIGSERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        contact_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        nickname VARCHAR(255),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(user_id, contact_user_id)
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_contacts_user_id
+        ON user_contacts(user_id)
+    `);
+
     // Mark tables as private
     await pool.query(`COMMENT ON TABLE conversations IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE messages IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE read_receipts IS 'staging:private'`);
+    await pool.query(`COMMENT ON TABLE user_contacts IS 'staging:private'`);
 
     // Seed staging data
     if (IS_STAGING) {
@@ -596,6 +757,13 @@ async function start() {
         VALUES ($1, $2, NOW()), ($3, $2, NOW())
         ON CONFLICT DO NOTHING
       `, [alice, convId, bob]);
+
+      // Seed contacts
+      await pool.query(`
+        INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
+        VALUES ($1, $2, 'Bob (demo contact)', NOW())
+        ON CONFLICT DO NOTHING
+      `, [alice, bob]);
     }
 
     app.listen(port, () => console.log(`Listening on :${port}`));
