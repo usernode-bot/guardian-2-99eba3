@@ -259,11 +259,11 @@
           </svg>
           Conversations
         </button>
-        <button onclick="showDiscoverView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
+        <button onclick="showContactsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
           <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
-          Find Contacts
+          Contacts
         </button>
         <button onclick="showRequestsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
           <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -356,22 +356,22 @@
       </div>
 
 
-      <!-- Discover View -->
-      <div id="discoverView" class="hidden flex flex-col flex-1 p-4 overflow-hidden">
-        <!-- Header with search and New Contact button -->
-        <div class="flex gap-2 items-center mb-4">
-          <input id="searchInput" type="text" placeholder="Search users..." class="flex-1 px-3 py-2 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
-          <button onclick="toggleAddContactModal()" class="px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium text-sm">+ New</button>
-        </div>
-        <!-- Empty state (shown when no search results) -->
-        <div id="emptyState" class="flex-1 flex flex-col items-center justify-center text-center space-y-4">
-          <div class="text-zinc-600 dark:text-zinc-400">
-            <p class="text-sm mb-2">Search for users above, or add a contact directly.</p>
-            <button onclick="toggleAddContactModal()" class="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 font-medium">Create New Contact</button>
+      <!-- Contacts View (Saved Contacts + Create New Contact) -->
+      <div id="contactsView" class="hidden flex flex-col flex-1 overflow-hidden">
+        <!-- Saved Contacts Section -->
+        <div class="flex-1 flex flex-col overflow-hidden">
+          <div class="px-4 py-3 bg-zinc-100 dark:bg-zinc-800 sticky top-0 z-10">
+            <h2 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Contacts</h2>
+          </div>
+          <div id="contactsList" class="flex-1 overflow-y-auto divide-y divide-zinc-300 dark:divide-zinc-800">
+            <div class="flex flex-col items-center justify-center h-full text-center space-y-4">
+              <div class="text-zinc-600 dark:text-zinc-400">
+                <p class="text-sm mb-3">No contacts yet. Add one to get started.</p>
+                <button onclick="toggleAddContactModal()" class="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 font-medium">Create New Contact</button>
+              </div>
+            </div>
           </div>
         </div>
-        <!-- Search results -->
-        <div id="searchResults" class="flex-1 overflow-y-auto space-y-2"></div>
       </div>
     </div>
 
@@ -757,6 +757,7 @@
         localStorage.setItem(`guardian_contacts_${currentUser.id}`, JSON.stringify(filtered));
         hideContactHeaderMenu();
         currentContactId = null;
+        loadContactsList();
       }
     }
 
@@ -782,7 +783,6 @@
         showConversationsView();
       });
 
-      document.getElementById('searchInput').addEventListener('input', (e) => searchUsers(e.target.value));
 
       document.getElementById('msgInput').addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -1225,7 +1225,7 @@
     function showConversationsView() {
       document.getElementById('conversationsView').classList.remove('hidden');
       document.getElementById('chatView').classList.add('hidden');
-      document.getElementById('discoverView').classList.add('hidden');
+      document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('requestsView').classList.add('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('headerTitle').textContent = 'Guardian';
@@ -1239,7 +1239,7 @@
     function showRequestsView() {
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.add('hidden');
-      document.getElementById('discoverView').classList.add('hidden');
+      document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('requestsView').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('headerTitle').textContent = 'Requests';
@@ -1313,23 +1313,22 @@
     function showChatView() {
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.remove('hidden');
-      document.getElementById('discoverView').classList.add('hidden');
+      document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('requestsView').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('hidden');
     }
 
-
-    function showDiscoverView() {
+    function showContactsView() {
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.add('hidden');
-      document.getElementById('discoverView').classList.remove('hidden');
+      document.getElementById('contactsView').classList.remove('hidden');
       document.getElementById('requestsView').classList.add('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
-      document.getElementById('headerTitle').textContent = 'Find contacts';
+      document.getElementById('headerTitle').textContent = 'Contacts';
       document.getElementById('backBtn').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
       document.getElementById('deleteContactBtn').classList.add('hidden');
-      document.getElementById('searchInput').focus();
+      loadContactsList();
     }
 
 
@@ -1362,6 +1361,31 @@
       document.getElementById('addContactAddress').value = '';
       document.getElementById('addContactNickname').value = '';
       toggleAddContactModal();
+      loadContactsList();
+    }
+
+    async function loadContactsList() {
+      const data = await apiCall('/api/contacts');
+      if (!data) return;
+
+      const list = document.getElementById('contactsList');
+
+      if (!data.contacts || data.contacts.length === 0) {
+        list.innerHTML = '<div class="flex items-center justify-center h-full text-center space-y-4"><div class="text-zinc-600 dark:text-zinc-400"><p class="text-sm mb-3">No contacts yet. Add one to get started.</p><button onclick="toggleAddContactModal()" class="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 font-medium">Create New Contact</button></div></div>';
+        return;
+      }
+
+      list.innerHTML = data.contacts.map(contact => `
+        <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer" onclick="startConversationWithContact(${contact.userId}, '${contact.username}')">
+          <div class="flex justify-between items-start gap-2">
+            <div class="flex-1 min-w-0">
+              <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${contact.nickname || contact.username} ${contact.verified ? '<span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
+              <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${contact.usernode_pubkey || 'No wallet'}</div>
+            </div>
+            <button onclick="event.stopPropagation(); showDeleteContactModal(${contact.id}, '${(contact.nickname || contact.username).replace(/'/g, "\\'")}')" class="text-zinc-600 dark:text-zinc-500 hover:text-red-600 dark:hover:text-red-400 text-sm transition">🗑️</button>
+          </div>
+        </div>
+      `).join('');
     }
 
     async function startConversationWithContact(userId, username) {
