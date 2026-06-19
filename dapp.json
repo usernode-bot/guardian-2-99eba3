@@ -7,6 +7,9 @@
     { "name": "Discover contacts loads", "path": "/", "expectText": "Find contacts" },
     { "name": "Contacts view loads", "path": "/", "expectSelector": "#contactsView" },
     { "name": "Sidebar toggles", "path": "/", "expectSelector": "#sidebar" },
-    { "name": "Share contact modal works", "path": "/", "expectSelector": "#shareContactModal" }
+    { "name": "Share contact modal works", "path": "/", "expectSelector": "#shareContactModal" },
+    { "name": "Settings panel opens", "path": "/", "expectSelector": "#settingsPanel" },
+    { "name": "FAB button exists", "path": "/", "expectSelector": "#fabBtn" },
+    { "name": "Find Contacts button exists", "path": "/", "expectSelector": "#findContactsBtn" }
   ]
 }
