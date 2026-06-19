@@ -1,8 +1,42 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <script>
+  (function () {
+    function restoreThemeEarly() {
+      const allKeys = Object.keys(localStorage);
+      let theme = 'system';
+      for (const key of allKeys) {
+        if (key.startsWith('guardian_settings_')) {
+          try {
+            const settings = JSON.parse(localStorage.getItem(key));
+            theme = settings.theme || 'system';
+            break;
+          } catch (_) {}
+        }
+      }
+
+      const html = document.documentElement;
+      if (theme === 'system') {
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (prefersDark) {
+          html.classList.add('dark');
+        } else {
+          html.classList.remove('dark');
+        }
+      } else if (theme === 'dark') {
+        html.classList.add('dark');
+      } else if (theme === 'light') {
+        html.classList.remove('dark');
+      }
+    }
+
+    restoreThemeEarly();
+  })();
+  </script>
 
   <script>
   // usernode-dev-console@1
