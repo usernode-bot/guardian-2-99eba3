@@ -984,14 +984,15 @@
 
       document.getElementById('deleteConversationModal').classList.add('hidden');
 
-      const data = await apiCall(`/api/conversations/${pendingDeleteConvId}/delete`, {
+      const deletedConvId = pendingDeleteConvId;
+      const data = await apiCall(`/api/conversations/${deletedConvId}/delete`, {
         method: 'POST',
         body: JSON.stringify({})
       });
 
       if (data) {
         pendingDeleteConvId = null;
-        if (currentConvId === pendingDeleteConvId) {
+        if (currentConvId === deletedConvId) {
           showConversationsView();
         }
         loadConversations(viewingArchivedConversations);
