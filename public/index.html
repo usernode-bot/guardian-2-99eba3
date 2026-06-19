@@ -239,6 +239,16 @@
     .menu-item.icon-only {
       padding: 0;
     }
+
+    .icon-button-bare {
+      background: none;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      font-size: inherit;
+      color: inherit;
+      font-family: inherit;
+    }
   </style>
 </head>
 <body class="bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100 min-h-screen flex flex-col">
@@ -259,7 +269,7 @@
           </svg>
         </button>
         <div id="contactMenu" class="hidden contact-menu top-full right-0 mt-1">
-          <button onclick="openContactDeleteModal()" class="menu-item delete-item icon-only">🗑️</button>
+          <button onclick="openContactDeleteModal()" class="icon-button-bare">🗑️</button>
         </div>
       </div>
     </div>
