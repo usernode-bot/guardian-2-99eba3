@@ -124,12 +124,25 @@
       }
     }
 
-    @keyframes fabPulse {
-      0%, 100% {
-        box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.7);
+    @keyframes slideUpFromBottom {
+      from {
+        transform: translateY(100%);
+        opacity: 0;
       }
-      50% {
-        box-shadow: 0 0 0 10px rgba(34, 211, 238, 0);
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    @keyframes slideDownToBottom {
+      from {
+        transform: translateY(0);
+        opacity: 1;
+      }
+      to {
+        transform: translateY(100%);
+        opacity: 0;
       }
     }
 
@@ -141,13 +154,20 @@
       animation: slideOutLeft 0.3s ease-out;
     }
 
-    .fab-pulse {
-      animation: fabPulse 2s infinite;
-    }
-
     .message-bubble {
       word-wrap: break-word;
       overflow-wrap: break-word;
+    }
+
+    #fabBtn {
+      opacity: 1;
+      transition: opacity 0.3s ease;
+      pointer-events: auto;
+    }
+
+    #fabBtn.fab-hidden {
+      opacity: 0;
+      pointer-events: none;
     }
 
     /* Compact layout mode */
@@ -161,6 +181,61 @@
     .layout-compact #header { padding: 0.5rem 0.75rem; }
     .layout-compact #inputFooter { padding: 0.75rem; gap: 0.25rem; }
     .layout-compact nav.flex-1 { gap: 0.25rem; }
+
+    .attachment-menu, .contact-menu {
+      position: absolute;
+      background: white;
+      border: 1px solid #d4d4d8;
+      border-radius: 0.5rem;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      z-index: 100;
+      min-width: 140px;
+    }
+
+    .dark .attachment-menu, .dark .contact-menu {
+      background: #18181b;
+      border-color: #3f3f46;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    }
+
+    .menu-item {
+      display: block;
+      width: 100%;
+      padding: 0.5rem 1rem;
+      text-align: left;
+      cursor: pointer;
+      font-size: 0.875rem;
+      color: #71717a;
+      transition: background-color 0.15s;
+    }
+
+    .dark .menu-item {
+      color: #a1a1aa;
+    }
+
+    .menu-item:hover {
+      background-color: #f4f4f5;
+    }
+
+    .dark .menu-item:hover {
+      background-color: #27272a;
+    }
+
+    .menu-item.delete-item {
+      color: #dc2626;
+    }
+
+    .dark .menu-item.delete-item {
+      color: #ef4444;
+    }
+
+    .menu-item.delete-item:hover {
+      background-color: #fee2e2;
+    }
+
+    .dark .menu-item.delete-item:hover {
+      background-color: #7f1d1d;
+    }
   </style>
 </head>
 <body class="bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100 min-h-screen flex flex-col">
@@ -264,12 +339,6 @@
           </div>
         </div>
 
-        <!-- FAB Toggle -->
-        <div class="flex items-center justify-between">
-          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">FAB Visibility</label>
-          <input id="fabToggle" type="checkbox" onchange="applyFabVisibility()" class="w-4 h-4 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded accent-cyan-600 dark:accent-cyan-500 cursor-pointer">
-        </div>
-
         <!-- Find Contacts Button Toggle -->
         <div class="flex items-center justify-between">
           <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Find Contacts Button</label>
@@ -325,14 +394,15 @@
     </div>
 
     <!-- Chat Input (shown only in chat view) -->
-    <div id="inputFooter" class="hidden bg-white dark:bg-zinc-900 border-t border-zinc-300 dark:border-zinc-800 p-4 space-y-2">
-      <div class="flex gap-2">
+    <div id="inputFooter" class="hidden bg-white dark:bg-zinc-900 border-t border-zinc-300 dark:border-zinc-800 p-3 space-y-1 relative">
+      <div class="flex gap-2 items-center">
         <input id="msgInput" type="text" placeholder="Type a message..." class="flex-1 px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+        <button id="attachmentMenuBtn" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition" title="Attachment menu">
+          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+          </svg>
+        </button>
         <button id="sendBtn" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Send</button>
-      </div>
-      <div class="flex gap-2">
-        <button id="imageBtn" class="flex-1 px-2 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-sm rounded-lg transition text-zinc-900 dark:text-zinc-100">📷 Image</button>
-        <button id="tokenBtn" class="flex-1 px-2 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-sm rounded-lg transition text-zinc-900 dark:text-zinc-100">💰 Token</button>
       </div>
       <div class="flex items-center gap-2 text-sm">
         <input id="blockchainToggle" type="checkbox" class="w-4 h-4 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded accent-cyan-600 dark:accent-cyan-500 cursor-pointer">
@@ -340,8 +410,30 @@
       </div>
     </div>
 
+    <!-- Attachment Bottom Sheet -->
+    <div id="attachmentOverlay" class="hidden fixed inset-0 z-40 bg-black/50 transition-opacity duration-300" onclick="closeAttachmentSheet()"></div>
+    <div id="attachmentSheet" class="hidden fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-zinc-900 border-t border-zinc-300 dark:border-zinc-800 rounded-t-2xl max-h-[50vh] overflow-y-auto transition-transform duration-300">
+      <div class="p-4 border-b border-zinc-200 dark:border-zinc-800">
+        <h3 class="text-lg font-semibold text-zinc-900 dark:text-white">Attachments</h3>
+      </div>
+      <div class="divide-y divide-zinc-200 dark:divide-zinc-800">
+        <button id="imageBtn" onclick="handleAttachmentSelect('image')" class="w-full px-4 py-4 text-left text-zinc-900 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition">
+          <div class="flex items-center gap-3">
+            <span class="text-2xl">📷</span>
+            <span>Send Image</span>
+          </div>
+        </button>
+        <button id="tokenBtn" onclick="handleAttachmentSelect('token')" class="w-full px-4 py-4 text-left text-zinc-900 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition">
+          <div class="flex items-center gap-3">
+            <span class="text-2xl">💰</span>
+            <span>Send Token</span>
+          </div>
+        </button>
+      </div>
+    </div>
+
     <!-- FAB Button -->
-    <button id="fabBtn" onclick="showDiscoverView()" class="hidden fixed bottom-6 right-6 w-14 h-14 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-full flex items-center justify-center shadow-lg fab-pulse z-20 transition">
+    <button id="fabBtn" onclick="showDiscoverView()" class="fixed bottom-6 right-6 w-14 h-14 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-full flex items-center justify-center shadow-lg z-20 transition">
       <svg class="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
         <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
       </svg>
@@ -418,6 +510,18 @@
     </div>
   </div>
 
+  <!-- Delete Contact Modal -->
+  <div id="deleteContactModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
+      <h2 class="text-xl font-semibold text-zinc-900 dark:text-white" id="deleteContactTitle">Delete contact?</h2>
+      <p class="text-sm text-zinc-600 dark:text-zinc-400">This cannot be undone.</p>
+      <div class="flex gap-2">
+        <button id="deleteContactCancel" class="flex-1 px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
+        <button id="deleteContactConfirm" class="flex-1 px-3 py-2 bg-red-600 hover:bg-red-700 dark:hover:bg-red-500 text-white rounded-lg transition font-medium">Delete</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token') || '';
@@ -428,6 +532,8 @@
     let currentOtherId = null;
     let pollInterval = null;
     let sidebarOpen = false;
+    let openContactMenu = null;
+    let pendingDeleteContactId = null;
 
     // Settings functions
     function loadSettings() {
@@ -436,7 +542,6 @@
       return {
         theme: stored.theme || 'system',
         layout: stored.layout || 'comfortable',
-        fabVisible: stored.fabVisible !== undefined ? stored.fabVisible : false,
         findContactsVisible: stored.findContactsVisible !== undefined ? stored.findContactsVisible : true,
       };
     }
@@ -450,13 +555,10 @@
       const settings = loadSettings();
       applyTheme(settings.theme);
       applyLayout(settings.layout);
-      applyFabVisibility(settings.fabVisible);
       applyFindContactsVisibility(settings.findContactsVisible);
       document.getElementById('themeSelect').value = settings.theme;
-      document.getElementById('fabToggle').checked = settings.fabVisible;
       document.getElementById('findContactsToggle').checked = settings.findContactsVisible;
       updateLayoutButtons(settings.layout);
-      // Setup system theme listener
       window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
         if (loadSettings().theme === 'system') {
           applyTheme('system');
@@ -494,16 +596,6 @@
       saveSettings(settings);
     }
 
-    function applyFabVisibility(visible) {
-      const settings = loadSettings();
-      settings.fabVisible = typeof visible === 'boolean' ? visible : document.getElementById('fabToggle').checked;
-      const fab = document.getElementById('fabBtn');
-      if (fab) {
-        fab.classList.toggle('hidden', !settings.fabVisible);
-      }
-      saveSettings(settings);
-    }
-
     function applyFindContactsVisibility(visible) {
       const settings = loadSettings();
       settings.findContactsVisible = typeof visible === 'boolean' ? visible : document.getElementById('findContactsToggle').checked;
@@ -527,6 +619,17 @@
         compact.classList.remove('border-transparent');
         comfortable.classList.remove('border-cyan-600', 'dark:border-cyan-500');
         comfortable.classList.add('border-transparent');
+      }
+    }
+
+    function updateFabVisibility() {
+      const fab = document.getElementById('fabBtn');
+      const chatView = document.getElementById('chatView');
+      const isConversationOpen = !chatView.classList.contains('hidden');
+      if (isConversationOpen) {
+        fab.classList.add('fab-hidden');
+      } else {
+        fab.classList.remove('fab-hidden');
       }
     }
 
@@ -580,6 +683,96 @@
       }
     }
 
+    function toggleAttachmentSheet() {
+      const overlay = document.getElementById('attachmentOverlay');
+      const sheet = document.getElementById('attachmentSheet');
+      if (overlay.classList.contains('hidden')) {
+        overlay.classList.remove('hidden');
+        sheet.classList.remove('hidden');
+        setTimeout(() => {
+          overlay.style.opacity = '1';
+          sheet.style.transform = 'translateY(0)';
+        }, 10);
+      } else {
+        closeAttachmentSheet();
+      }
+    }
+
+    function closeAttachmentSheet() {
+      const overlay = document.getElementById('attachmentOverlay');
+      const sheet = document.getElementById('attachmentSheet');
+      overlay.style.opacity = '0';
+      sheet.style.transform = 'translateY(100%)';
+      setTimeout(() => {
+        overlay.classList.add('hidden');
+        sheet.classList.add('hidden');
+      }, 300);
+    }
+
+    function handleAttachmentSelect(type) {
+      closeAttachmentSheet();
+      if (type === 'image') {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.onchange = (e) => handleImageUpload(e.target.files[0]);
+        input.click();
+      } else if (type === 'token') {
+        showTokenModal();
+      }
+    }
+
+    function toggleContactMenu(contactId, event) {
+      event.stopPropagation();
+      closeContactMenu();
+      const contactRow = event.target.closest('.contact-row');
+      if (!contactRow) return;
+
+      const menu = contactRow.querySelector('.contact-menu');
+      if (menu) {
+        menu.classList.toggle('hidden');
+        if (!menu.classList.contains('hidden')) {
+          openContactMenu = { contactId, menu };
+        }
+      }
+    }
+
+    function closeContactMenu() {
+      if (openContactMenu && openContactMenu.menu) {
+        openContactMenu.menu.classList.add('hidden');
+        openContactMenu = null;
+      }
+    }
+
+    function showDeleteContactModal(contactId, username) {
+      closeContactMenu();
+      pendingDeleteContactId = contactId;
+      document.getElementById('deleteContactTitle').textContent = `Delete ${username}?`;
+      document.getElementById('deleteContactModal').classList.remove('hidden');
+    }
+
+    function hideDeleteContactModal() {
+      document.getElementById('deleteContactModal').classList.add('hidden');
+      pendingDeleteContactId = null;
+    }
+
+    async function confirmDeleteContact() {
+      if (!pendingDeleteContactId) return;
+      const contactId = pendingDeleteContactId;
+      hideDeleteContactModal();
+
+      const data = await apiCall(`/api/contacts/${contactId}`, {
+        method: 'DELETE'
+      });
+
+      if (data) {
+        const contacts = JSON.parse(localStorage.getItem(`guardian_contacts_${currentUser.id}`) || '[]');
+        const filtered = contacts.filter(c => c.id !== contactId);
+        localStorage.setItem(`guardian_contacts_${currentUser.id}`, JSON.stringify(filtered));
+        loadContacts();
+      }
+    }
+
     async function init() {
       const user = await apiCall('/api/user');
       if (!user) {
@@ -610,16 +803,9 @@
         }
       });
 
+      document.getElementById('attachmentMenuBtn').addEventListener('click', toggleAttachmentSheet);
       document.getElementById('sendBtn').addEventListener('click', sendMessage);
-      document.getElementById('imageBtn').addEventListener('click', () => {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = 'image/*';
-        input.onchange = (e) => handleImageUpload(e.target.files[0]);
-        input.click();
-      });
 
-      document.getElementById('tokenBtn').addEventListener('click', showTokenModal);
       document.getElementById('tokenCancel').addEventListener('click', hideTokenModal);
       document.getElementById('tokenSend').addEventListener('click', sendToken);
 
@@ -633,7 +819,18 @@
         }
       });
 
+      document.getElementById('deleteContactCancel').addEventListener('click', hideDeleteContactModal);
+      document.getElementById('deleteContactConfirm').addEventListener('click', confirmDeleteContact);
+
       document.getElementById('sidebarOverlay').addEventListener('click', toggleSidebar);
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          closeAttachmentSheet();
+          closeContactMenu();
+          hideDeleteContactModal();
+        }
+      });
     }
 
     async function loadConversations() {
@@ -644,7 +841,6 @@
       const list = document.getElementById('convList');
       let html = '';
 
-      // Add sent requests
       if (sentData && sentData.requests && sentData.requests.length > 0) {
         const pendingRequests = sentData.requests.filter(r => r.status === 'pending');
         if (pendingRequests.length > 0) {
@@ -664,9 +860,8 @@
         }
       }
 
-      // Add active conversations
       if (data.conversations.length === 0 && (!sentData || !sentData.requests || sentData.requests.length === 0)) {
-        list.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">No conversations yet. <br>Tap the + button to discover contacts.</div>';
+        list.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">No conversations yet. <br>Tap "Find Contacts" to discover contacts.</div>';
         return;
       }
 
@@ -990,6 +1185,7 @@
       document.getElementById('backBtn').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
       if (pollInterval) clearInterval(pollInterval);
+      updateFabVisibility();
       showConversationsTab();
     }
 
@@ -1078,6 +1274,7 @@
       document.getElementById('chatView').classList.remove('hidden');
       document.getElementById('discoverView').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('hidden');
+      updateFabVisibility();
     }
 
     function showContactsView() {
@@ -1089,6 +1286,7 @@
       document.getElementById('headerTitle').textContent = 'Contacts';
       document.getElementById('backBtn').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
+      updateFabVisibility();
       loadContacts();
     }
 
@@ -1101,6 +1299,7 @@
       document.getElementById('headerTitle').textContent = 'Find contacts';
       document.getElementById('backBtn').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
+      updateFabVisibility();
       document.getElementById('searchInput').focus();
     }
 
@@ -1117,17 +1316,22 @@
       }
 
       list.innerHTML = data.contacts.map(contact => `
-        <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer transition flex justify-between items-center group" onclick="startConversationWithContact(${contact.userId}, '${contact.username}')">
+        <div class="contact-row p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer transition flex justify-between items-center group" onclick="startConversationWithContact(${contact.userId}, '${contact.username}')">
           <div class="flex-1 min-w-0">
             <div class="font-medium text-zinc-900 dark:text-zinc-100">${contact.username} ${contact.verified ? '<span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
             ${contact.nickname ? `<div class="text-xs text-cyan-600 dark:text-cyan-400 truncate">${contact.nickname}</div>` : ''}
             <div class="text-xs text-zinc-600 dark:text-zinc-500 truncate">${contact.usernode_pubkey || 'No wallet'}</div>
           </div>
-          <button onclick="deleteContactUI(${contact.id}, event)" class="text-zinc-600 dark:text-zinc-500 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition ml-2" title="Delete contact">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-          </button>
+          <div class="relative">
+            <button onclick="toggleContactMenu(${contact.id}, event)" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 opacity-0 group-hover:opacity-100 transition ml-2 p-1" title="Contact options">
+              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM16 12a2 2 0 100-4 2 2 0 000 4z" />
+              </svg>
+            </button>
+            <div class="hidden contact-menu top-full right-0">
+              <button onclick="showDeleteContactModal(${contact.id}, '${contact.username}')" class="menu-item delete-item">🗑️ Delete Contact</button>
+            </div>
+          </div>
         </div>
       `).join('');
     }
@@ -1160,22 +1364,6 @@
       await startConversation(data.userId, data.username);
       document.getElementById('addContactAddress').value = '';
       document.getElementById('addContactNickname').value = '';
-    }
-
-    async function deleteContactUI(contactId, event) {
-      event.stopPropagation();
-      if (!confirm('Delete this contact?')) return;
-
-      const data = await apiCall(`/api/contacts/${contactId}`, {
-        method: 'DELETE'
-      });
-
-      if (data) {
-        const contacts = JSON.parse(localStorage.getItem(`guardian_contacts_${currentUser.id}`) || '[]');
-        const filtered = contacts.filter(c => c.id !== contactId);
-        localStorage.setItem(`guardian_contacts_${currentUser.id}`, JSON.stringify(filtered));
-        loadContacts();
-      }
     }
 
     async function startConversationWithContact(userId, username) {
