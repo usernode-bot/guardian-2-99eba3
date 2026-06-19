@@ -1,6 +1,26 @@
 {
   "name": "Guardian",
-  "secrets": [],
+  "secrets": [
+    {
+      "key": "CONTRACT_PRIVATE_KEY",
+      "description": "Private key of wallet signing contract transactions",
+      "required": false,
+      "private": true,
+      "staging_default": "0x0000000000000000000000000000000000000000000000000000000000000001"
+    },
+    {
+      "key": "CONTRACT_ADDRESS",
+      "description": "Deployed GuardianMessaging contract address",
+      "required": false,
+      "default": "0x1111111111111111111111111111111111111111"
+    },
+    {
+      "key": "BLOCK_EXPLORER_URL",
+      "description": "Base URL for block explorer links",
+      "required": false,
+      "default": "https://etherscan.io"
+    }
+  ],
   "tests": [
     { "name": "Home loads", "path": "/", "expectSelector": "#conversationsView" },
     { "name": "Chat thread loads", "path": "/", "expectSelector": "#messageList" },

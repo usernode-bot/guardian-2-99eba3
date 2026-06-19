@@ -485,10 +485,34 @@
       list.innerHTML = data.messages.map(msg => renderMessage(msg)).join('');
       list.scrollTop = list.scrollHeight;
 
+      // Check blockchain status for pending token transfers
+      const pendingStatuses = document.querySelectorAll('.token-status');
+      for (const statusEl of pendingStatuses) {
+        const txHash = statusEl.dataset.txHash;
+        const currentStatus = statusEl.textContent.trim();
+        if (txHash && currentStatus.includes('Pending')) {
+          checkBlockchainStatus(txHash, statusEl);
+        }
+      }
+
       await apiCall(`/api/conversations/${currentConvId}/read`, {
         method: 'PUT',
         body: JSON.stringify({ readUpTo: new Date().toISOString() })
       });
+    }
+
+    async function checkBlockchainStatus(txHash, statusEl) {
+      const data = await apiCall(`/api/blockchain/status/${txHash}`);
+      if (data && data.status === 'confirmed') {
+        statusEl.textContent = '✓ Confirmed';
+        const parent = statusEl.parentElement;
+        if (!parent.querySelector('a[href*="etherscan"]')) {
+          const explorerLink = document.createElement('div');
+          explorerLink.className = 'text-xs mt-2';
+          explorerLink.innerHTML = `<a href="${data.explorerUrl}" target="_blank" class="text-cyan-300 hover:text-cyan-200 underline">View on Explorer</a>`;
+          parent.appendChild(explorerLink);
+        }
+      }
     }
 
     function renderMessage(msg) {
@@ -521,13 +545,15 @@
 
       if (msg.type === 'token') {
         const c = msg.content;
+        const messageId = `token-msg-${msg.id}`;
         return `
-          <div class="flex ${alignClass}">
+          <div class="flex ${alignClass}" id="${messageId}">
             <div class="max-w-xs px-4 py-2 rounded-2xl ${baseClass} border-2 border-yellow-500/40 message-bubble">
               <div class="text-xs text-zinc-300 mb-1">💰 Token Transfer</div>
               <div class="font-bold text-lg">${c.amount} tokens</div>
               <div class="text-xs text-zinc-300 mt-1">${c.memo || 'No memo'}</div>
-              <div class="text-xs mt-2 font-medium">${c.status === 'confirmed' ? '✓ Confirmed' : '⏳ Pending'}</div>
+              <div class="text-xs mt-2 font-medium token-status" data-tx-hash="${c.txHash}" data-msg-id="${msg.id}">${c.status === 'confirmed' ? '✓ Confirmed' : '⏳ Pending'}</div>
+              ${c.status === 'confirmed' && c.txHash ? `<div class="text-xs mt-2"><a href="https://etherscan.io/tx/${c.txHash}" target="_blank" class="text-cyan-300 hover:text-cyan-200 underline">View on Explorer</a></div>` : ''}
               <div class="text-xs mt-1 opacity-70">${formatTime(new Date(msg.createdAt))}</div>
             </div>
           </div>
@@ -590,11 +616,13 @@
       });
 
       if (data) {
+        // Always start with 'pending' status, even if server returns 'confirmed' for staging
+        const status = 'pending';
         await apiCall(`/api/conversations/${currentConvId}/messages`, {
           method: 'POST',
           body: JSON.stringify({
             type: 'token',
-            content: { recipientId: currentOtherId, amount: parseInt(amount), memo: document.getElementById('tokenMemo').value, txHash: data.txHash, status: data.status }
+            content: { recipientId: currentOtherId, amount: parseInt(amount), memo: document.getElementById('tokenMemo').value, txHash: data.txHash, status: status }
           })
         });
         hideTokenModal();

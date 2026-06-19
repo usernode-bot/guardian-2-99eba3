@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 const { Pool } = require('pg');
 const jwt = require('jsonwebtoken');
+const { getContractClient } = require('./lib/contract-client');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -412,6 +413,79 @@ app.post('/api/tokens/send', async (req, res) => {
   }
 });
 
+// ===== BLOCKCHAIN ENDPOINTS =====
+
+app.get('/api/blockchain/status/:txHash', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { txHash } = req.params;
+
+    // Check database first for cached status
+    const dbResult = await pool.query(`
+      SELECT status, block_number, confirmed_at FROM blockchain_transactions
+      WHERE tx_hash = $1
+    `, [txHash]);
+
+    if (dbResult.rows.length > 0) {
+      const row = dbResult.rows[0];
+      return res.json({
+        status: row.status,
+        blockNumber: row.block_number,
+        timestamp: row.confirmed_at,
+        explorerUrl: row.status === 'confirmed' ? `${process.env.BLOCK_EXPLORER_URL || 'https://etherscan.io'}/tx/${txHash}` : null
+      });
+    }
+
+    // For staging, return mock confirmed status
+    if (IS_STAGING) {
+      const now = new Date();
+      await pool.query(`
+        INSERT INTO blockchain_transactions
+        (tx_hash, contract_address, sender_address, recipient_address, amount, tx_type, status, block_number, confirmed_at, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+        ON CONFLICT (tx_hash) DO NOTHING
+      `, [txHash, '0x1111111111111111111111111111111111111111', '0xalice', '0xbob', 0, 'token_transfer', 'confirmed', 12345, now]);
+
+      return res.json({
+        status: 'confirmed',
+        blockNumber: 12345,
+        timestamp: now,
+        explorerUrl: `${process.env.BLOCK_EXPLORER_URL || 'https://etherscan.io'}/tx/${txHash}`
+      });
+    }
+
+    // Try to poll from contract client
+    const client = getContractClient();
+    if (client && client.isInitialized()) {
+      const txStatus = await client.pollTransactionStatus(txHash);
+
+      // Update database
+      if (txStatus.status === 'confirmed') {
+        await pool.query(`
+          UPDATE blockchain_transactions
+          SET status = $1, block_number = $2, confirmed_at = $3, updated_at = NOW()
+          WHERE tx_hash = $4
+        `, [txStatus.status, txStatus.blockNumber, new Date(txStatus.timestamp * 1000), txHash]);
+      }
+
+      return res.json(txStatus);
+    }
+
+    res.json({
+      status: 'pending',
+      blockNumber: null,
+      timestamp: null,
+      explorerUrl: null
+    });
+  } catch (err) {
+    console.error('Error checking blockchain status:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ===== CONTACTS ENDPOINTS =====
 
 app.get('/api/contacts', async (req, res) => {
@@ -706,11 +780,44 @@ async function start() {
         ON user_contacts(user_id)
     `);
 
+    // Create blockchain_transactions table (marked private)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS blockchain_transactions (
+        id BIGSERIAL PRIMARY KEY,
+        tx_hash VARCHAR(255) UNIQUE NOT NULL,
+        message_id BIGINT REFERENCES messages(id) ON DELETE CASCADE,
+        contract_address VARCHAR(255) NOT NULL,
+        sender_address VARCHAR(255) NOT NULL,
+        recipient_address VARCHAR(255) NOT NULL,
+        amount DECIMAL(20, 8),
+        tx_type VARCHAR(50),
+        status VARCHAR(50) DEFAULT 'pending',
+        block_number BIGINT,
+        block_timestamp TIMESTAMPTZ,
+        confirmed_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_blockchain_transactions_tx_hash
+        ON blockchain_transactions(tx_hash);
+      CREATE INDEX IF NOT EXISTS idx_blockchain_transactions_status_created
+        ON blockchain_transactions(status, created_at);
+    `);
+
+    // Add tx_hash and on_chain columns to messages table if they don't exist
+    await pool.query(`
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS tx_hash VARCHAR(255)
+    `);
+    await pool.query(`
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS on_chain BOOLEAN DEFAULT FALSE
+    `);
+
     // Mark tables as private
     await pool.query(`COMMENT ON TABLE conversations IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE messages IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE read_receipts IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE user_contacts IS 'staging:private'`);
+    await pool.query(`COMMENT ON TABLE blockchain_transactions IS 'staging:private'`);
 
     // Seed staging data
     if (IS_STAGING) {
@@ -780,6 +887,19 @@ async function start() {
         VALUES ($1, $2, 'Bob (demo contact)', NOW())
         ON CONFLICT DO NOTHING
       `, [alice, bob]);
+
+      // Seed blockchain transactions
+      await pool.query(`
+        INSERT INTO blockchain_transactions
+        (tx_hash, contract_address, sender_address, recipient_address, amount, tx_type, status, block_number, confirmed_at, created_at)
+        VALUES
+          ($1, $2, $3, $4, $5, $6, $7, $8, NOW() - INTERVAL '5 minutes', NOW() - INTERVAL '5 minutes'),
+          ($9, $2, $4, $3, $10, $6, $11, NULL, NULL, NOW())
+        ON CONFLICT (tx_hash) DO NOTHING
+      `, [
+        'staging-tx-001', '0x1111111111111111111111111111111111111111', '0xalice', '0xbob', 100, 'token_transfer', 'confirmed', 12345,
+        'staging-tx-002', 50, 'pending'
+      ]);
     }
 
     app.listen(port, () => console.log(`Listening on :${port}`));
