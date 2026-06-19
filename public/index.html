@@ -228,6 +228,10 @@
         <button id="imageBtn" class="flex-1 px-2 py-2 bg-zinc-800 hover:bg-zinc-700 text-sm rounded-lg transition">📷 Image</button>
         <button id="tokenBtn" class="flex-1 px-2 py-2 bg-zinc-800 hover:bg-zinc-700 text-sm rounded-lg transition">💰 Token</button>
       </div>
+      <div class="flex items-center gap-2 text-sm">
+        <input id="blockchainToggle" type="checkbox" class="w-4 h-4 bg-zinc-800 border border-zinc-700 rounded accent-cyan-500 cursor-pointer">
+        <label for="blockchainToggle" class="text-zinc-400 cursor-pointer">Record on blockchain</label>
+      </div>
     </div>
 
     <!-- Floating Action Button -->
@@ -497,12 +501,14 @@
       const alignClass = isOwn ? 'justify-end' : 'justify-start';
 
       if (msg.type === 'text') {
+        const blockchainStatusHtml = msg.blockchainRecorded ? `<div class="text-xs mt-2 text-amber-400" id="blockchain-status-${msg.id}">⏳ Recording on blockchain...</div>` : '';
         return `
           <div class="flex ${alignClass}">
             <div class="max-w-xs px-4 py-2 rounded-2xl ${baseClass} message-bubble">
               <div class="text-xs text-zinc-300 mb-1 opacity-80">${msg.senderUsername}</div>
               <div>${msg.content.text}</div>
               <div class="text-xs mt-2 opacity-70">${formatTime(new Date(msg.createdAt))}</div>
+              ${blockchainStatusHtml}
             </div>
           </div>
         `;
@@ -521,6 +527,7 @@
 
       if (msg.type === 'token') {
         const c = msg.content;
+        const blockchainStatusHtml = msg.blockchainRecorded ? `<div class="text-xs mt-2 text-amber-400" id="blockchain-status-${msg.id}">⏳ Recording on blockchain...</div>` : '';
         return `
           <div class="flex ${alignClass}">
             <div class="max-w-xs px-4 py-2 rounded-2xl ${baseClass} border-2 border-yellow-500/40 message-bubble">
@@ -529,6 +536,7 @@
               <div class="text-xs text-zinc-300 mt-1">${c.memo || 'No memo'}</div>
               <div class="text-xs mt-2 font-medium">${c.status === 'confirmed' ? '✓ Confirmed' : '⏳ Pending'}</div>
               <div class="text-xs mt-1 opacity-70">${formatTime(new Date(msg.createdAt))}</div>
+              ${blockchainStatusHtml}
             </div>
           </div>
         `;
@@ -543,13 +551,17 @@
       if (!text || !currentConvId) return;
 
       input.value = '';
+      const recordOnBlockchain = document.getElementById('blockchainToggle').checked;
       const data = await apiCall(`/api/conversations/${currentConvId}/messages`, {
         method: 'POST',
-        body: JSON.stringify({ type: 'text', content: { text } })
+        body: JSON.stringify({ type: 'text', content: { text }, recordOnBlockchain })
       });
 
       if (data) {
         loadMessages();
+        if (data.blockchainRecordingId) {
+          pollBlockchainStatus(data.blockchainRecordingId, data.id);
+        }
       }
     }
 
@@ -584,19 +596,24 @@
       const amount = document.getElementById('tokenAmount').value;
       if (!amount || !currentConvId || !currentOtherId) return;
 
+      const recordOnBlockchain = document.getElementById('blockchainToggle').checked;
       const data = await apiCall('/api/tokens/send', {
         method: 'POST',
-        body: JSON.stringify({ recipientId: currentOtherId, amount: parseInt(amount), memo: document.getElementById('tokenMemo').value })
+        body: JSON.stringify({ recipientId: currentOtherId, amount: parseInt(amount), memo: document.getElementById('tokenMemo').value, recordOnBlockchain })
       });
 
       if (data) {
-        await apiCall(`/api/conversations/${currentConvId}/messages`, {
+        const msgData = await apiCall(`/api/conversations/${currentConvId}/messages`, {
           method: 'POST',
           body: JSON.stringify({
             type: 'token',
-            content: { recipientId: currentOtherId, amount: parseInt(amount), memo: document.getElementById('tokenMemo').value, txHash: data.txHash, status: data.status }
+            content: { recipientId: currentOtherId, amount: parseInt(amount), memo: document.getElementById('tokenMemo').value, txHash: data.txHash, status: data.status },
+            recordOnBlockchain
           })
         });
+        if (msgData && data.blockchainRecordingId) {
+          pollBlockchainStatus(data.blockchainRecordingId, msgData.id);
+        }
         hideTokenModal();
         loadMessages();
       }
@@ -605,6 +622,35 @@
     function showLightbox(imageUrl) {
       document.getElementById('lightboxImage').src = imageUrl;
       document.getElementById('imageLightbox').classList.remove('hidden');
+    }
+
+    async function pollBlockchainStatus(auditLogId, messageId) {
+      let isComplete = false;
+      const maxAttempts = 20;
+      let attempt = 0;
+
+      while (!isComplete && attempt < maxAttempts) {
+        attempt++;
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        const auditData = await apiCall(`/api/blockchain-audit/${auditLogId}`);
+        if (!auditData) continue;
+
+        const statusEl = document.getElementById(`blockchain-status-${messageId}`);
+        if (!statusEl) break;
+
+        if (auditData.status === 'confirmed') {
+          statusEl.innerHTML = `✓ On blockchain | <span class="font-mono text-xs">${auditData.txHash.substring(0, 10)}...</span>`;
+          statusEl.classList.remove('text-amber-400');
+          statusEl.classList.add('text-green-400');
+          isComplete = true;
+        } else if (auditData.status === 'failed') {
+          statusEl.innerHTML = `✗ Recording failed`;
+          statusEl.classList.remove('text-amber-400');
+          statusEl.classList.add('text-red-400');
+          isComplete = true;
+        }
+      }
     }
 
     async function searchUsers(query) {
