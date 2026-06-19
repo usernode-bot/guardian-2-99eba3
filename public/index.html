@@ -916,10 +916,16 @@
       if (data.conversations.length > 0) {
         if (html) html += '<div class="bg-zinc-200 dark:bg-zinc-800 text-xs text-zinc-600 dark:text-zinc-400 px-4 py-2 font-semibold sticky top-0 z-10">Conversations</div>';
         html += data.conversations.map(conv => {
-          const displayName = conv.nickname ? `${conv.nickname} (${conv.username} ✓)` : `${conv.username} ✓`;
+          const messageText = conv.lastMessage || 'No messages';
+          const timestamp = conv.lastMessageAt ? formatTime(new Date(conv.lastMessageAt)) : '';
           return `
           <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer transition" onclick="openConversation(${conv.id}, ${conv.otherId}, '${conv.username}', '${conv.nickname || ''}')">
-            <div class="font-medium text-zinc-900 dark:text-zinc-100">${displayName}</div>
+            <div class="flex justify-between items-start gap-4">
+              <div class="flex-1 min-w-0">
+                <div class="text-sm text-zinc-900 dark:text-zinc-100 truncate">${messageText}</div>
+              </div>
+              <div class="text-xs text-zinc-600 dark:text-zinc-400 flex-shrink-0">${timestamp}</div>
+            </div>
           </div>
         `;
         }).join('');
