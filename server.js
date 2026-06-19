@@ -9,6 +9,25 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const JWT_SECRET = process.env.JWT_SECRET;
 const IS_STAGING = process.env.USERNODE_ENV === 'staging';
 
+// Mock Usernode users for staging environment
+const MOCK_USERNODE_USERS = [
+  { id: 101, username: 'staging-charlie', usernode_pubkey: 'ut1staging-charlie-001', verified_at: new Date() },
+  { id: 102, username: 'staging-diana', usernode_pubkey: 'ut1staging-diana-001', verified_at: new Date() },
+  { id: 103, username: 'staging-eve', usernode_pubkey: 'ut1staging-eve-001', verified_at: null },
+  { id: 104, username: 'staging-frank', usernode_pubkey: 'ut1staging-frank-001', verified_at: new Date() },
+  { id: 105, username: 'staging-grace', usernode_pubkey: 'ut1staging-grace-001', verified_at: new Date() },
+  { id: 106, username: 'staging-henry', usernode_pubkey: null, verified_at: null },
+  { id: 107, username: 'staging-iris', usernode_pubkey: 'ut1staging-iris-001', verified_at: new Date() },
+  { id: 108, username: 'staging-jack', usernode_pubkey: 'ut1staging-jack-001', verified_at: null },
+  { id: 109, username: 'staging-kate', usernode_pubkey: 'ut1staging-kate-001', verified_at: new Date() },
+  { id: 110, username: 'staging-liam', usernode_pubkey: 'ut1staging-liam-001', verified_at: new Date() },
+  { id: 111, username: 'staging-mina', usernode_pubkey: null, verified_at: null },
+  { id: 112, username: 'staging-noah', usernode_pubkey: 'ut1staging-noah-001', verified_at: new Date() },
+  { id: 113, username: 'staging-olivia', usernode_pubkey: 'ut1staging-olivia-001', verified_at: new Date() },
+  { id: 114, username: 'staging-peter', usernode_pubkey: 'ut1staging-peter-001', verified_at: null },
+  { id: 115, username: 'staging-quinn', usernode_pubkey: 'ut1staging-quinn-001', verified_at: new Date() },
+];
+
 // Rate limit tracking (in-memory; could use Redis for production)
 const rateLimits = new Map();
 function checkRateLimit(key, limit, windowMs) {
@@ -20,6 +39,72 @@ function checkRateLimit(key, limit, windowMs) {
   times.push(now);
   rateLimits.set(key, times);
   return true;
+}
+
+// User cache with TTL (5 minutes)
+const userCache = new Map();
+function getCachedUser(userId) {
+  const cached = userCache.get(userId);
+  if (cached && Date.now() - cached.timestamp < 300000) {
+    return cached.data;
+  }
+  return null;
+}
+function cacheUser(userId, userData) {
+  userCache.set(userId, { data: userData, timestamp: Date.now() });
+}
+
+// Fetch a single Usernode user by ID (from registry or cache)
+async function fetchUsernodeUser(userId) {
+  const cached = getCachedUser(userId);
+  if (cached) return cached;
+
+  if (IS_STAGING) {
+    const user = MOCK_USERNODE_USERS.find(u => u.id === userId);
+    if (user) {
+      cacheUser(userId, user);
+      return user;
+    }
+    return null;
+  }
+
+  // In production, query the real Usernode leaderboard API
+  try {
+    const response = await fetch(`https://leaderboard.usernodelabs.org/api/users/${userId}`);
+    if (!response.ok) {
+      console.log(`User ${userId} not found in Usernode registry`);
+      return null;
+    }
+    const user = await response.json();
+    cacheUser(userId, user);
+    return user;
+  } catch (err) {
+    console.error('Error fetching Usernode user:', err.message);
+    return null;
+  }
+}
+
+// Search Usernode users by username query
+async function searchUsernodeUsers(query, limit = 20) {
+  if (IS_STAGING) {
+    const q = query.toLowerCase();
+    return MOCK_USERNODE_USERS.filter(u => u.username.toLowerCase().includes(q)).slice(0, limit);
+  }
+
+  // In production, query the real Usernode leaderboard API
+  try {
+    const response = await fetch(
+      `https://leaderboard.usernodelabs.org/api/search?q=${encodeURIComponent(query)}&limit=${limit}`
+    );
+    if (!response.ok) {
+      console.log('Usernode leaderboard search failed, falling back to local database');
+      return null;
+    }
+    return await response.json();
+  } catch (err) {
+    console.error('Error searching Usernode leaderboard:', err.message);
+    return null;
+  }
 }
 
 const PUBLIC_API_PATHS = new Set(['/health', '/favicon.ico']);
@@ -176,6 +261,34 @@ app.post('/api/conversations', async (req, res) => {
       return res.status(400).json({ error: 'Invalid participant' });
     }
 
+    // Check if participant exists in local database
+    const localUserRes = await pool.query(`SELECT id FROM users WHERE id = $1`, [participantId]);
+    let participantData = null;
+
+    // If not found locally, try to fetch from Usernode registry
+    if (localUserRes.rows.length === 0) {
+      participantData = await fetchUsernodeUser(participantId);
+      if (!participantData) {
+        return res.status(404).json({ error: 'Participant not found' });
+      }
+      // Upsert participant into local database
+      try {
+        await pool.query(`
+          INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at)
+          VALUES ($1, $2, $3, $4, NOW())
+          ON CONFLICT (id) DO UPDATE SET
+            username = EXCLUDED.username,
+            usernode_pubkey = EXCLUDED.usernode_pubkey,
+            verified_at = CASE
+              WHEN EXCLUDED.verified_at IS NOT NULL THEN EXCLUDED.verified_at
+              ELSE users.verified_at
+            END
+        `, [participantData.id, participantData.username, participantData.usernode_pubkey || null, participantData.verified_at || null]);
+      } catch (err) {
+        console.error('Error upserting participant:', err);
+      }
+    }
+
     const [a, b] = [userId, participantId].sort((x, y) => x - y);
     const { rows } = await pool.query(`
       SELECT id FROM conversations
@@ -192,6 +305,7 @@ app.post('/api/conversations', async (req, res) => {
       convId = result.rows[0].id;
     }
 
+    // Get final participant data from database
     const userRes = await pool.query(`SELECT username, usernode_pubkey FROM users WHERE id = $1`, [participantId]);
     const username = userRes.rows[0]?.username || 'Unknown';
     const usernode_pubkey = userRes.rows[0]?.usernode_pubkey || null;
@@ -401,6 +515,27 @@ app.post('/api/tokens/send', async (req, res) => {
 app.get('/api/search/users', async (req, res) => {
   try {
     const q = req.query.q || '';
+
+    if (!q.trim()) {
+      return res.json({ users: [] });
+    }
+
+    // Try to search Usernode registry first
+    let registryUsers = await searchUsernodeUsers(q, 20);
+
+    // If registry search succeeds, format and return results
+    if (registryUsers) {
+      const users = registryUsers.map(r => ({
+        id: r.id,
+        username: r.username,
+        usernode_pubkey: r.usernode_pubkey || null,
+        verified: !!r.verified_at,
+        mutualCount: 0,
+      }));
+      return res.json({ users });
+    }
+
+    // Fallback to local database if registry is unavailable
     const { rows } = await pool.query(`
       SELECT id, username, verified_at, usernode_pubkey
       FROM users
