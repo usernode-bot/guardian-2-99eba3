@@ -298,7 +298,7 @@
       }
       currentUser = user;
       document.getElementById('sidebarUsername').textContent = user.username + (user.verified ? ' ✓' : '');
-      document.getElementById('sidebarWallet').textContent = user.usernode_pubkey || 'No wallet linked';
+      document.getElementById('sidebarWallet').textContent = user.usernode_pubkey || '💼 Wallet not linked';
       loadConversations();
       setupEventListeners();
     }
@@ -360,7 +360,7 @@
           <div class="flex justify-between items-start gap-2">
             <div class="flex-1 min-w-0">
               <div class="font-medium truncate">${conv.username} <span class="text-sm text-zinc-500">✓</span></div>
-              <div class="text-xs text-zinc-500 truncate">${conv.usernode_pubkey || 'No wallet'}</div>
+              <div class="text-xs text-zinc-500 truncate">${conv.usernode_pubkey || '💼 Wallet not available'}</div>
               <div class="text-sm text-zinc-400 truncate">${conv.lastMessage || 'No messages'}</div>
             </div>
             <div class="text-xs text-zinc-500 text-right flex-shrink-0">
@@ -548,7 +548,7 @@
       results.innerHTML = data.users.map(user => `
         <div class="p-4 bg-zinc-800 rounded-lg cursor-pointer hover:bg-zinc-700 transition" onclick="startConversation(${user.id}, '${user.username}')">
           <div class="font-medium text-cyan-400">${user.username} ${user.verified ? '✓' : ''}</div>
-          <div class="text-xs text-zinc-500 mt-1">${user.usernode_pubkey || 'No wallet'}</div>
+          <div class="text-xs text-zinc-500 mt-1">${user.usernode_pubkey || '💼 Wallet not available'}</div>
           <div class="text-sm text-zinc-400 mt-1">${user.mutualCount} mutual connections</div>
         </div>
       `).join('');
