@@ -231,8 +231,11 @@
       </button>
       <button id="backBtn" class="text-sm text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 hidden transition">← Back</button>
       <h1 id="headerTitle" class="text-lg font-semibold flex-1">Guardian</h1>
-      <div id="headerRight" class="text-sm text-zinc-600 dark:text-zinc-500">
-        <button id="deleteContactBtn" class="hidden icon-button-bare" title="Delete contact" onclick="openContactDeleteModal()">🗑️</button>
+      <div id="headerRight" class="text-sm text-zinc-600 dark:text-zinc-500 relative">
+        <button id="conversationMenuBtn" class="hidden text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare" title="Conversation options" onclick="toggleConversationMenu(event)">⋯</button>
+        <div id="conversationMenuDropdown" class="hidden absolute right-0 mt-2 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg shadow-lg z-50 min-w-40">
+          <button onclick="openDeleteConversationModal()" class="menu-item text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 w-full text-left">Delete conversation</button>
+        </div>
       </div>
     </div>
 
@@ -489,6 +492,18 @@
       <div class="flex gap-2">
         <button id="deleteContactCancel" class="flex-1 px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
         <button id="deleteContactConfirm" class="flex-1 px-3 py-2 bg-red-600 hover:bg-red-700 dark:hover:bg-red-500 text-white rounded-lg transition font-medium">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Conversation Modal -->
+  <div id="deleteConversationModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
+      <h2 class="text-xl font-semibold text-zinc-900 dark:text-white" id="deleteConversationTitle">Delete conversation?</h2>
+      <p class="text-sm text-zinc-600 dark:text-zinc-400">This will remove the conversation from your list. Messages will no longer be visible.</p>
+      <div class="flex gap-2">
+        <button id="deleteConversationCancel" class="flex-1 px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
+        <button id="deleteConversationConfirm" class="flex-1 px-3 py-2 bg-red-600 hover:bg-red-700 dark:hover:bg-red-500 text-white rounded-lg transition font-medium">Delete</button>
       </div>
     </div>
   </div>
@@ -810,6 +825,9 @@
       document.getElementById('deleteContactCancel').addEventListener('click', hideDeleteContactModal);
       document.getElementById('deleteContactConfirm').addEventListener('click', confirmDeleteContact);
 
+      document.getElementById('deleteConversationCancel').addEventListener('click', hideDeleteConversationModal);
+      document.getElementById('deleteConversationConfirm').addEventListener('click', confirmDeleteConversation);
+
       document.getElementById('sidebarOverlay').addEventListener('click', toggleSidebar);
 
       document.addEventListener('keydown', (e) => {
@@ -905,6 +923,9 @@
       document.getElementById('headerTitle').textContent = username + ' ✓';
       document.getElementById('backBtn').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
+
+      // Close conversation menu dropdown
+      document.getElementById('conversationMenuDropdown').classList.add('hidden');
 
       // Fetch and display contact menu
       await fetchAndShowContactMenu(otherId, username);
@@ -1231,7 +1252,7 @@
       document.getElementById('headerTitle').textContent = 'Guardian';
       document.getElementById('backBtn').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
-      document.getElementById('deleteContactBtn').classList.add('hidden');
+      document.getElementById('conversationMenuBtn').classList.add('hidden');
       if (pollInterval) clearInterval(pollInterval);
       loadConversations();
     }
@@ -1245,7 +1266,7 @@
       document.getElementById('headerTitle').textContent = 'Requests';
       document.getElementById('backBtn').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
-      document.getElementById('deleteContactBtn').classList.add('hidden');
+      document.getElementById('conversationMenuBtn').classList.add('hidden');
       if (pollInterval) clearInterval(pollInterval);
       loadRequestsTab();
     }
@@ -1327,7 +1348,7 @@
       document.getElementById('headerTitle').textContent = 'Contacts';
       document.getElementById('backBtn').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
-      document.getElementById('deleteContactBtn').classList.add('hidden');
+      document.getElementById('conversationMenuBtn').classList.add('hidden');
       loadContactsList();
     }
 
@@ -1456,8 +1477,6 @@
     // ===== CONTACT MENU FUNCTIONS (in chat header) =====
 
     async function fetchAndShowContactMenu(otherId, username) {
-      const deleteContactBtn = document.getElementById('deleteContactBtn');
-
       // Fetch user details to get wallet address
       const userRes = await apiCall(`/api/users/${otherId}`);
       if (!userRes) return;
@@ -1473,8 +1492,8 @@
         }
       }
 
-      // Show the delete button (name and address already in header title)
-      deleteContactBtn.classList.remove('hidden');
+      // Show the conversation menu button (name and address already in header title)
+      document.getElementById('conversationMenuBtn').classList.remove('hidden');
     }
 
     function openContactDeleteModal() {
@@ -1484,6 +1503,58 @@
       }
       showDeleteContactModal(currentContactId, currentContactName);
     }
+
+    // ===== CONVERSATION MENU FUNCTIONS =====
+
+    function toggleConversationMenu(event) {
+      event.stopPropagation();
+      const dropdown = document.getElementById('conversationMenuDropdown');
+      dropdown.classList.toggle('hidden');
+    }
+
+    function openDeleteConversationModal() {
+      // Close the dropdown menu
+      document.getElementById('conversationMenuDropdown').classList.add('hidden');
+
+      // Update modal title
+      document.getElementById('deleteConversationTitle').textContent = `Delete ${currentContactName}?`;
+
+      // Show the modal
+      document.getElementById('deleteConversationModal').classList.remove('hidden');
+    }
+
+    function hideDeleteConversationModal() {
+      document.getElementById('deleteConversationModal').classList.add('hidden');
+    }
+
+    async function confirmDeleteConversation() {
+      if (!currentConvId) {
+        alert('Conversation not found.');
+        return;
+      }
+
+      const data = await apiCall(`/api/conversations/${currentConvId}/archive`, {
+        method: 'POST',
+        body: JSON.stringify({})
+      });
+
+      if (data && data.ok) {
+        hideDeleteConversationModal();
+        showConversationsView();
+        loadConversations();
+      } else {
+        alert('Failed to delete conversation');
+      }
+    }
+
+    // Close conversation menu when clicking outside
+    document.addEventListener('click', (e) => {
+      const menuBtn = document.getElementById('conversationMenuBtn');
+      const dropdown = document.getElementById('conversationMenuDropdown');
+      if (menuBtn && dropdown && !e.target.closest('#conversationMenuBtn') && !e.target.closest('#conversationMenuDropdown')) {
+        dropdown.classList.add('hidden');
+      }
+    });
 
     init();
   </script>

@@ -179,11 +179,11 @@ app.get('/api/conversations', async (req, res) => {
     const offset = parseInt(req.query.offset || 0);
     const userId = req.user.id;
 
-    // Simple query: get all conversations for this user
+    // Simple query: get all conversations for this user, excluding archived ones
     const convQuery = `
       SELECT id, participant_a_id, participant_b_id, archived_by, muted_by
       FROM conversations
-      WHERE (participant_a_id = $1 OR participant_b_id = $1)
+      WHERE (participant_a_id = $1 OR participant_b_id = $1) AND NOT (archived_by @> ARRAY[$1])
       ORDER BY created_at DESC
       LIMIT $2 OFFSET $3
     `;
