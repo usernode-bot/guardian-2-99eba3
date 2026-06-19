@@ -1311,7 +1311,8 @@
       });
 
       if (data && data.conversationId) {
-        loadRequestsTab();
+        await loadRequestsTab();
+        await loadContactsList();
         const convData = await apiCall(`/api/conversations/${data.conversationId}`);
         if (convData && !convData.error) {
           const requests = await apiCall('/api/conversation-requests/sent');

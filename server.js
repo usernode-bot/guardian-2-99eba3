@@ -851,7 +851,7 @@ app.get('/api/conversation-requests/sent', async (req, res) => {
              u.username, u.usernode_pubkey
       FROM conversation_requests cr
       JOIN users u ON cr.recipient_id = u.id
-      WHERE cr.sender_id = $1 AND cr.status IN ('pending', 'accepted')
+      WHERE cr.sender_id = $1 AND cr.status = 'pending'
       ORDER BY cr.created_at DESC
     `, [userId]);
 
@@ -922,6 +922,13 @@ app.post('/api/conversation-requests/:requestId/accept', async (req, res) => {
       SET status = 'accepted', accepted_at = NOW()
       WHERE id = $1
     `, [requestId]);
+
+    // Auto-create contacts in both directions (idempotent with ON CONFLICT DO NOTHING)
+    await pool.query(`
+      INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
+      VALUES ($1, $2, NULL, NOW()), ($2, $1, NULL, NOW())
+      ON CONFLICT (user_id, contact_user_id) DO NOTHING
+    `, [recipientId, senderId]);
 
     res.json({
       conversationId: convId,
@@ -1501,17 +1508,33 @@ async function start() {
         ON CONFLICT DO NOTHING
       `, [alice, bob, charlie, david, emma]);
 
-      // Seed conversation requests
+      // Seed conversation requests for testing accept → auto-contact flow
+      // Alice sent pending request to Charlie
       await pool.query(`
         INSERT INTO conversation_requests (sender_id, recipient_id, status, created_at)
         VALUES ($1, $2, 'pending', NOW())
         ON CONFLICT (sender_id, recipient_id) DO NOTHING
       `, [alice, charlie]);
 
+      // Bob sent pending request to David
+      await pool.query(`
+        INSERT INTO conversation_requests (sender_id, recipient_id, status, created_at)
+        VALUES ($1, $2, 'pending', NOW())
+        ON CONFLICT (sender_id, recipient_id) DO NOTHING
+      `, [bob, david]);
+
+      // Charlie→Bob request (accepted) to test bilateral contact creation
       await pool.query(`
         INSERT INTO conversation_requests (sender_id, recipient_id, status, created_at, accepted_at)
         VALUES ($1, $2, 'accepted', NOW() - INTERVAL '1 hour', NOW() - INTERVAL '30 minutes')
         ON CONFLICT (sender_id, recipient_id) DO NOTHING
+      `, [charlie, bob]);
+
+      // Auto-create contacts for Charlie↔Bob (already accepted request above)
+      await pool.query(`
+        INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
+        VALUES ($1, $2, null, NOW()), ($2, $1, null, NOW())
+        ON CONFLICT (user_id, contact_user_id) DO NOTHING
       `, [charlie, bob]);
     }
 
