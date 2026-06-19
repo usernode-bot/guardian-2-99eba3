@@ -419,10 +419,6 @@
         </button>
         <button id="sendBtn" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Send</button>
       </div>
-      <div class="flex items-center gap-2 text-sm">
-        <input id="blockchainToggle" type="checkbox" class="w-4 h-4 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded accent-cyan-600 dark:accent-cyan-500 cursor-pointer">
-        <label for="blockchainToggle" class="text-zinc-600 dark:text-zinc-400 cursor-pointer">Record on blockchain</label>
-      </div>
     </div>
 
     <!-- Attachment Bottom Sheet -->
@@ -1056,10 +1052,9 @@
       if (!text || !currentConvId) return;
 
       input.value = '';
-      const recordOnBlockchain = document.getElementById('blockchainToggle').checked;
       const data = await apiCall(`/api/conversations/${currentConvId}/messages`, {
         method: 'POST',
-        body: JSON.stringify({ type: 'text', content: { text }, recordOnBlockchain })
+        body: JSON.stringify({ type: 'text', content: { text } })
       });
 
       if (data) {
@@ -1101,19 +1096,22 @@
       const amount = document.getElementById('tokenAmount').value;
       if (!amount || !currentConvId || !currentOtherId) return;
 
-      const recordOnBlockchain = document.getElementById('blockchainToggle').checked;
+      const sendBtn = document.getElementById('tokenSend');
+      const originalText = sendBtn.textContent;
+      sendBtn.disabled = true;
+      sendBtn.textContent = 'Sending...';
+
       const data = await apiCall('/api/tokens/send', {
         method: 'POST',
-        body: JSON.stringify({ recipientId: currentOtherId, amount: parseInt(amount), memo: document.getElementById('tokenMemo').value, recordOnBlockchain })
+        body: JSON.stringify({ recipientId: currentOtherId, amount: parseInt(amount), memo: document.getElementById('tokenMemo').value })
       });
 
-      if (data) {
+      if (data && !data.error) {
         const msgData = await apiCall(`/api/conversations/${currentConvId}/messages`, {
           method: 'POST',
           body: JSON.stringify({
             type: 'token',
-            content: { recipientId: currentOtherId, amount: parseInt(amount), memo: document.getElementById('tokenMemo').value, txHash: data.txHash, status: data.status },
-            recordOnBlockchain
+            content: { recipientId: currentOtherId, amount: parseInt(amount), memo: document.getElementById('tokenMemo').value, txHash: data.txHash, status: data.status }
           })
         });
         if (msgData && data.blockchainRecordingId) {
@@ -1122,6 +1120,9 @@
         hideTokenModal();
         loadMessages();
       }
+
+      sendBtn.disabled = false;
+      sendBtn.textContent = originalText;
     }
 
     function showLightbox(imageUrl) {
@@ -1129,9 +1130,9 @@
       document.getElementById('imageLightbox').classList.remove('hidden');
     }
 
-    async function pollBlockchainStatus(auditLogId, messageId) {
+    async function pollBlockchainStatus(auditLogId, messageId, onComplete) {
       let isComplete = false;
-      const maxAttempts = 20;
+      const maxAttempts = 60;
       let attempt = 0;
 
       while (!isComplete && attempt < maxAttempts) {
@@ -1145,16 +1146,38 @@
         if (!statusEl) break;
 
         if (auditData.status === 'confirmed') {
-          statusEl.innerHTML = `✓ On blockchain | <span class="font-mono text-xs">${auditData.txHash.substring(0, 10)}...</span>`;
+          statusEl.innerHTML = `✓ Confirmed | <span class="font-mono text-xs" title="${auditData.txHash}">${auditData.txHash.substring(0, 10)}...</span>`;
           statusEl.classList.remove('text-amber-600', 'dark:text-amber-400');
           statusEl.classList.add('text-green-600', 'dark:text-green-400');
           isComplete = true;
         } else if (auditData.status === 'failed') {
-          statusEl.innerHTML = `✗ Recording failed`;
+          statusEl.innerHTML = `✗ Failed | <button onclick="retryFailedTransaction(${auditLogId}, ${messageId})" class="underline">Retry</button>`;
           statusEl.classList.remove('text-amber-600', 'dark:text-amber-400');
           statusEl.classList.add('text-red-600', 'dark:text-red-400');
           isComplete = true;
+        } else {
+          statusEl.innerHTML = `⏳ Pending confirmation...`;
+          statusEl.classList.add('text-amber-600', 'dark:text-amber-400');
         }
+      }
+
+      if (onComplete) onComplete();
+    }
+
+    async function retryFailedTransaction(auditLogId, messageId) {
+      const data = await apiCall(`/api/blockchain-audit/${auditLogId}/retry`, {
+        method: 'POST',
+        body: JSON.stringify({})
+      });
+
+      if (data && data.ok) {
+        const statusEl = document.getElementById(`blockchain-status-${messageId}`);
+        if (statusEl) {
+          statusEl.innerHTML = `⏳ Retrying...`;
+          statusEl.classList.remove('text-red-600', 'dark:text-red-400');
+          statusEl.classList.add('text-amber-600', 'dark:text-amber-400');
+        }
+        pollBlockchainStatus(auditLogId, messageId);
       }
     }
 

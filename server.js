@@ -23,38 +23,55 @@ function checkRateLimit(key, limit, windowMs) {
 }
 
 const PUBLIC_API_PATHS = new Set(['/health', '/favicon.ico']);
+const PUBLIC_PREFIXES = ['/explorer-api/'];
 
-// Background blockchain submission handler
-async function submitToBlockchain(userId, auditLogId, messageType, content) {
+// Send transaction to blockchain via bridge
+async function sendTransactionToBridge(payload) {
   try {
-    // In staging, instantly confirm transactions
+    if (IS_STAGING) {
+      // Mock implementation: return immediate confirmation
+      const txHash = 'ut1staging-tx-' + Date.now();
+      return { txHash, status: 'pending' };
+    }
+
+    // In production: call the real bridge sendTransaction
+    // This would integrate with usernode-bridge.js
+    // For now, simulate with a unique tx hash
+    const txHash = 'ut1tx-' + Math.random().toString(36).substr(2, 9);
+    return { txHash, status: 'pending' };
+  } catch (err) {
+    console.error('Error sending transaction to bridge:', err);
+    throw err;
+  }
+}
+
+// Monitor blockchain transaction status
+async function monitorBlockchainStatus(auditLogId, txHash) {
+  try {
+    // In staging, instantly confirm after a delay
     if (IS_STAGING) {
       await new Promise(resolve => setTimeout(resolve, 1000));
       await pool.query(`
         UPDATE blockchain_audit_logs
-        SET status = 'confirmed', confirmed_at = NOW()
+        SET status = 'confirmed', confirmed_at = NOW(), updated_at = NOW()
         WHERE id = $1
       `, [auditLogId]);
       return;
     }
 
-    // In production: simulate calling usernode-bridge.js via sendTransaction
-    // For now, we'll just set status to confirmed after a delay
-    // In a real implementation, this would call:
-    // const bridge = require('./usernode-bridge');
-    // const result = await bridge.sendTransaction({ ... });
-
+    // In production: would poll explorer API via /explorer-api/* proxy
+    // For now, simulate confirmation after delay
     await new Promise(resolve => setTimeout(resolve, 3000));
     await pool.query(`
       UPDATE blockchain_audit_logs
-      SET status = 'confirmed', confirmed_at = NOW()
+      SET status = 'confirmed', confirmed_at = NOW(), updated_at = NOW()
       WHERE id = $1
     `, [auditLogId]);
   } catch (err) {
-    console.error('Error in submitToBlockchain:', err);
+    console.error('Error monitoring blockchain status:', err);
     await pool.query(`
       UPDATE blockchain_audit_logs
-      SET status = 'failed', error_message = $1
+      SET status = 'failed', error_message = $1, updated_at = NOW()
       WHERE id = $2
     `, [err.message, auditLogId]);
   }
@@ -95,6 +112,7 @@ app.use(async (req, res, next) => {
 
   if (req.method !== 'GET' || req.path.startsWith('/api/')) {
     if (PUBLIC_API_PATHS.has(req.path)) return next();
+    if (PUBLIC_PREFIXES.some((p) => req.path.startsWith(p))) return next();
     if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
   }
   next();
@@ -300,7 +318,7 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
     }
 
     const { convId } = req.params;
-    const { type, content, recordOnBlockchain } = req.body;
+    const { type, content } = req.body;
     const userId = req.user.id;
     const now = new Date();
 
@@ -312,46 +330,55 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       return res.status(400).json({ error: 'Invalid message' });
     }
 
-    let messageId, blockchainRecordingId = null;
+    // Prepare transaction payload
+    const transactionPayload = {
+      type: 'message',
+      messageType: type,
+      content: content,
+      senderUserId: userId
+    };
 
-    if (recordOnBlockchain) {
-      // Generate placeholder tx hash
-      const placeholderTxHash = IS_STAGING ? 'staging-tx-blockchain-' + Date.now() : 'tx-pending-' + Math.random().toString(36).substr(2, 9);
+    // Create audit log entry first with placeholder tx hash
+    const placeholderTxHash = IS_STAGING ? 'ut1staging-tx-msg-' + Date.now() : 'ut1tx-msg-' + Math.random().toString(36).substr(2, 9);
+    const auditRes = await pool.query(`
+      INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $6)
+      RETURNING id
+    `, [userId, 'message', placeholderTxHash, JSON.stringify(transactionPayload), 'pending', now]);
+    const blockchainRecordingId = auditRes.rows[0].id;
 
-      // Create audit log entry first
-      const auditRes = await pool.query(`
-        INSERT INTO blockchain_audit_logs (user_id, tx_hash, status, created_at)
-        VALUES ($1, $2, 'pending', $3)
-        RETURNING id
-      `, [userId, placeholderTxHash, now]);
-      blockchainRecordingId = auditRes.rows[0].id;
+    // Create message with blockchain recording flag
+    const msgRes = await pool.query(`
+      INSERT INTO messages (conversation_id, sender_id, type, content, blockchain_recorded, blockchain_audit_log_id, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING id, created_at
+    `, [convId, userId, type, JSON.stringify(content), true, blockchainRecordingId, now]);
+    const messageId = msgRes.rows[0].id;
 
-      // Create message with blockchain recording flag
-      const msgRes = await pool.query(`
-        INSERT INTO messages (conversation_id, sender_id, type, content, blockchain_recorded, blockchain_audit_log_id, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING id, created_at
-      `, [convId, userId, type, JSON.stringify(content), true, blockchainRecordingId, now]);
-      messageId = msgRes.rows[0].id;
+    // Update audit log with message_id
+    await pool.query(`
+      UPDATE blockchain_audit_logs SET message_id = $1 WHERE id = $2
+    `, [messageId, blockchainRecordingId]);
 
-      // Update audit log with message_id
-      await pool.query(`
-        UPDATE blockchain_audit_logs SET message_id = $1 WHERE id = $2
-      `, [messageId, blockchainRecordingId]);
-
-      // Async: submit to blockchain in the background
-      submitToBlockchain(userId, blockchainRecordingId, type, content).catch(err => {
+    // Async: submit to blockchain in the background
+    (async () => {
+      try {
+        const result = await sendTransactionToBridge(transactionPayload);
+        // Update audit log with real tx hash
+        await pool.query(`
+          UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
+        `, [result.txHash, blockchainRecordingId]);
+        // Start monitoring
+        monitorBlockchainStatus(blockchainRecordingId, result.txHash).catch(err => {
+          console.error('Error monitoring blockchain status:', err);
+        });
+      } catch (err) {
         console.error('Background blockchain submission error:', err);
-      });
-    } else {
-      // Regular message without blockchain recording
-      const msgRes = await pool.query(`
-        INSERT INTO messages (conversation_id, sender_id, type, content, created_at)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING id, created_at
-      `, [convId, userId, type, JSON.stringify(content), now]);
-      messageId = msgRes.rows[0].id;
-    }
+        await pool.query(`
+          UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
+        `, [err.message, blockchainRecordingId]);
+      }
+    })();
 
     res.json({
       id: messageId,
@@ -462,8 +489,9 @@ app.post('/api/tokens/send', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const { recipientId, amount, memo, recordOnBlockchain } = req.body;
+    const { recipientId, amount, memo } = req.body;
     const userId = req.user.id;
+    const now = new Date();
 
     if (!recipientId || !amount) {
       return res.status(400).json({ error: 'Invalid token transfer' });
@@ -473,36 +501,53 @@ app.post('/api/tokens/send', async (req, res) => {
       return res.status(429).json({ error: 'Rate limited' });
     }
 
-    // Mock token transfer response
-    const txHash = IS_STAGING ? 'staging-tx-' + Date.now() : 'tx-' + Math.random().toString(36).substr(2, 9);
-    const response = {
-      txHash,
-      status: IS_STAGING ? 'confirmed' : 'pending',
+    // Prepare transaction payload
+    const transactionPayload = {
+      type: 'token_transfer',
+      sender: userId,
+      recipient: recipientId,
+      amount: parseInt(amount),
+      memo: memo || ''
+    };
+
+    // Create audit log entry with placeholder tx hash
+    const placeholderTxHash = IS_STAGING ? 'ut1staging-tx-token-' + Date.now() : 'ut1tx-token-' + Math.random().toString(36).substr(2, 9);
+    const auditRes = await pool.query(`
+      INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $6)
+      RETURNING id
+    `, [userId, 'token_transfer', placeholderTxHash, JSON.stringify(transactionPayload), 'pending', now]);
+    const blockchainRecordingId = auditRes.rows[0].id;
+
+    // Async: submit to blockchain in the background
+    (async () => {
+      try {
+        const result = await sendTransactionToBridge(transactionPayload);
+        // Update audit log with real tx hash
+        await pool.query(`
+          UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
+        `, [result.txHash, blockchainRecordingId]);
+        // Start monitoring
+        monitorBlockchainStatus(blockchainRecordingId, result.txHash).catch(err => {
+          console.error('Error monitoring blockchain status:', err);
+        });
+      } catch (err) {
+        console.error('Background blockchain submission error:', err);
+        await pool.query(`
+          UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
+        `, [err.message, blockchainRecordingId]);
+      }
+    })();
+
+    res.json({
+      blockchainRecordingId: blockchainRecordingId,
+      txHash: placeholderTxHash,
+      status: 'pending',
       sender: userId,
       recipient: recipientId,
       amount,
-      memo: memo || '',
-    };
-
-    // Handle blockchain recording if requested
-    if (recordOnBlockchain) {
-      const placeholderTxHash = IS_STAGING ? 'staging-tx-blockchain-' + Date.now() : 'tx-pending-' + Math.random().toString(36).substr(2, 9);
-      const auditRes = await pool.query(`
-        INSERT INTO blockchain_audit_logs (user_id, tx_hash, status, created_at)
-        VALUES ($1, $2, 'pending', NOW())
-        RETURNING id
-      `, [userId, placeholderTxHash]);
-      const blockchainRecordingId = auditRes.rows[0].id;
-
-      response.blockchainRecordingId = blockchainRecordingId;
-
-      // Async: submit to blockchain
-      submitToBlockchain(userId, blockchainRecordingId, 'token', { recipientId, amount, memo }).catch(err => {
-        console.error('Background blockchain submission error:', err);
-      });
-    }
-
-    res.json(response);
+      memo: memo || ''
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -520,7 +565,7 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
     const { auditLogId } = req.params;
 
     const { rows } = await pool.query(`
-      SELECT id, user_id, message_id, tx_hash, status, error_message, confirmed_at
+      SELECT id, user_id, message_id, message_type, tx_hash, status, error_message, confirmed_at
       FROM blockchain_audit_logs
       WHERE id = $1 AND user_id = $2
     `, [auditLogId, req.user.id]);
@@ -533,10 +578,114 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
     res.json({
       id: row.id,
       messageId: row.message_id,
+      messageType: row.message_type,
       txHash: row.tx_hash,
       status: row.status,
       errorMessage: row.error_message || null,
       confirmedAt: row.confirmed_at || null,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/blockchain-audit/:auditLogId/retry', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { auditLogId } = req.params;
+    const userId = req.user.id;
+
+    const { rows } = await pool.query(`
+      SELECT id, status, transaction_payload FROM blockchain_audit_logs
+      WHERE id = $1 AND user_id = $2
+    `, [auditLogId, userId]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Audit log not found' });
+    }
+
+    const auditLog = rows[0];
+    if (auditLog.status !== 'failed') {
+      return res.status(400).json({ error: 'Can only retry failed transactions' });
+    }
+
+    // Reset to pending
+    await pool.query(`
+      UPDATE blockchain_audit_logs
+      SET status = 'pending', error_message = NULL, updated_at = NOW()
+      WHERE id = $1
+    `, [auditLogId]);
+
+    // Re-submit to blockchain
+    (async () => {
+      try {
+        const payload = JSON.parse(auditLog.transaction_payload);
+        const result = await sendTransactionToBridge(payload);
+        // Update audit log with new tx hash
+        await pool.query(`
+          UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
+        `, [result.txHash, auditLogId]);
+        // Start monitoring
+        monitorBlockchainStatus(auditLogId, result.txHash).catch(err => {
+          console.error('Error monitoring blockchain status:', err);
+        });
+      } catch (err) {
+        console.error('Error retrying blockchain submission:', err);
+        await pool.query(`
+          UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
+        `, [err.message, auditLogId]);
+      }
+    })();
+
+    res.json({ ok: true, auditLogId });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/transactions-by-user', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const limit = Math.min(parseInt(req.query.limit || 50), 100);
+    const offset = parseInt(req.query.offset || 0);
+    const userId = req.user.id;
+
+    const { rows } = await pool.query(`
+      SELECT id, message_id, message_type, tx_hash, status, error_message, confirmed_at, created_at
+      FROM blockchain_audit_logs
+      WHERE user_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2 OFFSET $3
+    `, [userId, limit, offset]);
+
+    const { rows: countRows } = await pool.query(`
+      SELECT COUNT(*) as total FROM blockchain_audit_logs WHERE user_id = $1
+    `, [userId]);
+
+    const transactions = rows.map(r => ({
+      id: r.id,
+      messageId: r.message_id,
+      messageType: r.message_type,
+      txHash: r.tx_hash,
+      status: r.status,
+      errorMessage: r.error_message || null,
+      confirmedAt: r.confirmed_at || null,
+      createdAt: r.created_at
+    }));
+
+    res.json({
+      transactions,
+      total: parseInt(countRows[0].total),
+      limit,
+      offset
     });
   } catch (err) {
     console.error(err);
@@ -1014,6 +1163,16 @@ app.get('/api/users/:userId', async (req, res) => {
   }
 });
 
+// ===== EXPLORER API PROXY =====
+
+// Simple proxy for explorer API to avoid CORS issues
+app.use('/explorer-api', (req, res) => {
+  // Forward requests to testnet explorer
+  // This is a no-op in staging (explorer-api not actively used since mock returns status instantly)
+  // In production, this could be used to verify transaction status independently
+  res.status(501).json({ error: 'Explorer API proxy not yet fully configured' });
+});
+
 // ===== STATIC & FALLBACK =====
 
 app.use(express.static(path.join(__dirname, 'public')));
@@ -1128,14 +1287,31 @@ async function start() {
         id BIGSERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         message_id BIGINT REFERENCES messages(id) ON DELETE CASCADE,
+        message_type VARCHAR(50),
         tx_hash VARCHAR(255) UNIQUE NOT NULL,
         status VARCHAR(50) NOT NULL DEFAULT 'pending',
+        transaction_payload JSONB,
         transaction_data JSONB,
         error_message TEXT,
         confirmed_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )
+    `);
+
+    // Add message_type column if it doesn't exist (idempotent migration)
+    await pool.query(`
+      ALTER TABLE blockchain_audit_logs ADD COLUMN IF NOT EXISTS message_type VARCHAR(50)
+    `);
+
+    // Add transaction_payload column if it doesn't exist (idempotent migration)
+    await pool.query(`
+      ALTER TABLE blockchain_audit_logs ADD COLUMN IF NOT EXISTS transaction_payload JSONB
+    `);
+
+    // Add updated_at column if it doesn't exist (idempotent migration)
+    await pool.query(`
+      ALTER TABLE blockchain_audit_logs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()
     `);
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_blockchain_audit_logs_message_id
@@ -1236,12 +1412,18 @@ async function start() {
         // Seed blockchain audit log for messages that have blockchain recording
         if (msg.blockchain && result.rows.length > 0) {
           const messageId = result.rows[0].id;
+          const txHash = 'ut1staging-tx-msg-' + messageId;
+          const messageType = msg.type === 'token' ? 'token_transfer' : 'message';
+          const transactionPayload = msg.type === 'token'
+            ? { type: 'token_transfer', sender: msg.sender, recipient: msg.content.recipientId, amount: msg.content.amount, memo: msg.content.memo }
+            : { type: 'message', messageType: msg.type, content: msg.content, senderUserId: msg.sender };
+
           const auditResult = await pool.query(`
-            INSERT INTO blockchain_audit_logs (user_id, message_id, tx_hash, status, confirmed_at, created_at)
-            VALUES ($1, $2, $3, 'confirmed', $4, $5)
+            INSERT INTO blockchain_audit_logs (user_id, message_id, message_type, tx_hash, transaction_payload, status, confirmed_at, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, 'confirmed', $6, $7, $7)
             ON CONFLICT DO NOTHING
             RETURNING id
-          `, [msg.sender, messageId, 'staging-tx-blockchain-' + messageId, msgTime, msgTime]);
+          `, [msg.sender, messageId, messageType, txHash, JSON.stringify(transactionPayload), msgTime, msgTime]);
 
           // Update message with audit log reference
           if (auditResult.rows.length > 0) {
