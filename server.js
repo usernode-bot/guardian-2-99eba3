@@ -25,7 +25,7 @@ function checkRateLimit(key, limit, windowMs) {
 const PUBLIC_API_PATHS = new Set(['/health', '/favicon.ico']);
 
 app.use(express.json());
-app.use((req, res, next) => {
+app.use(async (req, res, next) => {
   const token = req.query.token || req.headers['x-usernode-token'];
   if (token && JWT_SECRET) {
     try { req.user = jwt.verify(token, JWT_SECRET); } catch (e) {
@@ -35,7 +35,26 @@ app.use((req, res, next) => {
 
   // In staging, provide a default test user if no valid token
   if (IS_STAGING && !req.user) {
-    req.user = { id: 1, username: 'staging-demo-alice', verified_at: new Date() };
+    req.user = { id: 1, username: 'staging-demo-alice', usernode_pubkey: 'ut1staging-alice-001', verified_at: new Date() };
+  }
+
+  // Upsert user on first request: ensure user exists in DB with wallet identity
+  if (req.user) {
+    try {
+      await pool.query(`
+        INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at)
+        VALUES ($1, $2, $3, $4, NOW())
+        ON CONFLICT (id) DO UPDATE SET
+          username = EXCLUDED.username,
+          usernode_pubkey = EXCLUDED.usernode_pubkey,
+          verified_at = CASE
+            WHEN EXCLUDED.verified_at IS NOT NULL THEN EXCLUDED.verified_at
+            ELSE users.verified_at
+          END
+      `, [req.user.id, req.user.username, req.user.usernode_pubkey || null, req.user.verified_at || null]);
+    } catch (err) {
+      console.error('Error upserting user:', err);
+    }
   }
 
   if (req.method !== 'GET' || req.path.startsWith('/api/')) {
@@ -60,6 +79,7 @@ app.get('/api/user', (req, res) => {
   res.json({
     id: req.user.id,
     username: req.user.username,
+    usernode_pubkey: req.user.usernode_pubkey || null,
     verified: !!req.user.verified_at,
   });
 });
@@ -91,10 +111,11 @@ app.get('/api/conversations', async (req, res) => {
     const result = await Promise.all(conversations.map(async (conv) => {
       const otherId = conv.participant_a_id === userId ? conv.participant_b_id : conv.participant_a_id;
 
-      // Get other user's username and verified status
-      const userRes = await pool.query(`SELECT username, verified_at FROM users WHERE id = $1`, [otherId]);
+      // Get other user's username, verified status, and wallet address
+      const userRes = await pool.query(`SELECT username, verified_at, usernode_pubkey FROM users WHERE id = $1`, [otherId]);
       const username = userRes.rows[0]?.username || 'Unknown';
       const verified = !!userRes.rows[0]?.verified_at;
+      const usernode_pubkey = userRes.rows[0]?.usernode_pubkey || null;
 
       // Get last message
       const msgRes = await pool.query(`
@@ -130,6 +151,7 @@ app.get('/api/conversations', async (req, res) => {
         otherId,
         username,
         verified,
+        usernode_pubkey,
         lastMessage,
         lastMessageAt,
         unreadCount,
@@ -172,10 +194,11 @@ app.post('/api/conversations', async (req, res) => {
       convId = result.rows[0].id;
     }
 
-    const userRes = await pool.query(`SELECT username FROM users WHERE id = $1`, [participantId]);
+    const userRes = await pool.query(`SELECT username, usernode_pubkey FROM users WHERE id = $1`, [participantId]);
     const username = userRes.rows[0]?.username || 'Unknown';
+    const usernode_pubkey = userRes.rows[0]?.usernode_pubkey || null;
 
-    res.json({ id: convId, participantId, username });
+    res.json({ id: convId, participantId, username, usernode_pubkey });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -381,7 +404,7 @@ app.get('/api/search/users', async (req, res) => {
   try {
     const q = req.query.q || '';
     const { rows } = await pool.query(`
-      SELECT id, username, verified_at
+      SELECT id, username, verified_at, usernode_pubkey
       FROM users
       WHERE username ILIKE $1
       LIMIT 20
@@ -390,6 +413,7 @@ app.get('/api/search/users', async (req, res) => {
     const users = rows.map(r => ({
       id: r.id,
       username: r.username,
+      usernode_pubkey: r.usernode_pubkey || null,
       verified: !!r.verified_at,
       mutualCount: 0,
     }));
@@ -405,7 +429,7 @@ app.get('/api/users/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
     const { rows } = await pool.query(`
-      SELECT id, username, verified_at FROM users WHERE id = $1
+      SELECT id, username, verified_at, usernode_pubkey FROM users WHERE id = $1
     `, [userId]);
 
     if (!rows.length) {
@@ -416,6 +440,7 @@ app.get('/api/users/:userId', async (req, res) => {
     res.json({
       id: user.id,
       username: user.username,
+      usernode_pubkey: user.usernode_pubkey || null,
       verified: !!user.verified_at,
       mutualCount: 0,
     });
@@ -455,11 +480,17 @@ async function start() {
       CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY,
         username VARCHAR(255) NOT NULL UNIQUE,
+        usernode_pubkey VARCHAR(100) UNIQUE,
         verified_at TIMESTAMPTZ,
         avatar_url VARCHAR(500),
         blocked_users INTEGER[],
         created_at TIMESTAMPTZ DEFAULT NOW()
       )
+    `);
+
+    // Add usernode_pubkey column if it doesn't exist (idempotent migration)
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS usernode_pubkey VARCHAR(100) UNIQUE
     `);
 
     // Create conversations table (marked private)
@@ -510,15 +541,18 @@ async function start() {
     if (IS_STAGING) {
       const alice = 1, bob = 2, charlie = 3, diana = 4, eve = 5;
 
-      // Create test users - verify they exist before proceeding
-      const userCheck = await pool.query(`
-        INSERT INTO users (id, username, verified_at, created_at) VALUES
-          ($1, 'staging-demo-alice', NOW(), NOW()),
-          ($2, 'staging-demo-bob', NOW(), NOW()),
-          ($3, 'staging-demo-charlie', NOW(), NOW()),
-          ($4, 'staging-demo-diana', NOW(), NOW()),
-          ($5, 'staging-demo-eve', NOW(), NOW())
-        ON CONFLICT DO NOTHING
+      // Create test users with wallet addresses
+      await pool.query(`
+        INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at) VALUES
+          ($1, 'staging-demo-alice', 'ut1staging-alice-001', NOW(), NOW()),
+          ($2, 'staging-demo-bob', 'ut1staging-bob-001', NOW(), NOW()),
+          ($3, 'staging-demo-charlie', 'ut1staging-charlie-001', NOW(), NOW()),
+          ($4, 'staging-demo-diana', 'ut1staging-diana-001', NOW(), NOW()),
+          ($5, 'staging-demo-eve', 'ut1staging-eve-001', NOW(), NOW())
+        ON CONFLICT (id) DO UPDATE SET
+          username = EXCLUDED.username,
+          usernode_pubkey = EXCLUDED.usernode_pubkey,
+          verified_at = EXCLUDED.verified_at
       `, [alice, bob, charlie, diana, eve]);
 
       // Verify users were created
