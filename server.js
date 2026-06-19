@@ -147,10 +147,16 @@ app.get('/api/conversations', async (req, res) => {
     const result = await Promise.all(conversations.map(async (conv) => {
       const otherId = conv.participant_a_id === userId ? conv.participant_b_id : conv.participant_a_id;
 
-      // Get other user's username and wallet address
-      const userRes = await pool.query(`SELECT username, usernode_pubkey FROM users WHERE id = $1`, [otherId]);
+      // Get other user's username, wallet address, and nickname if saved
+      const userRes = await pool.query(`
+        SELECT u.username, u.usernode_pubkey, uc.nickname
+        FROM users u
+        LEFT JOIN user_contacts uc ON uc.contact_user_id = u.id AND uc.user_id = $1
+        WHERE u.id = $2
+      `, [userId, otherId]);
       const username = userRes.rows[0]?.username || 'Unknown';
       const usernode_pubkey = userRes.rows[0]?.usernode_pubkey || null;
+      const nickname = userRes.rows[0]?.nickname || null;
 
       // Get last message
       const msgRes = await pool.query(`
@@ -185,6 +191,7 @@ app.get('/api/conversations', async (req, res) => {
         id: conv.id,
         otherId,
         username,
+        nickname,
         usernode_pubkey,
         lastMessage,
         lastMessageAt,
@@ -228,11 +235,17 @@ app.post('/api/conversations', async (req, res) => {
       convId = result.rows[0].id;
     }
 
-    const userRes = await pool.query(`SELECT username, usernode_pubkey FROM users WHERE id = $1`, [participantId]);
+    const userRes = await pool.query(`
+      SELECT u.username, u.usernode_pubkey, uc.nickname
+      FROM users u
+      LEFT JOIN user_contacts uc ON uc.contact_user_id = u.id AND uc.user_id = $1
+      WHERE u.id = $2
+    `, [userId, participantId]);
     const username = userRes.rows[0]?.username || 'Unknown';
     const usernode_pubkey = userRes.rows[0]?.usernode_pubkey || null;
+    const nickname = userRes.rows[0]?.nickname || null;
 
-    res.json({ id: convId, participantId, username, usernode_pubkey });
+    res.json({ id: convId, participantId, username, nickname, usernode_pubkey });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -625,9 +638,10 @@ app.get('/api/conversation-requests/received', async (req, res) => {
 
     const { rows: requests } = await pool.query(`
       SELECT cr.id, cr.sender_id, cr.created_at,
-             u.username, u.usernode_pubkey
+             u.username, u.usernode_pubkey, uc.nickname
       FROM conversation_requests cr
       JOIN users u ON cr.sender_id = u.id
+      LEFT JOIN user_contacts uc ON uc.contact_user_id = u.id AND uc.user_id = $1
       WHERE cr.recipient_id = $1 AND cr.status = 'pending'
       ORDER BY cr.created_at DESC
     `, [userId]);
@@ -637,6 +651,7 @@ app.get('/api/conversation-requests/received', async (req, res) => {
         id: r.id,
         senderId: r.sender_id,
         senderUsername: r.username,
+        senderNickname: r.nickname,
         senderWallet: r.usernode_pubkey,
         createdAt: r.created_at,
       })),
@@ -657,9 +672,10 @@ app.get('/api/conversation-requests/sent', async (req, res) => {
 
     const { rows: requests } = await pool.query(`
       SELECT cr.id, cr.recipient_id, cr.status, cr.created_at,
-             u.username, u.usernode_pubkey
+             u.username, u.usernode_pubkey, uc.nickname
       FROM conversation_requests cr
       JOIN users u ON cr.recipient_id = u.id
+      LEFT JOIN user_contacts uc ON uc.contact_user_id = u.id AND uc.user_id = $1
       WHERE cr.sender_id = $1 AND cr.status IN ('pending', 'accepted')
       ORDER BY cr.created_at DESC
     `, [userId]);
@@ -669,6 +685,7 @@ app.get('/api/conversation-requests/sent', async (req, res) => {
         id: r.id,
         recipientId: r.recipient_id,
         recipientUsername: r.username,
+        recipientNickname: r.nickname,
         recipientWallet: r.usernode_pubkey,
         status: r.status,
         createdAt: r.created_at,

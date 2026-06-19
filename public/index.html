@@ -890,18 +890,21 @@
         const pendingRequests = sentData.requests.filter(r => r.status === 'pending');
         if (pendingRequests.length > 0) {
           html += '<div class="bg-zinc-200 dark:bg-zinc-800 text-xs text-zinc-600 dark:text-zinc-400 px-4 py-2 font-semibold sticky top-0 z-10">Pending Requests</div>';
-          html += pendingRequests.map(req => `
+          html += pendingRequests.map(req => {
+            const displayName = req.recipientNickname ? `${req.recipientNickname} (${req.recipientUsername} ✓)` : `${req.recipientUsername} ✓`;
+            return `
             <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition">
               <div class="flex justify-between items-start gap-2">
                 <div class="flex-1 min-w-0">
-                  <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${req.recipientUsername} <span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span></div>
+                  <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${displayName}</div>
                   <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${req.recipientWallet || 'No wallet'}</div>
                   <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">Awaiting response</div>
                 </div>
                 <button onclick="cancelRequest(${req.id})" class="text-zinc-600 dark:text-zinc-500 hover:text-red-600 dark:hover:text-red-400 text-xs">Cancel</button>
               </div>
             </div>
-          `).join('');
+          `;
+          }).join('');
         }
       }
 
@@ -912,11 +915,13 @@
 
       if (data.conversations.length > 0) {
         if (html) html += '<div class="bg-zinc-200 dark:bg-zinc-800 text-xs text-zinc-600 dark:text-zinc-400 px-4 py-2 font-semibold sticky top-0 z-10">Conversations</div>';
-        html += data.conversations.map(conv => `
-          <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer transition" onclick="openConversation(${conv.id}, ${conv.otherId}, '${conv.username}')">
+        html += data.conversations.map(conv => {
+          const displayName = conv.nickname ? `${conv.nickname} (${conv.username} ✓)` : `${conv.username} ✓`;
+          return `
+          <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer transition" onclick="openConversation(${conv.id}, ${conv.otherId}, '${conv.username}', '${conv.nickname || ''}')">
             <div class="flex justify-between items-start gap-2">
               <div class="flex-1 min-w-0">
-                <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${conv.username} <span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span></div>
+                <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${displayName}</div>
                 <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${conv.usernode_pubkey || 'No wallet'}</div>
                 <div class="text-sm text-zinc-600 dark:text-zinc-400 truncate">${conv.lastMessage || 'No messages'}</div>
               </div>
@@ -926,7 +931,8 @@
               </div>
             </div>
           </div>
-        `).join('');
+        `;
+        }).join('');
       }
 
       list.innerHTML = html;
@@ -952,11 +958,12 @@
       return Math.floor(diff / 86400000) + 'd';
     }
 
-    async function openConversation(convId, otherId, username) {
+    async function openConversation(convId, otherId, username, nickname) {
       currentConvId = convId;
       currentOtherId = otherId;
       currentContactName = username;
-      document.getElementById('headerTitle').textContent = username + ' ✓';
+      const displayName = nickname ? `${nickname} (${username} ✓)` : `${username} ✓`;
+      document.getElementById('headerTitle').textContent = displayName;
       document.getElementById('backBtn').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
 
@@ -1277,11 +1284,13 @@
       badge.textContent = data.requests.length;
       badge.classList.remove('hidden');
 
-      list.innerHTML = data.requests.map(req => `
+      list.innerHTML = data.requests.map(req => {
+        const displayName = req.senderNickname ? `${req.senderNickname} (${req.senderUsername} ✓)` : `${req.senderUsername} ✓`;
+        return `
         <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition">
           <div class="flex justify-between items-start gap-2 mb-3">
             <div class="flex-1 min-w-0">
-              <div class="font-medium text-zinc-900 dark:text-zinc-100">${req.senderUsername} <span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span></div>
+              <div class="font-medium text-zinc-900 dark:text-zinc-100">${displayName}</div>
               <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${req.senderWallet || 'No wallet'}</div>
               <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">${formatTime(new Date(req.createdAt))}</div>
             </div>
@@ -1291,7 +1300,8 @@
             <button onclick="rejectRequest(${req.id})" class="flex-1 px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-200 text-sm rounded-lg transition">Reject</button>
           </div>
         </div>
-      `).join('');
+      `;
+      }).join('');
     }
 
     async function acceptRequest(requestId) {
@@ -1371,11 +1381,12 @@
         return;
       }
 
-      list.innerHTML = data.contacts.map(contact => `
-        <div class="contact-row p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer transition flex justify-between items-center group" onclick="startConversationWithContact(${contact.userId}, '${contact.username}')">
+      list.innerHTML = data.contacts.map(contact => {
+        const displayName = contact.nickname ? `${contact.nickname} (${contact.username} ✓)` : `${contact.username} ✓`;
+        return `
+        <div class="contact-row p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer transition flex justify-between items-center group" onclick="startConversationWithContact(${contact.userId}, '${contact.username}', '${contact.nickname || ''}')">
           <div class="flex-1 min-w-0">
-            <div class="font-medium text-zinc-900 dark:text-zinc-100">${contact.username} ${contact.verified ? '<span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
-            ${contact.nickname ? `<div class="text-xs text-cyan-600 dark:text-cyan-400 truncate">${contact.nickname}</div>` : ''}
+            <div class="font-medium text-zinc-900 dark:text-zinc-100">${displayName}</div>
             <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${contact.usernode_pubkey || 'No wallet'}</div>
           </div>
           <div class="relative">
@@ -1389,7 +1400,8 @@
             </div>
           </div>
         </div>
-      `).join('');
+      `;
+      }).join('');
     }
 
     async function addContact() {
@@ -1422,14 +1434,14 @@
       document.getElementById('addContactNickname').value = '';
     }
 
-    async function startConversationWithContact(userId, username) {
+    async function startConversationWithContact(userId, username, nickname) {
       const data = await apiCall('/api/conversations', {
         method: 'POST',
         body: JSON.stringify({ participantId: userId })
       });
 
       if (data) {
-        openConversation(data.id, userId, username);
+        openConversation(data.id, userId, username, data.nickname || nickname);
       }
     }
 
