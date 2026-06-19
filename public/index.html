@@ -176,7 +176,6 @@
     .layout-compact #sidebarUser { padding: 0.75rem; }
     .layout-compact #sidebarUser > div { gap: 0.5rem; }
     .layout-compact #convList > div { padding: 0.75rem; }
-    .layout-compact #contactsList > div { padding: 0.75rem; }
     .layout-compact #messageList { gap: 0.5rem; }
     .layout-compact #header { padding: 0.5rem 0.75rem; }
     .layout-compact #inputFooter { padding: 0.75rem; gap: 0.25rem; }
@@ -284,12 +283,6 @@
           </svg>
           Conversations
         </button>
-        <button onclick="showContactsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
-          <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.856-1.487M15 10a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-          Contacts
-        </button>
         <button onclick="showDiscoverView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
           <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -387,12 +380,6 @@
         <div id="messageList" class="flex-1 overflow-y-auto space-y-3 p-4"></div>
       </div>
 
-      <!-- Contacts View -->
-      <div id="contactsView" class="hidden flex flex-col flex-1 overflow-hidden">
-        <div id="contactsList" class="flex-1 overflow-y-auto divide-y divide-zinc-300 dark:divide-zinc-800">
-          <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading contacts...</div>
-        </div>
-      </div>
 
       <!-- Discover View -->
       <div id="discoverView" class="hidden flex flex-col flex-1 p-4 overflow-hidden">
@@ -752,21 +739,6 @@
       }
     }
 
-    function toggleContactMenu(contactId, event) {
-      event.stopPropagation();
-      closeContactMenu();
-      const contactRow = event.target.closest('.contact-row');
-      if (!contactRow) return;
-
-      const menu = contactRow.querySelector('.contact-menu');
-      if (menu) {
-        menu.classList.toggle('hidden');
-        if (!menu.classList.contains('hidden')) {
-          openContactMenu = { contactId, menu };
-        }
-      }
-    }
-
     function closeContactMenu() {
       if (openContactMenu && openContactMenu.menu) {
         openContactMenu.menu.classList.add('hidden');
@@ -801,7 +773,6 @@
         localStorage.setItem(`guardian_contacts_${currentUser.id}`, JSON.stringify(filtered));
         hideContactHeaderMenu();
         currentContactId = null;
-        loadContacts();
       }
     }
 
@@ -1352,26 +1323,11 @@
       updateFabVisibility();
     }
 
-    function showContactsView() {
-      document.getElementById('conversationsView').classList.add('hidden');
-      document.getElementById('chatView').classList.add('hidden');
-      document.getElementById('discoverView').classList.add('hidden');
-      document.getElementById('contactsView').classList.remove('hidden');
-      document.getElementById('inputFooter').classList.add('hidden');
-      document.getElementById('headerTitle').textContent = 'Contacts';
-      document.getElementById('backBtn').classList.remove('hidden');
-      document.getElementById('menuBtn').classList.add('hidden');
-      document.getElementById('contactMenuBtn').classList.add('hidden');
-      hideContactHeaderMenu();
-      updateFabVisibility();
-      loadContacts();
-    }
 
     function showDiscoverView() {
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.add('hidden');
       document.getElementById('discoverView').classList.remove('hidden');
-      document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('headerTitle').textContent = 'Find contacts';
       document.getElementById('backBtn').classList.remove('hidden');
@@ -1382,38 +1338,6 @@
       document.getElementById('searchInput').focus();
     }
 
-    // ===== CONTACTS FUNCTIONS =====
-
-    async function loadContacts() {
-      const data = await apiCall('/api/contacts');
-      if (!data) return;
-
-      const list = document.getElementById('contactsList');
-      if (data.contacts.length === 0) {
-        list.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">No contacts yet.<br>Tap "Find Contacts" to add someone.</div>';
-        return;
-      }
-
-      list.innerHTML = data.contacts.map(contact => `
-        <div class="contact-row p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer transition flex justify-between items-center group" onclick="startConversationWithContact(${contact.userId}, '${contact.username}')">
-          <div class="flex-1 min-w-0">
-            <div class="font-medium text-zinc-900 dark:text-zinc-100">${contact.username} ${contact.verified ? '<span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
-            ${contact.nickname ? `<div class="text-xs text-cyan-600 dark:text-cyan-400 truncate">${contact.nickname}</div>` : ''}
-            <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${contact.usernode_pubkey || 'No wallet'}</div>
-          </div>
-          <div class="relative">
-            <button onclick="toggleContactMenu(${contact.id}, event)" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 opacity-0 group-hover:opacity-100 transition ml-2 p-1" title="Contact options">
-              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM16 12a2 2 0 100-4 2 2 0 000 4z" />
-              </svg>
-            </button>
-            <div class="hidden contact-menu top-full right-0">
-              <button onclick="showDeleteContactModal(${contact.id}, '${contact.username}')" class="menu-item delete-item">🗑️ Delete Contact</button>
-            </div>
-          </div>
-        </div>
-      `).join('');
-    }
 
     async function addContact() {
       const address = document.getElementById('addContactAddress').value.trim();
@@ -1546,7 +1470,7 @@
 
     function openContactDeleteModal() {
       if (!currentContactId) {
-        alert('Contact not found. Delete from Contacts view instead.');
+        alert('Contact not found.');
         closeContactMenu();
         return;
       }
