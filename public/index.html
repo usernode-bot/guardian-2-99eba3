@@ -115,31 +115,43 @@
       word-wrap: break-word;
       overflow-wrap: break-word;
     }
+
+    /* Compact layout mode */
+    .layout-compact #sidebar { font-size: 0.875rem; }
+    .layout-compact #sidebar button { padding: 0.375rem 0.75rem; }
+    .layout-compact #sidebarUser { padding: 0.75rem; }
+    .layout-compact #sidebarUser > div { gap: 0.5rem; }
+    .layout-compact #convList > div { padding: 0.75rem; }
+    .layout-compact #contactsList > div { padding: 0.75rem; }
+    .layout-compact #messageList { gap: 0.5rem; }
+    .layout-compact #header { padding: 0.5rem 0.75rem; }
+    .layout-compact #inputFooter { padding: 0.75rem; gap: 0.25rem; }
+    .layout-compact nav.flex-1 { gap: 0.25rem; }
   </style>
 </head>
-<body class="bg-zinc-950 text-zinc-100 min-h-screen flex flex-col">
+<body class="bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100 min-h-screen flex flex-col">
   <div id="app" class="flex flex-col flex-1 relative h-screen overflow-hidden">
     <!-- Header -->
-    <div id="header" class="bg-zinc-900 border-b border-zinc-800 px-4 py-3 flex items-center gap-3 sticky top-0 z-40">
-      <button id="menuBtn" class="text-cyan-400 hover:text-cyan-300 transition" title="Toggle sidebar">
+    <div id="header" class="bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-300 dark:border-zinc-800 px-4 py-3 flex items-center gap-3 sticky top-0 z-40">
+      <button id="menuBtn" class="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition" title="Toggle sidebar">
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
         </svg>
       </button>
-      <button id="backBtn" class="text-sm text-cyan-400 hover:text-cyan-300 hidden transition">← Back</button>
+      <button id="backBtn" class="text-sm text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 hidden transition">← Back</button>
       <h1 id="headerTitle" class="text-lg font-semibold flex-1">Guardian</h1>
-      <div id="headerRight" class="text-sm text-zinc-500"></div>
+      <div id="headerRight" class="text-sm text-zinc-600 dark:text-zinc-500"></div>
     </div>
 
     <!-- Sidebar Overlay -->
     <div id="sidebarOverlay" class="hidden fixed inset-0 bg-black/50 z-30 transition-opacity duration-300" onclick="toggleSidebar()"></div>
 
     <!-- Sidebar -->
-    <div id="sidebar" class="hidden fixed left-0 top-0 w-64 h-full bg-zinc-900 border-r border-zinc-800 z-40 flex flex-col overflow-y-auto">
-      <div class="p-4 border-b border-zinc-800">
+    <div id="sidebar" class="hidden fixed left-0 top-0 w-64 h-full bg-zinc-50 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 z-40 flex flex-col overflow-y-auto">
+      <div class="p-4 border-b border-zinc-200 dark:border-zinc-800">
         <div class="flex items-center justify-between">
-          <h2 class="text-lg font-semibold">Guardian</h2>
-          <button onclick="toggleSidebar()" class="text-zinc-500 hover:text-zinc-300 transition">
+          <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Guardian</h2>
+          <button onclick="toggleSidebar()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -148,35 +160,87 @@
       </div>
 
       <nav class="flex-1 px-2 py-4 space-y-2">
-        <button onclick="showConversationsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-800 transition text-cyan-400 hover:text-cyan-300">
+        <button onclick="showConversationsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300">
           <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
           </svg>
           Conversations
         </button>
-        <button onclick="showContactsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-800 transition hover:text-cyan-300">
+        <button onclick="showContactsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
           <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.856-1.487M15 10a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
           Contacts
         </button>
-        <button onclick="showDiscoverView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-800 transition hover:text-cyan-300">
+        <button onclick="showDiscoverView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
           <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
           Find Contacts
         </button>
+        <button onclick="openSettingsPanel()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
+          <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          Settings
+        </button>
       </nav>
 
-      <div id="sidebarUser" class="p-4 border-t border-zinc-800 space-y-3">
+      <div id="sidebarUser" class="p-4 border-t border-zinc-200 dark:border-zinc-800 space-y-3">
         <div>
-          <div class="text-sm text-zinc-400">Logged in as</div>
-          <div id="sidebarUsername" class="font-medium text-cyan-400 mt-1">Loading...</div>
-          <div id="sidebarWallet" class="text-xs text-zinc-500 mt-1 break-all">Loading...</div>
+          <div class="text-sm text-zinc-600 dark:text-zinc-400">Logged in as</div>
+          <div id="sidebarUsername" class="font-medium text-cyan-600 dark:text-cyan-400 mt-1">Loading...</div>
+          <div id="sidebarWallet" class="text-xs text-zinc-600 dark:text-zinc-500 mt-1 break-all">Loading...</div>
         </div>
-        <button onclick="showShareContactModal()" class="w-full px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition text-sm">
+        <button onclick="showShareContactModal()" class="w-full px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-sm text-zinc-900 dark:text-zinc-100">
           📤 Share Contact
         </button>
+      </div>
+    </div>
+
+    <!-- Settings Panel -->
+    <div id="settingsPanel" class="hidden fixed left-0 top-0 w-64 h-full bg-zinc-50 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 z-40 flex flex-col overflow-y-auto">
+      <div class="p-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Settings</h2>
+        <button onclick="closeSettingsPanel()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="flex-1 px-4 py-4 space-y-4">
+        <!-- Theme -->
+        <div class="space-y-2">
+          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Dark Mode</label>
+          <select id="themeSelect" onchange="applyTheme(this.value)" class="w-full px-3 py-2 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500">
+            <option value="system">System</option>
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+          </select>
+        </div>
+
+        <!-- Layout -->
+        <div class="space-y-2">
+          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">App Layout</label>
+          <div class="flex gap-2">
+            <button id="layoutComfort" onclick="applyLayout('comfortable')" class="flex-1 px-3 py-2 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-cyan-600 dark:border-cyan-500 hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Comfortable</button>
+            <button id="layoutCompact" onclick="applyLayout('compact')" class="flex-1 px-3 py-2 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-transparent hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Compact</button>
+          </div>
+        </div>
+
+        <!-- FAB Toggle -->
+        <div class="flex items-center justify-between">
+          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">FAB Visibility</label>
+          <input id="fabToggle" type="checkbox" onchange="applyFabVisibility()" class="w-4 h-4 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded accent-cyan-600 dark:accent-cyan-500 cursor-pointer">
+        </div>
+
+        <!-- Find Contacts Button Toggle -->
+        <div class="flex items-center justify-between">
+          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Find Contacts Button</label>
+          <input id="findContactsToggle" type="checkbox" checked onchange="applyFindContactsVisibility()" class="w-4 h-4 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded accent-cyan-600 dark:accent-cyan-500 cursor-pointer">
+        </div>
       </div>
     </div>
 
@@ -185,18 +249,18 @@
       <!-- Conversations List (initial view) -->
       <div id="conversationsView" class="flex flex-col flex-1 overflow-hidden">
         <!-- Tabs -->
-        <div class="flex gap-0 border-b border-zinc-800 px-4 pt-3 bg-zinc-900">
-          <button onclick="showConversationsTab()" id="convTab" class="px-4 py-2 border-b-2 border-cyan-500 text-cyan-400 font-medium transition">Conversations</button>
-          <button onclick="showRequestsTab()" id="reqTab" class="px-4 py-2 border-b-2 border-transparent text-zinc-400 hover:text-zinc-200 font-medium transition">Requests<span id="requestBadge" class="hidden ml-2 inline-block px-2 py-0.5 bg-cyan-600 text-white text-xs rounded-full"></span></button>
+        <div class="flex gap-0 border-b border-zinc-300 dark:border-zinc-800 px-4 pt-3 bg-white dark:bg-zinc-900">
+          <button onclick="showConversationsTab()" id="convTab" class="px-4 py-2 border-b-2 border-cyan-600 dark:border-cyan-500 text-cyan-600 dark:text-cyan-400 font-medium transition">Conversations</button>
+          <button onclick="showRequestsTab()" id="reqTab" class="px-4 py-2 border-b-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 font-medium transition">Requests<span id="requestBadge" class="hidden ml-2 inline-block px-2 py-0.5 bg-cyan-600 dark:bg-cyan-600 text-white text-xs rounded-full"></span></button>
         </div>
-        <div id="convList" class="flex-1 overflow-y-auto divide-y divide-zinc-800">
-          <div class="text-center py-8 text-zinc-500">Loading conversations...</div>
+        <div id="convList" class="flex-1 overflow-y-auto divide-y divide-zinc-300 dark:divide-zinc-800">
+          <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading conversations...</div>
         </div>
-        <div id="requestList" class="hidden flex-1 overflow-y-auto divide-y divide-zinc-800">
-          <div class="text-center py-8 text-zinc-500">Loading requests...</div>
+        <div id="requestList" class="hidden flex-1 overflow-y-auto divide-y divide-zinc-300 dark:divide-zinc-800">
+          <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading requests...</div>
         </div>
-        <div class="p-4 border-t border-zinc-800">
-          <button onclick="showDiscoverView()" class="w-full px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition font-medium">Find contacts</button>
+        <div class="p-4 border-t border-zinc-300 dark:border-zinc-800">
+          <button id="findContactsBtn" onclick="showDiscoverView()" class="w-full px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Find contacts</button>
         </div>
       </div>
 
@@ -207,78 +271,85 @@
 
       <!-- Contacts View -->
       <div id="contactsView" class="hidden flex flex-col flex-1 overflow-hidden">
-        <div id="contactsList" class="flex-1 overflow-y-auto divide-y divide-zinc-800">
-          <div class="text-center py-8 text-zinc-500">Loading contacts...</div>
+        <div id="contactsList" class="flex-1 overflow-y-auto divide-y divide-zinc-300 dark:divide-zinc-800">
+          <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading contacts...</div>
         </div>
       </div>
 
       <!-- Discover View -->
       <div id="discoverView" class="hidden flex flex-col flex-1 p-4 overflow-hidden">
         <!-- Add Contact Card -->
-        <div class="bg-zinc-800 border border-zinc-700 rounded-lg p-4 mb-4 space-y-3">
-          <h3 class="font-semibold text-cyan-400">Add Contact</h3>
-          <input id="addContactAddress" type="text" placeholder="Usernode address (ut1...)" class="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
-          <input id="addContactNickname" type="text" placeholder="Nickname (optional)" class="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
-          <button onclick="addContact()" class="w-full px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition font-medium">Start Conversation</button>
+        <div class="bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg p-4 mb-4 space-y-3">
+          <h3 class="font-semibold text-cyan-600 dark:text-cyan-400">Add Contact</h3>
+          <input id="addContactAddress" type="text" placeholder="Usernode address (ut1...)" class="w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-500 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+          <input id="addContactNickname" type="text" placeholder="Nickname (optional)" class="w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-500 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+          <button onclick="addContact()" class="w-full px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Start Conversation</button>
         </div>
-        <input id="searchInput" type="text" placeholder="Search users..." class="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 mb-4 transition">
+        <input id="searchInput" type="text" placeholder="Search users..." class="w-full px-3 py-2 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 mb-4 transition">
         <div id="searchResults" class="flex-1 overflow-y-auto space-y-2"></div>
       </div>
     </div>
 
     <!-- Chat Input (shown only in chat view) -->
-    <div id="inputFooter" class="hidden bg-zinc-900 border-t border-zinc-800 p-4 space-y-2">
+    <div id="inputFooter" class="hidden bg-white dark:bg-zinc-900 border-t border-zinc-300 dark:border-zinc-800 p-4 space-y-2">
       <div class="flex gap-2">
-        <input id="msgInput" type="text" placeholder="Type a message..." class="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
-        <button id="sendBtn" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition font-medium">Send</button>
+        <input id="msgInput" type="text" placeholder="Type a message..." class="flex-1 px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+        <button id="sendBtn" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Send</button>
       </div>
       <div class="flex gap-2">
-        <button id="imageBtn" class="flex-1 px-2 py-2 bg-zinc-800 hover:bg-zinc-700 text-sm rounded-lg transition">📷 Image</button>
-        <button id="tokenBtn" class="flex-1 px-2 py-2 bg-zinc-800 hover:bg-zinc-700 text-sm rounded-lg transition">💰 Token</button>
+        <button id="imageBtn" class="flex-1 px-2 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-sm rounded-lg transition text-zinc-900 dark:text-zinc-100">📷 Image</button>
+        <button id="tokenBtn" class="flex-1 px-2 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-sm rounded-lg transition text-zinc-900 dark:text-zinc-100">💰 Token</button>
       </div>
       <div class="flex items-center gap-2 text-sm">
-        <input id="blockchainToggle" type="checkbox" class="w-4 h-4 bg-zinc-800 border border-zinc-700 rounded accent-cyan-500 cursor-pointer">
-        <label for="blockchainToggle" class="text-zinc-400 cursor-pointer">Record on blockchain</label>
+        <input id="blockchainToggle" type="checkbox" class="w-4 h-4 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded accent-cyan-600 dark:accent-cyan-500 cursor-pointer">
+        <label for="blockchainToggle" class="text-zinc-600 dark:text-zinc-400 cursor-pointer">Record on blockchain</label>
       </div>
     </div>
+
+    <!-- FAB Button -->
+    <button id="fabBtn" onclick="showDiscoverView(); toggleSidebar()" class="hidden fixed bottom-6 right-6 w-14 h-14 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-full flex items-center justify-center shadow-lg fab-pulse z-20 transition">
+      <svg class="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
+        <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+      </svg>
+    </button>
 
   </div>
 
   <!-- Modals -->
   <!-- Share Contact Modal -->
   <div id="shareContactModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-    <div class="bg-zinc-900 border border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
       <div class="flex justify-between items-start">
-        <h2 class="text-xl font-semibold">Share Contact</h2>
-        <button onclick="hideShareContactModal()" class="text-zinc-500 hover:text-zinc-300">✕</button>
+        <h2 class="text-xl font-semibold text-zinc-900 dark:text-white">Share Contact</h2>
+        <button onclick="hideShareContactModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
       </div>
       <div class="space-y-3">
         <div class="space-y-2">
-          <label class="text-sm text-zinc-400">Username</label>
-          <div id="shareContactUsername" class="px-3 py-2 bg-zinc-800 rounded-lg text-zinc-300 font-medium"></div>
+          <label class="text-sm text-zinc-600 dark:text-zinc-400">Username</label>
+          <div id="shareContactUsername" class="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-zinc-700 dark:text-zinc-300 font-medium"></div>
         </div>
         <div class="space-y-2">
-          <label class="text-sm text-zinc-400">Usernode Address</label>
-          <div id="shareContactAddress" class="px-3 py-2 bg-zinc-800 rounded-lg text-zinc-300 font-mono text-xs break-all"></div>
+          <label class="text-sm text-zinc-600 dark:text-zinc-400">Usernode Address</label>
+          <div id="shareContactAddress" class="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-zinc-700 dark:text-zinc-300 font-mono text-xs break-all"></div>
         </div>
       </div>
       <div class="space-y-2">
-        <button onclick="copyContactAddress()" class="w-full px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition text-sm">📋 Copy Address</button>
-        <button onclick="copyContactLink()" class="w-full px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition text-sm">🔗 Copy Link</button>
-        <button onclick="showQRCodeModal()" class="w-full px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition text-sm">📱 Generate QR</button>
+        <button onclick="copyContactAddress()" class="w-full px-4 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-sm text-zinc-900 dark:text-zinc-100">📋 Copy Address</button>
+        <button onclick="copyContactLink()" class="w-full px-4 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-sm text-zinc-900 dark:text-zinc-100">🔗 Copy Link</button>
+        <button onclick="showQRCodeModal()" class="w-full px-4 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-sm text-zinc-900 dark:text-zinc-100">📱 Generate QR</button>
       </div>
     </div>
   </div>
 
   <!-- QR Code Modal -->
   <div id="qrModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-    <div class="bg-zinc-900 border border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
       <div class="flex justify-between items-start">
-        <h2 class="text-xl font-semibold">Contact QR Code</h2>
-        <button onclick="hideQRCodeModal()" class="text-zinc-500 hover:text-zinc-300">✕</button>
+        <h2 class="text-xl font-semibold text-zinc-900 dark:text-white">Contact QR Code</h2>
+        <button onclick="hideQRCodeModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
       </div>
       <div id="qrCodeContainer" class="bg-white p-4 rounded-lg flex justify-center items-center min-h-64"></div>
-      <p class="text-xs text-zinc-400 text-center">Share this code so others can add you as a contact</p>
+      <p class="text-xs text-zinc-600 dark:text-zinc-400 text-center">Share this code so others can add you as a contact</p>
     </div>
   </div>
 
@@ -292,23 +363,23 @@
 
   <!-- Token Transfer Modal -->
   <div id="tokenModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-    <div class="bg-zinc-900 border border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
-      <h2 class="text-xl font-semibold">Send Tokens</h2>
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
+      <h2 class="text-xl font-semibold text-zinc-900 dark:text-white">Send Tokens</h2>
       <div class="space-y-2">
-        <label class="text-sm text-zinc-400">Recipient</label>
-        <div id="tokenRecipient" class="px-3 py-2 bg-zinc-800 rounded-lg text-zinc-300"></div>
+        <label class="text-sm text-zinc-600 dark:text-zinc-400">Recipient</label>
+        <div id="tokenRecipient" class="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-zinc-700 dark:text-zinc-300"></div>
       </div>
       <div class="space-y-2">
-        <label class="text-sm text-zinc-400">Amount</label>
-        <input id="tokenAmount" type="number" placeholder="0" class="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+        <label class="text-sm text-zinc-600 dark:text-zinc-400">Amount</label>
+        <input id="tokenAmount" type="number" placeholder="0" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
       </div>
       <div class="space-y-2">
-        <label class="text-sm text-zinc-400">Memo (optional)</label>
-        <input id="tokenMemo" type="text" placeholder="Add a note..." class="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+        <label class="text-sm text-zinc-600 dark:text-zinc-400">Memo (optional)</label>
+        <input id="tokenMemo" type="text" placeholder="Add a note..." class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
       </div>
       <div class="flex gap-2">
-        <button id="tokenCancel" class="flex-1 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition">Cancel</button>
-        <button id="tokenSend" class="flex-1 px-3 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition font-medium">Send</button>
+        <button id="tokenCancel" class="flex-1 px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
+        <button id="tokenSend" class="flex-1 px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Send</button>
       </div>
     </div>
   </div>
@@ -323,6 +394,118 @@
     let currentOtherId = null;
     let pollInterval = null;
     let sidebarOpen = false;
+
+    // Settings functions
+    function loadSettings() {
+      if (!currentUser) return {};
+      const stored = JSON.parse(localStorage.getItem(`guardian_settings_${currentUser.id}`) || '{}');
+      return {
+        theme: stored.theme || 'system',
+        layout: stored.layout || 'comfortable',
+        fabVisible: stored.fabVisible !== undefined ? stored.fabVisible : false,
+        findContactsVisible: stored.findContactsVisible !== undefined ? stored.findContactsVisible : true,
+      };
+    }
+
+    function saveSettings(settings) {
+      if (!currentUser) return;
+      localStorage.setItem(`guardian_settings_${currentUser.id}`, JSON.stringify(settings));
+    }
+
+    function initSettings() {
+      const settings = loadSettings();
+      applyTheme(settings.theme);
+      applyLayout(settings.layout);
+      applyFabVisibility(settings.fabVisible);
+      applyFindContactsVisibility(settings.findContactsVisible);
+      document.getElementById('themeSelect').value = settings.theme;
+      document.getElementById('fabToggle').checked = settings.fabVisible;
+      document.getElementById('findContactsToggle').checked = settings.findContactsVisible;
+      updateLayoutButtons(settings.layout);
+      // Setup system theme listener
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+        if (loadSettings().theme === 'system') {
+          applyTheme('system');
+        }
+      });
+    }
+
+    function applyTheme(theme) {
+      const settings = loadSettings();
+      settings.theme = theme;
+      const html = document.documentElement;
+
+      if (theme === 'system') {
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (prefersDark) {
+          html.classList.add('dark');
+        } else {
+          html.classList.remove('dark');
+        }
+      } else if (theme === 'dark') {
+        html.classList.add('dark');
+      } else if (theme === 'light') {
+        html.classList.remove('dark');
+      }
+
+      saveSettings(settings);
+    }
+
+    function applyLayout(layout) {
+      const settings = loadSettings();
+      settings.layout = layout;
+      document.body.classList.toggle('layout-compact', layout === 'compact');
+      document.body.classList.toggle('layout-comfortable', layout === 'comfortable');
+      updateLayoutButtons(layout);
+      saveSettings(settings);
+    }
+
+    function applyFabVisibility(visible) {
+      const settings = loadSettings();
+      settings.fabVisible = typeof visible === 'boolean' ? visible : document.getElementById('fabToggle').checked;
+      const fab = document.getElementById('fabBtn');
+      if (fab) {
+        fab.classList.toggle('hidden', !settings.fabVisible);
+      }
+      saveSettings(settings);
+    }
+
+    function applyFindContactsVisibility(visible) {
+      const settings = loadSettings();
+      settings.findContactsVisible = typeof visible === 'boolean' ? visible : document.getElementById('findContactsToggle').checked;
+      const btn = document.getElementById('findContactsBtn');
+      if (btn) {
+        btn.classList.toggle('hidden', !settings.findContactsVisible);
+      }
+      saveSettings(settings);
+    }
+
+    function updateLayoutButtons(layout) {
+      const comfortable = document.getElementById('layoutComfort');
+      const compact = document.getElementById('layoutCompact');
+      if (layout === 'comfortable') {
+        comfortable.classList.add('border-cyan-600', 'dark:border-cyan-500');
+        comfortable.classList.remove('border-transparent');
+        compact.classList.remove('border-cyan-600', 'dark:border-cyan-500');
+        compact.classList.add('border-transparent');
+      } else {
+        compact.classList.add('border-cyan-600', 'dark:border-cyan-500');
+        compact.classList.remove('border-transparent');
+        comfortable.classList.remove('border-cyan-600', 'dark:border-cyan-500');
+        comfortable.classList.add('border-transparent');
+      }
+    }
+
+    function openSettingsPanel() {
+      document.getElementById('sidebar').classList.add('hidden');
+      document.getElementById('settingsPanel').classList.remove('hidden');
+      sidebarOpen = false;
+    }
+
+    function closeSettingsPanel() {
+      document.getElementById('settingsPanel').classList.add('hidden');
+      document.getElementById('sidebar').classList.remove('hidden');
+    }
 
     async function apiCall(path, opts = {}) {
       const response = await fetch(path, {
@@ -372,6 +555,7 @@
       currentUser = user;
       document.getElementById('sidebarUsername').textContent = user.username + (user.verified ? ' ✓' : '');
       document.getElementById('sidebarWallet').textContent = user.usernode_pubkey || 'No wallet linked';
+      initSettings();
       loadConversations();
       setupEventListeners();
     }
@@ -430,16 +614,16 @@
       if (sentData && sentData.requests && sentData.requests.length > 0) {
         const pendingRequests = sentData.requests.filter(r => r.status === 'pending');
         if (pendingRequests.length > 0) {
-          html += '<div class="bg-zinc-800 text-xs text-zinc-400 px-4 py-2 font-semibold sticky top-0 z-10">Pending Requests</div>';
+          html += '<div class="bg-zinc-200 dark:bg-zinc-800 text-xs text-zinc-600 dark:text-zinc-400 px-4 py-2 font-semibold sticky top-0 z-10">Pending Requests</div>';
           html += pendingRequests.map(req => `
-            <div class="p-4 hover:bg-zinc-800 transition">
+            <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition">
               <div class="flex justify-between items-start gap-2">
                 <div class="flex-1 min-w-0">
-                  <div class="font-medium truncate">${req.recipientUsername} <span class="text-sm text-zinc-500">✓</span></div>
-                  <div class="text-xs text-zinc-500 truncate">${req.recipientWallet || 'No wallet'}</div>
-                  <div class="text-xs text-zinc-400 mt-1">Awaiting response</div>
+                  <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${req.recipientUsername} <span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span></div>
+                  <div class="text-xs text-zinc-600 dark:text-zinc-500 truncate">${req.recipientWallet || 'No wallet'}</div>
+                  <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">Awaiting response</div>
                 </div>
-                <button onclick="cancelRequest(${req.id})" class="text-zinc-500 hover:text-red-400 text-xs">Cancel</button>
+                <button onclick="cancelRequest(${req.id})" class="text-zinc-600 dark:text-zinc-500 hover:text-red-600 dark:hover:text-red-400 text-xs">Cancel</button>
               </div>
             </div>
           `).join('');
@@ -448,21 +632,21 @@
 
       // Add active conversations
       if (data.conversations.length === 0 && (!sentData || !sentData.requests || sentData.requests.length === 0)) {
-        list.innerHTML = '<div class="text-center py-8 text-zinc-500">No conversations yet. <br>Tap the + button to discover contacts.</div>';
+        list.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">No conversations yet. <br>Tap the + button to discover contacts.</div>';
         return;
       }
 
       if (data.conversations.length > 0) {
-        if (html) html += '<div class="bg-zinc-800 text-xs text-zinc-400 px-4 py-2 font-semibold sticky top-0 z-10">Conversations</div>';
+        if (html) html += '<div class="bg-zinc-200 dark:bg-zinc-800 text-xs text-zinc-600 dark:text-zinc-400 px-4 py-2 font-semibold sticky top-0 z-10">Conversations</div>';
         html += data.conversations.map(conv => `
-          <div class="p-4 hover:bg-zinc-900 cursor-pointer transition" onclick="openConversation(${conv.id}, ${conv.otherId}, '${conv.username}')">
+          <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer transition" onclick="openConversation(${conv.id}, ${conv.otherId}, '${conv.username}')">
             <div class="flex justify-between items-start gap-2">
               <div class="flex-1 min-w-0">
-                <div class="font-medium truncate">${conv.username} <span class="text-sm text-zinc-500">✓</span></div>
-                <div class="text-xs text-zinc-500 truncate">${conv.usernode_pubkey || 'No wallet'}</div>
-                <div class="text-sm text-zinc-400 truncate">${conv.lastMessage || 'No messages'}</div>
+                <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${conv.username} <span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span></div>
+                <div class="text-xs text-zinc-600 dark:text-zinc-500 truncate">${conv.usernode_pubkey || 'No wallet'}</div>
+                <div class="text-sm text-zinc-600 dark:text-zinc-400 truncate">${conv.lastMessage || 'No messages'}</div>
               </div>
-              <div class="text-xs text-zinc-500 text-right flex-shrink-0">
+              <div class="text-xs text-zinc-600 dark:text-zinc-500 text-right flex-shrink-0">
                 ${conv.lastMessageAt ? formatTime(new Date(conv.lastMessageAt)) : ''}
                 ${conv.unreadCount > 0 ? `<div class="mt-1 inline-block px-2 py-0.5 bg-cyan-600 rounded-full text-white text-xs">${conv.unreadCount}</div>` : ''}
               </div>
@@ -516,15 +700,15 @@
 
       if (data.error) {
         if (data.status === 403) {
-          list.innerHTML = '<div class="text-center text-red-400 py-8"><div class="text-sm">This conversation is no longer available</div></div>';
+          list.innerHTML = '<div class="text-center text-red-600 dark:text-red-400 py-8"><div class="text-sm">This conversation is no longer available</div></div>';
         } else {
-          list.innerHTML = '<div class="text-center text-red-400 py-8"><div class="text-sm">Failed to load messages</div><button onclick="loadMessages()" class="mt-2 px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded text-xs">Retry</button></div>';
+          list.innerHTML = '<div class="text-center text-red-600 dark:text-red-400 py-8"><div class="text-sm">Failed to load messages</div><button onclick="loadMessages()" class="mt-2 px-3 py-1 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded text-xs text-zinc-900 dark:text-zinc-100">Retry</button></div>';
         }
         return;
       }
 
       if (data.messages.length === 0) {
-        list.innerHTML = '<div class="text-center text-zinc-500 py-4">No messages yet</div>';
+        list.innerHTML = '<div class="text-center text-zinc-600 dark:text-zinc-500 py-4">No messages yet</div>';
         return;
       }
 
@@ -539,15 +723,15 @@
 
     function renderMessage(msg) {
       const isOwn = msg.senderId === currentUser.id;
-      const baseClass = isOwn ? 'ml-auto bg-cyan-600 text-white' : 'mr-auto bg-zinc-800 text-zinc-100';
+      const baseClass = isOwn ? 'ml-auto bg-cyan-600 dark:bg-cyan-600 text-white' : 'mr-auto bg-zinc-200 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100';
       const alignClass = isOwn ? 'justify-end' : 'justify-start';
 
       if (msg.type === 'text') {
-        const blockchainStatusHtml = msg.blockchainRecorded ? `<div class="text-xs mt-2 text-amber-400" id="blockchain-status-${msg.id}">⏳ Recording on blockchain...</div>` : '';
+        const blockchainStatusHtml = msg.blockchainRecorded ? `<div class="text-xs mt-2 text-amber-600 dark:text-amber-400" id="blockchain-status-${msg.id}">⏳ Recording on blockchain...</div>` : '';
         return `
           <div class="flex ${alignClass}">
             <div class="max-w-xs px-4 py-2 rounded-2xl ${baseClass} message-bubble">
-              <div class="text-xs text-zinc-300 mb-1 opacity-80">${msg.senderUsername}</div>
+              <div class="text-xs opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'} mb-1">${msg.senderUsername}</div>
               <div>${msg.content.text}</div>
               <div class="text-xs mt-2 opacity-70">${formatTime(new Date(msg.createdAt))}</div>
               ${blockchainStatusHtml}
@@ -561,7 +745,7 @@
           <div class="flex ${alignClass}">
             <div class="max-w-xs rounded-2xl overflow-hidden ${baseClass}">
               <img src="${msg.content.imageUrl}" alt="Message image" class="max-w-xs cursor-pointer hover:opacity-80 transition" onclick="showLightbox('${msg.content.imageUrl}')">
-              <div class="text-xs text-zinc-300 px-4 py-2 opacity-80">${msg.senderUsername}</div>
+              <div class="text-xs px-4 py-2 opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'}">${msg.senderUsername}</div>
             </div>
           </div>
         `;
@@ -569,13 +753,13 @@
 
       if (msg.type === 'token') {
         const c = msg.content;
-        const blockchainStatusHtml = msg.blockchainRecorded ? `<div class="text-xs mt-2 text-amber-400" id="blockchain-status-${msg.id}">⏳ Recording on blockchain...</div>` : '';
+        const blockchainStatusHtml = msg.blockchainRecorded ? `<div class="text-xs mt-2 text-amber-600 dark:text-amber-400" id="blockchain-status-${msg.id}">⏳ Recording on blockchain...</div>` : '';
         return `
           <div class="flex ${alignClass}">
             <div class="max-w-xs px-4 py-2 rounded-2xl ${baseClass} border-2 border-yellow-500/40 message-bubble">
-              <div class="text-xs text-zinc-300 mb-1">💰 Token Transfer</div>
+              <div class="text-xs mb-1 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'}">💰 Token Transfer</div>
               <div class="font-bold text-lg">${c.amount} tokens</div>
-              <div class="text-xs text-zinc-300 mt-1">${c.memo || 'No memo'}</div>
+              <div class="text-xs mt-1 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'}">${c.memo || 'No memo'}</div>
               <div class="text-xs mt-2 font-medium">${c.status === 'confirmed' ? '✓ Confirmed' : '⏳ Pending'}</div>
               <div class="text-xs mt-1 opacity-70">${formatTime(new Date(msg.createdAt))}</div>
               ${blockchainStatusHtml}
@@ -683,13 +867,13 @@
 
         if (auditData.status === 'confirmed') {
           statusEl.innerHTML = `✓ On blockchain | <span class="font-mono text-xs">${auditData.txHash.substring(0, 10)}...</span>`;
-          statusEl.classList.remove('text-amber-400');
-          statusEl.classList.add('text-green-400');
+          statusEl.classList.remove('text-amber-600', 'dark:text-amber-400');
+          statusEl.classList.add('text-green-600', 'dark:text-green-400');
           isComplete = true;
         } else if (auditData.status === 'failed') {
           statusEl.innerHTML = `✗ Recording failed`;
-          statusEl.classList.remove('text-amber-400');
-          statusEl.classList.add('text-red-400');
+          statusEl.classList.remove('text-amber-600', 'dark:text-amber-400');
+          statusEl.classList.add('text-red-600', 'dark:text-red-400');
           isComplete = true;
         }
       }
@@ -706,16 +890,16 @@
 
       const results = document.getElementById('searchResults');
       if (data.users.length === 0) {
-        results.innerHTML = '<div class="text-center text-zinc-500 py-4">No users found</div>';
+        results.innerHTML = '<div class="text-center text-zinc-600 dark:text-zinc-500 py-4">No users found</div>';
         return;
       }
 
       results.innerHTML = data.users.map(user => `
-        <div class="p-4 bg-zinc-800 rounded-lg hover:bg-zinc-700 transition">
-          <div class="font-medium text-cyan-400">${user.username} ${user.verified ? '✓' : ''}</div>
-          <div class="text-xs text-zinc-500 mt-1">${user.usernode_pubkey || 'No wallet'}</div>
-          <div class="text-sm text-zinc-400 mt-1">${user.mutualCount} mutual connections</div>
-          <button onclick="sendConversationRequest(${user.id}, '${user.username}')" class="mt-3 w-full px-3 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-sm rounded-lg transition font-medium">Send Request</button>
+        <div class="p-4 bg-zinc-200 dark:bg-zinc-800 rounded-lg hover:bg-zinc-300 dark:hover:bg-zinc-700 transition">
+          <div class="font-medium text-cyan-600 dark:text-cyan-400">${user.username} ${user.verified ? '✓' : ''}</div>
+          <div class="text-xs text-zinc-600 dark:text-zinc-500 mt-1">${user.usernode_pubkey || 'No wallet'}</div>
+          <div class="text-sm text-zinc-600 dark:text-zinc-400 mt-1">${user.mutualCount} mutual connections</div>
+          <button onclick="sendConversationRequest(${user.id}, '${user.username}')" class="mt-3 w-full px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white text-sm rounded-lg transition font-medium">Send Request</button>
         </div>
       `).join('');
     }
@@ -762,20 +946,20 @@
     function showConversationsTab() {
       document.getElementById('convList').classList.remove('hidden');
       document.getElementById('requestList').classList.add('hidden');
-      document.getElementById('convTab').classList.add('border-cyan-500', 'text-cyan-400');
-      document.getElementById('convTab').classList.remove('border-transparent', 'text-zinc-400', 'hover:text-zinc-200');
-      document.getElementById('reqTab').classList.remove('border-cyan-500', 'text-cyan-400');
-      document.getElementById('reqTab').classList.add('border-transparent', 'text-zinc-400', 'hover:text-zinc-200');
+      document.getElementById('convTab').classList.add('border-cyan-600', 'dark:border-cyan-500', 'text-cyan-600', 'dark:text-cyan-400');
+      document.getElementById('convTab').classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400', 'hover:text-zinc-800', 'dark:hover:text-zinc-200');
+      document.getElementById('reqTab').classList.remove('border-cyan-600', 'dark:border-cyan-500', 'text-cyan-600', 'dark:text-cyan-400');
+      document.getElementById('reqTab').classList.add('border-transparent', 'text-zinc-600', 'dark:text-zinc-400', 'hover:text-zinc-800', 'dark:hover:text-zinc-200');
       loadConversations();
     }
 
     function showRequestsTab() {
       document.getElementById('convList').classList.add('hidden');
       document.getElementById('requestList').classList.remove('hidden');
-      document.getElementById('convTab').classList.remove('border-cyan-500', 'text-cyan-400');
-      document.getElementById('convTab').classList.add('border-transparent', 'text-zinc-400', 'hover:text-zinc-200');
-      document.getElementById('reqTab').classList.add('border-cyan-500', 'text-cyan-400');
-      document.getElementById('reqTab').classList.remove('border-transparent', 'text-zinc-400', 'hover:text-zinc-200');
+      document.getElementById('convTab').classList.remove('border-cyan-600', 'dark:border-cyan-500', 'text-cyan-600', 'dark:text-cyan-400');
+      document.getElementById('convTab').classList.add('border-transparent', 'text-zinc-600', 'dark:text-zinc-400', 'hover:text-zinc-800', 'dark:hover:text-zinc-200');
+      document.getElementById('reqTab').classList.add('border-cyan-600', 'dark:border-cyan-500', 'text-cyan-600', 'dark:text-cyan-400');
+      document.getElementById('reqTab').classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400', 'hover:text-zinc-800', 'dark:hover:text-zinc-200');
       loadRequestsTab();
     }
 
@@ -787,7 +971,7 @@
       const badge = document.getElementById('requestBadge');
 
       if (data.requests.length === 0) {
-        list.innerHTML = '<div class="text-center py-8 text-zinc-500">No pending requests</div>';
+        list.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">No pending requests</div>';
         badge.classList.add('hidden');
         return;
       }
@@ -796,17 +980,17 @@
       badge.classList.remove('hidden');
 
       list.innerHTML = data.requests.map(req => `
-        <div class="p-4 hover:bg-zinc-900 transition">
+        <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition">
           <div class="flex justify-between items-start gap-2 mb-3">
             <div class="flex-1 min-w-0">
-              <div class="font-medium">${req.senderUsername} <span class="text-sm text-zinc-500">✓</span></div>
-              <div class="text-xs text-zinc-500 truncate">${req.senderWallet || 'No wallet'}</div>
-              <div class="text-xs text-zinc-400 mt-1">${formatTime(new Date(req.createdAt))}</div>
+              <div class="font-medium text-zinc-900 dark:text-zinc-100">${req.senderUsername} <span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span></div>
+              <div class="text-xs text-zinc-600 dark:text-zinc-500 truncate">${req.senderWallet || 'No wallet'}</div>
+              <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">${formatTime(new Date(req.createdAt))}</div>
             </div>
           </div>
           <div class="flex gap-2">
-            <button onclick="acceptRequest(${req.id})" class="flex-1 px-3 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-sm rounded-lg transition font-medium">Accept</button>
-            <button onclick="rejectRequest(${req.id})" class="flex-1 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm rounded-lg transition">Reject</button>
+            <button onclick="acceptRequest(${req.id})" class="flex-1 px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white text-sm rounded-lg transition font-medium">Accept</button>
+            <button onclick="rejectRequest(${req.id})" class="flex-1 px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-200 text-sm rounded-lg transition">Reject</button>
           </div>
         </div>
       `).join('');
@@ -819,12 +1003,9 @@
       });
 
       if (data && data.conversationId) {
-        // Refresh requests list
         loadRequestsTab();
-        // Show conversation
         const convData = await apiCall(`/api/conversations/${data.conversationId}`);
         if (convData && !convData.error) {
-          // Get sender info for the conversation
           const requests = await apiCall('/api/conversation-requests/sent');
           showConversationsTab();
         }
@@ -881,18 +1062,18 @@
 
       const list = document.getElementById('contactsList');
       if (data.contacts.length === 0) {
-        list.innerHTML = '<div class="text-center py-8 text-zinc-500">No contacts yet.<br>Tap "Find Contacts" to add someone.</div>';
+        list.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">No contacts yet.<br>Tap "Find Contacts" to add someone.</div>';
         return;
       }
 
       list.innerHTML = data.contacts.map(contact => `
-        <div class="p-4 hover:bg-zinc-900 cursor-pointer transition flex justify-between items-center group" onclick="startConversationWithContact(${contact.userId}, '${contact.username}')">
+        <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer transition flex justify-between items-center group" onclick="startConversationWithContact(${contact.userId}, '${contact.username}')">
           <div class="flex-1 min-w-0">
-            <div class="font-medium">${contact.username} ${contact.verified ? '<span class="text-sm text-zinc-500">✓</span>' : ''}</div>
-            ${contact.nickname ? `<div class="text-xs text-cyan-400 truncate">${contact.nickname}</div>` : ''}
-            <div class="text-xs text-zinc-500 truncate">${contact.usernode_pubkey || 'No wallet'}</div>
+            <div class="font-medium text-zinc-900 dark:text-zinc-100">${contact.username} ${contact.verified ? '<span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
+            ${contact.nickname ? `<div class="text-xs text-cyan-600 dark:text-cyan-400 truncate">${contact.nickname}</div>` : ''}
+            <div class="text-xs text-zinc-600 dark:text-zinc-500 truncate">${contact.usernode_pubkey || 'No wallet'}</div>
           </div>
-          <button onclick="deleteContactUI(${contact.id}, event)" class="text-zinc-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition ml-2" title="Delete contact">
+          <button onclick="deleteContactUI(${contact.id}, event)" class="text-zinc-600 dark:text-zinc-500 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition ml-2" title="Delete contact">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
@@ -922,12 +1103,10 @@
 
       if (!data) return;
 
-      // Save to localStorage
       const contacts = JSON.parse(localStorage.getItem(`guardian_contacts_${currentUser.id}`) || '[]');
       contacts.push(data);
       localStorage.setItem(`guardian_contacts_${currentUser.id}`, JSON.stringify(contacts));
 
-      // Start conversation
       await startConversation(data.userId, data.username);
       document.getElementById('addContactAddress').value = '';
       document.getElementById('addContactNickname').value = '';
@@ -942,7 +1121,6 @@
       });
 
       if (data) {
-        // Remove from localStorage
         const contacts = JSON.parse(localStorage.getItem(`guardian_contacts_${currentUser.id}`) || '[]');
         const filtered = contacts.filter(c => c.id !== contactId);
         localStorage.setItem(`guardian_contacts_${currentUser.id}`, JSON.stringify(filtered));
@@ -995,11 +1173,9 @@
       document.getElementById('qrModal').classList.remove('hidden');
       document.getElementById('shareContactModal').classList.add('hidden');
 
-      // Clear previous QR code
       const container = document.getElementById('qrCodeContainer');
       container.innerHTML = '';
 
-      // Generate new QR code
       setTimeout(() => {
         new QRCode(container, {
           text: window.currentShareLink,
