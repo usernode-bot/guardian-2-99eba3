@@ -1111,32 +1111,7 @@ app.get('/api/user/contact-info', (req, res) => {
   }
 });
 
-// ===== SEARCH & PROFILE ENDPOINTS =====
-
-app.get('/api/search/users', async (req, res) => {
-  try {
-    const q = req.query.q || '';
-    const { rows } = await pool.query(`
-      SELECT id, username, verified_at, usernode_pubkey
-      FROM users
-      WHERE username ILIKE $1
-      LIMIT 20
-    `, ['%' + q + '%']);
-
-    const users = rows.map(r => ({
-      id: r.id,
-      username: r.username,
-      usernode_pubkey: r.usernode_pubkey || null,
-      verified: !!r.verified_at,
-      mutualCount: 0,
-    }));
-
-    res.json({ users });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
-  }
-});
+// ===== PROFILE ENDPOINTS =====
 
 app.get('/api/users/:userId', async (req, res) => {
   try {
