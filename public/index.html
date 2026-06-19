@@ -327,7 +327,11 @@
         alert('Not authenticated');
         return null;
       }
-      return response.ok ? response.json() : null;
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        return { error: data.error || 'Request failed', status: response.status };
+      }
+      return response.json();
     }
 
     function toggleSidebar() {
@@ -463,6 +467,16 @@
       if (!data) return;
 
       const list = document.getElementById('messageList');
+
+      if (data.error) {
+        if (data.status === 403) {
+          list.innerHTML = '<div class="text-center text-red-400 py-8"><div class="text-sm">This conversation is no longer available</div></div>';
+        } else {
+          list.innerHTML = '<div class="text-center text-red-400 py-8"><div class="text-sm">Failed to load messages</div><button onclick="loadMessages()" class="mt-2 px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded text-xs">Retry</button></div>';
+        }
+        return;
+      }
+
       if (data.messages.length === 0) {
         list.innerHTML = '<div class="text-center text-zinc-500 py-4">No messages yet</div>';
         return;

@@ -210,6 +210,22 @@ app.get('/api/conversations/:convId', async (req, res) => {
     const before = req.query.before ? new Date(req.query.before) : new Date();
     const userId = req.user.id;
 
+    // Verify user is a participant in this conversation
+    const { rows: convRows } = await pool.query(`
+      SELECT id, participant_a_id, participant_b_id
+      FROM conversations
+      WHERE id = $1
+    `, [convId]);
+
+    if (convRows.length === 0) {
+      return res.status(403).json({ error: 'Conversation not found' });
+    }
+
+    const conv = convRows[0];
+    if (conv.participant_a_id !== userId && conv.participant_b_id !== userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
     const { rows: messages } = await pool.query(`
       SELECT id, sender_id,
              (SELECT username FROM users WHERE id = sender_id) as sender_username,
