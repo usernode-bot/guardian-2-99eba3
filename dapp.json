@@ -5,7 +5,7 @@
     { "name": "Home loads", "path": "/", "expectSelector": "#conversationsView" },
     { "name": "Chat thread loads", "path": "/", "expectSelector": "#messageList" },
     { "name": "Discover contacts loads", "path": "/", "expectText": "Find contacts" },
-    { "name": "Contacts view loads", "path": "/", "expectText": "Contacts" },
+    { "name": "Contacts view loads", "path": "/", "expectSelector": "#contactsView" },
     { "name": "Sidebar toggles", "path": "/", "expectSelector": "#sidebar" },
     { "name": "FAB visible", "path": "/", "expectSelector": "#fabBtn" },
     { "name": "Share contact modal works", "path": "/", "expectSelector": "#shareContactModal" }
