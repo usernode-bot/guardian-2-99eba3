@@ -359,6 +359,28 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       return res.status(400).json({ error: 'Invalid message' });
     }
 
+    // Verify both participants are confirmed contacts
+    const { rows: convRows } = await pool.query(`
+      SELECT participant_a_id, participant_b_id FROM conversations WHERE id = $1
+    `, [convId]);
+
+    if (convRows.length === 0) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    const conversation = convRows[0];
+    const otherId = conversation.participant_a_id === userId ? conversation.participant_b_id : conversation.participant_a_id;
+
+    // Check if both users have accepted a request with each other
+    const { rows: contactRows } = await pool.query(`
+      SELECT COUNT(*) as count FROM user_contacts
+      WHERE (user_id = $1 AND contact_user_id = $2) AND (user_id = $3 AND contact_user_id = $4)
+    `, [userId, otherId, otherId, userId]);
+
+    if (contactRows[0].count < 2) {
+      return res.status(403).json({ error: 'You can only message users who have accepted your request' });
+    }
+
     // Fetch user's network preference
     const userRes = await pool.query(`SELECT network FROM users WHERE id = $1`, [userId]);
     const network = userRes.rows[0]?.network || 'testnet';
@@ -1497,45 +1519,28 @@ async function start() {
         ON CONFLICT DO NOTHING
       `, [alice, convId, bob]);
 
-      // Seed contacts for alice
-      await pool.query(`
-        INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
-        VALUES
-          ($1, $2, 'Bob (demo contact)', NOW()),
-          ($1, $3, null, NOW()),
-          ($1, $4, 'David the Dev', NOW()),
-          ($1, $5, null, NOW())
-        ON CONFLICT DO NOTHING
-      `, [alice, bob, charlie, david, emma]);
 
-      // Seed conversation requests for testing accept → auto-contact flow
-      // Alice sent pending request to Charlie
+      // Seed conversation requests for testing the request-based contact workflow
+      // Bob → Charlie: pending (Charlie sees in Requests tab and can accept)
       await pool.query(`
         INSERT INTO conversation_requests (sender_id, recipient_id, status, created_at)
         VALUES ($1, $2, 'pending', NOW())
         ON CONFLICT (sender_id, recipient_id) DO NOTHING
-      `, [alice, charlie]);
+      `, [bob, charlie]);
 
-      // Bob sent pending request to David
-      await pool.query(`
-        INSERT INTO conversation_requests (sender_id, recipient_id, status, created_at)
-        VALUES ($1, $2, 'pending', NOW())
-        ON CONFLICT (sender_id, recipient_id) DO NOTHING
-      `, [bob, david]);
-
-      // Charlie→Bob request (accepted) to test bilateral contact creation
+      // Alice → Bob: accepted (both have auto-created bidirectional contacts below)
       await pool.query(`
         INSERT INTO conversation_requests (sender_id, recipient_id, status, created_at, accepted_at)
         VALUES ($1, $2, 'accepted', NOW() - INTERVAL '1 hour', NOW() - INTERVAL '30 minutes')
         ON CONFLICT (sender_id, recipient_id) DO NOTHING
-      `, [charlie, bob]);
+      `, [alice, bob]);
 
-      // Auto-create contacts for Charlie↔Bob (already accepted request above)
+      // Auto-create bidirectional contacts for alice↔bob (both accepted)
       await pool.query(`
         INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
         VALUES ($1, $2, null, NOW()), ($2, $1, null, NOW())
         ON CONFLICT (user_id, contact_user_id) DO NOTHING
-      `, [charlie, bob]);
+      `, [alice, bob]);
     }
 
     app.listen(port, () => console.log(`Listening on :${port}`));
