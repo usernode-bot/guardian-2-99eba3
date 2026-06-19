@@ -178,15 +178,23 @@ app.get('/api/conversations', async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
     const offset = parseInt(req.query.offset || 0);
     const userId = req.user.id;
+    const archived = req.query.archived === 'true';
 
-    // Simple query: get all conversations for this user
-    const convQuery = `
+    // Query: get conversations filtered by archive status and excluding deleted ones
+    let convQuery = `
       SELECT id, participant_a_id, participant_b_id, archived_by, muted_by
       FROM conversations
       WHERE (participant_a_id = $1 OR participant_b_id = $1)
-      ORDER BY created_at DESC
-      LIMIT $2 OFFSET $3
+        AND deleted_at IS NULL
     `;
+
+    if (archived) {
+      convQuery += ` AND archived_by @> ARRAY[$1]`;
+    } else {
+      convQuery += ` AND NOT (archived_by @> ARRAY[$1])`;
+    }
+
+    convQuery += ` ORDER BY created_at DESC LIMIT $2 OFFSET $3`;
 
     const { rows: conversations } = await pool.query(convQuery, [userId, limit, offset]);
 
@@ -499,6 +507,41 @@ app.post('/api/conversations/:convId/archive', async (req, res) => {
         WHEN archived_by @> ARRAY[$1] THEN array_remove(archived_by, $1)
         ELSE CASE WHEN archived_by IS NULL THEN ARRAY[$1] ELSE array_append(archived_by, $1) END
       END
+      WHERE id = $2
+    `, [userId, convId]);
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/conversations/:convId/delete', async (req, res) => {
+  try {
+    const { convId } = req.params;
+    const userId = req.user.id;
+
+    // Verify user is a participant in this conversation
+    const { rows: convRows } = await pool.query(`
+      SELECT id, participant_a_id, participant_b_id
+      FROM conversations
+      WHERE id = $1
+    `, [convId]);
+
+    if (convRows.length === 0) {
+      return res.status(403).json({ error: 'Conversation not found' });
+    }
+
+    const conv = convRows[0];
+    if (conv.participant_a_id !== userId && conv.participant_b_id !== userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    // Soft delete: set deleted_at and remove from archived_by if present
+    await pool.query(`
+      UPDATE conversations
+      SET deleted_at = NOW(), archived_by = array_remove(archived_by, $1)
       WHERE id = $2
     `, [userId, convId]);
 
@@ -1271,9 +1314,15 @@ async function start() {
         participant_b_id INTEGER NOT NULL,
         archived_by INTEGER[],
         muted_by INTEGER[],
+        deleted_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE(participant_a_id, participant_b_id)
       )
+    `);
+
+    // Add deleted_at column if it doesn't exist (idempotent migration)
+    await pool.query(`
+      ALTER TABLE conversations ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ
     `);
 
     // Create messages table (marked private)
@@ -1480,6 +1529,62 @@ async function start() {
           }
         }
       }
+
+      // Create archived conversation between alice and charlie
+      const { rows: archivedConvRows } = await pool.query(`
+        SELECT id FROM conversations WHERE participant_a_id = $1 AND participant_b_id = $2
+      `, [alice, charlie]);
+
+      let archivedConvId;
+      if (archivedConvRows.length === 0) {
+        const result = await pool.query(`
+          INSERT INTO conversations (participant_a_id, participant_b_id, archived_by, created_at)
+          VALUES ($1, $2, ARRAY[$3], NOW())
+          RETURNING id
+        `, [alice, charlie, alice]);
+        archivedConvId = result.rows[0].id;
+      } else {
+        archivedConvId = archivedConvRows[0].id;
+        await pool.query(`
+          UPDATE conversations SET archived_by = ARRAY[$1] WHERE id = $2
+        `, [alice, archivedConvId]);
+      }
+
+      // Seed one message in archived conversation
+      const archivedMsgTime = new Date(baseTime.getTime() - 7200000);
+      await pool.query(`
+        INSERT INTO messages (conversation_id, sender_id, type, content, blockchain_recorded, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT DO NOTHING
+      `, [archivedConvId, alice, 'text', JSON.stringify({ text: '[Staging] Archived conversation message' }), false, archivedMsgTime]);
+
+      // Create deleted conversation between bob and charlie
+      const { rows: deletedConvRows } = await pool.query(`
+        SELECT id FROM conversations WHERE participant_a_id = $1 AND participant_b_id = $2
+      `, [Math.min(bob, charlie), Math.max(bob, charlie)]);
+
+      let deletedConvId;
+      if (deletedConvRows.length === 0) {
+        const result = await pool.query(`
+          INSERT INTO conversations (participant_a_id, participant_b_id, deleted_at, created_at)
+          VALUES ($1, $2, NOW(), NOW())
+          RETURNING id
+        `, [Math.min(bob, charlie), Math.max(bob, charlie)]);
+        deletedConvId = result.rows[0].id;
+      } else {
+        deletedConvId = deletedConvRows[0].id;
+        await pool.query(`
+          UPDATE conversations SET deleted_at = NOW() WHERE id = $1
+        `, [deletedConvId]);
+      }
+
+      // Seed one message in deleted conversation
+      const deletedMsgTime = new Date(baseTime.getTime() - 10800000);
+      await pool.query(`
+        INSERT INTO messages (conversation_id, sender_id, type, content, blockchain_recorded, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT DO NOTHING
+      `, [deletedConvId, bob, 'text', JSON.stringify({ text: '[Staging] Deleted conversation message' }), false, deletedMsgTime]);
 
       // Initialize read receipts
       await pool.query(`
