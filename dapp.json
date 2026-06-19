@@ -6,6 +6,7 @@
     { "name": "Chat thread loads", "path": "/", "expectSelector": "#messageList" },
     { "name": "Discover contacts loads", "path": "/", "expectText": "Find contacts" },
     { "name": "Sidebar toggles", "path": "/", "expectSelector": "#sidebar" },
-    { "name": "FAB visible", "path": "/", "expectSelector": "#fabBtn" }
+    { "name": "FAB visible", "path": "/", "expectSelector": "#fabBtn" },
+    { "name": "Leaderboard visible", "path": "/", "expectSelector": "#leaderboardList" }
   ]
 }

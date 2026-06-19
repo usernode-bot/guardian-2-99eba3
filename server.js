@@ -2,12 +2,16 @@ const express = require('express');
 const path = require('path');
 const { Pool } = require('pg');
 const jwt = require('jsonwebtoken');
+const { parse } = require('node-html-parser');
 
 const app = express();
 const port = process.env.PORT || 3000;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const JWT_SECRET = process.env.JWT_SECRET;
 const IS_STAGING = process.env.USERNODE_ENV === 'staging';
+
+// Leaderboard cache (populated at server boot)
+let leaderboardCache = [];
 
 // Rate limit tracking (in-memory; could use Redis for production)
 const rateLimits = new Map();
@@ -22,7 +26,7 @@ function checkRateLimit(key, limit, windowMs) {
   return true;
 }
 
-const PUBLIC_API_PATHS = new Set(['/health', '/favicon.ico']);
+const PUBLIC_API_PATHS = new Set(['/health', '/favicon.ico', '/api/leaderboard']);
 
 app.use(express.json());
 app.use(async (req, res, next) => {
@@ -396,6 +400,12 @@ app.post('/api/tokens/send', async (req, res) => {
   }
 });
 
+// ===== LEADERBOARD ENDPOINT =====
+
+app.get('/api/leaderboard', (_req, res) => {
+  res.json({ leaderboard: leaderboardCache });
+});
+
 // ===== SEARCH & PROFILE ENDPOINTS =====
 
 app.get('/api/search/users', async (req, res) => {
@@ -596,6 +606,71 @@ async function start() {
         VALUES ($1, $2, NOW()), ($3, $2, NOW())
         ON CONFLICT DO NOTHING
       `, [alice, convId, bob]);
+
+      // Seed leaderboard with mock data for staging
+      leaderboardCache = [
+        { rank: 1, username: 'staging-demo-alice' },
+        { rank: 2, username: 'staging-demo-bob' },
+        { rank: 3, username: 'staging-demo-charlie' },
+        { rank: 4, username: 'staging-demo-diana' },
+        { rank: 5, username: 'staging-demo-eve' },
+        { rank: 6, username: 'staging-demo-frank' },
+        { rank: 7, username: 'staging-demo-grace' },
+        { rank: 8, username: 'staging-demo-henry' },
+        { rank: 9, username: 'staging-demo-ivy' },
+        { rank: 10, username: 'staging-demo-jack' },
+      ];
+    } else {
+      // Fetch leaderboard from external URL in production
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        const response = await fetch('https://leaderboard.usernodelabs.org/leaderboard', {
+          signal: controller.signal
+        });
+        clearTimeout(timeout);
+
+        if (response.ok) {
+          const html = await response.text();
+          const root = parse(html);
+
+          // Try to extract leaderboard data from the HTML
+          // Look for elements with rank/username pattern
+          const entries = [];
+          const rankElements = root.querySelectorAll('[data-rank]');
+
+          if (rankElements.length > 0) {
+            rankElements.forEach((el, index) => {
+              const rank = parseInt(el.getAttribute('data-rank')) || (index + 1);
+              const username = el.querySelector('[data-username]')?.text || el.getAttribute('data-username') || el.textContent.trim();
+              if (username) {
+                entries.push({ rank, username });
+              }
+            });
+          } else {
+            // Fallback: look for table rows with rank and username
+            const rows = root.querySelectorAll('tbody tr, .leaderboard-row, [data-role="listitem"]');
+            rows.forEach((row, index) => {
+              const cells = row.querySelectorAll('td, .rank, .username, [data-col]');
+              if (cells.length >= 2) {
+                const rank = parseInt(cells[0].textContent.trim()) || (index + 1);
+                const username = cells[1].textContent.trim();
+                if (username) {
+                  entries.push({ rank, username });
+                }
+              }
+            });
+          }
+
+          leaderboardCache = entries.slice(0, 15);
+          if (leaderboardCache.length > 0) {
+            console.log(`Leaderboard fetched: ${leaderboardCache.length} entries`);
+          }
+        }
+      } catch (err) {
+        console.log(`Leaderboard fetch failed: ${err.message}`);
+        // Fail gracefully; leaderboardCache remains empty
+      }
     }
 
     app.listen(port, () => console.log(`Listening on :${port}`));
