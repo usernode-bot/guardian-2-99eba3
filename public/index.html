@@ -804,9 +804,14 @@
     }
 
     async function loadConversations() {
+      console.log('[loadConversations] Starting to load conversations');
       const data = await apiCall('/api/conversations');
-      if (!data) return;
+      if (!data) {
+        console.error('[loadConversations] No data returned from API');
+        return;
+      }
 
+      console.log('[loadConversations] Received conversations:', data.conversations.length);
       const list = document.getElementById('convList');
       let html = '';
 
@@ -816,7 +821,7 @@
       }
 
       html = data.conversations.map(conv => `
-        <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer transition" onclick="openConversation(${conv.id}, ${conv.otherId}, '${conv.username}')">
+        <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer transition conversation-item" data-conv-id="${conv.id}" data-other-id="${conv.otherId}" data-username="${conv.username}">
           <div class="flex justify-between items-start gap-2">
             <div class="flex-1 min-w-0">
               <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${conv.username} <span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span></div>
@@ -832,6 +837,20 @@
       `).join('');
 
       list.innerHTML = html;
+      attachConversationClickHandlers();
+    }
+
+    function attachConversationClickHandlers() {
+      console.log('[attachConversationClickHandlers] Attaching click handlers to conversation items');
+      document.querySelectorAll('.conversation-item').forEach(item => {
+        item.addEventListener('click', function() {
+          const convId = this.dataset.convId;
+          const otherId = this.dataset.otherId;
+          const username = this.dataset.username;
+          console.log('[attachConversationClickHandlers] Conversation clicked:', { convId, otherId, username });
+          openConversation(convId, otherId, username);
+        });
+      });
     }
 
     function formatTime(date) {
@@ -844,9 +863,11 @@
     }
 
     async function openConversation(convId, otherId, username) {
+      console.log('[openConversation] Opening conversation:', { convId, otherId, username });
       currentConvId = convId;
       currentOtherId = otherId;
       currentContactName = username;
+      console.log('[openConversation] Set currentConvId to:', currentConvId);
       document.getElementById('headerTitle').textContent = username + ' ✓';
       document.getElementById('backBtn').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
@@ -865,13 +886,29 @@
     }
 
     async function loadMessages() {
-      if (!currentConvId) return;
-      const data = await apiCall(`/api/conversations/${currentConvId}?limit=50`);
-      if (!data) return;
+      console.log('[loadMessages] Loading messages for conversation:', currentConvId);
+      if (!currentConvId) {
+        console.error('[loadMessages] currentConvId is not set');
+        return;
+      }
 
+      if (!currentUser) {
+        console.warn('[loadMessages] currentUser is not initialized yet');
+        return;
+      }
+
+      console.log('[loadMessages] currentUser:', currentUser.id);
+      const data = await apiCall(`/api/conversations/${currentConvId}?limit=50`);
+      if (!data) {
+        console.error('[loadMessages] No data returned from API');
+        return;
+      }
+
+      console.log('[loadMessages] API response:', data);
       const list = document.getElementById('messageList');
 
       if (data.error) {
+        console.error('[loadMessages] API returned error:', data.error, 'status:', data.status);
         if (data.status === 403) {
           list.innerHTML = '<div class="text-center text-red-600 dark:text-red-400 py-8"><div class="text-sm">This conversation is no longer available</div></div>';
         } else {
@@ -880,25 +917,44 @@
         return;
       }
 
+      if (!data.messages || !Array.isArray(data.messages)) {
+        console.error('[loadMessages] messages is not an array:', data.messages);
+        list.innerHTML = '<div class="text-center text-red-600 dark:text-red-400 py-8"><div class="text-sm">Failed to load messages (invalid format)</div></div>';
+        return;
+      }
+
+      console.log('[loadMessages] Message count:', data.messages.length);
       if (data.messages.length === 0) {
         list.innerHTML = '<div class="text-center text-zinc-600 dark:text-zinc-500 py-4">No messages yet</div>';
         return;
       }
 
-      const processedMessages = data.messages.map(msg => {
+      const processedMessages = data.messages.map((msg, idx) => {
         let content = msg.content;
+        console.log(`[loadMessages] Processing message ${idx}:`, { type: msg.type, contentType: typeof content, contentKeys: typeof content === 'object' ? Object.keys(content) : 'N/A' });
+
         if (typeof content === 'string') {
           try {
             content = JSON.parse(content);
+            console.log(`[loadMessages] Parsed stringified content for message ${idx}`);
           } catch (e) {
-            console.error('Failed to parse message content:', e, 'raw:', content);
+            console.error(`[loadMessages] Failed to parse message ${idx} content:`, e, 'raw:', content);
             content = {};
           }
         }
         return { ...msg, content };
       });
 
-      list.innerHTML = processedMessages.map(msg => renderMessage(msg)).join('');
+      console.log('[loadMessages] About to render', processedMessages.length, 'messages');
+      const rendered = processedMessages.map((msg, idx) => {
+        const html = renderMessage(msg);
+        console.log(`[loadMessages] Rendered message ${idx}:`, { type: msg.type, htmlLength: html.length, isEmptyString: html === '' });
+        return html;
+      });
+
+      const joinedHtml = rendered.join('');
+      console.log('[loadMessages] Total HTML length:', joinedHtml.length);
+      list.innerHTML = joinedHtml;
       list.scrollTop = list.scrollHeight;
 
       await apiCall(`/api/conversations/${currentConvId}/read`, {
@@ -908,13 +964,29 @@
     }
 
     function renderMessage(msg) {
-      if (!msg || !msg.content) return '';
+      if (!msg) {
+        console.warn('[renderMessage] msg is null/undefined');
+        return '';
+      }
+
+      if (!msg.content) {
+        console.warn('[renderMessage] msg.content is null/undefined for message:', msg.id);
+        return '';
+      }
+
+      if (!currentUser) {
+        console.warn('[renderMessage] currentUser is not initialized');
+        return '';
+      }
 
       const isOwn = msg.senderId === currentUser.id;
       const baseClass = isOwn ? 'ml-auto bg-cyan-600 dark:bg-cyan-600 text-white' : 'mr-auto bg-zinc-200 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100';
       const alignClass = isOwn ? 'justify-end' : 'justify-start';
 
       if (msg.type === 'text') {
+        if (!msg.content.text) {
+          console.warn('[renderMessage] text message missing text property:', msg);
+        }
         const blockchainStatusHtml = msg.blockchainRecorded ? `<div class="text-xs mt-2 text-amber-600 dark:text-amber-400" id="blockchain-status-${msg.id}">⏳ Recording on blockchain...</div>` : '';
         return `
           <div class="flex ${alignClass}">
@@ -929,6 +1001,9 @@
       }
 
       if (msg.type === 'image') {
+        if (!msg.content.imageUrl) {
+          console.warn('[renderMessage] image message missing imageUrl property:', msg);
+        }
         return `
           <div class="flex ${alignClass}">
             <div class="max-w-xs rounded-2xl overflow-hidden ${baseClass}">
@@ -941,6 +1016,9 @@
 
       if (msg.type === 'token') {
         const c = msg.content;
+        if (!c.amount && c.amount !== 0) {
+          console.warn('[renderMessage] token message missing amount property:', msg);
+        }
         const blockchainStatusHtml = msg.blockchainRecorded ? `<div class="text-xs mt-2 text-amber-600 dark:text-amber-400" id="blockchain-status-${msg.id}">⏳ Recording on blockchain...</div>` : '';
         return `
           <div class="flex ${alignClass}">
@@ -956,6 +1034,7 @@
         `;
       }
 
+      console.warn('[renderMessage] Unknown message type:', msg.type);
       return '';
     }
 
