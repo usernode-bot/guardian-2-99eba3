@@ -2597,17 +2597,17 @@
             ${content}
             <div class="mt-3 pt-3 border-t border-zinc-200 dark:border-zinc-700">
               <div class="flex items-center gap-4 flex-wrap">
-                <button onclick="toggleComments(${post.id})" class="icon-button-bare text-zinc-600 dark:text-zinc-500 hover:text-cyan-600 dark:hover:text-cyan-400 text-xs transition" title="Comments">
-                  💬 <span id="commentCount-${post.id}">0</span>
+                <button onclick="toggleComments(${post.id})" class="icon-button-bare text-zinc-600 dark:text-zinc-500 hover:text-cyan-600 dark:hover:text-cyan-400 transition text-sm" title="Comments">
+                  💬
                 </button>
-                <button onclick="copyPostLink(${post.id})" class="icon-button-bare text-zinc-600 dark:text-zinc-500 hover:text-cyan-600 dark:hover:text-cyan-400 text-xs transition" title="Copy link">
+                <button onclick="copyPostLink(${post.id})" class="icon-button-bare text-zinc-600 dark:text-zinc-500 hover:text-cyan-600 dark:hover:text-cyan-400 transition text-sm" title="Copy link">
                   🔗
                 </button>
-                <button onclick="openShareMenu(${post.id}, event)" class="icon-button-bare text-zinc-600 dark:text-zinc-500 hover:text-cyan-600 dark:hover:text-cyan-400 text-xs transition" title="Share">
+                <button onclick="openShareMenu(${post.id}, event)" class="icon-button-bare text-zinc-600 dark:text-zinc-500 hover:text-cyan-600 dark:hover:text-cyan-400 transition text-sm" title="Share">
                   📤
                 </button>
-                <button onclick="togglePostLike(${post.id})" class="icon-button-bare ${likeButtonClass} text-xs transition" title="Like">
-                  ❤️ ${likeCountHtml}
+                <button onclick="togglePostLike(${post.id})" class="icon-button-bare ${likeButtonClass} transition text-sm" title="Like">
+                  ❤️
                 </button>
               </div>
               <div id="commentsSection-${post.id}" class="hidden mt-3 space-y-3 max-h-96 overflow-y-auto"></div>
