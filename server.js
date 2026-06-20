@@ -328,8 +328,17 @@ app.get('/api/conversations/:convId', async (req, res) => {
         try {
           content = JSON.parse(content);
         } catch (e) {
-          console.error('Failed to parse message content:', e);
-          content = {};
+          console.error('Failed to parse message content for message ID', m.id, ':', e.message, 'Raw content:', content);
+          // If parsing fails, provide a fallback based on message type
+          if (m.type === 'text') {
+            content = { text: '[Message content could not be parsed]' };
+          } else if (m.type === 'image') {
+            content = { imageUrl: '' };
+          } else if (m.type === 'token') {
+            content = { amount: 0, memo: '', status: 'unknown' };
+          } else {
+            content = {};
+          }
         }
       }
       return {
