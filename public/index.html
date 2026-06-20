@@ -505,6 +505,33 @@
     </div>
   </div>
 
+  <!-- Welcome Screen Modal -->
+  <div id="welcomeModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-8 w-full max-w-md space-y-6">
+      <div>
+        <h1 class="text-3xl font-bold text-zinc-900 dark:text-white mb-2">Welcome to Guardian</h1>
+        <p class="text-zinc-600 dark:text-zinc-400">A secure messenger for direct communication with verified contacts on the blockchain.</p>
+      </div>
+      <div class="space-y-3 text-sm text-zinc-700 dark:text-zinc-300">
+        <div class="flex items-start gap-3">
+          <span class="text-lg">💬</span>
+          <span>Send encrypted messages with your contacts</span>
+        </div>
+        <div class="flex items-start gap-3">
+          <span class="text-lg">📤</span>
+          <span>Share your contact via QR code or link</span>
+        </div>
+        <div class="flex items-start gap-3">
+          <span class="text-lg">💰</span>
+          <span>Transfer tokens directly in conversations</span>
+        </div>
+      </div>
+      <button onclick="dismissWelcome()" class="w-full px-4 py-3 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">
+        Get Started
+      </button>
+    </div>
+  </div>
+
   <script>
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token') || '';
@@ -763,6 +790,7 @@
       document.getElementById('sidebarUsername').textContent = user.username + (user.verified ? ' ✓' : '');
       document.getElementById('sidebarWallet').textContent = user.usernode_pubkey || 'No wallet linked';
       initSettings();
+      showWelcome();
       loadConversations();
       setupEventListeners();
     }
@@ -1568,6 +1596,17 @@
         dropdown.classList.add('hidden');
       }
     });
+
+    // ===== WELCOME SCREEN FUNCTIONS =====
+
+    function showWelcome() {
+      document.getElementById('welcomeModal').classList.remove('hidden');
+    }
+
+    function dismissWelcome() {
+      document.getElementById('welcomeModal').classList.add('hidden');
+      showConversationsView();
+    }
 
     init();
   </script>
