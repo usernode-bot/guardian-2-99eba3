@@ -1866,6 +1866,199 @@ app.post('/api/groups/:groupId/archive', async (req, res) => {
   }
 });
 
+// ===== POSTS ENDPOINTS =====
+
+app.get('/api/posts', async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit || 20), 100);
+    const offset = parseInt(req.query.offset || 0);
+
+    const postsQuery = `
+      SELECT
+        p.id,
+        p.author_id,
+        p.content,
+        p.created_at,
+        u.username,
+        u.usernode_pubkey,
+        u.verified_at,
+        (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as likes_count,
+        (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comments_count
+      FROM posts p
+      JOIN users u ON u.id = p.author_id
+      ORDER BY p.created_at DESC
+      LIMIT $1 OFFSET $2
+    `;
+
+    const { rows: posts } = await pool.query(postsQuery, [limit, offset]);
+
+    const result = posts.map(post => ({
+      id: post.id,
+      authorId: post.author_id,
+      author: {
+        username: post.username,
+        usernode_pubkey: post.usernode_pubkey,
+        verified: !!post.verified_at,
+      },
+      content: post.content,
+      createdAt: post.created_at,
+      likesCount: parseInt(post.likes_count),
+      commentsCount: parseInt(post.comments_count),
+    }));
+
+    res.json({ posts: result });
+  } catch (err) {
+    console.error('Error fetching posts:', err);
+    res.status(500).json({ error: 'Failed to fetch posts' });
+  }
+});
+
+app.get('/api/posts/:postId/likes', async (req, res) => {
+  try {
+    const { postId } = req.params;
+
+    const { rows: likes } = await pool.query(`
+      SELECT
+        l.id,
+        l.user_id,
+        l.created_at,
+        u.username,
+        u.usernode_pubkey,
+        u.verified_at
+      FROM likes l
+      JOIN users u ON u.id = l.user_id
+      WHERE l.post_id = $1
+      ORDER BY l.created_at DESC
+      LIMIT 10
+    `, [postId]);
+
+    const result = likes.map(like => ({
+      id: like.id,
+      userId: like.user_id,
+      username: like.username,
+      usernode_pubkey: like.usernode_pubkey,
+      verified: !!like.verified_at,
+      createdAt: like.created_at,
+    }));
+
+    res.json({ likes: result });
+  } catch (err) {
+    console.error('Error fetching likes:', err);
+    res.status(500).json({ error: 'Failed to fetch likes' });
+  }
+});
+
+app.get('/api/posts/:postId/comments', async (req, res) => {
+  try {
+    const { postId } = req.params;
+
+    const { rows: comments } = await pool.query(`
+      SELECT
+        c.id,
+        c.author_id,
+        c.content,
+        c.created_at,
+        u.username,
+        u.usernode_pubkey,
+        u.verified_at
+      FROM comments c
+      JOIN users u ON u.id = c.author_id
+      WHERE c.post_id = $1
+      ORDER BY c.created_at ASC
+      LIMIT 5
+    `, [postId]);
+
+    const result = comments.map(comment => ({
+      id: comment.id,
+      authorId: comment.author_id,
+      author: {
+        username: comment.username,
+        usernode_pubkey: comment.usernode_pubkey,
+        verified: !!comment.verified_at,
+      },
+      content: comment.content,
+      createdAt: comment.created_at,
+    }));
+
+    res.json({ comments: result });
+  } catch (err) {
+    console.error('Error fetching comments:', err);
+    res.status(500).json({ error: 'Failed to fetch comments' });
+  }
+});
+
+app.post('/api/posts/:postId/like', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { postId } = req.params;
+    const userId = req.user.id;
+
+    // Check if like exists
+    const { rows: existingLikes } = await pool.query(`
+      SELECT id FROM likes WHERE post_id = $1 AND user_id = $2
+    `, [postId, userId]);
+
+    if (existingLikes.length > 0) {
+      // Unlike
+      await pool.query(`
+        DELETE FROM likes WHERE post_id = $1 AND user_id = $2
+      `, [postId, userId]);
+      res.json({ liked: false, message: 'Like removed' });
+    } else {
+      // Like
+      await pool.query(`
+        INSERT INTO likes (post_id, user_id, created_at)
+        VALUES ($1, $2, NOW())
+        ON CONFLICT DO NOTHING
+      `, [postId, userId]);
+      res.json({ liked: true, message: 'Like added' });
+    }
+  } catch (err) {
+    console.error('Error toggling like:', err);
+    res.status(500).json({ error: 'Failed to toggle like' });
+  }
+});
+
+app.post('/api/posts/:postId/comment', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { postId } = req.params;
+    const { content } = req.body;
+
+    if (!content || content.trim().length === 0) {
+      return res.status(400).json({ error: 'Comment content is required' });
+    }
+
+    const result = await pool.query(`
+      INSERT INTO comments (post_id, author_id, content, created_at)
+      VALUES ($1, $2, $3, NOW())
+      RETURNING id, created_at
+    `, [postId, req.user.id, content.trim()]);
+
+    const comment = result.rows[0];
+    res.json({
+      id: comment.id,
+      authorId: req.user.id,
+      author: {
+        username: req.user.username,
+        usernode_pubkey: req.user.usernode_pubkey,
+        verified: !!req.user.verified_at,
+      },
+      content: content.trim(),
+      createdAt: comment.created_at,
+    });
+  } catch (err) {
+    console.error('Error creating comment:', err);
+    res.status(500).json({ error: 'Failed to create comment' });
+  }
+});
+
 // ===== EXPLORER API PROXY =====
 
 // Simple proxy for explorer API to avoid CORS issues
@@ -2117,6 +2310,51 @@ async function start() {
         last_read_at TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE(user_id, group_id)
       )
+    `);
+
+    // Create posts table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS posts (
+        id BIGSERIAL PRIMARY KEY,
+        author_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        content TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_posts_created_at
+        ON posts(created_at DESC)
+    `);
+
+    // Create likes table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS likes (
+        id BIGSERIAL PRIMARY KEY,
+        post_id BIGINT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(post_id, user_id)
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_likes_post_id
+        ON likes(post_id)
+    `);
+
+    // Create comments table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS comments (
+        id BIGSERIAL PRIMARY KEY,
+        post_id BIGINT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+        author_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        content TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_comments_post_id
+        ON comments(post_id)
     `);
 
     // Mark tables as private
@@ -2441,6 +2679,117 @@ async function start() {
           VALUES ($1, $2, NOW())
           ON CONFLICT (user_id, group_id) DO NOTHING
         `, [memberId, generalGroupId]);
+      }
+
+      // Seed posts with likes and comments
+      const postsBaseTime = new Date(Date.now() - 172800000); // 48 hours ago
+      const posts = [
+        { offset: 0, author: alice, content: '[Staging] Just launched the new dashboard UI. Feedback welcome!' },
+        { offset: 43200000, author: bob, content: '[Staging] Building a cool feature for the Q3 release. Excited to show progress soon!' },
+        { offset: 86400000, author: charlie, content: '[Staging] Love this community. Everyone is so supportive and creative!' },
+        { offset: 129600000, author: david, content: '[Staging] Working on performance optimizations today. Already seeing 40% improvement!' },
+        { offset: 158400000, author: emma, content: '[Staging] Just shipped the new authentication system. No more boring auth flows!' },
+      ];
+
+      const postIds = [];
+      for (const post of posts) {
+        const postTime = new Date(postsBaseTime.getTime() + post.offset);
+        const result = await pool.query(`
+          INSERT INTO posts (author_id, content, created_at, updated_at)
+          VALUES ($1, $2, $3, $3)
+          ON CONFLICT DO NOTHING
+          RETURNING id
+        `, [post.author, post.content, postTime]);
+
+        if (result.rows.length > 0) {
+          postIds.push(result.rows[0].id);
+        }
+      }
+
+      // Add likes to posts
+      if (postIds.length > 0) {
+        // Post 0: alice liked by bob, charlie, david (3 likes)
+        await pool.query(`
+          INSERT INTO likes (post_id, user_id, created_at)
+          VALUES ($1, $2, $3), ($1, $3, $3), ($1, $4, $3)
+          ON CONFLICT DO NOTHING
+        `, [postIds[0], bob, postsBaseTime, david]);
+
+        // Post 1: bob liked by alice, charlie, emma (3 likes)
+        if (postIds.length > 1) {
+          await pool.query(`
+            INSERT INTO likes (post_id, user_id, created_at)
+            VALUES ($1, $2, $3), ($1, $3, $3), ($1, $4, $3)
+            ON CONFLICT DO NOTHING
+          `, [postIds[1], alice, postsBaseTime, emma]);
+        }
+
+        // Post 2: charlie liked by alice, bob, david, emma (4 likes)
+        if (postIds.length > 2) {
+          await pool.query(`
+            INSERT INTO likes (post_id, user_id, created_at)
+            VALUES ($1, $2, $3), ($1, $3, $3), ($1, $4, $3), ($1, $5, $3)
+            ON CONFLICT DO NOTHING
+          `, [postIds[2], alice, postsBaseTime, bob, emma]);
+        }
+
+        // Post 3: david liked by bob, charlie (2 likes)
+        if (postIds.length > 3) {
+          await pool.query(`
+            INSERT INTO likes (post_id, user_id, created_at)
+            VALUES ($1, $2, $3), ($1, $3, $3)
+            ON CONFLICT DO NOTHING
+          `, [postIds[3], bob, postsBaseTime, charlie]);
+        }
+
+        // Post 4: emma liked by alice, bob, charlie, david, charlie (5 likes)
+        if (postIds.length > 4) {
+          await pool.query(`
+            INSERT INTO likes (post_id, user_id, created_at)
+            VALUES ($1, $2, $3), ($1, $3, $3), ($1, $4, $3), ($1, $5, $3), ($1, $6, $3)
+            ON CONFLICT DO NOTHING
+          `, [postIds[4], alice, postsBaseTime, bob, charlie, david, emma]);
+        }
+      }
+
+      // Add comments to posts
+      const commentTexts = {
+        0: [
+          { author: bob, text: '[Staging] This looks amazing! Love the new color palette.' },
+          { author: emma, text: '[Staging] Great work! When will it be released?' },
+        ],
+        1: [
+          { author: charlie, text: '[Staging] Sounds interesting! What kind of feature?' },
+          { author: alice, text: '[Staging] Looking forward to seeing it!' },
+          { author: david, text: '[Staging] Keep up the great work!' },
+        ],
+        2: [
+          { author: alice, text: '[Staging] Totally agree!' },
+        ],
+        3: [
+          { author: emma, text: '[Staging] 40%? That is incredible!' },
+          { author: alice, text: '[Staging] Amazing optimization work!' },
+          { author: bob, text: '[Staging] Those are great numbers!' },
+          { author: charlie, text: '[Staging] Well done!' },
+        ],
+        4: [
+          { author: bob, text: '[Staging] This is going to make things so much better!' },
+          { author: charlie, text: '[Staging] Excited to try this out!' },
+        ],
+      };
+
+      for (let i = 0; i < postIds.length; i++) {
+        if (commentTexts[i]) {
+          for (let j = 0; j < commentTexts[i].length; j++) {
+            const comment = commentTexts[i][j];
+            const commentTime = new Date(postsBaseTime.getTime() + posts[i].offset + (j * 60000));
+            await pool.query(`
+              INSERT INTO comments (post_id, author_id, content, created_at)
+              VALUES ($1, $2, $3, $4)
+              ON CONFLICT DO NOTHING
+            `, [postIds[i], comment.author, comment.text, commentTime]);
+          }
+        }
       }
     }
 

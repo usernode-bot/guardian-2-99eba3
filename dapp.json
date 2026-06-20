@@ -4,6 +4,7 @@
   "tests": [
     { "name": "Home loads", "path": "/", "expectSelector": "#conversationsView" },
     { "name": "Chat thread loads", "path": "/", "expectSelector": "#messageList" },
+    { "name": "Feed loads with posts", "path": "/", "expectSelector": "#feedView" },
     { "name": "Discover contacts via sidebar", "path": "/", "expectSelector": "#contactsView" },
     { "name": "Sidebar toggles", "path": "/", "expectSelector": "#sidebar" },
     { "name": "Share contact modal works", "path": "/", "expectSelector": "#shareContactModal" },
