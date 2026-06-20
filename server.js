@@ -1546,15 +1546,15 @@ async function start() {
       // Seed conversation requests for testing the request-based contact workflow
       // Bob → Charlie: pending (Charlie sees in Requests tab and can accept)
       await pool.query(`
-        INSERT INTO conversation_requests (sender_id, recipient_id, status, created_at)
-        VALUES ($1, $2, 'pending', NOW())
+        INSERT INTO conversation_requests (sender_id, recipient_id, status, created_at, updated_at)
+        VALUES ($1, $2, 'pending', NOW(), NOW())
         ON CONFLICT (sender_id, recipient_id) DO NOTHING
       `, [bob, charlie]);
 
       // Alice → Bob: accepted (both have auto-created bidirectional contacts below)
       await pool.query(`
-        INSERT INTO conversation_requests (sender_id, recipient_id, status, created_at, accepted_at)
-        VALUES ($1, $2, 'accepted', NOW() - INTERVAL '1 hour', NOW() - INTERVAL '30 minutes')
+        INSERT INTO conversation_requests (sender_id, recipient_id, status, created_at, updated_at, accepted_at)
+        VALUES ($1, $2, 'accepted', NOW() - INTERVAL '1 hour', NOW() - INTERVAL '30 minutes', NOW() - INTERVAL '30 minutes')
         ON CONFLICT (sender_id, recipient_id) DO NOTHING
       `, [alice, bob]);
 
