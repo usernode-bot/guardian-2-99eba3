@@ -518,6 +518,7 @@
     let currentContactAddress = null;
     let pollInterval = null;
     let conversationsPollInterval = null;
+    let contactsSyncPollInterval = null;
     let sidebarOpen = false;
     let pendingDeleteContactId = null;
 
@@ -749,6 +750,10 @@
         hideContactHeaderMenu();
         currentContactId = null;
         loadContactsList();
+        // Immediately refresh conversations to reflect the archived conversation
+        if (document.getElementById('conversationsView').classList.contains('hidden') === false) {
+          await loadConversations();
+        }
       }
     }
 
@@ -902,6 +907,11 @@
         method: 'PUT',
         body: JSON.stringify({ readUpTo: new Date().toISOString() })
       });
+
+      // Refresh conversations list to keep last message and ordering in sync
+      if (conversationsPollInterval) {
+        loadConversations();
+      }
     }
 
     function renderMessage(msg) {
@@ -1103,12 +1113,17 @@
       // Start polling for conversations in this view
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
       conversationsPollInterval = setInterval(loadConversations, 3000);
+      // Start contact sync polling to detect new contacts and conversation changes
+      if (contactsSyncPollInterval) clearInterval(contactsSyncPollInterval);
+      contactsSyncPollInterval = setInterval(() => {
+        loadContactsList().then(() => loadConversations());
+      }, 5000);
     }
 
     let allContacts = [];
 
     async function loadContactsList() {
-      const data = await apiCall('/api/contacts');
+      const data = await apiCall('/api/contacts/with-conversations');
       if (!data) return;
 
       allContacts = data.contacts || [];
@@ -1167,17 +1182,25 @@
         return;
       }
 
-      yourContactsList.innerHTML = contacts.map(contact => `
+      yourContactsList.innerHTML = contacts.map(contact => {
+        const lastMsg = contact.lastMessage || '';
+        const unreadBadge = contact.unreadCount > 0 ? `<span class="inline-block px-2 py-0.5 bg-cyan-600 text-white text-xs rounded-full font-medium">${contact.unreadCount}</span>` : '';
+        return `
         <div class="p-3 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition cursor-pointer" onclick="startConversationWithContact(${contact.userId}, '${contact.username}')">
           <div class="flex justify-between items-start gap-2">
             <div class="flex-1 min-w-0">
-              <div class="font-medium truncate text-sm text-zinc-900 dark:text-zinc-100">${contact.nickname || contact.username} ${contact.verified ? '<span class="text-xs text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
+              <div class="flex items-center gap-2">
+                <div class="font-medium truncate text-sm text-zinc-900 dark:text-zinc-100">${contact.nickname || contact.username} ${contact.verified ? '<span class="text-xs text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
+                ${unreadBadge}
+              </div>
               <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${contact.usernode_pubkey || 'No wallet'}</div>
+              ${lastMsg ? `<div class="text-xs text-zinc-600 dark:text-zinc-400 truncate mt-1">${lastMsg}</div>` : ''}
             </div>
             <button onclick="event.stopPropagation(); showDeleteContactModal(${contact.id}, '${(contact.nickname || contact.username).replace(/'/g, "\\'")}')" class="text-zinc-500 dark:text-zinc-500 hover:text-red-600 dark:hover:text-red-400 text-xs transition flex-shrink-0">🗑️</button>
           </div>
         </div>
-      `).join('');
+      `;
+      }).join('');
     }
 
     async function handleContactSearch(event) {
@@ -1290,6 +1313,10 @@
 
       if (data && !data.error) {
         await loadContactsList();
+        // Immediately refresh conversations to show the new contact's conversation
+        if (document.getElementById('conversationsView').classList.contains('hidden') === false) {
+          await loadConversations();
+        }
         const searchInput = document.getElementById('contactsSearchInput');
         if (searchInput) {
           const event = new Event('input');
@@ -1503,6 +1530,7 @@
       document.getElementById('menuBtn').classList.add('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
+      if (contactsSyncPollInterval) clearInterval(contactsSyncPollInterval);
       document.getElementById('contactsSearchInput').value = '';
       loadContactsList();
     }

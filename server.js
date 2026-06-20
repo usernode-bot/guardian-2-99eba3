@@ -972,14 +972,34 @@ app.post('/api/contacts', async (req, res) => {
       RETURNING id
     `, [userId, contactUserId, nickname || null]);
 
+    const contactId = result.rows[0].id;
+
+    // Auto-create or retrieve conversation
+    const [a, b] = [userId, contactUserId].sort((x, y) => x - y);
+    const convRes = await pool.query(`
+      SELECT id FROM conversations
+      WHERE participant_a_id = $1 AND participant_b_id = $2
+    `, [a, b]);
+
+    let convId = convRes.rows[0]?.id;
+    if (!convId) {
+      const insertConv = await pool.query(`
+        INSERT INTO conversations (participant_a_id, participant_b_id, created_at, updated_at)
+        VALUES ($1, $2, NOW(), NOW())
+        RETURNING id
+      `, [a, b]);
+      convId = insertConv.rows[0].id;
+    }
+
     res.json({
-      id: result.rows[0].id,
+      id: contactId,
       userId: contactUserId,
       username: contactUser.username,
       usernode_pubkey: contactUser.usernode_pubkey,
       nickname: nickname || null,
       verified: !!contactUser.verified_at,
       avatar_url: contactUser.avatar_url || null,
+      conversationId: convId,
     });
   } catch (err) {
     console.error('Error adding contact:', err);
@@ -1035,14 +1055,34 @@ app.post('/api/contacts/by-id', async (req, res) => {
       RETURNING id
     `, [userId, contactUserId, nickname || null]);
 
+    const contactId = result.rows[0].id;
+
+    // Auto-create or retrieve conversation
+    const [a, b] = [userId, contactUserId].sort((x, y) => x - y);
+    const convRes = await pool.query(`
+      SELECT id FROM conversations
+      WHERE participant_a_id = $1 AND participant_b_id = $2
+    `, [a, b]);
+
+    let convId = convRes.rows[0]?.id;
+    if (!convId) {
+      const insertConv = await pool.query(`
+        INSERT INTO conversations (participant_a_id, participant_b_id, created_at, updated_at)
+        VALUES ($1, $2, NOW(), NOW())
+        RETURNING id
+      `, [a, b]);
+      convId = insertConv.rows[0].id;
+    }
+
     res.json({
-      id: result.rows[0].id,
+      id: contactId,
       userId: contactUserId,
       username: contactUser.username,
       usernode_pubkey: contactUser.usernode_pubkey,
       nickname: nickname || null,
       verified: !!contactUser.verified_at,
       avatar_url: contactUser.avatar_url || null,
+      conversationId: convId,
     });
   } catch (err) {
     console.error('Error adding contact by ID:', err);
@@ -1059,14 +1099,35 @@ app.delete('/api/contacts/:contactId', async (req, res) => {
     const { contactId } = req.params;
     const userId = req.user.id;
 
-    const result = await pool.query(`
+    // Get the contact to find the other user
+    const contactRes = await pool.query(`
+      SELECT contact_user_id FROM user_contacts
+      WHERE id = $1 AND user_id = $2
+    `, [contactId, userId]);
+
+    if (contactRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    const otherUserId = contactRes.rows[0].contact_user_id;
+
+    // Delete the contact
+    await pool.query(`
       DELETE FROM user_contacts
       WHERE id = $1 AND user_id = $2
     `, [contactId, userId]);
 
-    if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Contact not found' });
-    }
+    // Archive the conversation (add userId to archived_by array)
+    const [a, b] = [userId, otherUserId].sort((x, y) => x - y);
+    await pool.query(`
+      UPDATE conversations
+      SET archived_by = CASE
+        WHEN archived_by IS NULL THEN ARRAY[$3]
+        WHEN NOT (archived_by @> ARRAY[$3]) THEN archived_by || ARRAY[$3]
+        ELSE archived_by
+      END
+      WHERE participant_a_id = $1 AND participant_b_id = $2
+    `, [a, b, userId]);
 
     res.json({ ok: true });
   } catch (err) {
@@ -1089,6 +1150,91 @@ app.get('/api/user/contact-info', (req, res) => {
     });
   } catch (err) {
     console.error('Error getting contact info:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get contacts with conversation metadata (last message, unread count)
+app.get('/api/contacts/with-conversations', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = req.user.id;
+    const { rows: contacts } = await pool.query(`
+      SELECT uc.id, u.id as user_id, u.username, u.usernode_pubkey, u.verified_at, u.avatar_url, uc.nickname
+      FROM user_contacts uc
+      JOIN users u ON uc.contact_user_id = u.id
+      WHERE uc.user_id = $1
+      ORDER BY uc.created_at DESC
+    `, [userId]);
+
+    const result = await Promise.all(contacts.map(async (contact) => {
+      // Find conversation for this contact
+      const [a, b] = [userId, contact.user_id].sort((x, y) => x - y);
+      const convRes = await pool.query(`
+        SELECT id, updated_at FROM conversations
+        WHERE participant_a_id = $1 AND participant_b_id = $2
+      `, [a, b]);
+
+      let convId = null;
+      let lastMessage = '';
+      let lastMessageAt = null;
+      let unreadCount = 0;
+
+      if (convRes.rows.length > 0) {
+        const conv = convRes.rows[0];
+        convId = conv.id;
+
+        // Get last message
+        const msgRes = await pool.query(`
+          SELECT content, type, created_at
+          FROM messages
+          WHERE conversation_id = $1
+          ORDER BY created_at DESC
+          LIMIT 1
+        `, [convId]);
+
+        const lastMsg = msgRes.rows[0];
+        lastMessage = lastMsg
+          ? (lastMsg.type === 'text' ? lastMsg.content?.text : lastMsg.type === 'image' ? '[Image]' : '[Token transfer]')
+          : '';
+        lastMessageAt = lastMsg?.created_at || null;
+
+        // Get unread count
+        const readRes = await pool.query(`
+          SELECT last_read_at FROM read_receipts WHERE user_id = $1 AND conversation_id = $2
+        `, [userId, convId]);
+
+        const lastReadAt = readRes.rows[0]?.last_read_at || new Date('1970-01-01');
+        const unreadRes = await pool.query(`
+          SELECT COUNT(*) as count
+          FROM messages
+          WHERE conversation_id = $1 AND sender_id != $2 AND created_at > $3
+        `, [convId, userId, lastReadAt]);
+
+        unreadCount = parseInt(unreadRes.rows[0]?.count || 0);
+      }
+
+      return {
+        id: contact.id,
+        userId: contact.user_id,
+        username: contact.username,
+        usernode_pubkey: contact.usernode_pubkey || null,
+        nickname: contact.nickname,
+        verified: !!contact.verified_at,
+        avatar_url: contact.avatar_url || null,
+        conversationId: convId,
+        lastMessage,
+        lastMessageAt,
+        unreadCount,
+      };
+    }));
+
+    res.json({ contacts: result });
+  } catch (err) {
+    console.error('Error fetching contacts with conversations:', err);
     res.status(500).json({ error: err.message });
   }
 });
