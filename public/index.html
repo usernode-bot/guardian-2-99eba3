@@ -48,8 +48,18 @@
       }
 
       const body = document.body;
-      body.classList.toggle('layout-mobile', viewMode === 'mobile');
-      body.classList.toggle('layout-web', viewMode === 'web');
+      if (body) {
+        body.classList.toggle('layout-mobile', viewMode === 'mobile');
+        body.classList.toggle('layout-web', viewMode === 'web');
+      } else {
+        document.addEventListener('DOMContentLoaded', function() {
+          const body = document.body;
+          if (body) {
+            body.classList.toggle('layout-mobile', viewMode === 'mobile');
+            body.classList.toggle('layout-web', viewMode === 'web');
+          }
+        });
+      }
     }
 
     restoreThemeEarly();
