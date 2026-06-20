@@ -9,8 +9,8 @@ Wallet addresses are synced from the Usernode registry at startup and periodical
 
 Two optional environment variables control user sync behavior:
 
-- **`USERNODE_USER_REGISTRY_URL`** (optional): URL to the Usernode user registry API endpoint. If not set:
-  - In **staging**: users are loaded from the local `staging-users.json` file
+- **`USERNODE_USER_REGISTRY_URL`** (optional): URL to the Usernode user registry API endpoint. When set, the app attempts to fetch real user data from this endpoint. If the API call fails or times out, the app falls back to mock data in staging. If not set:
+  - In **staging**: mock user data is loaded from the local `staging-users.json` file
   - In **production**: user sync is skipped (relies on auth-time upserts only)
   - Example: `https://usernode.example.com/api/users`
 
@@ -18,7 +18,10 @@ Two optional environment variables control user sync behavior:
 
 ### How it works
 
-1. On startup, `fetchUsersFromUsernode()` is called to populate the `users` table with wallet addresses
+1. On startup, `fetchUsersFromUsernode()` is called to populate the `users` table with wallet addresses:
+   - **Attempts real data first**: If `USERNODE_USER_REGISTRY_URL` is set, tries to fetch from the real registry API
+   - **Falls back to mock on failure**: If the API call fails or returns no data, falls back to `staging-users.json` in staging
+   - **Explicit logging**: Console logs indicate whether real or mock data was used ("Fetched from real registry API" vs. "Using mock staging users")
 2. A periodic interval then keeps user data fresh by re-syncing every 10 minutes (configurable)
 3. The `/api/search/users` endpoint queries these pre-populated wallet addresses in real-time
-4. In staging, mock user data is loaded from `staging-users.json` for testing without a real registry API
+4. Mock user data from `staging-users.json` is only used when real data is unavailable (API misconfigured, timeout, or empty response)

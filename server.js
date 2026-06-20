@@ -84,33 +84,58 @@ async function fetchUsersFromUsernode() {
   try {
     console.log('[User Sync] Starting user sync...');
     let users = [];
+    let source = null;
 
     const registryUrl = process.env.USERNODE_USER_REGISTRY_URL;
+
+    // Try to fetch from real Usernode registry API first
     if (registryUrl) {
-      // Production: fetch from Usernode API
-      console.log(`[User Sync] Fetching users from ${registryUrl}`);
-      const response = await fetch(registryUrl, { timeout: 10000 });
-      if (!response.ok) {
-        console.error(`[User Sync] API returned status ${response.status}`);
-        return;
-      }
-      const data = await response.json();
-      users = data.users || [];
-      console.log(`[User Sync] Fetched ${users.length} users from registry`);
-    } else if (IS_STAGING) {
-      // Staging: load from mock file
       try {
+        console.log(`[User Sync] Attempting to fetch real users from ${registryUrl}`);
+        const response = await fetch(registryUrl, { timeout: 10000 });
+        if (response.ok) {
+          const data = await response.json();
+          users = data.users || [];
+          if (users.length > 0) {
+            source = 'real';
+            console.log(`[User Sync] Successfully fetched ${users.length} users from real registry API`);
+          } else {
+            console.warn('[User Sync] Real registry API returned empty user list');
+          }
+        } else {
+          console.warn(`[User Sync] Real registry API returned status ${response.status}, will attempt fallback`);
+        }
+      } catch (err) {
+        console.warn(`[User Sync] Failed to fetch from real registry API: ${err.message}, will attempt fallback`);
+      }
+    }
+
+    // Fall back to mock staging data if real data is not available or not configured
+    if (!source && IS_STAGING) {
+      try {
+        console.log('[User Sync] Falling back to mock staging data from staging-users.json');
         const fs = require('fs');
         const stagingUsersPath = path.join(__dirname, 'staging-users.json');
         const data = JSON.parse(fs.readFileSync(stagingUsersPath, 'utf8'));
         users = data.users || [];
-        console.log(`[User Sync] Loaded ${users.length} users from staging-users.json`);
+        if (users.length > 0) {
+          source = 'mock';
+          console.log(`[User Sync] Using ${users.length} mock staging users from staging-users.json`);
+        }
       } catch (err) {
         console.error('[User Sync] Failed to load staging-users.json:', err.message);
-        return;
       }
-    } else {
-      console.log('[User Sync] No USERNODE_USER_REGISTRY_URL set and not in staging; skipping sync');
+    }
+
+    // If no users were loaded, log and return early
+    if (!users.length) {
+      if (registryUrl && !IS_STAGING) {
+        console.warn('[User Sync] No users loaded from real registry and no staging fallback available; skipping sync');
+      } else if (!registryUrl && !IS_STAGING) {
+        console.log('[User Sync] No USERNODE_USER_REGISTRY_URL set and not in staging; skipping sync');
+      } else {
+        console.warn('[User Sync] No users available from any source; skipping sync');
+      }
       return;
     }
 
@@ -140,7 +165,7 @@ async function fetchUsersFromUsernode() {
       }
     }
 
-    console.log(`[User Sync] Sync completed at ${new Date().toISOString()}`);
+    console.log(`[User Sync] Sync completed (source: ${source}, users: ${users.length}) at ${new Date().toISOString()}`);
   } catch (err) {
     console.error('[User Sync] Unexpected error during user sync:', err);
   }
