@@ -1191,8 +1191,15 @@ app.get('/api/search/users', async (req, res) => {
       SELECT id, username, verified_at, usernode_pubkey
       FROM users
       WHERE username ILIKE $1
+      ORDER BY
+        CASE
+          WHEN username = $2 THEN 0
+          WHEN username ILIKE $3 THEN 1
+          ELSE 2
+        END,
+        username ASC
       LIMIT 20
-    `, ['%' + q + '%']);
+    `, ['%' + q + '%', q, q + '%']);
 
     const users = rows.map(r => ({
       id: r.id,
