@@ -116,14 +116,18 @@ async function fetchUsersFromUsernode() {
         console.log('[User Sync] Falling back to mock staging data from staging-users.json');
         const fs = require('fs');
         const stagingUsersPath = path.join(__dirname, 'staging-users.json');
-        const data = JSON.parse(fs.readFileSync(stagingUsersPath, 'utf8'));
+        const fileContent = fs.readFileSync(stagingUsersPath, 'utf8');
+        const data = JSON.parse(fileContent);
         users = data.users || [];
         if (users.length > 0) {
           source = 'mock';
-          console.log(`[User Sync] Using ${users.length} mock staging users from staging-users.json`);
+          console.log(`[User Sync] Loaded ${users.length} mock staging users from staging-users.json`);
+        } else {
+          console.warn('[User Sync] Staging mock file had no users');
         }
       } catch (err) {
         console.error('[User Sync] Failed to load staging-users.json:', err.message);
+        return;
       }
     }
 
@@ -140,6 +144,7 @@ async function fetchUsersFromUsernode() {
     }
 
     // Upsert users into database
+    let upsertCount = 0;
     for (const user of users) {
       const { id, username, usernode_pubkey, verified_at } = user;
       if (!id || !username) {
@@ -148,6 +153,9 @@ async function fetchUsersFromUsernode() {
       }
 
       try {
+        // Parse verified_at as a timestamp, handle both ISO strings and null
+        const verifiedAt = verified_at ? new Date(verified_at) : null;
+
         await pool.query(`
           INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at, updated_at)
           VALUES ($1, $2, $3, $4, NOW(), NOW())
@@ -159,13 +167,14 @@ async function fetchUsersFromUsernode() {
               ELSE users.verified_at
             END,
             updated_at = NOW()
-        `, [id, username, usernode_pubkey || null, verified_at || null]);
+        `, [id, username, usernode_pubkey || null, verifiedAt]);
+        upsertCount++;
       } catch (err) {
         console.error(`[User Sync] Error upserting user ${id} (${username}):`, err.message);
       }
     }
 
-    console.log(`[User Sync] Sync completed (source: ${source}, users: ${users.length}) at ${new Date().toISOString()}`);
+    console.log(`[User Sync] Sync completed (source: ${source}, users: ${users.length}, upserted: ${upsertCount}) at ${new Date().toISOString()}`);
   } catch (err) {
     console.error('[User Sync] Unexpected error during user sync:', err);
   }
