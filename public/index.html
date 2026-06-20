@@ -438,6 +438,19 @@
       color: #a1a1aa;
     }
 
+    /* Feed post text with proper word wrapping */
+    .feed-post-text {
+      white-space: normal;
+      word-break: break-word;
+      overflow-wrap: break-word;
+      line-height: 1.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .feed-post-text:last-child {
+      margin-bottom: 0;
+    }
+
     /* Responsive feed container */
     #feedList {
       max-width: 56rem;
@@ -2698,7 +2711,7 @@
               ${post.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs">✓</span>' : ''}
               <span class="text-xs text-zinc-600 dark:text-zinc-500">${timestamp}</span>
             </div>
-            ${post.content.text ? `<p class="text-zinc-900 dark:text-zinc-100 mb-3 break-words">${escapeHtml(post.content.text)}</p>` : ''}
+            ${post.content.text ? `<p class="text-zinc-900 dark:text-zinc-100 feed-post-text">${escapeHtml(post.content.text)}</p>` : ''}
             ${linkPreview}
           </div>
         </div>
