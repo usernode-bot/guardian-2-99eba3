@@ -1218,6 +1218,7 @@
               </div>
               <div class="text-xs text-zinc-600 dark:text-zinc-500 text-right flex-shrink-0 flex items-center gap-1">
                 <span>${lastTime}</span>
+                <button onclick="event.stopPropagation(); openGroupContextMenu(event, ${group.id})" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare" title="Group options">⋯</button>
                 ${group.unreadCount > 0 ? `<div class="px-2 py-0.5 bg-cyan-600 rounded-full text-white text-xs">${group.unreadCount}</div>` : ''}
               </div>
             </div>
@@ -1310,9 +1311,24 @@
         renameBtn.style.display = isCreator ? 'block' : 'none';
         deleteBtn.style.display = isCreator ? 'block' : 'none';
 
-        menu.style.left = event.clientX + 'px';
-        menu.style.top = event.clientY + 'px';
+        // Position menu, accounting for viewport
+        let x = event.clientX;
+        let y = event.clientY;
+
         menu.classList.remove('hidden');
+        menu.style.left = x + 'px';
+        menu.style.top = y + 'px';
+
+        // Check if menu goes off-screen and adjust
+        setTimeout(() => {
+          const rect = menu.getBoundingClientRect();
+          if (rect.right > window.innerWidth) {
+            menu.style.left = (x - rect.width) + 'px';
+          }
+          if (rect.bottom > window.innerHeight) {
+            menu.style.top = (y - rect.height) + 'px';
+          }
+        }, 0);
       });
     }
 
