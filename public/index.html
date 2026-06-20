@@ -353,9 +353,9 @@
       </div>
 
       <!-- Groups View (Two-column layout) -->
-      <div id="groupsView" class="hidden flex flex-1 overflow-hidden gap-0">
+      <div id="groupsView" class="hidden flex flex-col md:flex-row flex-1 overflow-hidden gap-0">
         <!-- Left Sidebar: Groups List -->
-        <div class="w-64 bg-zinc-50 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex flex-col overflow-hidden">
+        <div id="groupsSidebar" class="w-full md:w-64 bg-zinc-50 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex flex-col overflow-hidden">
           <div class="px-4 py-3 bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 space-y-2">
             <div class="flex items-center justify-between gap-2">
               <h2 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Your Groups</h2>
@@ -368,7 +368,7 @@
         </div>
 
         <!-- Right Panel: Group Chat -->
-        <div id="groupChatPanel" class="hidden flex-1 flex flex-col overflow-hidden">
+        <div id="groupChatPanel" class="hidden w-full md:flex-1 md:flex flex-col overflow-hidden">
           <!-- Group Header -->
           <div class="bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 px-4 py-3 flex items-center justify-between">
             <div>
@@ -887,8 +887,21 @@
     function setupEventListeners() {
       document.getElementById('menuBtn').addEventListener('click', toggleSidebar);
       document.getElementById('backBtn').addEventListener('click', () => {
-        currentConvId = null;
-        showConversationsView();
+        // Check if we're in a group chat
+        if (window.currentChatMode === 'group' && currentGroupId) {
+          // Go back to groups list on mobile
+          currentGroupId = null;
+          document.getElementById('groupsSidebar').classList.remove('hidden');
+          document.getElementById('groupChatPanel').classList.add('hidden');
+          document.getElementById('groupEmptyState').classList.add('hidden');
+          document.getElementById('backBtn').classList.add('hidden');
+          document.getElementById('menuBtn').classList.remove('hidden');
+          loadGroups();
+        } else {
+          // Regular conversation back button
+          currentConvId = null;
+          showConversationsView();
+        }
       });
 
       document.getElementById('msgInput').addEventListener('keydown', (e) => {
@@ -1765,6 +1778,10 @@
       if (pollInterval) clearInterval(pollInterval);
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
       currentGroupId = null;
+      // Show groups sidebar and hide chat panel on mobile/tablet
+      document.getElementById('groupsSidebar').classList.remove('hidden');
+      document.getElementById('groupChatPanel').classList.add('hidden');
+      document.getElementById('groupEmptyState').classList.add('hidden');
       await loadGroups();
       if (groupsPollInterval) clearInterval(groupsPollInterval);
       groupsPollInterval = setInterval(loadGroups, 2000);
@@ -1810,6 +1827,16 @@
       // Show the chat panel and hide empty state
       document.getElementById('groupChatPanel').classList.remove('hidden');
       document.getElementById('groupEmptyState').classList.add('hidden');
+
+      // On mobile/tablet (< 768px), hide the groups sidebar to show full-width chat
+      const isMobile = window.innerWidth < 768;
+      if (isMobile) {
+        document.getElementById('groupsSidebar').classList.add('hidden');
+        // Show back button for mobile navigation
+        document.getElementById('backBtn').textContent = '← Back to Groups';
+        document.getElementById('backBtn').classList.remove('hidden');
+        document.getElementById('menuBtn').classList.add('hidden');
+      }
 
       // Update header
       document.getElementById('groupChatTitle').textContent = groupName;
