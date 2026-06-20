@@ -785,8 +785,8 @@ app.post('/api/conversation-requests', async (req, res) => {
 
     // Try to insert, return existing if conflict
     const result = await pool.query(`
-      INSERT INTO conversation_requests (sender_id, recipient_id, status, created_at)
-      VALUES ($1, $2, 'pending', NOW())
+      INSERT INTO conversation_requests (sender_id, recipient_id, status, created_at, updated_at)
+      VALUES ($1, $2, 'pending', NOW(), NOW())
       ON CONFLICT (sender_id, recipient_id) DO UPDATE SET
         status = CASE
           WHEN conversation_requests.status = 'rejected' THEN 'pending'
@@ -796,10 +796,10 @@ app.post('/api/conversation-requests', async (req, res) => {
           WHEN conversation_requests.status = 'rejected' THEN NOW()
           ELSE conversation_requests.created_at
         END,
+        updated_at = NOW(),
         accepted_at = NULL,
         rejected_at = NULL
-      WHERE conversation_requests.status = 'rejected'
-      RETURNING id, sender_id, recipient_id, status, created_at
+      RETURNING id, sender_id, recipient_id, status, created_at, updated_at
     `, [senderId, recipientId]);
 
     if (result.rows.length > 0) {
@@ -810,21 +810,7 @@ app.post('/api/conversation-requests', async (req, res) => {
         recipientId: req_row.recipient_id,
         status: req_row.status,
         createdAt: req_row.created_at,
-      });
-    } else {
-      // Already exists and not rejected, get existing
-      const existing = await pool.query(`
-        SELECT id, sender_id, recipient_id, status, created_at
-        FROM conversation_requests
-        WHERE sender_id = $1 AND recipient_id = $2
-      `, [senderId, recipientId]);
-      const row = existing.rows[0];
-      res.status(201).json({
-        id: row.id,
-        senderId: row.sender_id,
-        recipientId: row.recipient_id,
-        status: row.status,
-        createdAt: row.created_at,
+        updatedAt: req_row.updated_at,
       });
     }
   } catch (err) {
@@ -842,12 +828,12 @@ app.get('/api/conversation-requests/received', async (req, res) => {
     const userId = req.user.id;
 
     const { rows: requests } = await pool.query(`
-      SELECT cr.id, cr.sender_id, cr.created_at,
+      SELECT cr.id, cr.sender_id, cr.created_at, cr.updated_at,
              u.username, u.usernode_pubkey
       FROM conversation_requests cr
       JOIN users u ON cr.sender_id = u.id
       WHERE cr.recipient_id = $1 AND cr.status = 'pending'
-      ORDER BY cr.created_at DESC
+      ORDER BY cr.updated_at DESC
     `, [userId]);
 
     res.json({
@@ -857,6 +843,7 @@ app.get('/api/conversation-requests/received', async (req, res) => {
         senderUsername: r.username,
         senderWallet: r.usernode_pubkey,
         createdAt: r.created_at,
+        updatedAt: r.updated_at,
       })),
     });
   } catch (err) {
@@ -874,12 +861,12 @@ app.get('/api/conversation-requests/sent', async (req, res) => {
     const userId = req.user.id;
 
     const { rows: requests } = await pool.query(`
-      SELECT cr.id, cr.recipient_id, cr.status, cr.created_at,
+      SELECT cr.id, cr.recipient_id, cr.status, cr.created_at, cr.updated_at,
              u.username, u.usernode_pubkey
       FROM conversation_requests cr
       JOIN users u ON cr.recipient_id = u.id
       WHERE cr.sender_id = $1 AND cr.status = 'pending'
-      ORDER BY cr.created_at DESC
+      ORDER BY cr.updated_at DESC
     `, [userId]);
 
     res.json({
@@ -890,6 +877,7 @@ app.get('/api/conversation-requests/sent', async (req, res) => {
         recipientWallet: r.usernode_pubkey,
         status: r.status,
         createdAt: r.created_at,
+        updatedAt: r.updated_at,
       })),
     });
   } catch (err) {
@@ -1440,6 +1428,17 @@ async function start() {
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_conversation_requests_sender_status
         ON conversation_requests(sender_id, status)
+    `);
+
+    // Add updated_at column if it doesn't exist (idempotent migration)
+    await pool.query(`
+      ALTER TABLE conversation_requests ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()
+    `);
+
+    // Create index on updated_at for sorting (idempotent)
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_conversation_requests_updated
+        ON conversation_requests(updated_at DESC NULLS LAST)
     `);
 
     // Mark tables as private
