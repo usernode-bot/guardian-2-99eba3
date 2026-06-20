@@ -2605,43 +2605,71 @@ async function start() {
         `, [memberId, generalGroupId]);
       }
 
-      // Seed feed posts
+      // Seed feed posts with variety
       const feedBaseTime = new Date();
       const feedPosts = [
         {
           userId: alice,
           content: { text: '[Staging demo] Hello Guardian community! 👋' },
-          offset: 7200000
+          offset: 10800000
         },
         {
           userId: bob,
           content: {
-            text: '[Staging demo] Just deployed v2.0 of my dapp',
+            text: '[Staging demo] Just deployed v2.0 of my dapp with new features',
             link: 'https://example.com/dapp',
-            linkTitle: 'My Cool Dapp',
-            linkImage: 'https://via.placeholder.com/200'
+            linkTitle: 'My Cool Dapp - v2.0',
+            linkImage: 'https://via.placeholder.com/400x300'
           },
-          offset: 3600000
+          offset: 9000000
         },
         {
           userId: david,
-          content: { text: '[Staging demo] Anyone interested in discussing Web3 standards?' },
+          content: { text: '[Staging demo] Anyone interested in discussing Web3 standards? Would love to hear thoughts on the latest proposals and where this space is heading.' },
+          offset: 7200000
+        },
+        {
+          userId: alice,
+          content: {
+            text: '[Staging demo] Check out this article on blockchain security best practices',
+            link: 'https://example.com/article',
+            linkTitle: 'Blockchain Security Best Practices',
+            linkImage: 'https://via.placeholder.com/400x300'
+          },
+          offset: 5400000
+        },
+        {
+          userId: emma,
+          content: { text: '[Staging demo] Excited about the new Guardian features!' },
+          offset: 3600000
+        },
+        {
+          userId: bob,
+          content: {
+            text: '[Staging demo] New library release',
+            link: 'https://github.com/example/lib',
+            linkTitle: 'GitHub - example/lib'
+          },
+          offset: 2700000
+        },
+        {
+          userId: david,
+          content: { text: '[Staging demo] Just finished a long article on DeFi protocols. It covers liquidity pools, AMMs, and yield farming in depth. Let me know if you find it useful!' },
           offset: 1800000
         },
         {
           userId: alice,
           content: {
-            text: '[Staging demo] Check out this article on blockchain security',
-            link: 'https://example.com/article',
-            linkTitle: 'Blockchain Security Best Practices',
-            linkImage: 'https://via.placeholder.com/200'
+            text: '[Staging demo] Attending the Web3 conference next week',
+            link: 'https://example.com/conference',
+            linkTitle: 'Web3 Summit 2026'
           },
           offset: 900000
         },
         {
           userId: emma,
-          content: { text: '[Staging demo] Excited about the new Guardian features!' },
-          offset: 600000
+          content: { text: '[Staging demo] Working on some cool things. More updates coming soon!' },
+          offset: 300000
         }
       ];
 

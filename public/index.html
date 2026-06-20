@@ -288,6 +288,202 @@
       color: inherit;
       font-family: inherit;
     }
+
+    /* Feed animations */
+    @keyframes fadeInSlideUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes skeletonPulse {
+      0%, 100% {
+        opacity: 0.6;
+      }
+      50% {
+        opacity: 1;
+      }
+    }
+
+    .feed-post-animate {
+      animation: fadeInSlideUp 0.4s ease-out forwards;
+    }
+
+    .feed-post-animate:nth-child(1) { animation-delay: 0ms; }
+    .feed-post-animate:nth-child(2) { animation-delay: 50ms; }
+    .feed-post-animate:nth-child(3) { animation-delay: 100ms; }
+    .feed-post-animate:nth-child(4) { animation-delay: 150ms; }
+    .feed-post-animate:nth-child(5) { animation-delay: 200ms; }
+    .feed-post-animate:nth-child(n+6) { animation-delay: 250ms; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .feed-post-animate {
+        animation: none;
+        opacity: 1;
+        transform: none;
+      }
+    }
+
+    .feed-skeleton {
+      background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+      background-size: 200% 100%;
+      animation: skeletonPulse 1.5s ease-in-out infinite;
+    }
+
+    .dark .feed-skeleton {
+      background: linear-gradient(90deg, #27272a 25%, #3f3f46 50%, #27272a 75%);
+      background-size: 200% 100%;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .feed-skeleton {
+        animation: none;
+        opacity: 0.6;
+      }
+    }
+
+    /* Feed post card styling */
+    .feed-post-card {
+      padding: 1rem;
+      border-bottom: 1px solid #e4e4e7;
+      background-color: white;
+      transition: background-color 0.2s ease;
+    }
+
+    .dark .feed-post-card {
+      border-bottom-color: #27272a;
+      background-color: #18181b;
+    }
+
+    .feed-post-card:hover {
+      background-color: #fafafa;
+    }
+
+    .dark .feed-post-card:hover {
+      background-color: #27272a;
+    }
+
+    /* Feed link preview card */
+    .feed-link-preview {
+      display: flex;
+      gap: 1rem;
+      padding: 0.75rem;
+      border: 1px solid #e4e4e7;
+      border-radius: 0.5rem;
+      background-color: #f9fafb;
+      margin-top: 0.75rem;
+      transition: background-color 0.2s ease;
+      text-decoration: none;
+    }
+
+    .dark .feed-link-preview {
+      border-color: #3f3f46;
+      background-color: #27272a;
+    }
+
+    .feed-link-preview:hover {
+      background-color: #f3f4f6;
+    }
+
+    .dark .feed-link-preview:hover {
+      background-color: #3f3f46;
+    }
+
+    .feed-link-image {
+      width: 4rem;
+      height: 4rem;
+      min-width: 4rem;
+      object-fit: cover;
+      border-radius: 0.375rem;
+      background-color: #e4e4e7;
+    }
+
+    .dark .feed-link-image {
+      background-color: #52525b;
+    }
+
+    .feed-link-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .feed-link-title {
+      font-weight: 500;
+      color: #0891b2;
+      margin-bottom: 0.25rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-size: 0.875rem;
+    }
+
+    .dark .feed-link-title {
+      color: #06b6d4;
+    }
+
+    .feed-link-url {
+      font-size: 0.75rem;
+      color: #71717a;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .dark .feed-link-url {
+      color: #a1a1aa;
+    }
+
+    /* Responsive feed container */
+    #feedList {
+      max-width: 56rem;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    @media (max-width: 639px) {
+      .feed-post-card {
+        padding: 0.75rem;
+      }
+      .feed-link-preview {
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+      .feed-link-image {
+        width: 100%;
+        height: 12rem;
+      }
+    }
+
+    @media (min-width: 640px) and (max-width: 1023px) {
+      .feed-post-card {
+        padding: 0.875rem;
+      }
+      .feed-link-preview {
+        gap: 0.75rem;
+      }
+      .feed-link-image {
+        width: 5rem;
+        height: 5rem;
+      }
+    }
+
+    @media (min-width: 1024px) {
+      .feed-post-card {
+        padding: 1.25rem;
+      }
+      .feed-link-preview {
+        gap: 1rem;
+      }
+      .feed-link-image {
+        width: 6rem;
+        height: 6rem;
+      }
+    }
   </style>
 </head>
 <body class="bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100 min-h-screen flex flex-col">
@@ -2394,29 +2590,57 @@
     let feedOffset = 0;
     let feedHasMore = true;
 
+    function createFeedSkeleton() {
+      const skeletonEl = document.createElement('div');
+      skeletonEl.className = 'feed-post-card feed-skeleton';
+      skeletonEl.innerHTML = `
+        <div class="space-y-3">
+          <div class="h-4 w-24 rounded feed-skeleton"></div>
+          <div class="space-y-2">
+            <div class="h-3 w-full rounded feed-skeleton"></div>
+            <div class="h-3 w-5/6 rounded feed-skeleton"></div>
+          </div>
+        </div>
+      `;
+      return skeletonEl;
+    }
+
     async function loadFeedPosts(offset) {
       try {
-        const data = await apiCall(`/api/feed/posts?limit=50&offset=${offset}`);
-        if (!data || data.error) {
-          document.getElementById('feedList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Failed to load feed</div>';
-          return;
-        }
+        const feedList = document.getElementById('feedList');
 
         if (offset === 0) {
-          document.getElementById('feedList').innerHTML = '';
+          feedList.innerHTML = '';
           feedOffset = 0;
+
+          for (let i = 0; i < 3; i++) {
+            feedList.appendChild(createFeedSkeleton());
+          }
+        } else {
+          for (let i = 0; i < 2; i++) {
+            feedList.appendChild(createFeedSkeleton());
+          }
+        }
+
+        const data = await apiCall(`/api/feed/posts?limit=50&offset=${offset}`);
+
+        if (!data || data.error) {
+          feedList.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Failed to load feed</div>';
+          return;
         }
 
         const posts = data.posts || [];
         feedHasMore = data.hasMore || false;
 
         if (posts.length === 0 && offset === 0) {
-          document.getElementById('feedList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">No posts yet. Be the first to share!</div>';
+          feedList.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">No posts yet. Be the first to share!</div>';
           return;
         }
 
-        const feedList = document.getElementById('feedList');
-        posts.forEach(post => {
+        const skeletons = feedList.querySelectorAll('.feed-skeleton');
+        skeletons.forEach(skeleton => skeleton.remove());
+
+        posts.forEach((post, index) => {
           const postEl = renderFeedPost(post);
           feedList.appendChild(postEl);
         });
@@ -2443,7 +2667,7 @@
 
     function renderFeedPost(post) {
       const postEl = document.createElement('div');
-      postEl.className = 'p-4 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition';
+      postEl.className = 'feed-post-card feed-post-animate';
 
       const timestamp = new Date(post.createdAt).toLocaleDateString('en-US', {
         month: 'short',
@@ -2452,20 +2676,15 @@
         minute: '2-digit'
       });
 
-      let content = '';
-      if (post.content.text) {
-        content += `<p class="text-zinc-900 dark:text-zinc-100 mb-3">${escapeHtml(post.content.text)}</p>`;
-      }
-
+      let linkPreview = '';
       if (post.content.link) {
-        content += `
-          <a href="${escapeHtml(post.content.link)}" target="_blank" rel="noopener noreferrer" class="block p-3 border border-zinc-300 dark:border-zinc-700 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition mb-3">
-            <div class="flex gap-3">
-              ${post.content.linkImage ? `<img src="${escapeHtml(post.content.linkImage)}" alt="preview" class="w-16 h-16 object-cover rounded flex-shrink-0" onerror="this.style.display='none'">` : ''}
-              <div class="flex-1 min-w-0">
-                ${post.content.linkTitle ? `<div class="font-medium text-cyan-600 dark:text-cyan-400 truncate text-sm">${escapeHtml(post.content.linkTitle)}</div>` : ''}
-                <div class="text-xs text-zinc-600 dark:text-zinc-400 truncate">${escapeHtml(post.content.link)}</div>
-              </div>
+        const linkImage = post.content.linkImage ? `<img src="${escapeHtml(post.content.linkImage)}" alt="preview" class="feed-link-image" onerror="this.style.display='none'">` : '';
+        linkPreview = `
+          <a href="${escapeHtml(post.content.link)}" target="_blank" rel="noopener noreferrer" class="feed-link-preview">
+            ${linkImage}
+            <div class="feed-link-content">
+              ${post.content.linkTitle ? `<div class="feed-link-title">${escapeHtml(post.content.linkTitle)}</div>` : ''}
+              <div class="feed-link-url">${escapeHtml(post.content.link)}</div>
             </div>
           </a>
         `;
@@ -2479,7 +2698,8 @@
               ${post.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs">✓</span>' : ''}
               <span class="text-xs text-zinc-600 dark:text-zinc-500">${timestamp}</span>
             </div>
-            ${content}
+            ${post.content.text ? `<p class="text-zinc-900 dark:text-zinc-100 mb-3 break-words">${escapeHtml(post.content.text)}</p>` : ''}
+            ${linkPreview}
           </div>
         </div>
       `;
