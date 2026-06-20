@@ -2606,7 +2606,7 @@ async function start() {
       }
 
       // Seed feed posts
-      const baseTime = new Date();
+      const feedBaseTime = new Date();
       const feedPosts = [
         {
           userId: alice,
@@ -2646,7 +2646,7 @@ async function start() {
       ];
 
       for (const post of feedPosts) {
-        const createdAt = new Date(baseTime.getTime() - post.offset);
+        const createdAt = new Date(feedBaseTime.getTime() - post.offset);
         await pool.query(`
           INSERT INTO feed_posts (user_id, content, created_at, updated_at)
           VALUES ($1, $2, $3, $3)
