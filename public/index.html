@@ -1016,9 +1016,27 @@
     }
 
     function openSettingsPanel() {
+      // Detect which layout is currently active before hiding views
+      const chatView = document.getElementById('chatView');
+      const feedView = document.getElementById('feedView');
+      const contactsView = document.getElementById('contactsView');
+      const messagesView = document.getElementById('messagesView');
+
+      if (chatView && !chatView.classList.contains('hidden')) {
+        previousViewBeforeChat = 'chat';
+      } else if (feedView && !feedView.classList.contains('hidden')) {
+        previousViewBeforeChat = 'feed';
+      } else if (contactsView && !contactsView.classList.contains('hidden')) {
+        previousViewBeforeChat = 'contacts';
+      } else {
+        previousViewBeforeChat = 'messages';
+      }
+
+      // Now hide all layout views and show settings panel
       document.getElementById('messagesView').classList.add('hidden');
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.add('hidden');
+      document.getElementById('feedView').classList.add('hidden');
       document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('sidebar').classList.add('hidden');
       document.getElementById('settingsPanel').classList.remove('hidden');
@@ -1033,7 +1051,17 @@
     function closeSettingsPanel() {
       document.getElementById('settingsPanel').classList.add('hidden');
       document.getElementById('sidebar').classList.remove('hidden');
-      showConversationsView();
+
+      // Restore the layout that was active before settings was opened
+      if (previousViewBeforeChat === 'chat') {
+        showChatView();
+      } else if (previousViewBeforeChat === 'feed') {
+        showFeedView();
+      } else if (previousViewBeforeChat === 'contacts') {
+        showContactsView();
+      } else {
+        showConversationsView();
+      }
     }
 
     async function apiCall(path, opts = {}) {
