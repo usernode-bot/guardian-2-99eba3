@@ -263,6 +263,12 @@
           </svg>
           Messages
         </button>
+        <button onclick="showGroupsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
+          <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.856-1.487M15 10a3 3 0 11-6 0 3 3 0 016 0zM6 20a9 9 0 0118 0v2h2v-2a11 11 0 00-22 0v2h2z" />
+          </svg>
+          Groups
+        </button>
         <button onclick="showContactsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
           <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -344,6 +350,59 @@
       <!-- Chat View -->
       <div id="chatView" class="hidden flex flex-col flex-1 overflow-hidden">
         <div id="messageList" class="flex-1 overflow-y-auto space-y-3 p-4"></div>
+      </div>
+
+      <!-- Groups View (Two-column layout) -->
+      <div id="groupsView" class="hidden flex flex-1 overflow-hidden gap-0">
+        <!-- Left Sidebar: Groups List -->
+        <div class="w-64 bg-zinc-50 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex flex-col overflow-hidden">
+          <div class="px-4 py-3 bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 space-y-2">
+            <div class="flex items-center justify-between gap-2">
+              <h2 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Your Groups</h2>
+              <button onclick="openCreateGroupModal()" class="px-2 py-1 bg-cyan-600 hover:bg-cyan-700 rounded text-white text-xs transition">+</button>
+            </div>
+          </div>
+          <div id="groupsList" class="flex-1 overflow-y-auto divide-y divide-zinc-300 dark:divide-zinc-800">
+            <div class="text-center py-8 text-zinc-600 dark:text-zinc-500 text-sm">Loading groups...</div>
+          </div>
+        </div>
+
+        <!-- Right Panel: Group Chat -->
+        <div id="groupChatPanel" class="hidden flex-1 flex flex-col overflow-hidden">
+          <!-- Group Header -->
+          <div class="bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 px-4 py-3 flex items-center justify-between">
+            <div>
+              <h2 id="groupChatTitle" class="text-lg font-semibold text-zinc-900 dark:text-white"></h2>
+              <p id="groupMemberCount" class="text-xs text-zinc-600 dark:text-zinc-500 mt-1"></p>
+            </div>
+            <button id="groupChatMenuBtn" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare" title="Group options" onclick="toggleGroupMenu(event)">⋯</button>
+            <div id="groupMenuDropdown" class="hidden absolute right-4 mt-8 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg shadow-lg z-50 min-w-40">
+              <button onclick="openGroupDetailsModal()" class="menu-item text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 w-full text-left">Group Members</button>
+              <button onclick="openLeaveGroupModal()" class="menu-item text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 w-full text-left">Leave Group</button>
+            </div>
+          </div>
+
+          <!-- Messages Area -->
+          <div id="groupMessageList" class="flex-1 overflow-y-auto space-y-3 p-4"></div>
+
+          <!-- Message Composer -->
+          <div class="bg-white dark:bg-zinc-900 border-t border-zinc-300 dark:border-zinc-800 p-3 space-y-1 relative">
+            <div class="flex gap-2 items-center">
+              <input id="groupMsgInput" type="text" placeholder="Type a message..." class="flex-1 px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition" onkeyup="if(event.key==='Enter')sendGroupMessage()">
+              <button onclick="sendGroupMessage()" class="px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition text-sm">Send</button>
+              <button onclick="showGroupImageUpload()" class="px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition">🖼️</button>
+              <input id="groupImageInput" type="file" accept="image/*" style="display:none" onchange="handleGroupImageUpload(event)">
+            </div>
+          </div>
+        </div>
+
+        <!-- Empty State -->
+        <div id="groupEmptyState" class="flex-1 flex items-center justify-center bg-zinc-50 dark:bg-zinc-900">
+          <div class="text-center space-y-4">
+            <div class="text-zinc-400">👥</div>
+            <p class="text-zinc-600 dark:text-zinc-400">Select a group to start chatting</p>
+          </div>
+        </div>
       </div>
 
       <!-- Contacts View (Saved Contacts only) -->
@@ -501,6 +560,36 @@
       <div class="flex gap-2">
         <button id="deleteConversationCancel" class="flex-1 px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
         <button id="deleteConversationConfirm" class="flex-1 px-3 py-2 bg-red-600 hover:bg-red-700 dark:hover:bg-red-500 text-white rounded-lg transition font-medium">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Group Modal -->
+  <div id="createGroupModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4 max-h-96 overflow-y-auto">
+      <div class="flex justify-between items-start">
+        <h2 class="text-xl font-semibold text-zinc-900 dark:text-white">Create Group</h2>
+        <button onclick="closeCreateGroupModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
+      </div>
+      <div class="space-y-3">
+        <div class="space-y-2">
+          <label class="text-sm text-zinc-600 dark:text-zinc-400">Group Name *</label>
+          <input id="groupNameInput" type="text" placeholder="Enter group name" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+        </div>
+        <div class="space-y-2">
+          <label class="text-sm text-zinc-600 dark:text-zinc-400">Description (optional)</label>
+          <textarea id="groupDescriptionInput" placeholder="What is this group about?" rows="3" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition resize-none"></textarea>
+        </div>
+        <div class="space-y-2">
+          <label class="text-sm text-zinc-600 dark:text-zinc-400">Initial Members</label>
+          <div id="createGroupContacts" class="max-h-40 overflow-y-auto space-y-1 bg-zinc-50 dark:bg-zinc-800 rounded p-2">
+            <p class="text-xs text-zinc-600 dark:text-zinc-400">Loading contacts...</p>
+          </div>
+        </div>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="closeCreateGroupModal()" class="flex-1 px-4 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
+        <button onclick="createGroup()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Create</button>
       </div>
     </div>
   </div>
@@ -1028,18 +1117,39 @@
     }
 
     async function sendMessage() {
-      const input = document.getElementById('msgInput');
-      const text = input.value.trim();
-      if (!text || !currentConvId) return;
+      let input, text;
+
+      // Determine which input to use based on current mode
+      if (window.currentChatMode === 'group') {
+        input = document.getElementById('groupMsgInput');
+        if (!input) input = document.getElementById('msgInput');
+      } else {
+        input = document.getElementById('msgInput');
+      }
+
+      text = input.value.trim();
+      if (!text) return;
+
+      if (window.currentChatMode === 'group' && !currentGroupId) return;
+      if (window.currentChatMode === 'dm' && !currentConvId) return;
 
       input.value = '';
-      const data = await apiCall(`/api/conversations/${currentConvId}/messages`, {
+
+      const endpoint = window.currentChatMode === 'group'
+        ? `/api/groups/${currentGroupId}/messages`
+        : `/api/conversations/${currentConvId}/messages`;
+
+      const data = await apiCall(endpoint, {
         method: 'POST',
         body: JSON.stringify({ type: 'text', content: { text } })
       });
 
       if (data) {
-        loadMessages();
+        if (window.currentChatMode === 'group') {
+          await loadGroupMessages(currentGroupId);
+        } else {
+          loadMessages();
+        }
         if (data.blockchainRecordingId) {
           pollBlockchainStatus(data.blockchainRecordingId, data.id);
         }
@@ -1047,23 +1157,41 @@
     }
 
     async function handleImageUpload(file) {
-      if (!file || !currentConvId) return;
+      if (!file) return;
+      if (window.currentChatMode === 'group' && !currentGroupId) return;
+      if (window.currentChatMode === 'dm' && !currentConvId) return;
+
       const reader = new FileReader();
       reader.onload = async (e) => {
         const dataUri = e.target.result;
-        const data = await apiCall(`/api/conversations/${currentConvId}/messages`, {
+
+        const endpoint = window.currentChatMode === 'group'
+          ? `/api/groups/${currentGroupId}/messages`
+          : `/api/conversations/${currentConvId}/messages`;
+
+        const data = await apiCall(endpoint, {
           method: 'POST',
           body: JSON.stringify({ type: 'image', content: { imageUrl: dataUri } })
         });
-        if (data) loadMessages();
+        if (data) {
+          if (window.currentChatMode === 'group') {
+            await loadGroupMessages(currentGroupId);
+          } else {
+            loadMessages();
+          }
+        }
       };
       reader.readAsDataURL(file);
     }
 
     function showTokenModal() {
-      apiCall(`/api/users/${currentOtherId}`).then(u => {
-        document.getElementById('tokenRecipient').textContent = u ? u.username : 'Unknown';
-      });
+      if (window.currentChatMode === 'group') {
+        document.getElementById('tokenRecipient').textContent = 'Group Transfer';
+      } else {
+        apiCall(`/api/users/${currentOtherId}`).then(u => {
+          document.getElementById('tokenRecipient').textContent = u ? u.username : 'Unknown';
+        });
+      }
       document.getElementById('tokenModal').classList.remove('hidden');
     }
 
@@ -1075,31 +1203,49 @@
 
     async function sendToken() {
       const amount = document.getElementById('tokenAmount').value;
-      if (!amount || !currentConvId || !currentOtherId) return;
+      if (!amount) return;
+
+      if (window.currentChatMode === 'group' && !currentGroupId) return;
+      if (window.currentChatMode === 'dm' && (!currentConvId || !currentOtherId)) return;
 
       const sendBtn = document.getElementById('tokenSend');
       const originalText = sendBtn.textContent;
       sendBtn.disabled = true;
       sendBtn.textContent = 'Sending...';
 
-      const data = await apiCall('/api/tokens/send', {
-        method: 'POST',
-        body: JSON.stringify({ recipientId: currentOtherId, amount: parseInt(amount), memo: document.getElementById('tokenMemo').value })
-      });
+      if (window.currentChatMode === 'dm') {
+        const data = await apiCall('/api/tokens/send', {
+          method: 'POST',
+          body: JSON.stringify({ recipientId: currentOtherId, amount: parseInt(amount), memo: document.getElementById('tokenMemo').value })
+        });
 
-      if (data && !data.error) {
-        const msgData = await apiCall(`/api/conversations/${currentConvId}/messages`, {
+        if (data && !data.error) {
+          const msgData = await apiCall(`/api/conversations/${currentConvId}/messages`, {
+            method: 'POST',
+            body: JSON.stringify({
+              type: 'token',
+              content: { recipientId: currentOtherId, amount: parseInt(amount), memo: document.getElementById('tokenMemo').value, txHash: data.txHash, status: data.status }
+            })
+          });
+          if (msgData && data.blockchainRecordingId) {
+            pollBlockchainStatus(data.blockchainRecordingId, msgData.id);
+          }
+          hideTokenModal();
+          loadMessages();
+        }
+      } else {
+        // Group token transfer (no recipient needed)
+        const msgData = await apiCall(`/api/groups/${currentGroupId}/messages`, {
           method: 'POST',
           body: JSON.stringify({
             type: 'token',
-            content: { recipientId: currentOtherId, amount: parseInt(amount), memo: document.getElementById('tokenMemo').value, txHash: data.txHash, status: data.status }
+            content: { amount: parseInt(amount), memo: document.getElementById('tokenMemo').value }
           })
         });
-        if (msgData && data.blockchainRecordingId) {
-          pollBlockchainStatus(data.blockchainRecordingId, msgData.id);
+        if (msgData) {
+          hideTokenModal();
+          loadGroupMessages(currentGroupId);
         }
-        hideTokenModal();
-        loadMessages();
       }
 
       sendBtn.disabled = false;
@@ -1595,7 +1741,256 @@
       if (menuBtn && dropdown && !e.target.closest('#conversationMenuBtn') && !e.target.closest('#conversationMenuDropdown')) {
         dropdown.classList.add('hidden');
       }
+
+      // Close group menu when clicking outside
+      const groupMenuBtn = document.getElementById('groupChatMenuBtn');
+      const groupDropdown = document.getElementById('groupMenuDropdown');
+      if (groupMenuBtn && groupDropdown && !e.target.closest('#groupChatMenuBtn') && !e.target.closest('#groupMenuDropdown')) {
+        groupDropdown.classList.add('hidden');
+      }
     });
+
+    // ===== GROUPS FUNCTIONS =====
+
+    async function showGroupsView() {
+      document.getElementById('conversationsView').classList.add('hidden');
+      document.getElementById('chatView').classList.add('hidden');
+      document.getElementById('contactsView').classList.add('hidden');
+      document.getElementById('groupsView').classList.remove('hidden');
+      document.getElementById('inputFooter').classList.add('hidden');
+      document.getElementById('headerTitle').textContent = 'Guardian';
+      document.getElementById('backBtn').classList.add('hidden');
+      document.getElementById('menuBtn').classList.remove('hidden');
+      document.getElementById('conversationMenuBtn').classList.add('hidden');
+      if (pollInterval) clearInterval(pollInterval);
+      if (conversationsPollInterval) clearInterval(conversationsPollInterval);
+      currentGroupId = null;
+      await loadGroups();
+      if (groupsPollInterval) clearInterval(groupsPollInterval);
+      groupsPollInterval = setInterval(loadGroups, 2000);
+    }
+
+    let groupsPollInterval = null;
+
+    async function loadGroups() {
+      const data = await apiCall('/api/groups');
+      if (!data) return;
+
+      const groups = data.groups || [];
+      const list = document.getElementById('groupsList');
+
+      if (groups.length === 0) {
+        list.innerHTML = '<div class="flex flex-col items-center justify-center h-full text-center space-y-4 py-8"><div class="text-zinc-600 dark:text-zinc-400"><p class="text-sm">No groups yet. Create one to get started!</p></div></div>';
+        return;
+      }
+
+      list.innerHTML = groups.map(group => `
+        <div class="p-3 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer border-b border-zinc-300 dark:border-zinc-800 ${currentGroupId === group.id ? 'bg-cyan-50 dark:bg-cyan-900/30' : ''}" onclick="openGroupChat(${group.id}, '${group.name.replace(/'/g, "\\'")}', ${group.memberCount})">
+          <div class="flex justify-between items-start gap-2">
+            <div class="flex-1 min-w-0">
+              <div class="font-medium text-sm text-zinc-900 dark:text-zinc-100">${group.name}</div>
+              <div class="text-xs text-zinc-600 dark:text-zinc-500 mt-0.5">${group.memberCount} member${group.memberCount !== 1 ? 's' : ''}</div>
+            </div>
+            ${group.unreadCount > 0 ? `<div class="px-1.5 py-0.5 bg-red-500 rounded-full text-white text-xs font-medium flex-shrink-0">${group.unreadCount}</div>` : ''}
+          </div>
+        </div>
+      `).join('');
+
+      // If no group is selected, show empty state
+      if (currentGroupId === null) {
+        document.getElementById('groupChatPanel').classList.add('hidden');
+        document.getElementById('groupEmptyState').classList.remove('hidden');
+      }
+    }
+
+    async function openGroupChat(groupId, groupName, memberCount) {
+      currentGroupId = groupId;
+      currentGroupName = groupName;
+
+      // Show the chat panel and hide empty state
+      document.getElementById('groupChatPanel').classList.remove('hidden');
+      document.getElementById('groupEmptyState').classList.add('hidden');
+
+      // Update header
+      document.getElementById('groupChatTitle').textContent = groupName;
+      document.getElementById('groupMemberCount').textContent = `${memberCount} member${memberCount !== 1 ? 's' : ''}`;
+
+      // Load messages
+      window.currentChatMode = 'group';
+      await loadGroupMessages(groupId);
+
+      // Start polling for messages
+      if (pollInterval) clearInterval(pollInterval);
+      pollInterval = setInterval(() => loadGroupMessages(groupId), 2000);
+
+      // Mark as read
+      await apiCall(`/api/groups/${groupId}/read`, {
+        method: 'PUT',
+        body: JSON.stringify({ readUpTo: new Date().toISOString() })
+      });
+
+      // Refresh the groups list to update selected state
+      await loadGroups();
+    }
+
+    let currentGroupId = null;
+    let currentGroupName = null;
+    window.currentChatMode = 'dm';
+
+    async function loadGroupMessages(groupId) {
+      if (!groupId) return;
+
+      const data = await apiCall(`/api/groups/${groupId}/messages?limit=50`);
+      if (!data) return;
+
+      const messages = data.messages || [];
+      const list = document.getElementById('groupMessageList');
+
+      if (messages.length === 0) {
+        list.innerHTML = '<div class="flex items-center justify-center h-full text-center text-zinc-600 dark:text-zinc-500"><p class="text-sm">No messages in this group yet.</p></div>';
+        return;
+      }
+
+      list.innerHTML = messages.map(m => {
+        const timestamp = new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        if (m.type === 'text') {
+          const content = JSON.parse(m.content);
+          return `
+            <div class="mb-2">
+              <div class="text-xs text-zinc-600 dark:text-zinc-500 mb-1 font-medium">${m.senderUsername}</div>
+              <div class="bg-cyan-600 dark:bg-cyan-900 text-white rounded-lg px-3 py-2 message-bubble inline-block max-w-xs">
+                <div>${content.text}</div>
+                <div class="text-xs mt-1 opacity-70">${timestamp}</div>
+              </div>
+            </div>
+          `;
+        } else if (m.type === 'image') {
+          const content = JSON.parse(m.content);
+          return `
+            <div class="mb-2">
+              <div class="text-xs text-zinc-600 dark:text-zinc-500 mb-1 font-medium">${m.senderUsername}</div>
+              <div class="bg-cyan-600 dark:bg-cyan-900 text-white rounded-lg px-3 py-2 max-w-xs">
+                <img src="${content.imageUrl}" class="max-h-48 rounded cursor-pointer" onclick="showLightbox('${content.imageUrl}')">
+                <div class="text-xs mt-1 opacity-70">${timestamp}</div>
+              </div>
+            </div>
+          `;
+        } else if (m.type === 'token') {
+          const content = JSON.parse(m.content);
+          return `
+            <div class="mb-2">
+              <div class="text-xs text-zinc-600 dark:text-zinc-500 mb-1 font-medium">${m.senderUsername}</div>
+              <div class="bg-green-600 dark:bg-green-900 text-white rounded-lg px-3 py-2 message-bubble max-w-xs">
+                <div class="font-semibold">💰 Token Transfer</div>
+                <div class="text-sm mt-1">${content.amount} tokens</div>
+                ${content.memo ? `<div class="text-xs mt-1">${content.memo}</div>` : ''}
+                <div class="text-xs mt-2 opacity-70">${timestamp}</div>
+              </div>
+            </div>
+          `;
+        }
+      }).join('');
+
+      // Scroll to bottom
+      list.scrollTop = list.scrollHeight;
+    }
+
+    function sendGroupMessage() {
+      const input = document.getElementById('groupMsgInput');
+      const text = input.value.trim();
+      if (!text || !currentGroupId) return;
+
+      input.value = '';
+      sendMessage();
+    }
+
+    function showGroupImageUpload() {
+      document.getElementById('groupImageInput').click();
+    }
+
+    function handleGroupImageUpload(event) {
+      if (event.target.files && event.target.files[0]) {
+        handleImageUpload(event.target.files[0]);
+      }
+    }
+
+    function toggleGroupMenu(event) {
+      event.stopPropagation();
+      const dropdown = document.getElementById('groupMenuDropdown');
+      dropdown.classList.toggle('hidden');
+    }
+
+    function openGroupDetailsModal() {
+      document.getElementById('groupMenuDropdown').classList.add('hidden');
+      alert('Group members: ' + currentGroupName);
+      // TODO: Implement group details modal
+    }
+
+    function openLeaveGroupModal() {
+      document.getElementById('groupMenuDropdown').classList.add('hidden');
+      if (confirm(`Leave group "${currentGroupName}"?`)) {
+        apiCall(`/api/groups/${currentGroupId}/leave`, {
+          method: 'POST',
+          body: JSON.stringify({})
+        }).then(data => {
+          if (data && data.ok) {
+            currentGroupId = null;
+            loadGroups();
+          }
+        });
+      }
+    }
+
+    async function openCreateGroupModal() {
+      document.getElementById('createGroupModal').classList.remove('hidden');
+
+      // Load contacts for initial members selection
+      const data = await apiCall('/api/contacts');
+      const contacts = data?.contacts || [];
+
+      const contactsList = document.getElementById('createGroupContacts');
+      if (contacts.length === 0) {
+        contactsList.innerHTML = '<p class="text-xs text-zinc-600 dark:text-zinc-400">No contacts available</p>';
+      } else {
+        contactsList.innerHTML = contacts.map(c => `
+          <label class="flex items-center gap-2 p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded">
+            <input type="checkbox" value="${c.userId}" class="group-member-checkbox">
+            <span class="text-sm">${c.nickname || c.username}</span>
+          </label>
+        `).join('');
+      }
+    }
+
+    function closeCreateGroupModal() {
+      document.getElementById('createGroupModal').classList.add('hidden');
+    }
+
+    async function createGroup() {
+      const name = document.getElementById('groupNameInput').value.trim();
+      const description = document.getElementById('groupDescriptionInput').value.trim();
+
+      if (!name) {
+        alert('Group name is required');
+        return;
+      }
+
+      const checkboxes = document.querySelectorAll('.group-member-checkbox:checked');
+      const initialMemberIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+
+      const data = await apiCall('/api/groups', {
+        method: 'POST',
+        body: JSON.stringify({ name, description: description || null, initialMemberIds })
+      });
+
+      if (data && data.id) {
+        closeCreateGroupModal();
+        await loadGroups();
+        await openGroupChat(data.id, data.name);
+      } else {
+        alert('Failed to create group: ' + (data?.error || 'Unknown error'));
+      }
+    }
 
     // ===== WELCOME SCREEN FUNCTIONS =====
 
