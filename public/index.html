@@ -497,6 +497,175 @@
         height: 6rem;
       }
     }
+
+    /* Feed action buttons (like and comment) */
+    .feed-post-actions {
+      display: flex;
+      gap: 1rem;
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid #e4e4e7;
+    }
+
+    .dark .feed-post-actions {
+      border-top-color: #27272a;
+    }
+
+    .feed-action-btn {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: transparent;
+      border: none;
+      border-radius: 0.5rem;
+      cursor: pointer;
+      font-size: 0.875rem;
+      color: #71717a;
+      transition: background-color 0.2s ease;
+    }
+
+    .feed-action-btn:hover {
+      background-color: #f4f4f5;
+    }
+
+    .dark .feed-action-btn {
+      color: #a1a1aa;
+    }
+
+    .dark .feed-action-btn:hover {
+      background-color: #27272a;
+    }
+
+    .feed-action-btn.liked {
+      color: #ef4444;
+    }
+
+    /* Comment panel */
+    .feed-comment-panel {
+      margin-top: 1rem;
+      border-top: 1px solid #e4e4e7;
+      padding-top: 1rem;
+    }
+
+    .dark .feed-comment-panel {
+      border-top-color: #27272a;
+    }
+
+    .feed-comment-panel.hidden {
+      display: none;
+    }
+
+    .feed-comments-list {
+      space-y: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .feed-comment-item {
+      padding: 0.75rem 0;
+      border-bottom: 1px solid #e4e4e7;
+    }
+
+    .dark .feed-comment-item {
+      border-bottom-color: #27272a;
+    }
+
+    .feed-comment-item:last-child {
+      border-bottom: none;
+    }
+
+    .feed-comment-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .feed-comment-author {
+      font-weight: 500;
+      color: #18181b;
+      font-size: 0.875rem;
+    }
+
+    .dark .feed-comment-author {
+      color: #fafafa;
+    }
+
+    .feed-comment-time {
+      font-size: 0.75rem;
+      color: #a1a1aa;
+    }
+
+    .feed-comment-text {
+      color: #52525b;
+      font-size: 0.875rem;
+      line-height: 1.4;
+      word-break: break-word;
+      overflow-wrap: break-word;
+    }
+
+    .dark .feed-comment-text {
+      color: #d4d4d8;
+    }
+
+    .feed-comment-form {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+
+    .feed-comment-input {
+      flex: 1;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid #e4e4e7;
+      border-radius: 0.375rem;
+      background-color: white;
+      color: #18181b;
+      font-size: 0.875rem;
+      transition: border-color 0.2s ease;
+    }
+
+    .dark .feed-comment-input {
+      border-color: #3f3f46;
+      background-color: #27272a;
+      color: #fafafa;
+    }
+
+    .feed-comment-input:focus {
+      outline: none;
+      border-color: #06b6d4;
+      ring: 2px;
+      ring-color: #06b6d4;
+    }
+
+    .feed-comment-submit {
+      padding: 0.5rem 1rem;
+      background-color: #06b6d4;
+      color: white;
+      border: none;
+      border-radius: 0.375rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+    }
+
+    .feed-comment-submit:hover {
+      background-color: #0891b2;
+    }
+
+    .dark .feed-comment-submit {
+      background-color: #06b6d4;
+    }
+
+    .dark .feed-comment-submit:hover {
+      background-color: #0891b2;
+    }
+
+    .feed-comment-submit:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
   </style>
 </head>
 <body class="bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100 min-h-screen flex flex-col">
@@ -2713,6 +2882,23 @@
             </div>
             ${post.content.text ? `<p class="text-zinc-900 dark:text-zinc-100 feed-post-text">${escapeHtml(post.content.text)}</p>` : ''}
             ${linkPreview}
+            <div class="feed-post-actions">
+              <button class="feed-action-btn ${post.userLiked ? 'liked' : ''}" onclick="togglePostLike(${post.id}, this)" data-post-id="${post.id}">
+                <span>❤️</span>
+                <span class="like-count">${post.likeCount}</span>
+              </button>
+              <button class="feed-action-btn" onclick="toggleCommentPanel(${post.id}, this)" data-post-id="${post.id}">
+                <span>💬</span>
+                <span class="comment-count">${post.commentCount}</span>
+              </button>
+            </div>
+            <div class="feed-comment-panel hidden" id="comments-${post.id}">
+              <div class="feed-comments-list" id="comments-list-${post.id}"></div>
+              <div class="feed-comment-form">
+                <input type="text" class="feed-comment-input" placeholder="Add a comment..." id="comment-input-${post.id}">
+                <button class="feed-comment-submit" onclick="submitComment(${post.id})">Post</button>
+              </div>
+            </div>
           </div>
         </div>
       `;
@@ -2757,6 +2943,160 @@
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
+    }
+
+    // Like/Unlike post
+    async function togglePostLike(postId, btn) {
+      try {
+        const likeBtn = btn || document.querySelector(`[data-post-id="${postId}"]`);
+        const countSpan = likeBtn.querySelector('.like-count');
+        const currentCount = parseInt(countSpan.textContent);
+        const isCurrentlyLiked = likeBtn.classList.contains('liked');
+
+        // Optimistic update
+        if (isCurrentlyLiked) {
+          likeBtn.classList.remove('liked');
+          countSpan.textContent = currentCount - 1;
+        } else {
+          likeBtn.classList.add('liked');
+          countSpan.textContent = currentCount + 1;
+        }
+
+        const data = await apiCall(`/api/feed/posts/${postId}/likes`, {
+          method: 'POST',
+          body: JSON.stringify({})
+        });
+
+        if (data && !data.error) {
+          // Update with actual count from server
+          countSpan.textContent = data.likeCount;
+          likeBtn.classList.toggle('liked', data.userLiked);
+        } else {
+          // Revert on error
+          likeBtn.classList.toggle('liked', isCurrentlyLiked);
+          countSpan.textContent = currentCount;
+          console.error('Failed to toggle like:', data?.error);
+        }
+      } catch (err) {
+        console.error('Error toggling like:', err);
+      }
+    }
+
+    // Toggle comment panel visibility
+    async function toggleCommentPanel(postId, btn) {
+      const panel = document.getElementById(`comments-${postId}`);
+      const isHidden = panel.classList.contains('hidden');
+
+      if (isHidden) {
+        panel.classList.remove('hidden');
+        // Load comments if not already loaded
+        const commentsList = document.getElementById(`comments-list-${postId}`);
+        if (commentsList.children.length === 0) {
+          await loadPostComments(postId);
+        }
+        // Focus comment input
+        document.getElementById(`comment-input-${postId}`).focus();
+      } else {
+        panel.classList.add('hidden');
+      }
+    }
+
+    // Load comments for a post
+    async function loadPostComments(postId) {
+      try {
+        const data = await apiCall(`/api/feed/posts/${postId}/comments`);
+        const commentsList = document.getElementById(`comments-list-${postId}`);
+
+        if (!data || data.error || !data.comments || data.comments.length === 0) {
+          commentsList.innerHTML = '<div class="text-zinc-500 dark:text-zinc-400 text-sm">No comments yet. Be the first!</div>';
+          return;
+        }
+
+        commentsList.innerHTML = data.comments.map(comment => {
+          const commentTime = new Date(comment.createdAt).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+
+          return `
+            <div class="feed-comment-item">
+              <div class="feed-comment-header">
+                <span class="feed-comment-author">${escapeHtml(comment.username)}</span>
+                <span class="feed-comment-time">${commentTime}</span>
+              </div>
+              <div class="feed-comment-text">${escapeHtml(comment.content)}</div>
+            </div>
+          `;
+        }).join('');
+      } catch (err) {
+        console.error('Error loading comments:', err);
+        const commentsList = document.getElementById(`comments-list-${postId}`);
+        commentsList.innerHTML = '<div class="text-red-600 dark:text-red-400 text-sm">Failed to load comments</div>';
+      }
+    }
+
+    // Submit a new comment
+    async function submitComment(postId) {
+      try {
+        const input = document.getElementById(`comment-input-${postId}`);
+        const text = input.value.trim();
+
+        if (!text) {
+          return;
+        }
+
+        input.disabled = true;
+
+        const data = await apiCall(`/api/feed/posts/${postId}/comments`, {
+          method: 'POST',
+          body: JSON.stringify({ text })
+        });
+
+        input.disabled = false;
+
+        if (data && !data.error) {
+          // Add new comment to the list
+          const commentsList = document.getElementById(`comments-list-${postId}`);
+
+          // Remove "no comments" message if it exists
+          if (commentsList.innerHTML.includes('No comments yet')) {
+            commentsList.innerHTML = '';
+          }
+
+          const commentTime = new Date(data.createdAt).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+
+          const commentEl = document.createElement('div');
+          commentEl.className = 'feed-comment-item';
+          commentEl.innerHTML = `
+            <div class="feed-comment-header">
+              <span class="feed-comment-author">${escapeHtml(data.username)}</span>
+              <span class="feed-comment-time">${commentTime}</span>
+            </div>
+            <div class="feed-comment-text">${escapeHtml(data.content)}</div>
+          `;
+          commentsList.appendChild(commentEl);
+
+          // Clear input and update comment count
+          input.value = '';
+          const commentBtn = document.querySelector(`[data-post-id="${postId}"] .comment-count`);
+          if (commentBtn) {
+            commentBtn.textContent = parseInt(commentBtn.textContent) + 1;
+          }
+        } else {
+          alert('Failed to post comment: ' + (data?.error || 'Unknown error'));
+        }
+      } catch (err) {
+        console.error('Error submitting comment:', err);
+        alert('Failed to post comment');
+        input.disabled = false;
+      }
     }
 
     // Close conversation menu when clicking outside

@@ -1918,12 +1918,15 @@ app.get('/api/feed/posts', async (req, res) => {
         fp.created_at,
         u.username,
         u.verified_at,
-        u.avatar_url
+        u.avatar_url,
+        (SELECT COUNT(*) FROM feed_post_likes WHERE post_id = fp.id) as like_count,
+        (SELECT COUNT(*) FROM feed_post_comments WHERE post_id = fp.id) as comment_count,
+        EXISTS(SELECT 1 FROM feed_post_likes WHERE post_id = fp.id AND user_id = $3) as user_liked
       FROM feed_posts fp
       JOIN users u ON u.id = fp.user_id
       ORDER BY fp.created_at DESC
       LIMIT $1 OFFSET $2
-    `, [limit, offset]);
+    `, [limit, offset, req.user.id]);
 
     const { rows: countResult } = await pool.query(`
       SELECT COUNT(*) as count FROM feed_posts
@@ -1940,7 +1943,10 @@ app.get('/api/feed/posts', async (req, res) => {
         verified: !!p.verified_at,
         avatarUrl: p.avatar_url,
         content: p.content,
-        createdAt: p.created_at
+        createdAt: p.created_at,
+        likeCount: parseInt(p.like_count),
+        commentCount: parseInt(p.comment_count),
+        userLiked: p.user_liked
       })),
       hasMore
     });
@@ -2008,6 +2014,178 @@ app.post('/api/feed/posts', async (req, res) => {
   } catch (err) {
     console.error('Error creating feed post:', err);
     res.status(500).json({ error: 'Failed to create post' });
+  }
+});
+
+// POST /api/feed/posts/:postId/likes - Toggle like on a post
+app.post('/api/feed/posts/:postId/likes', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const postId = parseInt(req.params.postId);
+    const userId = req.user.id;
+
+    // Check if post exists
+    const { rows: postCheck } = await pool.query(`
+      SELECT id FROM feed_posts WHERE id = $1
+    `, [postId]);
+
+    if (postCheck.length === 0) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    // Check if user already liked this post
+    const { rows: existingLike } = await pool.query(`
+      SELECT id FROM feed_post_likes WHERE post_id = $1 AND user_id = $2
+    `, [postId, userId]);
+
+    let userLiked = true;
+    if (existingLike.length > 0) {
+      // Unlike - delete the like
+      await pool.query(`
+        DELETE FROM feed_post_likes WHERE post_id = $1 AND user_id = $2
+      `, [postId, userId]);
+      userLiked = false;
+    } else {
+      // Like - insert new like
+      await pool.query(`
+        INSERT INTO feed_post_likes (post_id, user_id) VALUES ($1, $2)
+      `, [postId, userId]);
+    }
+
+    // Get updated like count
+    const { rows: likeCount } = await pool.query(`
+      SELECT COUNT(*) as count FROM feed_post_likes WHERE post_id = $1
+    `, [postId]);
+
+    res.json({
+      likeCount: parseInt(likeCount[0].count),
+      userLiked
+    });
+  } catch (err) {
+    console.error('Error toggling like:', err);
+    res.status(500).json({ error: 'Failed to toggle like' });
+  }
+});
+
+// GET /api/feed/posts/:postId/likes - Get like count for a post
+app.get('/api/feed/posts/:postId/likes', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const postId = parseInt(req.params.postId);
+    const userId = req.user.id;
+
+    const { rows: likeData } = await pool.query(`
+      SELECT
+        (SELECT COUNT(*) FROM feed_post_likes WHERE post_id = $1) as like_count,
+        EXISTS(SELECT 1 FROM feed_post_likes WHERE post_id = $1 AND user_id = $2) as user_liked
+    `, [postId, userId]);
+
+    res.json({
+      likeCount: parseInt(likeData[0].like_count),
+      userLiked: likeData[0].user_liked
+    });
+  } catch (err) {
+    console.error('Error fetching likes:', err);
+    res.status(500).json({ error: 'Failed to fetch likes' });
+  }
+});
+
+// POST /api/feed/posts/:postId/comments - Add a comment to a post
+app.post('/api/feed/posts/:postId/comments', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const postId = parseInt(req.params.postId);
+    const { text } = req.body;
+
+    if (!text || text.trim().length === 0) {
+      return res.status(400).json({ error: 'Comment text is required' });
+    }
+
+    // Check if post exists
+    const { rows: postCheck } = await pool.query(`
+      SELECT id FROM feed_posts WHERE id = $1
+    `, [postId]);
+
+    if (postCheck.length === 0) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    // Insert comment
+    const { rows: newComment } = await pool.query(`
+      INSERT INTO feed_post_comments (post_id, user_id, content)
+      VALUES ($1, $2, $3)
+      RETURNING id, user_id, content, created_at
+    `, [postId, req.user.id, text.trim()]);
+
+    const comment = newComment[0];
+    const { rows: userData } = await pool.query(`
+      SELECT username, avatar_url FROM users WHERE id = $1
+    `, [comment.user_id]);
+
+    const user = userData[0];
+
+    res.json({
+      id: comment.id,
+      userId: comment.user_id,
+      username: user.username,
+      avatarUrl: user.avatar_url,
+      content: comment.content,
+      createdAt: comment.created_at
+    });
+  } catch (err) {
+    console.error('Error creating comment:', err);
+    res.status(500).json({ error: 'Failed to create comment' });
+  }
+});
+
+// GET /api/feed/posts/:postId/comments - Get comments for a post
+app.get('/api/feed/posts/:postId/comments', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const postId = parseInt(req.params.postId);
+    const limit = Math.min(parseInt(req.query.limit || 50), 100);
+    const offset = parseInt(req.query.offset || 0);
+
+    const { rows: comments } = await pool.query(`
+      SELECT
+        fpc.id,
+        fpc.user_id,
+        fpc.content,
+        fpc.created_at,
+        u.username,
+        u.avatar_url
+      FROM feed_post_comments fpc
+      JOIN users u ON u.id = fpc.user_id
+      WHERE fpc.post_id = $1
+      ORDER BY fpc.created_at ASC
+      LIMIT $2 OFFSET $3
+    `, [postId, limit, offset]);
+
+    res.json({
+      comments: comments.map(c => ({
+        id: c.id,
+        userId: c.user_id,
+        username: c.username,
+        avatarUrl: c.avatar_url,
+        content: c.content,
+        createdAt: c.created_at
+      }))
+    });
+  } catch (err) {
+    console.error('Error fetching comments:', err);
+    res.status(500).json({ error: 'Failed to fetch comments' });
   }
 });
 
@@ -2279,6 +2457,45 @@ async function start() {
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_feed_posts_user_id
         ON feed_posts(user_id)
+    `);
+
+    // Create feed post likes table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS feed_post_likes (
+        id BIGSERIAL PRIMARY KEY,
+        post_id BIGINT NOT NULL REFERENCES feed_posts(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(post_id, user_id)
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_feed_post_likes_post_id
+        ON feed_post_likes(post_id)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_feed_post_likes_user_id
+        ON feed_post_likes(user_id)
+    `);
+
+    // Create feed post comments table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS feed_post_comments (
+        id BIGSERIAL PRIMARY KEY,
+        post_id BIGINT NOT NULL REFERENCES feed_posts(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        content TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_feed_post_comments_post_id
+        ON feed_post_comments(post_id)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_feed_post_comments_created
+        ON feed_post_comments(created_at)
     `);
 
     // Mark tables as private
@@ -2673,13 +2890,70 @@ async function start() {
         }
       ];
 
+      let feedPostIds = [];
       for (const post of feedPosts) {
         const createdAt = new Date(feedBaseTime.getTime() - post.offset);
-        await pool.query(`
+        const result = await pool.query(`
           INSERT INTO feed_posts (user_id, content, created_at, updated_at)
           VALUES ($1, $2, $3, $3)
           ON CONFLICT DO NOTHING
+          RETURNING id
         `, [post.userId, JSON.stringify(post.content), createdAt]);
+        if (result.rows.length > 0) {
+          feedPostIds.push(result.rows[0].id);
+        }
+      }
+
+      // Seed likes on posts
+      const likeData = [
+        { postIndex: 0, userId: bob },
+        { postIndex: 0, userId: david },
+        { postIndex: 0, userId: emma },
+        { postIndex: 1, userId: alice },
+        { postIndex: 1, userId: david },
+        { postIndex: 1, userId: emma },
+        { postIndex: 1, userId: charlie },
+        { postIndex: 2, userId: alice },
+        { postIndex: 2, userId: emma },
+        { postIndex: 3, userId: bob },
+        { postIndex: 3, userId: david },
+        { postIndex: 4, userId: alice },
+        { postIndex: 4, userId: bob },
+        { postIndex: 4, userId: david },
+        { postIndex: 5, userId: alice },
+        { postIndex: 5, userId: charlie },
+      ];
+
+      for (const like of likeData) {
+        if (feedPostIds[like.postIndex]) {
+          await pool.query(`
+            INSERT INTO feed_post_likes (post_id, user_id, created_at)
+            VALUES ($1, $2, NOW())
+            ON CONFLICT DO NOTHING
+          `, [feedPostIds[like.postIndex], like.userId]);
+        }
+      }
+
+      // Seed comments on posts
+      const commentData = [
+        { postIndex: 0, userId: bob, text: '[Staging demo] Great to see you here!' },
+        { postIndex: 0, userId: david, text: '[Staging demo] Welcome aboard, excited for the journey!' },
+        { postIndex: 1, userId: alice, text: '[Staging demo] This looks amazing! Great work on the release.' },
+        { postIndex: 1, userId: emma, text: '[Staging demo] Cant wait to try it out!' },
+        { postIndex: 2, userId: alice, text: '[Staging demo] Would love to discuss this further, especially the latest EIP proposals.' },
+        { postIndex: 3, userId: bob, text: '[Staging demo] Awesome article, bookmarked for later reading!' },
+        { postIndex: 4, userId: bob, text: '[Staging demo] The energy is contagious! Keep it up!' },
+        { postIndex: 5, userId: david, text: '[Staging demo] Looking forward to checking this out!' },
+      ];
+
+      for (const comment of commentData) {
+        if (feedPostIds[comment.postIndex]) {
+          await pool.query(`
+            INSERT INTO feed_post_comments (post_id, user_id, content, created_at)
+            VALUES ($1, $2, $3, NOW())
+            ON CONFLICT DO NOTHING
+          `, [feedPostIds[comment.postIndex], comment.userId, comment.text]);
+        }
       }
     }
 
