@@ -812,6 +812,8 @@ app.post('/api/conversation-requests', async (req, res) => {
         createdAt: req_row.created_at,
         updatedAt: req_row.updated_at,
       });
+    } else {
+      res.status(500).json({ error: 'Failed to create or retrieve conversation request' });
     }
   } catch (err) {
     console.error(err);
