@@ -1868,6 +1868,149 @@ app.post('/api/groups/:groupId/archive', async (req, res) => {
 
 // ===== EXPLORER API PROXY =====
 
+// ===== FEED ENDPOINTS =====
+
+// Helper function to fetch link preview metadata
+async function fetchLinkPreview(url) {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; Guardian/1.0)'
+      },
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) return null;
+
+    const html = await response.text();
+    const titleMatch = html.match(/<meta\s+property=["']og:title["']\s+content=["']([^"']+)["']/i);
+    const imageMatch = html.match(/<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']/i);
+
+    return {
+      title: titleMatch ? titleMatch[1] : null,
+      image: imageMatch ? imageMatch[1] : null
+    };
+  } catch (err) {
+    return null;
+  }
+}
+
+// GET /api/feed/posts - Fetch paginated feed posts
+app.get('/api/feed/posts', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const limit = Math.min(parseInt(req.query.limit || 50), 100);
+    const offset = parseInt(req.query.offset || 0);
+
+    const { rows: posts } = await pool.query(`
+      SELECT
+        fp.id,
+        fp.user_id,
+        fp.content,
+        fp.created_at,
+        u.username,
+        u.verified_at,
+        u.avatar_url
+      FROM feed_posts fp
+      JOIN users u ON u.id = fp.user_id
+      ORDER BY fp.created_at DESC
+      LIMIT $1 OFFSET $2
+    `, [limit, offset]);
+
+    const { rows: countResult } = await pool.query(`
+      SELECT COUNT(*) as count FROM feed_posts
+    `);
+
+    const total = parseInt(countResult[0].count);
+    const hasMore = offset + limit < total;
+
+    res.json({
+      posts: posts.map(p => ({
+        id: p.id,
+        userId: p.user_id,
+        username: p.username,
+        verified: !!p.verified_at,
+        avatarUrl: p.avatar_url,
+        content: p.content,
+        createdAt: p.created_at
+      })),
+      hasMore
+    });
+  } catch (err) {
+    console.error('Error fetching feed posts:', err);
+    res.status(500).json({ error: 'Failed to fetch feed' });
+  }
+});
+
+// POST /api/feed/posts - Create a new feed post
+app.post('/api/feed/posts', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { text, link } = req.body;
+
+    if (!text && !link) {
+      return res.status(400).json({ error: 'Post must contain text or a link' });
+    }
+
+    const content = { text: text || '' };
+
+    if (link) {
+      // Validate URL
+      try {
+        new URL(link);
+      } catch {
+        return res.status(400).json({ error: 'Invalid URL' });
+      }
+
+      content.link = link;
+
+      // Fetch preview metadata
+      const preview = await fetchLinkPreview(link);
+      if (preview) {
+        content.linkTitle = preview.title;
+        content.linkImage = preview.image;
+      }
+    }
+
+    const { rows: postRows } = await pool.query(`
+      INSERT INTO feed_posts (user_id, content, created_at)
+      VALUES ($1, $2, NOW())
+      RETURNING id, user_id, content, created_at
+    `, [req.user.id, JSON.stringify(content)]);
+
+    const post = postRows[0];
+    const { rows: userRows } = await pool.query(`
+      SELECT username, verified_at, avatar_url FROM users WHERE id = $1
+    `, [req.user.id]);
+
+    const user = userRows[0];
+
+    res.json({
+      id: post.id,
+      userId: post.user_id,
+      username: user.username,
+      verified: !!user.verified_at,
+      avatarUrl: user.avatar_url,
+      content: post.content,
+      createdAt: post.created_at
+    });
+  } catch (err) {
+    console.error('Error creating feed post:', err);
+    res.status(500).json({ error: 'Failed to create post' });
+  }
+});
+
 // Simple proxy for explorer API to avoid CORS issues
 app.use('/explorer-api', (req, res) => {
   // Forward requests to testnet explorer
@@ -2117,6 +2260,25 @@ async function start() {
         last_read_at TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE(user_id, group_id)
       )
+    `);
+
+    // Create feed_posts table (public - feed posts are shared with all users)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS feed_posts (
+        id BIGSERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        content JSONB NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_feed_posts_created
+        ON feed_posts(created_at DESC)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_feed_posts_user_id
+        ON feed_posts(user_id)
     `);
 
     // Mark tables as private
@@ -2441,6 +2603,55 @@ async function start() {
           VALUES ($1, $2, NOW())
           ON CONFLICT (user_id, group_id) DO NOTHING
         `, [memberId, generalGroupId]);
+      }
+
+      // Seed feed posts
+      const feedBaseTime = new Date();
+      const feedPosts = [
+        {
+          userId: alice,
+          content: { text: '[Staging demo] Hello Guardian community! 👋' },
+          offset: 7200000
+        },
+        {
+          userId: bob,
+          content: {
+            text: '[Staging demo] Just deployed v2.0 of my dapp',
+            link: 'https://example.com/dapp',
+            linkTitle: 'My Cool Dapp',
+            linkImage: 'https://via.placeholder.com/200'
+          },
+          offset: 3600000
+        },
+        {
+          userId: david,
+          content: { text: '[Staging demo] Anyone interested in discussing Web3 standards?' },
+          offset: 1800000
+        },
+        {
+          userId: alice,
+          content: {
+            text: '[Staging demo] Check out this article on blockchain security',
+            link: 'https://example.com/article',
+            linkTitle: 'Blockchain Security Best Practices',
+            linkImage: 'https://via.placeholder.com/200'
+          },
+          offset: 900000
+        },
+        {
+          userId: emma,
+          content: { text: '[Staging demo] Excited about the new Guardian features!' },
+          offset: 600000
+        }
+      ];
+
+      for (const post of feedPosts) {
+        const createdAt = new Date(feedBaseTime.getTime() - post.offset);
+        await pool.query(`
+          INSERT INTO feed_posts (user_id, content, created_at, updated_at)
+          VALUES ($1, $2, $3, $3)
+          ON CONFLICT DO NOTHING
+        `, [post.userId, JSON.stringify(post.content), createdAt]);
       }
     }
 
