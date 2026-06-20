@@ -101,7 +101,10 @@ app.use(async (req, res, next) => {
         VALUES ($1, $2, $3, $4, NOW())
         ON CONFLICT (id) DO UPDATE SET
           username = EXCLUDED.username,
-          usernode_pubkey = EXCLUDED.usernode_pubkey,
+          usernode_pubkey = CASE
+            WHEN EXCLUDED.usernode_pubkey IS NOT NULL THEN EXCLUDED.usernode_pubkey
+            ELSE users.usernode_pubkey
+          END,
           verified_at = CASE
             WHEN EXCLUDED.verified_at IS NOT NULL THEN EXCLUDED.verified_at
             ELSE users.verified_at
@@ -1118,11 +1121,11 @@ app.get('/api/search/users', async (req, res) => {
     const { rows } = await pool.query(`
       SELECT id, username, verified_at, usernode_pubkey
       FROM users
-      WHERE username ILIKE $1 OR usernode_pubkey ILIKE $2
+      WHERE username ILIKE $1 OR TRIM(usernode_pubkey) ILIKE TRIM($2)
       ORDER BY
         CASE
-          WHEN username = $3 OR usernode_pubkey = $4 THEN 0
-          WHEN username ILIKE $5 OR usernode_pubkey ILIKE $6 THEN 1
+          WHEN username = $3 OR TRIM(usernode_pubkey) = TRIM($4) THEN 0
+          WHEN username ILIKE $5 OR TRIM(usernode_pubkey) ILIKE TRIM($6) THEN 1
           ELSE 2
         END,
         username ASC
@@ -1225,6 +1228,12 @@ async function start() {
     // Add network column if it doesn't exist (idempotent migration)
     await pool.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS network VARCHAR(50) DEFAULT 'testnet'
+    `);
+
+    // Create partial unique index on usernode_pubkey for non-NULL values
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_users_usernode_pubkey_unique
+      ON users(usernode_pubkey) WHERE usernode_pubkey IS NOT NULL
     `);
 
     // Create conversations table (marked private)
