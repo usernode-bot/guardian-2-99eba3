@@ -1918,12 +1918,16 @@ app.get('/api/feed/posts', async (req, res) => {
         fp.created_at,
         u.username,
         u.verified_at,
-        u.avatar_url
+        u.avatar_url,
+        COUNT(DISTINCT fpl.id)::INTEGER as like_count,
+        MAX(CASE WHEN fpl.user_id = $1 THEN true ELSE false END) as is_liked
       FROM feed_posts fp
       JOIN users u ON u.id = fp.user_id
+      LEFT JOIN feed_post_likes fpl ON fpl.post_id = fp.id
+      GROUP BY fp.id, fp.user_id, fp.content, fp.created_at, u.username, u.verified_at, u.avatar_url
       ORDER BY fp.created_at DESC
-      LIMIT $1 OFFSET $2
-    `, [limit, offset]);
+      LIMIT $2 OFFSET $3
+    `, [req.user.id, limit, offset]);
 
     const { rows: countResult } = await pool.query(`
       SELECT COUNT(*) as count FROM feed_posts
@@ -1940,7 +1944,9 @@ app.get('/api/feed/posts', async (req, res) => {
         verified: !!p.verified_at,
         avatarUrl: p.avatar_url,
         content: p.content,
-        createdAt: p.created_at
+        createdAt: p.created_at,
+        likeCount: p.like_count || 0,
+        isLiked: !!p.is_liked
       })),
       hasMore
     });
@@ -2165,6 +2171,85 @@ app.delete('/api/feed/posts/:postId/comments/:commentId', async (req, res) => {
   } catch (err) {
     console.error('Error deleting comment:', err);
     res.status(500).json({ error: 'Failed to delete comment' });
+  }
+});
+
+// POST /api/feed/posts/:postId/like - Like a feed post
+app.post('/api/feed/posts/:postId/like', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { postId } = req.params;
+    const userId = req.user.id;
+
+    // Verify post exists
+    const { rows: postRows } = await pool.query(`
+      SELECT id FROM feed_posts WHERE id = $1
+    `, [postId]);
+
+    if (postRows.length === 0) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    // Insert like (idempotent via ON CONFLICT)
+    await pool.query(`
+      INSERT INTO feed_post_likes (post_id, user_id, created_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT DO NOTHING
+    `, [postId, userId]);
+
+    // Get updated like count
+    const { rows: countRows } = await pool.query(`
+      SELECT COUNT(*) as count FROM feed_post_likes WHERE post_id = $1
+    `, [postId]);
+
+    const likeCount = parseInt(countRows[0].count) || 0;
+
+    res.json({ success: true, likeCount });
+  } catch (err) {
+    console.error('Error liking post:', err);
+    res.status(500).json({ error: 'Failed to like post' });
+  }
+});
+
+// DELETE /api/feed/posts/:postId/like - Unlike a feed post
+app.delete('/api/feed/posts/:postId/like', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { postId } = req.params;
+    const userId = req.user.id;
+
+    // Verify post exists
+    const { rows: postRows } = await pool.query(`
+      SELECT id FROM feed_posts WHERE id = $1
+    `, [postId]);
+
+    if (postRows.length === 0) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    // Delete like
+    await pool.query(`
+      DELETE FROM feed_post_likes
+      WHERE post_id = $1 AND user_id = $2
+    `, [postId, userId]);
+
+    // Get updated like count
+    const { rows: countRows } = await pool.query(`
+      SELECT COUNT(*) as count FROM feed_post_likes WHERE post_id = $1
+    `, [postId]);
+
+    const likeCount = parseInt(countRows[0].count) || 0;
+
+    res.json({ success: true, likeCount });
+  } catch (err) {
+    console.error('Error unliking post:', err);
+    res.status(500).json({ error: 'Failed to unlike post' });
   }
 });
 
@@ -2456,6 +2541,25 @@ async function start() {
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_feed_comments_user_id
         ON feed_comments(user_id)
+    `);
+
+    // Create feed_post_likes table (public - likes on feed posts)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS feed_post_likes (
+        id BIGSERIAL PRIMARY KEY,
+        post_id BIGINT NOT NULL REFERENCES feed_posts(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(post_id, user_id)
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_feed_post_likes_post_id
+        ON feed_post_likes(post_id)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_feed_post_likes_user_id
+        ON feed_post_likes(user_id)
     `);
 
     // Mark tables as private
@@ -2881,6 +2985,31 @@ async function start() {
           VALUES ($1, $2, $3, $4, $4), ($1, $5, $6, $7, $7)
           ON CONFLICT DO NOTHING
         `, [davidPostId, alice, '[Staging demo] Count me in! We should organize a discussion thread.', commentTime1, emma, '[Staging demo] This is an important topic for the ecosystem!', commentTime2]);
+      }
+
+      // Seed feed post likes
+      // Get all feed posts for seeding likes
+      const { rows: allPostRows } = await pool.query(`
+        SELECT id FROM feed_posts ORDER BY created_at DESC
+      `);
+
+      if (allPostRows.length > 0) {
+        // Create some sample likes
+        const likes = [];
+        if (allPostRows.length > 0) likes.push([allPostRows[0].id, bob]); // Bob likes Alice's first post
+        if (allPostRows.length > 1) likes.push([allPostRows[1].id, alice]); // Alice likes Bob's post
+        if (allPostRows.length > 1) likes.push([allPostRows[1].id, charlie]); // Charlie likes Bob's post
+        if (allPostRows.length > 2) likes.push([allPostRows[2].id, alice]); // Alice likes David's post
+        if (allPostRows.length > 3) likes.push([allPostRows[3].id, bob]); // Bob likes Alice's article post
+        if (allPostRows.length > 4) likes.push([allPostRows[4].id, alice]); // Alice likes Emma's post
+
+        for (const [postId, userId] of likes) {
+          await pool.query(`
+            INSERT INTO feed_post_likes (post_id, user_id, created_at)
+            VALUES ($1, $2, NOW())
+            ON CONFLICT DO NOTHING
+          `, [postId, userId]);
+        }
       }
     }
 
