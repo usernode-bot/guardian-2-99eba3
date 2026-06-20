@@ -790,7 +790,7 @@
       document.getElementById('sidebarUsername').textContent = user.username + (user.verified ? ' ✓' : '');
       document.getElementById('sidebarWallet').textContent = user.usernode_pubkey || 'No wallet linked';
       initSettings();
-      checkAndShowWelcome();
+      showWelcome();
       loadConversations();
       setupEventListeners();
     }
@@ -1599,35 +1599,13 @@
 
     // ===== WELCOME SCREEN FUNCTIONS =====
 
-    async function checkAndShowWelcome() {
-      if (!currentUser) return;
-
-      try {
-        const user = await apiCall('/api/user');
-        if (user && !user.hasSeenWelcome) {
-          document.getElementById('welcomeModal').classList.remove('hidden');
-        }
-      } catch (err) {
-        console.error('Error checking welcome status:', err);
-      }
+    function showWelcome() {
+      document.getElementById('welcomeModal').classList.remove('hidden');
     }
 
-    async function dismissWelcome() {
-      try {
-        const response = await apiCall('/api/user/welcome-seen', {
-          method: 'PUT',
-          body: JSON.stringify({})
-        });
-
-        if (response && response.ok) {
-          document.getElementById('welcomeModal').classList.add('hidden');
-          showConversationsView();
-        } else {
-          console.error('Failed to dismiss welcome screen');
-        }
-      } catch (err) {
-        console.error('Error dismissing welcome screen:', err);
-      }
+    function dismissWelcome() {
+      document.getElementById('welcomeModal').classList.add('hidden');
+      showConversationsView();
     }
 
     init();
