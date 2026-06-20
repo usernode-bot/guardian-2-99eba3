@@ -234,6 +234,7 @@
       <div id="headerRight" class="text-sm text-zinc-600 dark:text-zinc-500 relative">
         <button id="conversationMenuBtn" class="hidden text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare" title="Conversation options" onclick="toggleConversationMenu(event)">⋯</button>
         <div id="conversationMenuDropdown" class="hidden absolute right-0 mt-2 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg shadow-lg z-50 min-w-40">
+          <button id="addContactMenuBtn" onclick="toggleAddContactButton()" class="menu-item text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 w-full text-left">Add Contact</button>
           <button onclick="openDeleteConversationModal()" class="menu-item text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 w-full text-left">Delete conversation</button>
         </div>
       </div>
@@ -267,12 +268,6 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
           Contacts
-        </button>
-        <button onclick="showRequestsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
-          <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8a6 6 0 0112 0v.993a.5.5 0 00.823.4l3.293-2.46a.5.5 0 00-.823-.4L15.823 8.6A.5.5 0 0015 8.2V8a6 6 0 11-12 0z" />
-          </svg>
-          Requests<span id="requestBadge" class="hidden ml-2 inline-block px-2 py-0.5 bg-cyan-600 dark:bg-cyan-600 text-white text-xs rounded-full"></span>
         </button>
         <button onclick="openSettingsPanel()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
           <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -346,40 +341,23 @@
         </div>
       </div>
 
-      <!-- Requests View (with search and request list) -->
-      <div id="requestsView" class="hidden flex flex-col flex-1 overflow-hidden">
-        <!-- Add Request Button -->
-        <div class="px-4 py-3 bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-300 dark:border-zinc-800">
-          <button onclick="toggleSendRequestModal()" class="w-full px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium text-sm">+ Add Request</button>
-        </div>
-        <!-- Requests Section -->
-        <div class="flex-1 flex flex-col overflow-hidden">
-          <div class="px-4 py-3 bg-zinc-100 dark:bg-zinc-800 sticky top-0 z-10">
-            <h2 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Pending Requests</h2>
-          </div>
-          <div id="requestList" class="flex-1 overflow-y-auto divide-y divide-zinc-300 dark:divide-zinc-800">
-            <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading requests...</div>
-          </div>
-        </div>
-      </div>
-
       <!-- Chat View -->
       <div id="chatView" class="hidden flex flex-col flex-1 overflow-hidden">
         <div id="messageList" class="flex-1 overflow-y-auto space-y-3 p-4"></div>
       </div>
 
-
       <!-- Contacts View (Saved Contacts only) -->
       <div id="contactsView" class="hidden flex flex-col flex-1 overflow-hidden">
         <!-- Saved Contacts Section -->
         <div class="flex-1 flex flex-col overflow-hidden">
-          <div class="px-4 py-3 bg-zinc-100 dark:bg-zinc-800 sticky top-0 z-10">
+          <div class="px-4 py-3 bg-zinc-100 dark:bg-zinc-800 sticky top-0 z-10 space-y-2">
             <h2 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Contacts</h2>
+            <input id="contactsSearchInput" type="text" placeholder="Search by wallet address" oninput="handleContactSearch(event)" class="w-full px-3 py-2 bg-white dark:bg-zinc-700 border border-zinc-300 dark:border-zinc-600 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition text-sm">
           </div>
           <div id="contactsList" class="flex-1 overflow-y-auto divide-y divide-zinc-300 dark:divide-zinc-800">
             <div class="flex flex-col items-center justify-center h-full text-center space-y-4">
               <div class="text-zinc-600 dark:text-zinc-400">
-                <p class="text-sm">No contacts yet. Send a request in the Requests section to get started.</p>
+                <p class="text-sm">No contacts yet. Start a conversation to build your contact list.</p>
               </div>
             </div>
           </div>
@@ -517,23 +495,6 @@
     </div>
   </div>
 
-  <!-- Send Request Modal -->
-  <div id="sendRequestModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onclick="if(event.target.id === 'sendRequestModal') toggleSendRequestModal()">
-    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
-      <div class="flex justify-between items-start">
-        <h2 class="text-xl font-semibold text-zinc-900 dark:text-white">Send Request</h2>
-        <button onclick="toggleSendRequestModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
-      </div>
-      <div class="space-y-3">
-        <input id="modalSearchInput" type="text" placeholder="Search for users..." class="w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition" oninput="searchUsersInModal(this.value)">
-        <div id="modalSearchResults" class="space-y-2 max-h-60 overflow-y-auto"></div>
-      </div>
-      <div class="flex gap-2">
-        <button onclick="toggleSendRequestModal()" class="flex-1 px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
-      </div>
-    </div>
-  </div>
-
   <script>
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token') || '';
@@ -546,14 +507,9 @@
     let currentContactName = null;
     let currentContactAddress = null;
     let pollInterval = null;
-    let requestsPollInterval = null;
     let conversationsPollInterval = null;
     let sidebarOpen = false;
     let pendingDeleteContactId = null;
-
-    // Search modal state
-    let modalSearchRequestId = 0;
-    let modalSearchDebounceTimer = null;
 
     // Settings functions
     let currentNetwork = 'testnet';
@@ -798,7 +754,6 @@
       document.getElementById('sidebarWallet').textContent = user.usernode_pubkey || 'No wallet linked';
       initSettings();
       loadConversations();
-      loadRequestsTab();
       setupEventListeners();
     }
 
@@ -808,7 +763,6 @@
         currentConvId = null;
         showConversationsView();
       });
-
 
       document.getElementById('msgInput').addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -845,104 +799,39 @@
         if (e.key === 'Escape') {
           closeAttachmentSheet();
           hideDeleteContactModal();
-          const sendRequestModal = document.getElementById('sendRequestModal');
-          if (!sendRequestModal.classList.contains('hidden')) {
-            toggleSendRequestModal();
-          }
         }
       });
     }
 
     async function loadConversations() {
       const data = await apiCall('/api/conversations');
-      const sentData = await apiCall('/api/conversation-requests/sent');
-      const receivedData = await apiCall('/api/conversation-requests/received');
       if (!data) return;
 
       const list = document.getElementById('convList');
       let html = '';
 
-      // Show incoming requests first (for recipient)
-      if (receivedData && receivedData.requests && receivedData.requests.length > 0) {
-        const incomingRequests = receivedData.requests.filter(r => r.status === 'pending');
-        if (incomingRequests.length > 0) {
-          html += '<div class="bg-zinc-200 dark:bg-zinc-800 text-xs text-zinc-600 dark:text-zinc-400 px-4 py-2 font-semibold sticky top-0 z-10">Incoming Requests</div>';
-          html += incomingRequests.map(req => `
-            <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500">
-              <div class="flex justify-between items-start gap-2 mb-2">
-                <div class="flex-1 min-w-0">
-                  <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${req.senderUsername} <span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span></div>
-                  <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${req.senderWallet || 'No wallet'}</div>
-                  <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">Wants to connect</div>
-                </div>
-              </div>
-              <div class="flex gap-2">
-                <button onclick="acceptRequest(${req.id})" class="flex-1 px-2 py-1 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white text-xs rounded transition font-medium">Accept</button>
-                <button onclick="rejectRequest(${req.id})" class="flex-1 px-2 py-1 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 text-zinc-900 dark:text-zinc-100 text-xs rounded transition">Reject</button>
-              </div>
-            </div>
-          `).join('');
-        }
-      }
-
-      // Show outgoing pending requests (for sender)
-      if (sentData && sentData.requests && sentData.requests.length > 0) {
-        const pendingRequests = sentData.requests.filter(r => r.status === 'pending');
-        if (pendingRequests.length > 0) {
-          html += '<div class="bg-zinc-200 dark:bg-zinc-800 text-xs text-zinc-600 dark:text-zinc-400 px-4 py-2 font-semibold sticky top-0 z-10">Pending Requests</div>';
-          html += pendingRequests.map(req => `
-            <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition">
-              <div class="flex justify-between items-start gap-2">
-                <div class="flex-1 min-w-0">
-                  <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${req.recipientUsername} <span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span></div>
-                  <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${req.recipientWallet || 'No wallet'}</div>
-                  <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">Awaiting response</div>
-                </div>
-                <button onclick="cancelRequest(${req.id})" class="text-zinc-600 dark:text-zinc-500 hover:text-red-600 dark:hover:text-red-400 text-xs">Cancel</button>
-              </div>
-            </div>
-          `).join('');
-        }
-      }
-
-      if (data.conversations.length === 0 && (!sentData || !sentData.requests || sentData.requests.length === 0) && (!receivedData || !receivedData.requests || receivedData.requests.length === 0)) {
-        list.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">No conversations yet. <br>Tap "Find Contacts" to discover contacts.</div>';
+      if (data.conversations.length === 0) {
+        list.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">No conversations yet. <br>Tap "Contacts" to search for users and start a conversation.</div>';
         return;
       }
 
-      if (data.conversations.length > 0) {
-        if (html) html += '<div class="bg-zinc-200 dark:bg-zinc-800 text-xs text-zinc-600 dark:text-zinc-400 px-4 py-2 font-semibold sticky top-0 z-10">Conversations</div>';
-        html += data.conversations.map(conv => `
-          <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer transition" onclick="openConversation(${conv.id}, ${conv.otherId}, '${conv.username}')">
-            <div class="flex justify-between items-start gap-2">
-              <div class="flex-1 min-w-0">
-                <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${conv.username} <span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span></div>
-                <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${conv.usernode_pubkey || 'No wallet'}</div>
-                <div class="text-sm text-zinc-600 dark:text-zinc-400 truncate">${conv.lastMessage || 'No messages'}</div>
-              </div>
-              <div class="text-xs text-zinc-600 dark:text-zinc-500 text-right flex-shrink-0">
-                ${conv.lastMessageAt ? formatTime(new Date(conv.lastMessageAt)) : ''}
-                ${conv.unreadCount > 0 ? `<div class="mt-1 inline-block px-2 py-0.5 bg-cyan-600 rounded-full text-white text-xs">${conv.unreadCount}</div>` : ''}
-              </div>
+      html = data.conversations.map(conv => `
+        <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer transition" onclick="openConversation(${conv.id}, ${conv.otherId}, '${conv.username}')">
+          <div class="flex justify-between items-start gap-2">
+            <div class="flex-1 min-w-0">
+              <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${conv.username} <span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span></div>
+              <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${conv.usernode_pubkey || 'No wallet'}</div>
+              <div class="text-sm text-zinc-600 dark:text-zinc-400 truncate">${conv.lastMessage || 'No messages'}</div>
+            </div>
+            <div class="text-xs text-zinc-600 dark:text-zinc-500 text-right flex-shrink-0">
+              ${conv.lastMessageAt ? formatTime(new Date(conv.lastMessageAt)) : ''}
+              ${conv.unreadCount > 0 ? `<div class="mt-1 inline-block px-2 py-0.5 bg-cyan-600 rounded-full text-white text-xs">${conv.unreadCount}</div>` : ''}
             </div>
           </div>
-        `).join('');
-      }
+        </div>
+      `).join('');
 
       list.innerHTML = html;
-    }
-
-    async function cancelRequest(requestId) {
-      const data = await apiCall(`/api/conversation-requests/${requestId}/cancel`, {
-        method: 'POST',
-        body: JSON.stringify({})
-      });
-
-      if (data && !data.error) {
-        loadConversations();
-      } else if (data && data.error) {
-        alert('Failed to cancel request: ' + data.error);
-      }
     }
 
     function formatTime(date) {
@@ -965,7 +854,7 @@
       // Close conversation menu dropdown
       document.getElementById('conversationMenuDropdown').classList.add('hidden');
 
-      // Fetch and display contact menu
+      // Fetch and show contact menu
       await fetchAndShowContactMenu(otherId, username);
 
       showChatView();
@@ -1190,338 +1079,48 @@
       }
     }
 
-    function updateEmptyState() {
-      const searchResults = document.getElementById('searchResults');
-      const emptyState = document.getElementById('emptyState');
-      const hasResults = searchResults.innerHTML.trim() !== '' && !searchResults.innerHTML.includes('No users found');
-      if (hasResults) {
-        emptyState.classList.add('hidden');
-      } else {
-        emptyState.classList.remove('hidden');
-      }
-    }
-
-    function toggleSendRequestModal() {
-      const modal = document.getElementById('sendRequestModal');
-      modal.classList.toggle('hidden');
-      if (!modal.classList.contains('hidden')) {
-        document.getElementById('modalSearchInput').focus();
-        document.getElementById('modalSearchResults').innerHTML = '';
-      } else {
-        if (modalSearchDebounceTimer) {
-          clearTimeout(modalSearchDebounceTimer);
-          modalSearchDebounceTimer = null;
-        }
-        document.getElementById('modalSearchInput').value = '';
-      }
-    }
-
-    function searchUsersInModal(query) {
-      if (modalSearchDebounceTimer) {
-        clearTimeout(modalSearchDebounceTimer);
-      }
-
-      if (!query.trim()) {
-        document.getElementById('modalSearchResults').innerHTML = '';
-        return;
-      }
-
-      const results = document.getElementById('modalSearchResults');
-      const walletAddressRegex = /^ut1[a-zA-Z0-9\-]+$/;
-      const isWalletAddress = walletAddressRegex.test(query.trim());
-
-      results.innerHTML = '<div class="text-center text-zinc-600 dark:text-zinc-500 py-4 text-sm">Searching...</div>';
-
-      const performSearch = async () => {
-        const requestId = ++modalSearchRequestId;
-        const data = await apiCall(`/api/search/users?q=${encodeURIComponent(query)}`);
-
-        if (requestId !== modalSearchRequestId) {
-          return;
-        }
-
-        if (!data) {
-          results.innerHTML = '<div class="text-center text-red-600 dark:text-red-400 py-4 text-sm">Error loading results. Please try again.</div>';
-          return;
-        }
-
-        if (data.error) {
-          results.innerHTML = '<div class="text-center text-red-600 dark:text-red-400 py-4 text-sm">Error: ' + data.error + '</div>';
-          return;
-        }
-
-        if (data.users.length === 0) {
-          results.innerHTML = '<div class="text-center text-zinc-600 dark:text-zinc-500 py-4">No users found</div>';
-          return;
-        }
-
-        results.innerHTML = data.users.map(user => `
-          <div class="p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition">
-            <div class="font-medium text-cyan-600 dark:text-cyan-400">${user.username} ${user.verified ? '✓' : ''}</div>
-            <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-1">${user.usernode_pubkey || 'No wallet'}</div>
-            <div class="text-sm text-zinc-600 dark:text-zinc-400 mt-1">${user.mutualCount} mutual connections</div>
-            <button data-user-id="${user.id}" data-username="${user.username}" onclick="sendConversationRequestFromModal(event)" class="mt-2 w-full px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white text-sm rounded-lg transition font-medium">Send Request</button>
-          </div>
-        `).join('');
-      };
-
-      if (isWalletAddress) {
-        performSearch();
-      } else {
-        modalSearchDebounceTimer = setTimeout(performSearch, 300);
-      }
-    }
-
-    async function searchUsers(query) {
-      if (!query.trim()) {
-        document.getElementById('searchResults').innerHTML = '';
-        updateEmptyState();
-        return;
-      }
-
-      const data = await apiCall(`/api/search/users?q=${encodeURIComponent(query)}`);
-      if (!data) return;
-
-      const results = document.getElementById('searchResults');
-      if (data.users.length === 0) {
-        results.innerHTML = '<div class="text-center text-zinc-600 dark:text-zinc-500 py-4">No users found</div>';
-        updateEmptyState();
-        return;
-      }
-
-      results.innerHTML = data.users.map(user => `
-        <div class="p-4 bg-zinc-200 dark:bg-zinc-800 rounded-lg hover:bg-zinc-300 dark:hover:bg-zinc-700 transition">
-          <div class="font-medium text-cyan-600 dark:text-cyan-400">${user.username} ${user.verified ? '✓' : ''}</div>
-          <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-1">${user.usernode_pubkey || 'No wallet'}</div>
-          <div class="text-sm text-zinc-600 dark:text-zinc-400 mt-1">${user.mutualCount} mutual connections</div>
-          <button data-user-id="${user.id}" data-username="${user.username}" onclick="sendConversationRequest(event)" class="mt-3 w-full px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white text-sm rounded-lg transition font-medium">Send Request</button>
-        </div>
-      `).join('');
-      updateEmptyState();
-    }
-
-    async function startConversation(userId, username) {
-      const data = await apiCall('/api/conversations', {
-        method: 'POST',
-        body: JSON.stringify({ participantId: userId })
-      });
-
-      if (data && !data.error) {
-        openConversation(data.id, userId, username);
-      } else if (data && data.error) {
-        console.error('Error starting conversation:', data.error);
-      }
-    }
-
-    async function sendConversationRequest(event) {
-      const button = event.target.closest('button');
-      if (!button) return;
-
-      const userId = button.getAttribute('data-user-id');
-      const username = button.getAttribute('data-username');
-      const originalText = button.textContent;
-
-      button.disabled = true;
-      button.textContent = 'Sending...';
-
-      const data = await apiCall('/api/conversation-requests', {
-        method: 'POST',
-        body: JSON.stringify({ recipientId: userId })
-      });
-
-      if (data && !data.error) {
-        alert(`Conversation request sent to ${username}`);
-        showConversationsView();
-        loadConversations();
-      } else if (data === null) {
-        alert('Not authenticated. Please log in.');
-        button.disabled = false;
-        button.textContent = originalText;
-      } else if (data && data.error) {
-        alert('Failed to send request: ' + data.error);
-        button.disabled = false;
-        button.textContent = originalText;
-      }
-    }
-
-    async function sendConversationRequestFromModal(event) {
-      const button = event.target.closest('button');
-      if (!button) return;
-
-      const userId = parseInt(button.getAttribute('data-user-id'), 10);
-      const username = button.getAttribute('data-username');
-      const originalText = button.textContent;
-
-      button.disabled = true;
-      button.textContent = 'Sending...';
-
-      const data = await apiCall('/api/conversation-requests', {
-        method: 'POST',
-        body: JSON.stringify({ recipientId: userId })
-      });
-
-      if (data && !data.error) {
-        alert(`Request sent to ${username}`);
-        toggleSendRequestModal();
-        showConversationsView();
-        loadConversations();
-      } else if (data === null) {
-        alert('Not authenticated. Please log in.');
-        button.disabled = false;
-        button.textContent = originalText;
-      } else if (data && data.error) {
-        alert('Failed to send request: ' + data.error);
-        button.disabled = false;
-        button.textContent = originalText;
-      }
-    }
-
     function showConversationsView() {
       document.getElementById('conversationsView').classList.remove('hidden');
       document.getElementById('chatView').classList.add('hidden');
       document.getElementById('contactsView').classList.add('hidden');
-      document.getElementById('requestsView').classList.add('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('headerTitle').textContent = 'Guardian';
       document.getElementById('backBtn').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
       if (pollInterval) clearInterval(pollInterval);
-      if (requestsPollInterval) clearInterval(requestsPollInterval);
       loadConversations();
-      // Start polling for conversation requests in this view
+      // Start polling for conversations in this view
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
       conversationsPollInterval = setInterval(loadConversations, 3000);
     }
 
-    function showRequestsView() {
-      document.getElementById('conversationsView').classList.add('hidden');
-      document.getElementById('chatView').classList.add('hidden');
-      document.getElementById('contactsView').classList.add('hidden');
-      document.getElementById('requestsView').classList.remove('hidden');
-      document.getElementById('inputFooter').classList.add('hidden');
-      document.getElementById('headerTitle').textContent = 'Requests';
-      document.getElementById('backBtn').classList.remove('hidden');
-      document.getElementById('menuBtn').classList.add('hidden');
-      document.getElementById('conversationMenuBtn').classList.add('hidden');
-      if (pollInterval) clearInterval(pollInterval);
-      loadRequestsTab();
-      // Start polling for new requests every 3 seconds
-      if (requestsPollInterval) clearInterval(requestsPollInterval);
-      requestsPollInterval = setInterval(loadRequestsTab, 3000);
-    }
-
-    async function loadRequestsTab() {
-      const data = await apiCall('/api/conversation-requests/received');
-      if (!data) return;
-
-      const list = document.getElementById('requestList');
-      const badge = document.getElementById('requestBadge');
-
-      if (data.requests.length === 0) {
-        list.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">No pending requests</div>';
-        badge.classList.add('hidden');
-        return;
-      }
-
-      badge.textContent = data.requests.length;
-      badge.classList.remove('hidden');
-
-      list.innerHTML = data.requests.map(req => `
-        <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition">
-          <div class="flex justify-between items-start gap-2 mb-3">
-            <div class="flex-1 min-w-0">
-              <div class="font-medium text-zinc-900 dark:text-zinc-100">${req.senderUsername} <span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span></div>
-              <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${req.senderWallet || 'No wallet'}</div>
-              <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">${formatTime(new Date(req.createdAt))}</div>
-            </div>
-          </div>
-          <div class="flex gap-2">
-            <button onclick="acceptRequest(${req.id})" class="flex-1 px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white text-sm rounded-lg transition font-medium">Accept</button>
-            <button onclick="rejectRequest(${req.id})" class="flex-1 px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-200 text-sm rounded-lg transition">Reject</button>
-          </div>
-        </div>
-      `).join('');
-    }
-
-    async function acceptRequest(requestId) {
-      const data = await apiCall(`/api/conversation-requests/${requestId}/accept`, {
-        method: 'POST',
-        body: JSON.stringify({})
-      });
-
-      if (data && data.error) {
-        alert('Failed to accept request: ' + data.error);
-        return;
-      }
-
-      if (data && data.conversationId) {
-        await Promise.all([
-          loadRequestsTab(),
-          loadContactsList(),
-          loadConversations()
-        ]);
-        showConversationsView();
-      } else {
-        alert('Failed to accept request');
-      }
-    }
-
-    async function rejectRequest(requestId) {
-      const data = await apiCall(`/api/conversation-requests/${requestId}/reject`, {
-        method: 'POST',
-        body: JSON.stringify({})
-      });
-
-      if (data && data.error) {
-        alert('Failed to reject request: ' + data.error);
-        return;
-      }
-
-      if (data) {
-        loadRequestsTab();
-      }
-    }
-
-    function showChatView() {
-      document.getElementById('conversationsView').classList.add('hidden');
-      document.getElementById('chatView').classList.remove('hidden');
-      document.getElementById('contactsView').classList.add('hidden');
-      document.getElementById('requestsView').classList.add('hidden');
-      document.getElementById('inputFooter').classList.remove('hidden');
-      if (conversationsPollInterval) clearInterval(conversationsPollInterval);
-      if (requestsPollInterval) clearInterval(requestsPollInterval);
-    }
-
-    function showContactsView() {
-      document.getElementById('conversationsView').classList.add('hidden');
-      document.getElementById('chatView').classList.add('hidden');
-      document.getElementById('contactsView').classList.remove('hidden');
-      document.getElementById('requestsView').classList.add('hidden');
-      document.getElementById('inputFooter').classList.add('hidden');
-      document.getElementById('headerTitle').textContent = 'Contacts';
-      document.getElementById('backBtn').classList.remove('hidden');
-      document.getElementById('menuBtn').classList.add('hidden');
-      document.getElementById('conversationMenuBtn').classList.add('hidden');
-      if (conversationsPollInterval) clearInterval(conversationsPollInterval);
-      if (requestsPollInterval) clearInterval(requestsPollInterval);
-      loadContactsList();
-    }
-
-
+    let allContacts = [];
 
     async function loadContactsList() {
       const data = await apiCall('/api/contacts');
       if (!data) return;
 
       const list = document.getElementById('contactsList');
+      allContacts = data.contacts || [];
 
-      if (!data.contacts || data.contacts.length === 0) {
-        list.innerHTML = '<div class="flex items-center justify-center h-full text-center space-y-4"><div class="text-zinc-600 dark:text-zinc-400"><p class="text-sm">No contacts yet. Send a request in the Requests section to get started.</p></div></div>';
+      if (!allContacts || allContacts.length === 0) {
+        list.innerHTML = '<div class="flex items-center justify-center h-full text-center space-y-4"><div class="text-zinc-600 dark:text-zinc-400"><p class="text-sm">No contacts yet. Start a conversation to build your contact list.</p></div></div>';
         return;
       }
 
-      list.innerHTML = data.contacts.map(contact => `
+      renderContactsList(allContacts);
+    }
+
+    function renderContactsList(contacts) {
+      const list = document.getElementById('contactsList');
+
+      if (!contacts || contacts.length === 0) {
+        list.innerHTML = '<div class="flex items-center justify-center h-full text-center space-y-4"><div class="text-zinc-600 dark:text-zinc-400"><p class="text-sm">No results found.</p></div></div>';
+        return;
+      }
+
+      list.innerHTML = contacts.map(contact => `
         <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer" onclick="startConversationWithContact(${contact.userId}, '${contact.username}')">
           <div class="flex justify-between items-start gap-2">
             <div class="flex-1 min-w-0">
@@ -1532,6 +1131,22 @@
           </div>
         </div>
       `).join('');
+    }
+
+    function filterContacts(query) {
+      if (!query) return allContacts;
+
+      const lowerQuery = query.toLowerCase();
+      return allContacts.filter(contact => {
+        const wallet = (contact.usernode_pubkey || '').toLowerCase();
+        return wallet.includes(lowerQuery);
+      });
+    }
+
+    function handleContactSearch(event) {
+      const query = event.target.value;
+      const filtered = filterContacts(query);
+      renderContactsList(filtered);
     }
 
     async function startConversationWithContact(userId, username) {
@@ -1608,6 +1223,9 @@
 
       currentContactAddress = userRes.usernode_pubkey || 'No wallet linked';
 
+      // Reset contact ID
+      currentContactId = null;
+
       // Try to find the contact ID from the saved contacts
       const contactRes = await apiCall('/api/contacts');
       if (contactRes && contactRes.contacts) {
@@ -1617,16 +1235,11 @@
         }
       }
 
+      // Update menu button label based on contact status
+      await updateContactMenuLabel();
+
       // Show the conversation menu button (name and address already in header title)
       document.getElementById('conversationMenuBtn').classList.remove('hidden');
-    }
-
-    function openContactDeleteModal() {
-      if (!currentContactId) {
-        alert('Contact not found.');
-        return;
-      }
-      showDeleteContactModal(currentContactId, currentContactName);
     }
 
     // ===== CONVERSATION MENU FUNCTIONS =====
@@ -1635,6 +1248,55 @@
       event.stopPropagation();
       const dropdown = document.getElementById('conversationMenuDropdown');
       dropdown.classList.toggle('hidden');
+    }
+
+    async function toggleAddContactButton() {
+      if (!currentOtherId) {
+        alert('User not found');
+        return;
+      }
+
+      // Close the dropdown menu
+      document.getElementById('conversationMenuDropdown').classList.add('hidden');
+
+      if (currentContactId) {
+        // Remove contact
+        const data = await apiCall(`/api/contacts/${currentContactId}`, {
+          method: 'DELETE',
+          body: JSON.stringify({})
+        });
+
+        if (data && data.ok) {
+          currentContactId = null;
+          await updateContactMenuLabel();
+        } else {
+          alert('Failed to remove contact');
+        }
+      } else {
+        // Add contact
+        const data = await apiCall('/api/contacts/by-id', {
+          method: 'POST',
+          body: JSON.stringify({ user_id: currentOtherId, nickname: null })
+        });
+
+        if (data && !data.error) {
+          currentContactId = data.id;
+          await updateContactMenuLabel();
+        } else {
+          alert('Failed to add contact: ' + (data?.error || 'Unknown error'));
+        }
+      }
+    }
+
+    async function updateContactMenuLabel() {
+      const btn = document.getElementById('addContactMenuBtn');
+      if (!btn) return;
+
+      if (currentContactId) {
+        btn.textContent = 'Remove Contact';
+      } else {
+        btn.textContent = 'Add Contact';
+      }
     }
 
     function openDeleteConversationModal() {
@@ -1670,6 +1332,28 @@
       } else {
         alert('Failed to delete conversation');
       }
+    }
+
+    function showChatView() {
+      document.getElementById('conversationsView').classList.add('hidden');
+      document.getElementById('chatView').classList.remove('hidden');
+      document.getElementById('contactsView').classList.add('hidden');
+      document.getElementById('inputFooter').classList.remove('hidden');
+      if (conversationsPollInterval) clearInterval(conversationsPollInterval);
+    }
+
+    function showContactsView() {
+      document.getElementById('conversationsView').classList.add('hidden');
+      document.getElementById('chatView').classList.add('hidden');
+      document.getElementById('contactsView').classList.remove('hidden');
+      document.getElementById('inputFooter').classList.add('hidden');
+      document.getElementById('headerTitle').textContent = 'Contacts';
+      document.getElementById('backBtn').classList.remove('hidden');
+      document.getElementById('menuBtn').classList.add('hidden');
+      document.getElementById('conversationMenuBtn').classList.add('hidden');
+      if (conversationsPollInterval) clearInterval(conversationsPollInterval);
+      document.getElementById('contactsSearchInput').value = '';
+      loadContactsList();
     }
 
     // Close conversation menu when clicking outside
