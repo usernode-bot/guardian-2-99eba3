@@ -179,70 +179,87 @@ app.get('/api/conversations', async (req, res) => {
     const offset = parseInt(req.query.offset || 0);
     const userId = req.user.id;
 
-    // Simple query: get all conversations for this user, excluding archived ones
+    // Optimized query using joins to eliminate N+1 lookups
     const convQuery = `
-      SELECT id, participant_a_id, participant_b_id, archived_by, muted_by, updated_at, created_at
-      FROM conversations
-      WHERE (participant_a_id = $1 OR participant_b_id = $1) AND NOT (archived_by @> ARRAY[$1])
-      ORDER BY updated_at DESC NULLS LAST, created_at DESC
+      SELECT
+        c.id,
+        c.participant_a_id,
+        c.participant_b_id,
+        c.archived_by,
+        c.muted_by,
+        c.updated_at,
+        c.created_at,
+        u.username,
+        u.usernode_pubkey,
+        u.verified_at,
+        u.avatar_url,
+        uc.id as contact_id,
+        uc.nickname as contact_nickname,
+        m.content,
+        m.type as msg_type,
+        m.created_at as msg_created_at,
+        rr.last_read_at,
+        (SELECT COUNT(*) FROM messages m2
+         WHERE m2.conversation_id = c.id
+         AND m2.sender_id != $1
+         AND m2.created_at > COALESCE(rr.last_read_at, '1970-01-01')) as unread_count
+      FROM conversations c
+      JOIN users u ON u.id = CASE WHEN c.participant_a_id = $1 THEN c.participant_b_id ELSE c.participant_a_id END
+      LEFT JOIN user_contacts uc ON uc.user_id = $1 AND uc.contact_user_id = u.id
+      LEFT JOIN LATERAL (
+        SELECT content, type, created_at FROM messages
+        WHERE conversation_id = c.id
+        ORDER BY created_at DESC LIMIT 1
+      ) m ON TRUE
+      LEFT JOIN read_receipts rr ON rr.user_id = $1 AND rr.conversation_id = c.id
+      WHERE (c.participant_a_id = $1 OR c.participant_b_id = $1)
+      ORDER BY c.updated_at DESC NULLS LAST, c.created_at DESC
       LIMIT $2 OFFSET $3
     `;
 
-    const { rows: conversations } = await pool.query(convQuery, [userId, limit, offset]);
+    const { rows: allConversations } = await pool.query(convQuery, [userId, limit, offset]);
 
-    // For each conversation, get the last message and unread count
-    const result = await Promise.all(conversations.map(async (conv) => {
+    // Process and group conversations by status (active, pending, archived)
+    const active = [];
+    const pending = [];
+    const archived = [];
+
+    for (const conv of allConversations) {
       const otherId = conv.participant_a_id === userId ? conv.participant_b_id : conv.participant_a_id;
-
-      // Get other user's username and wallet address
-      const userRes = await pool.query(`SELECT username, usernode_pubkey FROM users WHERE id = $1`, [otherId]);
-      const username = userRes.rows[0]?.username || 'Unknown';
-      const usernode_pubkey = userRes.rows[0]?.usernode_pubkey || null;
-
-      // Get last message
-      const msgRes = await pool.query(`
-        SELECT content, type, created_at
-        FROM messages
-        WHERE conversation_id = $1
-        ORDER BY created_at DESC
-        LIMIT 1
-      `, [conv.id]);
-
-      const lastMsg = msgRes.rows[0];
-      const lastMessage = lastMsg
-        ? (lastMsg.type === 'text' ? lastMsg.content?.text : lastMsg.type === 'image' ? '[Image]' : '[Token transfer]')
+      const lastMessage = conv.msg_type
+        ? (conv.msg_type === 'text' ? conv.content?.text : conv.msg_type === 'image' ? '[Image]' : '[Token transfer]')
         : '';
-      const lastMessageAt = lastMsg?.created_at || null;
+      const isArchived = conv.archived_by && conv.archived_by.includes(userId);
+      const isMuted = conv.muted_by && conv.muted_by.includes(userId);
+      const isSavedContact = !!conv.contact_id;
 
-      // Get unread count
-      const readRes = await pool.query(`
-        SELECT last_read_at FROM read_receipts WHERE user_id = $1 AND conversation_id = $2
-      `, [userId, conv.id]);
-
-      const lastReadAt = readRes.rows[0]?.last_read_at || new Date('1970-01-01');
-      const unreadRes = await pool.query(`
-        SELECT COUNT(*) as count
-        FROM messages
-        WHERE conversation_id = $1 AND sender_id != $2 AND created_at > $3
-      `, [conv.id, userId, lastReadAt]);
-
-      const unreadCount = parseInt(unreadRes.rows[0]?.count || 0);
-
-      return {
+      const convData = {
         id: conv.id,
         otherId,
-        username,
-        usernode_pubkey,
+        username: conv.username || 'Unknown',
+        usernode_pubkey: conv.usernode_pubkey || null,
+        verified: !!conv.verified_at,
+        avatar_url: conv.avatar_url || null,
+        nickname: conv.contact_nickname,
         lastMessage,
-        lastMessageAt,
-        unreadCount,
+        lastMessageAt: conv.msg_created_at || null,
+        unreadCount: parseInt(conv.unread_count || 0),
+        isMuted,
       };
-    }));
 
-    res.json({ conversations: result });
+      if (isArchived) {
+        archived.push(convData);
+      } else if (isSavedContact) {
+        active.push(convData);
+      } else {
+        pending.push(convData);
+      }
+    }
+
+    res.json({ conversations: { active, pending, archived } });
   } catch (err) {
     console.error('Error fetching conversations:', err);
-    res.status(200).json({ conversations: [] });
+    res.status(200).json({ conversations: { active: [], pending: [], archived: [] } });
   }
 });
 
