@@ -354,6 +354,16 @@
             <h2 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Contacts</h2>
             <input id="contactsSearchInput" type="text" placeholder="Search by wallet address" oninput="handleContactSearch(event)" class="w-full px-3 py-2 bg-white dark:bg-zinc-700 border border-zinc-300 dark:border-zinc-600 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition text-sm">
           </div>
+          <!-- Your Contacts Submenu -->
+          <div id="yourContactsSection" class="bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700">
+            <div class="px-4 py-2 space-y-2">
+              <h3 class="text-xs font-semibold text-zinc-600 dark:text-zinc-400 uppercase tracking-wide">Your Contacts</h3>
+              <div id="yourContactsList" class="space-y-1">
+                <!-- Filled by renderYourContactsSection -->
+              </div>
+            </div>
+          </div>
+          <!-- Search Results -->
           <div id="contactsList" class="flex-1 overflow-y-auto divide-y divide-zinc-300 dark:divide-zinc-800">
             <div class="flex flex-col items-center justify-center h-full text-center space-y-4">
               <div class="text-zinc-600 dark:text-zinc-400">
@@ -1101,15 +1111,19 @@
       const data = await apiCall('/api/contacts');
       if (!data) return;
 
-      const list = document.getElementById('contactsList');
       allContacts = data.contacts || [];
 
-      if (!allContacts || allContacts.length === 0) {
-        list.innerHTML = '<div class="flex items-center justify-center h-full text-center space-y-4"><div class="text-zinc-600 dark:text-zinc-400"><p class="text-sm">No contacts yet. Start a conversation to build your contact list.</p></div></div>';
-        return;
-      }
+      // Always render the "Your Contacts" submenu section
+      renderYourContactsSection(allContacts);
 
-      renderContactsList(allContacts);
+      // Render the main list (used for search results)
+      const list = document.getElementById('contactsList');
+      if (!allContacts || allContacts.length === 0) {
+        list.innerHTML = '<div class="flex flex-col items-center justify-center h-full text-center space-y-4"><div class="text-zinc-600 dark:text-zinc-400"><p class="text-sm">No contacts yet. Start a conversation to build your contact list.</p></div></div>';
+      } else {
+        // Clear the main list when not searching (submenu is the primary view)
+        list.innerHTML = '<div class="text-center py-8 text-zinc-500 dark:text-zinc-400 text-sm">Type to search for more contacts</div>';
+      }
     }
 
     function renderContactsList(contacts) {
@@ -1144,22 +1158,55 @@
       });
     }
 
+    function renderYourContactsSection(contacts) {
+      const yourContactsList = document.getElementById('yourContactsList');
+      const yourContactsSection = document.getElementById('yourContactsSection');
+
+      if (!contacts || contacts.length === 0) {
+        yourContactsList.innerHTML = '<div class="text-xs text-zinc-500 dark:text-zinc-400 py-2">No contacts yet. Add friends from search results.</div>';
+        return;
+      }
+
+      yourContactsList.innerHTML = contacts.map(contact => `
+        <div class="p-3 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition cursor-pointer" onclick="startConversationWithContact(${contact.userId}, '${contact.username}')">
+          <div class="flex justify-between items-start gap-2">
+            <div class="flex-1 min-w-0">
+              <div class="font-medium truncate text-sm text-zinc-900 dark:text-zinc-100">${contact.nickname || contact.username} ${contact.verified ? '<span class="text-xs text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
+              <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${contact.usernode_pubkey || 'No wallet'}</div>
+            </div>
+            <button onclick="event.stopPropagation(); showDeleteContactModal(${contact.id}, '${(contact.nickname || contact.username).replace(/'/g, "\\'")}')" class="text-zinc-500 dark:text-zinc-500 hover:text-red-600 dark:hover:text-red-400 text-xs transition flex-shrink-0">🗑️</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
     async function handleContactSearch(event) {
       const query = event.target.value.trim();
 
+      // Always render the "Your Contacts" section
+      renderYourContactsSection(allContacts);
+
       if (!query) {
-        renderContactsList(allContacts);
+        // When no search query, show all contacts in the main list (duplicates the submenu but maintains backward compatibility)
+        const list = document.getElementById('contactsList');
+        if (!allContacts || allContacts.length === 0) {
+          list.innerHTML = '<div class="flex flex-col items-center justify-center h-full text-center space-y-4"><div class="text-zinc-600 dark:text-zinc-400"><p class="text-sm">No contacts yet. Start a conversation to build your contact list.</p></div></div>';
+        } else {
+          // Show search result items (empty on no query) so submenu is the primary interface
+          list.innerHTML = '<div class="text-center py-8 text-zinc-500 dark:text-zinc-400 text-sm">Type to search for more contacts</div>';
+        }
         return;
       }
 
       if (query.length < 2) {
-        renderContactsList([]);
+        const list = document.getElementById('contactsList');
+        list.innerHTML = '<div class="text-center py-8 text-zinc-500 dark:text-zinc-400 text-sm">Type at least 2 characters to search</div>';
         return;
       }
 
       const searchData = await apiCall(`/api/search/users?q=${encodeURIComponent(query)}`);
       if (!searchData || searchData.error) {
-        renderContactsList([]);
+        renderContactsListWithResults([], query);
         return;
       }
 
@@ -1169,14 +1216,14 @@
       const merged = [];
       const addedIds = new Set();
 
+      // First add saved contacts that match search (they're already in submenu, skip them here)
       for (const result of searchResults) {
         if (savedContactIds.has(result.id)) {
-          const savedContact = allContacts.find(c => c.userId === result.id);
-          merged.push(savedContact);
           addedIds.add(result.id);
         }
       }
 
+      // Then add search results that are NOT saved contacts
       for (const result of searchResults) {
         if (!addedIds.has(result.id)) {
           merged.push({
