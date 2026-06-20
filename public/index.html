@@ -2604,17 +2604,30 @@
 
     async function submitFeedPost() {
       const textInput = document.getElementById('feedTextInput');
-      const text = textInput.value.trim();
+      let text = textInput.value.trim();
+      let link = null;
 
-      if (!text) {
-        alert('Please enter some text');
+      // Extract URL from text
+      const urlMatch = text.match(/(https?:\/\/[^\s]+)/);
+      if (urlMatch) {
+        link = urlMatch[1];
+        text = text.replace(urlMatch[0], '').trim();
+      }
+
+      if (!text && !link) {
+        alert('Please enter some text or a link');
         return;
       }
 
       try {
+        const payload = { text };
+        if (link) {
+          payload.link = link;
+        }
+
         const data = await apiCall('/api/feed/posts', {
           method: 'POST',
-          body: JSON.stringify({ text })
+          body: JSON.stringify(payload)
         });
 
         if (!data || data.error) {

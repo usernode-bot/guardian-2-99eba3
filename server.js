@@ -1957,20 +1957,54 @@ app.post('/api/feed/posts', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const { text, link } = req.body;
+    let { text, link } = req.body;
+    text = text ? text.trim() : '';
+
+    // Extract URL from text if no explicit link provided
+    if (!link && text) {
+      const urlMatch = text.match(/(https?:\/\/[^\s]+)/);
+      if (urlMatch) {
+        link = urlMatch[1];
+        text = text.replace(urlMatch[0], '').trim();
+      }
+    }
 
     if (!text && !link) {
       return res.status(400).json({ error: 'Post must contain text or a link' });
     }
 
-    const content = { text: text || '' };
+    const content = { text };
 
     if (link) {
-      // Validate URL
+      // Validate URL format
+      let urlObj;
       try {
-        new URL(link);
+        urlObj = new URL(link);
       } catch {
-        return res.status(400).json({ error: 'Invalid URL' });
+        return res.status(400).json({ error: 'Invalid URL format' });
+      }
+
+      // Check domain reachability
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+        const response = await fetch(urlObj.origin + '/', {
+          method: 'HEAD',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; Guardian/1.0)'
+          },
+          signal: controller.signal,
+          redirect: 'follow'
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok && response.status >= 500) {
+          return res.status(400).json({ error: 'Could not reach that domain. Please check the URL.' });
+        }
+      } catch (err) {
+        return res.status(400).json({ error: 'Could not reach that domain. Please check the URL.' });
       }
 
       content.link = link;
@@ -2819,6 +2853,14 @@ async function start() {
           userId: emma,
           content: { text: '[Staging demo] Excited about the new Guardian features!' },
           offset: 600000
+        },
+        {
+          userId: david,
+          content: {
+            text: '[Staging demo] Check out this resource',
+            link: 'https://example.com/resource'
+          },
+          offset: 300000
         }
       ];
 
