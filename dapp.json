@@ -2,12 +2,44 @@
   "name": "Guardian",
   "secrets": [],
   "tests": [
-    { "name": "Home loads", "path": "/", "expectSelector": "#conversationsView" },
-    { "name": "Chat thread loads", "path": "/", "expectSelector": "#messageList" },
-    { "name": "Discover contacts via sidebar", "path": "/", "expectSelector": "#contactsView" },
-    { "name": "Sidebar toggles", "path": "/", "expectSelector": "#sidebar" },
-    { "name": "Share contact modal works", "path": "/", "expectSelector": "#shareContactModal" },
-    { "name": "Settings panel opens", "path": "/", "expectSelector": "#settingsPanel" },
-    { "name": "Network dropdown in settings", "path": "/", "expectSelector": "#networkSelect" }
-  ]
+    {
+      "name": "Home loads",
+      "path": "/",
+      "expectSelector": "#conversationsView"
+    },
+    {
+      "name": "Chat thread loads",
+      "path": "/",
+      "expectSelector": "#messageList"
+    },
+    {
+      "name": "Discover contacts via sidebar",
+      "path": "/",
+      "expectSelector": "#contactsView"
+    },
+    {
+      "name": "Sidebar toggles",
+      "path": "/",
+      "expectSelector": "#sidebar"
+    },
+    {
+      "name": "Share contact modal works",
+      "path": "/",
+      "expectSelector": "#shareContactModal"
+    },
+    {
+      "name": "Settings panel opens",
+      "path": "/",
+      "expectSelector": "#settingsPanel"
+    },
+    {
+      "name": "Network dropdown in settings",
+      "path": "/",
+      "expectSelector": "#networkSelect"
+    }
+  ],
+  "visibility": {
+    "build": "private",
+    "view": "public"
+  }
 }
