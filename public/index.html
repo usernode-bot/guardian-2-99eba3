@@ -34,7 +34,26 @@
       }
     }
 
+    function restoreViewModeEarly() {
+      const allKeys = Object.keys(localStorage);
+      let viewMode = 'web';
+      for (const key of allKeys) {
+        if (key.startsWith('guardian_settings_')) {
+          try {
+            const settings = JSON.parse(localStorage.getItem(key));
+            viewMode = settings.view_mode || 'web';
+            break;
+          } catch (_) {}
+        }
+      }
+
+      const body = document.body;
+      body.classList.toggle('layout-mobile', viewMode === 'mobile');
+      body.classList.toggle('layout-web', viewMode === 'web');
+    }
+
     restoreThemeEarly();
+    restoreViewModeEarly();
   })();
   </script>
 
@@ -169,6 +188,47 @@
     .layout-compact #header { padding: 0.5rem 0.75rem; }
     .layout-compact #inputFooter { padding: 0.75rem; gap: 0.25rem; }
     .layout-compact nav.flex-1 { gap: 0.25rem; }
+
+    /* Mobile view mode */
+    .layout-mobile #sidebar {
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: 16rem;
+      height: 100%;
+      z-index: 40;
+      animation: slideInLeft 0.3s ease-out;
+    }
+
+    .layout-mobile #sidebarOverlay {
+      display: block !important;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 30;
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    .layout-mobile #content {
+      width: 100%;
+    }
+
+    .layout-mobile #messageList,
+    .layout-mobile #convList,
+    .layout-mobile #contactsList,
+    .layout-mobile #contactsView {
+      width: 100%;
+    }
+
+    .layout-mobile button {
+      min-height: 44px;
+      min-width: 44px;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
 
     .attachment-menu {
       position: absolute;
@@ -328,6 +388,15 @@
             <option value="testnet">Testnet</option>
             <option value="mainnet">Mainnet</option>
           </select>
+        </div>
+
+        <!-- View Mode -->
+        <div class="space-y-2">
+          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">View Mode</label>
+          <div class="flex gap-2">
+            <button id="viewModeWeb" onclick="applyViewMode('web')" class="flex-1 px-3 py-2 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-cyan-600 dark:border-cyan-500 hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Web/Desktop</button>
+            <button id="viewModeMobile" onclick="applyViewMode('mobile')" class="flex-1 px-3 py-2 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-transparent hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Mobile</button>
+          </div>
         </div>
       </div>
     </div>
@@ -531,6 +600,7 @@
         theme: stored.theme || 'system',
         layout: stored.layout || 'comfortable',
         network: stored.network || 'testnet',
+        view_mode: stored.view_mode || 'web',
       };
     }
 
@@ -547,10 +617,12 @@
       const settings = loadSettings();
       applyTheme(settings.theme);
       applyLayout(settings.layout);
+      applyViewMode(settings.view_mode);
       currentNetwork = settings.network;
       document.getElementById('themeSelect').value = settings.theme;
       document.getElementById('networkSelect').value = settings.network;
       updateLayoutButtons(settings.layout);
+      updateViewModeButtons(settings.view_mode);
       window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
         if (loadSettings().theme === 'system') {
           applyTheme('system');
@@ -630,6 +702,57 @@
       } catch (err) {
         console.error('Error applying network:', err);
         document.getElementById('networkSelect').value = previousNetwork;
+      }
+    }
+
+    async function applyViewMode(mode) {
+      if (!['web', 'mobile'].includes(mode)) {
+        console.error('Invalid view mode:', mode);
+        return;
+      }
+
+      const previousMode = loadSettings().view_mode;
+      try {
+        const response = await apiCall('/api/user/view-mode', {
+          method: 'PUT',
+          body: JSON.stringify({ viewMode: mode })
+        });
+
+        if (response && response.error) {
+          console.error('Failed to update view mode:', response.error);
+          updateViewModeButtons(previousMode);
+          return;
+        }
+
+        renderViewMode(mode);
+        const settings = loadSettings();
+        settings.view_mode = mode;
+        saveSettings(settings);
+        updateViewModeButtons(mode);
+      } catch (err) {
+        console.error('Error applying view mode:', err);
+        updateViewModeButtons(previousMode);
+      }
+    }
+
+    function renderViewMode(mode) {
+      document.body.classList.toggle('layout-mobile', mode === 'mobile');
+      document.body.classList.toggle('layout-web', mode === 'web');
+    }
+
+    function updateViewModeButtons(mode) {
+      const webBtn = document.getElementById('viewModeWeb');
+      const mobileBtn = document.getElementById('viewModeMobile');
+      if (mode === 'web') {
+        webBtn.classList.add('border-cyan-600', 'dark:border-cyan-500');
+        webBtn.classList.remove('border-transparent');
+        mobileBtn.classList.remove('border-cyan-600', 'dark:border-cyan-500');
+        mobileBtn.classList.add('border-transparent');
+      } else {
+        mobileBtn.classList.add('border-cyan-600', 'dark:border-cyan-500');
+        mobileBtn.classList.remove('border-transparent');
+        webBtn.classList.remove('border-cyan-600', 'dark:border-cyan-500');
+        webBtn.classList.add('border-transparent');
       }
     }
 
@@ -760,6 +883,11 @@
       }
       currentUser = user;
       currentNetwork = user.network || 'testnet';
+      const viewMode = user.view_mode || 'web';
+      const settings = loadSettings();
+      settings.network = currentNetwork;
+      settings.view_mode = viewMode;
+      saveSettings(settings);
       document.getElementById('sidebarUsername').textContent = user.username + (user.verified ? ' ✓' : '');
       document.getElementById('sidebarWallet').textContent = user.usernode_pubkey || 'No wallet linked';
       initSettings();

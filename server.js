@@ -133,14 +133,16 @@ app.get('/api/user', async (req, res) => {
     return res.status(401).json({ error: 'Not authenticated' });
   }
   try {
-    const userRes = await pool.query(`SELECT network FROM users WHERE id = $1`, [req.user.id]);
+    const userRes = await pool.query(`SELECT network, view_mode FROM users WHERE id = $1`, [req.user.id]);
     const network = userRes.rows[0]?.network || 'testnet';
+    const view_mode = userRes.rows[0]?.view_mode || 'web';
     res.json({
       id: req.user.id,
       username: req.user.username,
       usernode_pubkey: req.user.usernode_pubkey || null,
       verified: !!req.user.verified_at,
       network: network,
+      view_mode: view_mode,
     });
   } catch (err) {
     console.error('Error fetching user:', err);
@@ -164,6 +166,25 @@ app.put('/api/user/network', async (req, res) => {
   } catch (err) {
     console.error('Error updating network:', err);
     res.status(500).json({ error: 'Failed to update network' });
+  }
+});
+
+app.put('/api/user/view-mode', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { viewMode } = req.body;
+    if (!viewMode || !['web', 'mobile'].includes(viewMode)) {
+      return res.status(400).json({ error: 'Invalid view mode. Must be "web" or "mobile"' });
+    }
+
+    await pool.query(`UPDATE users SET view_mode = $1 WHERE id = $2`, [viewMode, req.user.id]);
+    res.json({ viewMode: viewMode, status: 'updated' });
+  } catch (err) {
+    console.error('Error updating view mode:', err);
+    res.status(500).json({ error: 'Failed to update view mode' });
   }
 });
 
@@ -1208,6 +1229,11 @@ async function start() {
     // Add network column if it doesn't exist (idempotent migration)
     await pool.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS network VARCHAR(50) DEFAULT 'testnet'
+    `);
+
+    // Add view_mode column if it doesn't exist (idempotent migration)
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS view_mode VARCHAR(50) DEFAULT 'web'
     `);
 
     // Create conversations table (marked private)
