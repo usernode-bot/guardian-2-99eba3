@@ -836,6 +836,9 @@
     let sidebarOpen = false;
     let pendingDeleteContactId = null;
 
+    // View state tracking
+    let currentView = 'conversations'; // 'conversations', 'chat', 'feed', 'contacts', 'settings'
+
     // Messages tab state
     let activeMessagesTab = 'direct';
     let currentGroupId = null;
@@ -1013,6 +1016,8 @@
     }
 
     function openSettingsPanel() {
+      currentView = 'settings';
+      localStorage.setItem(`guardian_current_view_${currentUser?.id}`, currentView);
       document.getElementById('messagesView').classList.add('hidden');
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.add('hidden');
@@ -1030,7 +1035,16 @@
     function closeSettingsPanel() {
       document.getElementById('settingsPanel').classList.add('hidden');
       document.getElementById('sidebar').classList.remove('hidden');
-      showConversationsView();
+      const savedView = localStorage.getItem(`guardian_current_view_${currentUser?.id}`) || 'conversations';
+      if (savedView === 'feed') {
+        showFeedView();
+      } else if (savedView === 'contacts') {
+        showContactsView();
+      } else if (savedView === 'chat') {
+        showChatView();
+      } else {
+        showConversationsView();
+      }
     }
 
     async function apiCall(path, opts = {}) {
@@ -1158,7 +1172,17 @@
       document.getElementById('sidebarWallet').textContent = user.usernode_pubkey || 'No wallet linked';
       initSettings();
       showWelcome();
-      showConversationsView();
+
+      // Restore the previously active view
+      const savedView = localStorage.getItem(`guardian_current_view_${currentUser.id}`);
+      if (savedView === 'feed') {
+        showFeedView();
+      } else if (savedView === 'contacts') {
+        showContactsView();
+      } else {
+        showConversationsView();
+      }
+
       setupEventListeners();
     }
 
@@ -1167,7 +1191,14 @@
       document.getElementById('backBtn').addEventListener('click', () => {
         currentConvId = null;
         currentGroupId = null;
-        showConversationsView();
+        const savedView = localStorage.getItem(`guardian_current_view_${currentUser?.id}`) || 'conversations';
+        if (savedView === 'feed') {
+          showFeedView();
+        } else if (savedView === 'contacts') {
+          showContactsView();
+        } else {
+          showConversationsView();
+        }
       });
 
       document.getElementById('msgInput').addEventListener('keydown', (e) => {
@@ -2023,6 +2054,8 @@
     }
 
     function showConversationsView() {
+      currentView = 'conversations';
+      localStorage.setItem(`guardian_current_view_${currentUser?.id}`, currentView);
       // Load persisted tab preference
       activeMessagesTab = localStorage.getItem(`guardian_messages_tab_${currentUser?.id}`) || 'direct';
 
@@ -2442,6 +2475,8 @@
     }
 
     function showChatView() {
+      currentView = 'chat';
+      localStorage.setItem(`guardian_current_view_${currentUser?.id}`, currentView);
       document.getElementById('messagesView').classList.add('hidden');
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.remove('hidden');
@@ -2452,6 +2487,8 @@
     }
 
     function showContactsView() {
+      currentView = 'contacts';
+      localStorage.setItem(`guardian_current_view_${currentUser?.id}`, currentView);
       document.getElementById('messagesView').classList.add('hidden');
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.add('hidden');
@@ -2468,6 +2505,8 @@
     }
 
     function showFeedView() {
+      currentView = 'feed';
+      localStorage.setItem(`guardian_current_view_${currentUser?.id}`, currentView);
       document.getElementById('messagesView').classList.add('hidden');
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.add('hidden');
