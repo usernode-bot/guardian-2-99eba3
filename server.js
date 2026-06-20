@@ -79,6 +79,73 @@ async function monitorBlockchainStatus(auditLogId, txHash) {
   }
 }
 
+// Fetch and sync users from Usernode registry to enable real-time wallet address search
+async function fetchUsersFromUsernode() {
+  try {
+    console.log('[User Sync] Starting user sync...');
+    let users = [];
+
+    const registryUrl = process.env.USERNODE_USER_REGISTRY_URL;
+    if (registryUrl) {
+      // Production: fetch from Usernode API
+      console.log(`[User Sync] Fetching users from ${registryUrl}`);
+      const response = await fetch(registryUrl, { timeout: 10000 });
+      if (!response.ok) {
+        console.error(`[User Sync] API returned status ${response.status}`);
+        return;
+      }
+      const data = await response.json();
+      users = data.users || [];
+      console.log(`[User Sync] Fetched ${users.length} users from registry`);
+    } else if (IS_STAGING) {
+      // Staging: load from mock file
+      try {
+        const fs = require('fs');
+        const stagingUsersPath = path.join(__dirname, 'staging-users.json');
+        const data = JSON.parse(fs.readFileSync(stagingUsersPath, 'utf8'));
+        users = data.users || [];
+        console.log(`[User Sync] Loaded ${users.length} users from staging-users.json`);
+      } catch (err) {
+        console.error('[User Sync] Failed to load staging-users.json:', err.message);
+        return;
+      }
+    } else {
+      console.log('[User Sync] No USERNODE_USER_REGISTRY_URL set and not in staging; skipping sync');
+      return;
+    }
+
+    // Upsert users into database
+    for (const user of users) {
+      const { id, username, usernode_pubkey, verified_at } = user;
+      if (!id || !username) {
+        console.warn('[User Sync] Skipping invalid user record:', user);
+        continue;
+      }
+
+      try {
+        await pool.query(`
+          INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, NOW(), NOW())
+          ON CONFLICT (id) DO UPDATE SET
+            username = EXCLUDED.username,
+            usernode_pubkey = EXCLUDED.usernode_pubkey,
+            verified_at = CASE
+              WHEN EXCLUDED.verified_at IS NOT NULL THEN EXCLUDED.verified_at
+              ELSE users.verified_at
+            END,
+            updated_at = NOW()
+        `, [id, username, usernode_pubkey || null, verified_at || null]);
+      } catch (err) {
+        console.error(`[User Sync] Error upserting user ${id} (${username}):`, err.message);
+      }
+    }
+
+    console.log(`[User Sync] Sync completed at ${new Date().toISOString()}`);
+  } catch (err) {
+    console.error('[User Sync] Unexpected error during user sync:', err);
+  }
+}
+
 app.use(express.json());
 app.use(async (req, res, next) => {
   const token = req.query.token || req.headers['x-usernode-token'];
@@ -1227,6 +1294,17 @@ async function start() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS network VARCHAR(50) DEFAULT 'testnet'
     `);
 
+    // Add updated_at column to users table (idempotent migration)
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()
+    `);
+
+    // Add index on usernode_pubkey for fast wallet address lookups
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_users_usernode_pubkey
+        ON users(usernode_pubkey)
+    `);
+
     // Create conversations table (marked private)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS conversations (
@@ -1361,23 +1439,21 @@ async function start() {
     await pool.query(`COMMENT ON TABLE user_contacts IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE blockchain_audit_logs IS 'staging:private'`);
 
+    // Fetch and sync users from Usernode registry or staging mock file
+    await fetchUsersFromUsernode();
+
+    // Set up periodic user sync (every 10 minutes by default, configurable via USERNODE_SYNC_INTERVAL_MS)
+    const syncIntervalMs = parseInt(process.env.USERNODE_SYNC_INTERVAL_MS || '600000', 10);
+    if (process.env.USERNODE_USER_REGISTRY_URL || IS_STAGING) {
+      setInterval(fetchUsersFromUsernode, syncIntervalMs);
+      console.log(`[User Sync] Periodic sync scheduled every ${syncIntervalMs}ms`);
+    }
+
     // Seed staging data
     if (IS_STAGING) {
       const alice = 1, bob = 2, charlie = 3, david = 4, emma = 5;
 
-      // Create test users with wallet addresses
-      await pool.query(`
-        INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at) VALUES
-          ($1, 'staging-demo-alice', 'ut1staging-alice-001', NOW(), NOW()),
-          ($2, 'staging-demo-bob', 'ut1staging-bob-001', NOW(), NOW()),
-          ($3, 'staging-demo-charlie', 'ut1staging-charlie-001', null, NOW()),
-          ($4, 'staging-demo-david', 'ut1staging-david-001', NOW(), NOW()),
-          ($5, 'staging-demo-emma', 'ut1staging-emma-001', NOW(), NOW())
-        ON CONFLICT (id) DO UPDATE SET
-          username = EXCLUDED.username,
-          usernode_pubkey = EXCLUDED.usernode_pubkey,
-          verified_at = EXCLUDED.verified_at
-      `, [alice, bob, charlie, david, emma]);
+      // Users are now provisioned via fetchUsersFromUsernode; create conversations and messages
 
       // Create conversation
       const { rows: convRows } = await pool.query(`

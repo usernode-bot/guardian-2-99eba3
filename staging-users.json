@@ -1,0 +1,34 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "username": "staging-demo-alice",
+      "usernode_pubkey": "ut1staging-alice-001",
+      "verified_at": "2026-06-20T00:00:00Z"
+    },
+    {
+      "id": 2,
+      "username": "staging-demo-bob",
+      "usernode_pubkey": "ut1staging-bob-001",
+      "verified_at": "2026-06-20T00:00:00Z"
+    },
+    {
+      "id": 3,
+      "username": "staging-demo-charlie",
+      "usernode_pubkey": "ut1staging-charlie-001",
+      "verified_at": null
+    },
+    {
+      "id": 4,
+      "username": "staging-demo-david",
+      "usernode_pubkey": "ut1staging-david-001",
+      "verified_at": "2026-06-20T00:00:00Z"
+    },
+    {
+      "id": 5,
+      "username": "staging-demo-emma",
+      "usernode_pubkey": "ut1staging-emma-001",
+      "verified_at": "2026-06-20T00:00:00Z"
+    }
+  ]
+}
