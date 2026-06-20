@@ -547,6 +547,7 @@
     let currentContactAddress = null;
     let pollInterval = null;
     let requestsPollInterval = null;
+    let conversationsPollInterval = null;
     let sidebarOpen = false;
     let pendingDeleteContactId = null;
 
@@ -797,6 +798,7 @@
       document.getElementById('sidebarWallet').textContent = user.usernode_pubkey || 'No wallet linked';
       initSettings();
       loadConversations();
+      loadRequestsTab();
       setupEventListeners();
     }
 
@@ -1385,6 +1387,9 @@
       if (pollInterval) clearInterval(pollInterval);
       if (requestsPollInterval) clearInterval(requestsPollInterval);
       loadConversations();
+      // Start polling for conversation requests in this view
+      if (conversationsPollInterval) clearInterval(conversationsPollInterval);
+      conversationsPollInterval = setInterval(loadConversations, 3000);
     }
 
     function showRequestsView() {
@@ -1443,11 +1448,20 @@
         body: JSON.stringify({})
       });
 
+      if (data && data.error) {
+        alert('Failed to accept request: ' + data.error);
+        return;
+      }
+
       if (data && data.conversationId) {
-        await loadRequestsTab();
-        await loadContactsList();
-        await loadConversations();
+        await Promise.all([
+          loadRequestsTab(),
+          loadContactsList(),
+          loadConversations()
+        ]);
         showConversationsView();
+      } else {
+        alert('Failed to accept request');
       }
     }
 
@@ -1456,6 +1470,11 @@
         method: 'POST',
         body: JSON.stringify({})
       });
+
+      if (data && data.error) {
+        alert('Failed to reject request: ' + data.error);
+        return;
+      }
 
       if (data) {
         loadRequestsTab();
@@ -1468,6 +1487,8 @@
       document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('requestsView').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('hidden');
+      if (conversationsPollInterval) clearInterval(conversationsPollInterval);
+      if (requestsPollInterval) clearInterval(requestsPollInterval);
     }
 
     function showContactsView() {
@@ -1480,6 +1501,8 @@
       document.getElementById('backBtn').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
+      if (conversationsPollInterval) clearInterval(conversationsPollInterval);
+      if (requestsPollInterval) clearInterval(requestsPollInterval);
       loadContactsList();
     }
 

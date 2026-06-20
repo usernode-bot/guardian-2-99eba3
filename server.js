@@ -783,6 +783,19 @@ app.post('/api/conversation-requests', async (req, res) => {
       return res.status(400).json({ error: 'Recipient not found' });
     }
 
+    // Check if there's an active (pending or accepted) request already
+    const existingRes = await pool.query(`
+      SELECT id, status FROM conversation_requests
+      WHERE sender_id = $1 AND recipient_id = $2
+    `, [senderId, recipientId]);
+
+    if (existingRes.rows.length > 0) {
+      const existing = existingRes.rows[0];
+      if (existing.status === 'pending' || existing.status === 'accepted') {
+        return res.status(409).json({ error: 'A request with this user already exists' });
+      }
+    }
+
     // Try to insert, return existing if conflict
     const result = await pool.query(`
       INSERT INTO conversation_requests (sender_id, recipient_id, status, created_at, updated_at)
@@ -816,7 +829,7 @@ app.post('/api/conversation-requests', async (req, res) => {
       res.status(500).json({ error: 'Failed to create or retrieve conversation request' });
     }
   } catch (err) {
-    console.error(err);
+    console.error('Error creating conversation request:', err);
     res.status(500).json({ error: err.message });
   }
 });
