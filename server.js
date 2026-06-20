@@ -1121,16 +1121,16 @@ app.get('/api/search/users', async (req, res) => {
     const { rows } = await pool.query(`
       SELECT id, username, verified_at, usernode_pubkey
       FROM users
-      WHERE username ILIKE $1 OR TRIM(usernode_pubkey) ILIKE TRIM($2)
+      WHERE username ILIKE $1 OR (COALESCE(TRIM(usernode_pubkey), '') != '' AND COALESCE(TRIM(usernode_pubkey), '') ILIKE $2)
       ORDER BY
         CASE
-          WHEN username = $3 OR TRIM(usernode_pubkey) = TRIM($4) THEN 0
-          WHEN username ILIKE $5 OR TRIM(usernode_pubkey) ILIKE TRIM($6) THEN 1
+          WHEN username = $3 OR COALESCE(TRIM(usernode_pubkey), '') = COALESCE(TRIM($4), '') THEN 0
+          WHEN username ILIKE $5 OR COALESCE(TRIM(usernode_pubkey), '') ILIKE COALESCE(TRIM($6), '') THEN 1
           ELSE 2
         END,
         username ASC
       LIMIT 20
-    `, ['%' + q + '%', '%' + q + '%', q, q, q + '%', q + '%']);
+    `, ['%' + q + '%', q + '%', q, q, q + '%', q + '%']);
 
     const users = rows.map(r => ({
       id: r.id,
@@ -1419,20 +1419,6 @@ async function start() {
     // Seed staging data
     if (IS_STAGING) {
       const alice = 1, bob = 2, charlie = 3, david = 4, emma = 5;
-
-      // Create test users with wallet addresses
-      await pool.query(`
-        INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at) VALUES
-          ($1, 'staging-demo-alice', 'ut1staging-alice-001', NOW(), NOW()),
-          ($2, 'staging-demo-bob', 'ut1staging-bob-001', NOW(), NOW()),
-          ($3, 'staging-demo-charlie', 'ut1staging-charlie-001', null, NOW()),
-          ($4, 'staging-demo-david', 'ut1staging-david-001', NOW(), NOW()),
-          ($5, 'staging-demo-emma', 'ut1staging-emma-001', NOW(), NOW())
-        ON CONFLICT (id) DO UPDATE SET
-          username = EXCLUDED.username,
-          usernode_pubkey = EXCLUDED.usernode_pubkey,
-          verified_at = EXCLUDED.verified_at
-      `, [alice, bob, charlie, david, emma]);
 
       // Create conversation
       const { rows: convRows } = await pool.query(`
