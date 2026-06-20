@@ -1274,46 +1274,12 @@ async function start() {
         ON blockchain_audit_logs(user_id, created_at)
     `);
 
-    // Create conversation_requests table (marked private)
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS conversation_requests (
-        id BIGSERIAL PRIMARY KEY,
-        sender_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        recipient_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        status VARCHAR(50) NOT NULL DEFAULT 'pending',
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        accepted_at TIMESTAMPTZ,
-        rejected_at TIMESTAMPTZ,
-        UNIQUE(sender_id, recipient_id)
-      )
-    `);
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_conversation_requests_recipient_status
-        ON conversation_requests(recipient_id, status)
-    `);
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_conversation_requests_sender_status
-        ON conversation_requests(sender_id, status)
-    `);
-
-    // Add updated_at column if it doesn't exist (idempotent migration)
-    await pool.query(`
-      ALTER TABLE conversation_requests ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()
-    `);
-
-    // Create index on updated_at for sorting (idempotent)
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_conversation_requests_updated
-        ON conversation_requests(updated_at DESC NULLS LAST)
-    `);
-
     // Mark tables as private
     await pool.query(`COMMENT ON TABLE conversations IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE messages IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE read_receipts IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE user_contacts IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE blockchain_audit_logs IS 'staging:private'`);
-    await pool.query(`COMMENT ON TABLE conversation_requests IS 'staging:private'`);
 
     // Seed staging data
     if (IS_STAGING) {
