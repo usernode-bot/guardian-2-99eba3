@@ -987,6 +987,69 @@ app.post('/api/contacts', async (req, res) => {
   }
 });
 
+app.post('/api/contacts/by-id', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { user_id, nickname } = req.body;
+    const userId = req.user.id;
+
+    if (!user_id) {
+      return res.status(400).json({ error: 'user_id is required' });
+    }
+
+    // Find user by ID
+    const userRes = await pool.query(`
+      SELECT id, username, usernode_pubkey, verified_at, avatar_url
+      FROM users
+      WHERE id = $1
+    `, [user_id]);
+
+    if (userRes.rows.length === 0) {
+      return res.status(400).json({ error: 'User not found' });
+    }
+
+    const contactUser = userRes.rows[0];
+    const contactUserId = contactUser.id;
+
+    if (contactUserId === userId) {
+      return res.status(400).json({ error: 'Cannot add yourself as a contact' });
+    }
+
+    // Check if contact already exists
+    const existRes = await pool.query(`
+      SELECT id FROM user_contacts
+      WHERE user_id = $1 AND contact_user_id = $2
+    `, [userId, contactUserId]);
+
+    if (existRes.rows.length > 0) {
+      return res.status(409).json({ error: 'Contact already saved' });
+    }
+
+    // Add contact
+    const result = await pool.query(`
+      INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
+      VALUES ($1, $2, $3, NOW())
+      RETURNING id
+    `, [userId, contactUserId, nickname || null]);
+
+    res.json({
+      id: result.rows[0].id,
+      userId: contactUserId,
+      username: contactUser.username,
+      usernode_pubkey: contactUser.usernode_pubkey,
+      nickname: nickname || null,
+      verified: !!contactUser.verified_at,
+      avatar_url: contactUser.avatar_url || null,
+    });
+  } catch (err) {
+    console.error('Error adding contact by ID:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.delete('/api/contacts/:contactId', async (req, res) => {
   try {
     if (!req.user) {
@@ -1423,6 +1486,21 @@ async function start() {
         VALUES ($1, $2, 'text', '{"text": "[Staging] Hi Bob! Check this out"}', NOW())
         ON CONFLICT DO NOTHING
       `, [convDavidBobId, david]);
+
+      // Seed sample contact relationships for testing "Add Contact" feature
+      // Alice has Bob as a saved contact
+      await pool.query(`
+        INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
+        VALUES ($1, $2, NULL, NOW())
+        ON CONFLICT (user_id, contact_user_id) DO NOTHING
+      `, [alice, bob]);
+
+      // Bob has Alice as a saved contact
+      await pool.query(`
+        INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
+        VALUES ($1, $2, NULL, NOW())
+        ON CONFLICT (user_id, contact_user_id) DO NOTHING
+      `, [bob, alice]);
     }
 
     app.listen(port, () => console.log(`Listening on :${port}`));

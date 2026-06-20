@@ -234,6 +234,7 @@
       <div id="headerRight" class="text-sm text-zinc-600 dark:text-zinc-500 relative">
         <button id="conversationMenuBtn" class="hidden text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare" title="Conversation options" onclick="toggleConversationMenu(event)">⋯</button>
         <div id="conversationMenuDropdown" class="hidden absolute right-0 mt-2 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg shadow-lg z-50 min-w-40">
+          <button id="addContactMenuBtn" onclick="toggleAddContactButton()" class="menu-item text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 w-full text-left">Add Contact</button>
           <button onclick="openDeleteConversationModal()" class="menu-item text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 w-full text-left">Delete conversation</button>
         </div>
       </div>
@@ -1191,6 +1192,9 @@
 
       currentContactAddress = userRes.usernode_pubkey || 'No wallet linked';
 
+      // Reset contact ID
+      currentContactId = null;
+
       // Try to find the contact ID from the saved contacts
       const contactRes = await apiCall('/api/contacts');
       if (contactRes && contactRes.contacts) {
@@ -1199,6 +1203,9 @@
           currentContactId = contact.id;
         }
       }
+
+      // Update menu button label based on contact status
+      await updateContactMenuLabel();
 
       // Show the conversation menu button (name and address already in header title)
       document.getElementById('conversationMenuBtn').classList.remove('hidden');
@@ -1210,6 +1217,55 @@
       event.stopPropagation();
       const dropdown = document.getElementById('conversationMenuDropdown');
       dropdown.classList.toggle('hidden');
+    }
+
+    async function toggleAddContactButton() {
+      if (!currentOtherId) {
+        alert('User not found');
+        return;
+      }
+
+      // Close the dropdown menu
+      document.getElementById('conversationMenuDropdown').classList.add('hidden');
+
+      if (currentContactId) {
+        // Remove contact
+        const data = await apiCall(`/api/contacts/${currentContactId}`, {
+          method: 'DELETE',
+          body: JSON.stringify({})
+        });
+
+        if (data && data.ok) {
+          currentContactId = null;
+          await updateContactMenuLabel();
+        } else {
+          alert('Failed to remove contact');
+        }
+      } else {
+        // Add contact
+        const data = await apiCall('/api/contacts/by-id', {
+          method: 'POST',
+          body: JSON.stringify({ user_id: currentOtherId, nickname: null })
+        });
+
+        if (data && !data.error) {
+          currentContactId = data.id;
+          await updateContactMenuLabel();
+        } else {
+          alert('Failed to add contact: ' + (data?.error || 'Unknown error'));
+        }
+      }
+    }
+
+    async function updateContactMenuLabel() {
+      const btn = document.getElementById('addContactMenuBtn');
+      if (!btn) return;
+
+      if (currentContactId) {
+        btn.textContent = 'Remove Contact';
+      } else {
+        btn.textContent = 'Add Contact';
+      }
     }
 
     function openDeleteConversationModal() {
