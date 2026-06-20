@@ -1202,6 +1202,49 @@ app.get('*', (req, res) => {
 
 // ===== DATABASE INITIALIZATION =====
 
+async function syncUsersFromStaging(pool) {
+  if (!IS_STAGING) return;
+
+  try {
+    const fs = require('fs').promises;
+    const stagingUsersPath = path.join(__dirname, 'staging-users.json');
+    const stagingUsersData = await fs.readFile(stagingUsersPath, 'utf-8');
+    const { users } = JSON.parse(stagingUsersData);
+
+    if (!Array.isArray(users)) {
+      console.error('Invalid staging-users.json format: users must be an array');
+      return;
+    }
+
+    let syncedCount = 0;
+    for (const user of users) {
+      try {
+        await pool.query(`
+          INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at)
+          VALUES ($1, $2, $3, $4, NOW())
+          ON CONFLICT (id) DO UPDATE SET
+            username = EXCLUDED.username,
+            usernode_pubkey = CASE
+              WHEN EXCLUDED.usernode_pubkey IS NOT NULL THEN EXCLUDED.usernode_pubkey
+              ELSE users.usernode_pubkey
+            END,
+            verified_at = CASE
+              WHEN EXCLUDED.verified_at IS NOT NULL THEN EXCLUDED.verified_at
+              ELSE users.verified_at
+            END
+        `, [user.id, user.username, user.usernode_pubkey || null, user.verified_at ? new Date(user.verified_at) : null]);
+        syncedCount++;
+      } catch (err) {
+        console.error(`Error syncing user ${user.id}:`, err.message);
+      }
+    }
+
+    console.log(`Synced ${syncedCount} users from staging roster`);
+  } catch (err) {
+    console.error('Error syncing staging users:', err.message);
+  }
+}
+
 async function start() {
   try {
     // Drop old presses table if it exists (for demo purposes)
@@ -1369,6 +1412,9 @@ async function start() {
     await pool.query(`COMMENT ON TABLE read_receipts IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE user_contacts IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE blockchain_audit_logs IS 'staging:private'`);
+
+    // Bulk sync users from staging roster
+    await syncUsersFromStaging(pool);
 
     // Seed staging data
     if (IS_STAGING) {
