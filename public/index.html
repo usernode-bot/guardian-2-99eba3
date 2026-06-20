@@ -355,7 +355,7 @@
       <!-- Groups View (Two-column layout) -->
       <div id="groupsView" class="hidden flex flex-col md:flex-row flex-1 overflow-hidden gap-0">
         <!-- Left Sidebar: Groups List -->
-        <div id="groupsSidebar" class="w-full md:w-64 bg-zinc-50 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex flex-col overflow-hidden">
+        <div id="groupsSidebar" class="w-full md:w-64 max-w-xs bg-zinc-50 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex flex-col overflow-hidden">
           <div class="px-4 py-3 bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 space-y-2">
             <div class="flex items-center justify-between gap-2">
               <h2 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Your Groups</h2>
@@ -1802,11 +1802,11 @@
       }
 
       list.innerHTML = groups.map(group => `
-        <div class="p-3 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer border-b border-zinc-300 dark:border-zinc-800 ${currentGroupId === group.id ? 'bg-cyan-50 dark:bg-cyan-900/30' : ''}" onclick="openGroupChat(${group.id}, '${group.name.replace(/'/g, "\\'")}', ${group.memberCount})">
+        <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer border-b border-zinc-300 dark:border-zinc-800 ${currentGroupId === group.id ? 'bg-cyan-50 dark:bg-cyan-900/30' : ''}" onclick="openGroupChat(${group.id}, '${group.name.replace(/'/g, "\\'")}', ${group.memberCount ?? 0})">
           <div class="flex justify-between items-start gap-2">
             <div class="flex-1 min-w-0">
               <div class="font-medium text-sm text-zinc-900 dark:text-zinc-100">${group.name}</div>
-              <div class="text-xs text-zinc-600 dark:text-zinc-500 mt-0.5">${group.memberCount} member${group.memberCount !== 1 ? 's' : ''}</div>
+              <div class="text-xs text-zinc-600 dark:text-zinc-500 mt-0.5">${group.memberCount ?? 0} member${(group.memberCount ?? 0) !== 1 ? 's' : ''}</div>
             </div>
             ${group.unreadCount > 0 ? `<div class="px-1.5 py-0.5 bg-red-500 rounded-full text-white text-xs font-medium flex-shrink-0">${group.unreadCount}</div>` : ''}
           </div>
@@ -1840,7 +1840,8 @@
 
       // Update header
       document.getElementById('groupChatTitle').textContent = groupName;
-      document.getElementById('groupMemberCount').textContent = `${memberCount} member${memberCount !== 1 ? 's' : ''}`;
+      const displayMemberCount = memberCount ?? 0;
+      document.getElementById('groupMemberCount').textContent = `${displayMemberCount} member${displayMemberCount !== 1 ? 's' : ''}`;
 
       // Load messages
       window.currentChatMode = 'group';
@@ -1874,7 +1875,7 @@
       const list = document.getElementById('groupMessageList');
 
       if (messages.length === 0) {
-        list.innerHTML = '<div class="flex items-center justify-center h-full text-center text-zinc-600 dark:text-zinc-500"><p class="text-sm">No messages in this group yet.</p></div>';
+        list.innerHTML = '<div class="flex items-center justify-center h-full text-center text-zinc-600 dark:text-zinc-500"><p class="text-sm">Start the first conversation in this group.</p></div>';
         return;
       }
 
