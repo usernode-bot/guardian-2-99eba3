@@ -333,6 +333,12 @@
           </svg>
           Messages
         </button>
+        <button onclick="showFeedView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
+          <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v.756a3.5 3.5 0 015.618 1.401M12 8v8m-4-4h8" />
+          </svg>
+          Feed
+        </button>
         <button onclick="showContactsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
           <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -444,6 +450,25 @@
         <div id="messageList" class="flex-1 overflow-y-auto space-y-3 p-4"></div>
       </div>
 
+      <!-- Feed View -->
+      <div id="feedView" class="hidden flex flex-col flex-1 overflow-hidden">
+        <div class="flex-1 flex flex-col overflow-hidden">
+          <!-- Feed Header -->
+          <div class="px-4 py-3 bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700">
+            <h2 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Feed</h2>
+          </div>
+          <!-- Post Composer -->
+          <div class="px-4 py-4 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 space-y-3">
+            <textarea id="feedTextInput" placeholder="Share something..." class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition resize-none" rows="3"></textarea>
+            <input id="feedLinkInput" type="text" placeholder="Add a link (optional)" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition text-sm">
+            <button onclick="submitFeedPost()" class="w-full px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Post</button>
+          </div>
+          <!-- Feed Posts List -->
+          <div id="feedList" class="flex-1 overflow-y-auto divide-y divide-zinc-200 dark:divide-zinc-800">
+            <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading feed...</div>
+          </div>
+        </div>
+      </div>
 
       <!-- Contacts View (Saved Contacts only) -->
       <div id="contactsView" class="hidden flex flex-col flex-1 overflow-hidden">
@@ -1653,6 +1678,7 @@
       document.getElementById('messagesView').classList.remove('hidden');
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.add('hidden');
+      document.getElementById('feedView').classList.add('hidden');
       document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('headerTitle').textContent = 'Guardian';
@@ -2068,6 +2094,7 @@
       document.getElementById('messagesView').classList.add('hidden');
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.remove('hidden');
+      document.getElementById('feedView').classList.add('hidden');
       document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
@@ -2077,6 +2104,7 @@
       document.getElementById('messagesView').classList.add('hidden');
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.add('hidden');
+      document.getElementById('feedView').classList.add('hidden');
       document.getElementById('contactsView').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('headerTitle').textContent = 'Contacts';
@@ -2086,6 +2114,158 @@
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
       document.getElementById('contactsSearchInput').value = '';
       loadContactsList();
+    }
+
+    function showFeedView() {
+      document.getElementById('messagesView').classList.add('hidden');
+      document.getElementById('conversationsView').classList.add('hidden');
+      document.getElementById('chatView').classList.add('hidden');
+      document.getElementById('contactsView').classList.add('hidden');
+      document.getElementById('feedView').classList.remove('hidden');
+      document.getElementById('inputFooter').classList.add('hidden');
+      document.getElementById('headerTitle').textContent = 'Feed';
+      document.getElementById('backBtn').classList.add('hidden');
+      document.getElementById('menuBtn').classList.remove('hidden');
+      document.getElementById('conversationMenuBtn').classList.add('hidden');
+      if (conversationsPollInterval) clearInterval(conversationsPollInterval);
+      loadFeedPosts(0);
+    }
+
+    // ===== FEED FUNCTIONS =====
+
+    let feedOffset = 0;
+    let feedHasMore = true;
+
+    async function loadFeedPosts(offset) {
+      try {
+        const data = await apiCall(`/api/feed/posts?limit=50&offset=${offset}`);
+        if (!data || data.error) {
+          document.getElementById('feedList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Failed to load feed</div>';
+          return;
+        }
+
+        if (offset === 0) {
+          document.getElementById('feedList').innerHTML = '';
+          feedOffset = 0;
+        }
+
+        const posts = data.posts || [];
+        feedHasMore = data.hasMore || false;
+
+        if (posts.length === 0 && offset === 0) {
+          document.getElementById('feedList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">No posts yet. Be the first to share!</div>';
+          return;
+        }
+
+        const feedList = document.getElementById('feedList');
+        posts.forEach(post => {
+          const postEl = renderFeedPost(post);
+          feedList.appendChild(postEl);
+        });
+
+        feedOffset += posts.length;
+
+        // Setup infinite scroll
+        if (feedHasMore) {
+          const feedListEl = document.getElementById('feedList');
+          feedListEl.onscroll = () => {
+            if (feedListEl.scrollTop + feedListEl.clientHeight >= feedListEl.scrollHeight - 100) {
+              if (feedHasMore) {
+                feedHasMore = false;
+                loadFeedPosts(feedOffset);
+              }
+            }
+          };
+        }
+      } catch (err) {
+        console.error('Error loading feed:', err);
+        document.getElementById('feedList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Error loading feed</div>';
+      }
+    }
+
+    function renderFeedPost(post) {
+      const postEl = document.createElement('div');
+      postEl.className = 'p-4 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition';
+
+      const timestamp = new Date(post.createdAt).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+
+      let content = '';
+      if (post.content.text) {
+        content += `<p class="text-zinc-900 dark:text-zinc-100 mb-3">${escapeHtml(post.content.text)}</p>`;
+      }
+
+      if (post.content.link) {
+        content += `
+          <a href="${escapeHtml(post.content.link)}" target="_blank" rel="noopener noreferrer" class="block p-3 border border-zinc-300 dark:border-zinc-700 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition mb-3">
+            <div class="flex gap-3">
+              ${post.content.linkImage ? `<img src="${escapeHtml(post.content.linkImage)}" alt="preview" class="w-16 h-16 object-cover rounded flex-shrink-0" onerror="this.style.display='none'">` : ''}
+              <div class="flex-1 min-w-0">
+                ${post.content.linkTitle ? `<div class="font-medium text-cyan-600 dark:text-cyan-400 truncate text-sm">${escapeHtml(post.content.linkTitle)}</div>` : ''}
+                <div class="text-xs text-zinc-600 dark:text-zinc-400 truncate">${escapeHtml(post.content.link)}</div>
+              </div>
+            </div>
+          </a>
+        `;
+      }
+
+      postEl.innerHTML = `
+        <div class="flex gap-3">
+          <div class="flex-1">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="font-medium text-zinc-900 dark:text-zinc-100">${escapeHtml(post.username)}</span>
+              ${post.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs">✓</span>' : ''}
+              <span class="text-xs text-zinc-600 dark:text-zinc-500">${timestamp}</span>
+            </div>
+            ${content}
+          </div>
+        </div>
+      `;
+
+      return postEl;
+    }
+
+    async function submitFeedPost() {
+      const textInput = document.getElementById('feedTextInput');
+      const linkInput = document.getElementById('feedLinkInput');
+      const text = textInput.value.trim();
+      const link = linkInput.value.trim();
+
+      if (!text && !link) {
+        alert('Please enter some text or a link');
+        return;
+      }
+
+      try {
+        const data = await apiCall('/api/feed/posts', {
+          method: 'POST',
+          body: JSON.stringify({ text, link: link || undefined })
+        });
+
+        if (!data || data.error) {
+          alert('Failed to post: ' + (data?.error || 'Unknown error'));
+          return;
+        }
+
+        textInput.value = '';
+        linkInput.value = '';
+        feedOffset = 0;
+        feedHasMore = true;
+        loadFeedPosts(0);
+      } catch (err) {
+        console.error('Error posting:', err);
+        alert('Failed to post');
+      }
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
     }
 
     // Close conversation menu when clicking outside
