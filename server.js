@@ -133,14 +133,16 @@ app.get('/api/user', async (req, res) => {
     return res.status(401).json({ error: 'Not authenticated' });
   }
   try {
-    const userRes = await pool.query(`SELECT network FROM users WHERE id = $1`, [req.user.id]);
+    const userRes = await pool.query(`SELECT network, has_seen_welcome FROM users WHERE id = $1`, [req.user.id]);
     const network = userRes.rows[0]?.network || 'testnet';
+    const hasSeenWelcome = userRes.rows[0]?.has_seen_welcome || false;
     res.json({
       id: req.user.id,
       username: req.user.username,
       usernode_pubkey: req.user.usernode_pubkey || null,
       verified: !!req.user.verified_at,
       network: network,
+      hasSeenWelcome: hasSeenWelcome,
     });
   } catch (err) {
     console.error('Error fetching user:', err);
@@ -164,6 +166,20 @@ app.put('/api/user/network', async (req, res) => {
   } catch (err) {
     console.error('Error updating network:', err);
     res.status(500).json({ error: 'Failed to update network' });
+  }
+});
+
+app.put('/api/user/welcome-seen', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    await pool.query(`UPDATE users SET has_seen_welcome = true WHERE id = $1`, [req.user.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error updating welcome flag:', err);
+    res.status(500).json({ error: 'Failed to update welcome flag' });
   }
 });
 
@@ -1225,6 +1241,11 @@ async function start() {
     // Add network column if it doesn't exist (idempotent migration)
     await pool.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS network VARCHAR(50) DEFAULT 'testnet'
+    `);
+
+    // Add has_seen_welcome column if it doesn't exist (idempotent migration)
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS has_seen_welcome BOOLEAN DEFAULT FALSE
     `);
 
     // Create conversations table (marked private)
