@@ -413,7 +413,26 @@
 
     <!-- Main content -->
     <div id="content" class="flex-1 overflow-hidden flex flex-col">
-      <!-- Conversations List (initial view) -->
+      <!-- Messages View with Tabs -->
+      <div id="messagesView" class="hidden flex flex-col flex-1 overflow-hidden">
+        <!-- Tab Navigation -->
+        <div class="bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 flex">
+          <button id="directTab" onclick="switchMessagesTab('direct')" class="flex-1 px-4 py-3 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 border-b-2 border-transparent transition border-b-2 border-cyan-600 text-zinc-900 dark:text-zinc-100">Direct</button>
+          <button id="groupsTab" onclick="switchMessagesTab('groups')" class="flex-1 px-4 py-3 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 border-b-2 border-transparent transition">Groups</button>
+        </div>
+
+        <!-- Direct Messages List -->
+        <div id="directList" class="flex-1 overflow-y-auto">
+          <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading conversations...</div>
+        </div>
+
+        <!-- Groups List -->
+        <div id="groupsList" class="hidden flex-1 overflow-y-auto relative">
+          <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading groups...</div>
+        </div>
+      </div>
+
+      <!-- Conversations List (initial view) - DEPRECATED, kept for backward compatibility -->
       <div id="conversationsView" class="flex flex-col flex-1 overflow-hidden">
         <div id="convList" class="flex-1 overflow-y-auto">
           <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading conversations...</div>
@@ -586,6 +605,28 @@
   </div>
 
 
+  <!-- Group Context Menu -->
+  <div id="groupContextMenu" class="hidden fixed z-50 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg shadow-lg min-w-40">
+    <button onclick="viewGroupInfo()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">View Group Info</button>
+    <button onclick="manageGroupMembers()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">Manage Members</button>
+    <button id="renameGroupBtn" onclick="renameGroup()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">Rename Group</button>
+    <button onclick="leaveGroup()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">Leave Group</button>
+    <button id="deleteGroupBtn" onclick="deleteGroup()" class="menu-item w-full text-left px-4 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">Delete Group</button>
+  </div>
+
+  <!-- Create Group Modal -->
+  <div id="createGroupModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
+      <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Create Group</h2>
+      <input id="groupNameInput" type="text" placeholder="Group name" maxlength="255" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+      <textarea id="groupDescInput" placeholder="Description (optional)" maxlength="1000" rows="3" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"></textarea>
+      <div class="flex gap-2">
+        <button onclick="closeCreateGroupModal()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
+        <button onclick="createGroup()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Create</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Welcome Screen Modal -->
   <div id="welcomeModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-8 w-full max-w-md space-y-6">
@@ -628,6 +669,11 @@
     let conversationsPollInterval = null;
     let sidebarOpen = false;
     let pendingDeleteContactId = null;
+
+    // Messages tab state
+    let activeMessagesTab = 'direct';
+    let currentGroupId = null;
+    let currentGroupContextMenuId = null;
 
     // Settings functions
     let currentNetwork = 'testnet';
@@ -931,7 +977,7 @@
       document.getElementById('sidebarWallet').textContent = user.usernode_pubkey || 'No wallet linked';
       initSettings();
       showWelcome();
-      loadConversations();
+      showConversationsView();
       setupEventListeners();
     }
 
@@ -939,6 +985,7 @@
       document.getElementById('menuBtn').addEventListener('click', toggleSidebar);
       document.getElementById('backBtn').addEventListener('click', () => {
         currentConvId = null;
+        currentGroupId = null;
         showConversationsView();
       });
 
@@ -985,7 +1032,10 @@
       const data = await apiCall('/api/conversations');
       if (!data) return;
 
-      const list = document.getElementById('convList');
+      // Support both old and new layout
+      const list = document.getElementById('directList') || document.getElementById('convList');
+      if (!list) return;
+
       const { active = [], pending = [], archived = [] } = data.conversations || {};
 
       if (active.length === 0 && pending.length === 0 && archived.length === 0) {
@@ -1046,6 +1096,268 @@
 
       list.innerHTML = html;
     }
+
+    // Tab switching for Messages view
+    function switchMessagesTab(tab) {
+      activeMessagesTab = tab;
+      localStorage.setItem(`guardian_messages_tab_${currentUser.id}`, tab);
+
+      const directTab = document.getElementById('directTab');
+      const groupsTab = document.getElementById('groupsTab');
+      const directList = document.getElementById('directList');
+      const groupsList = document.getElementById('groupsList');
+
+      if (tab === 'direct') {
+        directTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
+        directTab.classList.remove('text-zinc-700', 'dark:text-zinc-300');
+        groupsTab.classList.remove('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
+        groupsTab.classList.add('text-zinc-700', 'dark:text-zinc-300');
+        directList.classList.remove('hidden');
+        groupsList.classList.add('hidden');
+        loadConversations();
+      } else {
+        groupsTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
+        groupsTab.classList.remove('text-zinc-700', 'dark:text-zinc-300');
+        directTab.classList.remove('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
+        directTab.classList.add('text-zinc-700', 'dark:text-zinc-300');
+        groupsList.classList.remove('hidden');
+        directList.classList.add('hidden');
+        loadGroups();
+      }
+    }
+
+    // Load groups list
+    async function loadGroups() {
+      const data = await apiCall('/api/groups');
+      if (!data || !data.groups) return;
+
+      const list = document.getElementById('groupsList');
+      if (!list) return;
+
+      if (data.groups.length === 0) {
+        list.innerHTML = '<div class="sticky top-0 z-10 bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 p-4"><button onclick="openCreateGroupModal()" class="w-full px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium text-sm">+ Create Group</button></div><div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No groups yet.<br><button onclick="openCreateGroupModal()" class="mt-2 text-cyan-600 dark:text-cyan-400 hover:underline">Create Group</button></div>';
+        return;
+      }
+
+      const groupsHtml = data.groups.map(group => {
+        const isActive = currentGroupId === group.id;
+        const activeClass = isActive ? 'border-l-4 border-cyan-600 bg-cyan-50 dark:bg-cyan-900/20' : '';
+        const lastMessage = group.lastMessage || 'No messages';
+        const lastTime = group.lastMessageAt ? formatTime(new Date(group.lastMessageAt)) : '';
+
+        return `
+          <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer transition border-b border-zinc-300 dark:border-zinc-800 ${activeClass}" onclick="openGroup(${group.id})" oncontextmenu="openGroupContextMenu(event, ${group.id})">
+            <div class="flex justify-between items-start gap-2">
+              <div class="flex-1 min-w-0">
+                <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${group.name}</div>
+                <div class="text-xs text-zinc-600 dark:text-zinc-400">${group.memberCount} members</div>
+                <div class="text-xs text-zinc-600 dark:text-zinc-400 truncate">${lastMessage}</div>
+              </div>
+              <div class="text-xs text-zinc-600 dark:text-zinc-500 text-right flex-shrink-0 flex items-center gap-1">
+                <span>${lastTime}</span>
+                ${group.unreadCount > 0 ? `<div class="px-2 py-0.5 bg-cyan-600 rounded-full text-white text-xs">${group.unreadCount}</div>` : ''}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      const createButtonHtml = '<div class="sticky top-0 z-10 bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 p-4"><button onclick="openCreateGroupModal()" class="w-full px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium text-sm">+ Create Group</button></div>';
+
+      list.innerHTML = createButtonHtml + groupsHtml;
+    }
+
+    // Open a group
+    async function openGroup(groupId) {
+      currentGroupId = groupId;
+      currentConvId = null;
+      currentOtherId = null;
+
+      // Fetch group name for header
+      const groupData = await apiCall(`/api/groups/${groupId}`);
+      if (groupData) {
+        document.getElementById('headerTitle').textContent = groupData.name + ' ✓';
+      }
+
+      document.getElementById('backBtn').classList.remove('hidden');
+      document.getElementById('menuBtn').classList.add('hidden');
+
+      showChatView();
+      loadGroupMessages(groupId);
+
+      if (pollInterval) clearInterval(pollInterval);
+      pollInterval = setInterval(() => loadGroupMessages(groupId), 2000);
+
+      if (window.matchMedia('(max-width: 768px)').matches) {
+        toggleSidebar();
+      }
+
+      loadGroups();
+    }
+
+    // Load group messages
+    async function loadGroupMessages(groupId) {
+      if (!currentGroupId) return;
+
+      const data = await apiCall(`/api/groups/${groupId}/messages?limit=50`);
+      if (!data) return;
+
+      const list = document.getElementById('messageList');
+
+      if (data.error) {
+        list.innerHTML = '<div class="text-center text-red-600 dark:text-red-400 py-8"><div class="text-sm">Failed to load group messages</div></div>';
+        return;
+      }
+
+      if (data.messages.length === 0) {
+        list.innerHTML = '<div class="text-center text-zinc-600 dark:text-zinc-500 py-4">No messages yet</div>';
+        return;
+      }
+
+      const wasAtBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 50;
+      list.innerHTML = data.messages.map(msg => renderMessage(msg)).join('');
+
+      if (wasAtBottom) {
+        list.scrollTop = list.scrollHeight;
+      }
+
+      // Mark as read
+      await apiCall(`/api/groups/${groupId}/read`, {
+        method: 'PUT',
+        body: JSON.stringify({ readUpTo: new Date().toISOString() })
+      });
+    }
+
+    // Open group context menu
+    function openGroupContextMenu(event, groupId) {
+      event.preventDefault();
+      currentGroupContextMenuId = groupId;
+
+      // Fetch group to check if user is creator
+      apiCall(`/api/groups/${groupId}`).then(groupData => {
+        const menu = document.getElementById('groupContextMenu');
+
+        // Show/hide creator-only buttons
+        const renameBtn = document.getElementById('renameGroupBtn');
+        const deleteBtn = document.getElementById('deleteGroupBtn');
+        const isCreator = groupData && groupData.creatorId === currentUser.id;
+
+        renameBtn.style.display = isCreator ? 'block' : 'none';
+        deleteBtn.style.display = isCreator ? 'block' : 'none';
+
+        menu.style.left = event.clientX + 'px';
+        menu.style.top = event.clientY + 'px';
+        menu.classList.remove('hidden');
+      });
+    }
+
+    // Create group
+    async function createGroup() {
+      const name = document.getElementById('groupNameInput').value.trim();
+      const desc = document.getElementById('groupDescInput').value.trim();
+
+      if (!name) return alert('Group name is required');
+
+      const data = await apiCall('/api/groups', {
+        method: 'POST',
+        body: JSON.stringify({ name, description: desc || null })
+      });
+
+      if (data) {
+        closeCreateGroupModal();
+        loadGroups();
+      }
+    }
+
+    // Open create group modal
+    function openCreateGroupModal() {
+      document.getElementById('createGroupModal').classList.remove('hidden');
+      document.getElementById('groupNameInput').value = '';
+      document.getElementById('groupDescInput').value = '';
+    }
+
+    // Close create group modal
+    function closeCreateGroupModal() {
+      document.getElementById('createGroupModal').classList.add('hidden');
+      document.getElementById('groupNameInput').value = '';
+      document.getElementById('groupDescInput').value = '';
+    }
+
+    // View group info
+    function viewGroupInfo() {
+      // TODO: Implement view group info modal
+      alert('View Group Info - Coming soon');
+      document.getElementById('groupContextMenu').classList.add('hidden');
+    }
+
+    // Manage group members
+    function manageGroupMembers() {
+      // TODO: Implement manage members modal
+      alert('Manage Members - Coming soon');
+      document.getElementById('groupContextMenu').classList.add('hidden');
+    }
+
+    // Rename group
+    function renameGroup() {
+      if (!currentGroupContextMenuId) return;
+      const newName = prompt('Enter new group name:');
+      if (newName && newName.trim()) {
+        apiCall(`/api/groups/${currentGroupContextMenuId}`, {
+          method: 'PUT',
+          body: JSON.stringify({ name: newName.trim() })
+        }).then(data => {
+          if (data) {
+            loadGroups();
+            document.getElementById('groupContextMenu').classList.add('hidden');
+          }
+        });
+      }
+    }
+
+    // Leave group
+    function leaveGroup() {
+      if (!currentGroupContextMenuId) return;
+      if (confirm('Are you sure you want to leave this group?')) {
+        apiCall(`/api/groups/${currentGroupContextMenuId}/leave`, {
+          method: 'POST',
+          body: JSON.stringify({})
+        }).then(data => {
+          if (data) {
+            loadGroups();
+            document.getElementById('groupContextMenu').classList.add('hidden');
+            if (currentGroupId === currentGroupContextMenuId) {
+              showConversationsView();
+            }
+          }
+        });
+      }
+    }
+
+    // Delete group
+    function deleteGroup() {
+      if (!currentGroupContextMenuId) return;
+      if (confirm('Are you sure you want to delete this group? This cannot be undone.')) {
+        apiCall(`/api/groups/${currentGroupContextMenuId}`, {
+          method: 'DELETE'
+        }).then(data => {
+          if (data) {
+            loadGroups();
+            document.getElementById('groupContextMenu').classList.add('hidden');
+            if (currentGroupId === currentGroupContextMenuId) {
+              showConversationsView();
+            }
+          }
+        });
+      }
+    }
+
+    // Close context menu when clicking outside
+    document.addEventListener('click', (e) => {
+      const menu = document.getElementById('groupContextMenu');
+      if (menu && !e.target.closest('#groupContextMenu') && e.target.id !== 'groupContextMenu') {
+        menu.classList.add('hidden');
+      }
+    });
 
     function formatTime(date) {
       const now = new Date();
@@ -1172,17 +1484,23 @@
       const text = input.value.trim();
       if (!text) return;
 
-      if (!currentConvId) return;
+      if (!currentConvId && !currentGroupId) return;
 
       input.value = '';
 
-      const data = await apiCall(`/api/conversations/${currentConvId}/messages`, {
+      const endpoint = currentGroupId ? `/api/groups/${currentGroupId}/messages` : `/api/conversations/${currentConvId}/messages`;
+
+      const data = await apiCall(endpoint, {
         method: 'POST',
         body: JSON.stringify({ type: 'text', content: { text } })
       });
 
       if (data) {
-        loadMessages();
+        if (currentGroupId) {
+          loadGroupMessages(currentGroupId);
+        } else {
+          loadMessages();
+        }
         if (data.blockchainRecordingId) {
           pollBlockchainStatus(data.blockchainRecordingId, data.id);
         }
@@ -1191,18 +1509,24 @@
 
     async function handleImageUpload(file) {
       if (!file) return;
-      if (!currentConvId) return;
+      if (!currentConvId && !currentGroupId) return;
 
       const reader = new FileReader();
       reader.onload = async (e) => {
         const dataUri = e.target.result;
 
-        const data = await apiCall(`/api/conversations/${currentConvId}/messages`, {
+        const endpoint = currentGroupId ? `/api/groups/${currentGroupId}/messages` : `/api/conversations/${currentConvId}/messages`;
+
+        const data = await apiCall(endpoint, {
           method: 'POST',
           body: JSON.stringify({ type: 'image', content: { imageUrl: dataUri } })
         });
         if (data) {
-          loadMessages();
+          if (currentGroupId) {
+            loadGroupMessages(currentGroupId);
+          } else {
+            loadMessages();
+          }
         }
       };
       reader.readAsDataURL(file);
@@ -1313,7 +1637,11 @@
     }
 
     function showConversationsView() {
-      document.getElementById('conversationsView').classList.remove('hidden');
+      // Load persisted tab preference
+      activeMessagesTab = localStorage.getItem(`guardian_messages_tab_${currentUser?.id}`) || 'direct';
+
+      document.getElementById('messagesView').classList.remove('hidden');
+      document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.add('hidden');
       document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
@@ -1321,11 +1649,21 @@
       document.getElementById('backBtn').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
+
       if (pollInterval) clearInterval(pollInterval);
-      loadConversations();
-      // Start polling for conversations in this view
+
+      // Initialize tabs
+      switchMessagesTab(activeMessagesTab);
+
+      // Start polling for both tabs
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
-      conversationsPollInterval = setInterval(loadConversations, 2000);
+      conversationsPollInterval = setInterval(() => {
+        if (activeMessagesTab === 'direct') {
+          loadConversations();
+        } else {
+          loadGroups();
+        }
+      }, 2000);
     }
 
     let allContacts = [];
