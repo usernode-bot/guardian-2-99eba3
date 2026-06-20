@@ -2011,6 +2011,163 @@ app.post('/api/feed/posts', async (req, res) => {
   }
 });
 
+// ===== FEED COMMENTS ENDPOINTS =====
+
+// GET /api/feed/posts/:postId/comments - Fetch paginated comments on a post
+app.get('/api/feed/posts/:postId/comments', async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const limit = Math.min(parseInt(req.query.limit || 50), 100);
+    const offset = parseInt(req.query.offset || 0);
+
+    // Verify post exists
+    const { rows: postRows } = await pool.query(`
+      SELECT id FROM feed_posts WHERE id = $1
+    `, [postId]);
+
+    if (postRows.length === 0) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    // Fetch comments
+    const { rows: comments } = await pool.query(`
+      SELECT
+        fc.id,
+        fc.user_id,
+        fc.content,
+        fc.created_at,
+        u.username,
+        u.verified_at,
+        u.avatar_url
+      FROM feed_comments fc
+      JOIN users u ON u.id = fc.user_id
+      WHERE fc.post_id = $1
+      ORDER BY fc.created_at ASC
+      LIMIT $2 OFFSET $3
+    `, [postId, limit, offset]);
+
+    // Get total count
+    const { rows: countResult } = await pool.query(`
+      SELECT COUNT(*) as count FROM feed_comments WHERE post_id = $1
+    `, [postId]);
+
+    const total = parseInt(countResult[0].count);
+    const hasMore = offset + limit < total;
+
+    res.json({
+      comments: comments.map(c => ({
+        id: c.id,
+        userId: c.user_id,
+        username: c.username,
+        verified: !!c.verified_at,
+        avatarUrl: c.avatar_url,
+        content: c.content,
+        createdAt: c.created_at
+      })),
+      total,
+      hasMore
+    });
+  } catch (err) {
+    console.error('Error fetching comments:', err);
+    res.status(500).json({ error: 'Failed to fetch comments' });
+  }
+});
+
+// POST /api/feed/posts/:postId/comments - Create a comment
+app.post('/api/feed/posts/:postId/comments', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { postId } = req.params;
+    const { content } = req.body;
+    const userId = req.user.id;
+
+    if (!checkRateLimit(`comment:${userId}`, 200, 60000)) {
+      return res.status(429).json({ error: 'Rate limited' });
+    }
+
+    if (!content || content.trim() === '') {
+      return res.status(400).json({ error: 'Comment content is required' });
+    }
+
+    // Verify post exists
+    const { rows: postRows } = await pool.query(`
+      SELECT id FROM feed_posts WHERE id = $1
+    `, [postId]);
+
+    if (postRows.length === 0) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    // Create comment
+    const { rows: commentRows } = await pool.query(`
+      INSERT INTO feed_comments (post_id, user_id, content, created_at, updated_at)
+      VALUES ($1, $2, $3, NOW(), NOW())
+      RETURNING id, created_at
+    `, [postId, userId, content.trim()]);
+
+    const comment = commentRows[0];
+
+    // Fetch user info
+    const { rows: userRows } = await pool.query(`
+      SELECT username, verified_at, avatar_url FROM users WHERE id = $1
+    `, [userId]);
+
+    const user = userRows[0];
+
+    res.json({
+      id: comment.id,
+      userId: userId,
+      username: user.username,
+      verified: !!user.verified_at,
+      avatarUrl: user.avatar_url,
+      content: content.trim(),
+      createdAt: comment.created_at
+    });
+  } catch (err) {
+    console.error('Error creating comment:', err);
+    res.status(500).json({ error: 'Failed to create comment' });
+  }
+});
+
+// DELETE /api/feed/posts/:postId/comments/:commentId - Delete a comment
+app.delete('/api/feed/posts/:postId/comments/:commentId', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { postId, commentId } = req.params;
+    const userId = req.user.id;
+
+    // Verify comment exists and user is author
+    const { rows: commentRows } = await pool.query(`
+      SELECT user_id FROM feed_comments WHERE id = $1 AND post_id = $2
+    `, [commentId, postId]);
+
+    if (commentRows.length === 0) {
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+
+    const comment = commentRows[0];
+    if (comment.user_id !== userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    // Delete comment
+    await pool.query(`
+      DELETE FROM feed_comments WHERE id = $1
+    `, [commentId]);
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error deleting comment:', err);
+    res.status(500).json({ error: 'Failed to delete comment' });
+  }
+});
+
 // Simple proxy for explorer API to avoid CORS issues
 app.use('/explorer-api', (req, res) => {
   // Forward requests to testnet explorer
@@ -2279,6 +2436,26 @@ async function start() {
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_feed_posts_user_id
         ON feed_posts(user_id)
+    `);
+
+    // Create feed_comments table (public - comments on feed posts)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS feed_comments (
+        id BIGSERIAL PRIMARY KEY,
+        post_id BIGINT NOT NULL REFERENCES feed_posts(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        content TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_feed_comments_post_id
+        ON feed_comments(post_id, created_at)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_feed_comments_user_id
+        ON feed_comments(user_id)
     `);
 
     // Mark tables as private
@@ -2652,6 +2829,58 @@ async function start() {
           VALUES ($1, $2, $3, $3)
           ON CONFLICT DO NOTHING
         `, [post.userId, JSON.stringify(post.content), createdAt]);
+      }
+
+      // Seed feed comments
+      // Get post IDs for seeding comments
+      const { rows: bobDeployPostRows } = await pool.query(`
+        SELECT id FROM feed_posts WHERE user_id = $1 AND content->>'text' LIKE '%v2.0%' LIMIT 1
+      `, [bob]);
+
+      const { rows: aliceArticlePostRows } = await pool.query(`
+        SELECT id FROM feed_posts WHERE user_id = $1 AND content->>'text' LIKE '%blockchain security%' LIMIT 1
+      `, [alice]);
+
+      const { rows: davidWeb3PostRows } = await pool.query(`
+        SELECT id FROM feed_posts WHERE user_id = $1 AND content->>'text' LIKE '%Web3 standards%' LIMIT 1
+      `, [david]);
+
+      // Seed comments on Bob's deployment post
+      if (bobDeployPostRows.length > 0) {
+        const bobPostId = bobDeployPostRows[0].id;
+        const commentTime1 = new Date(feedBaseTime.getTime() - 2400000);
+        const commentTime2 = new Date(feedBaseTime.getTime() - 2100000);
+
+        await pool.query(`
+          INSERT INTO feed_comments (post_id, user_id, content, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, $4), ($1, $5, $6, $7, $7)
+          ON CONFLICT DO NOTHING
+        `, [bobPostId, alice, '[Staging demo] That sounds amazing! Congrats on the release!', commentTime1, charlie, '[Staging demo] Would love to check it out!', commentTime2]);
+      }
+
+      // Seed comments on Alice's article post
+      if (aliceArticlePostRows.length > 0) {
+        const alicePostId = aliceArticlePostRows[0].id;
+        const commentTime = new Date(feedBaseTime.getTime() - 300000);
+
+        await pool.query(`
+          INSERT INTO feed_comments (post_id, user_id, content, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, $4)
+          ON CONFLICT DO NOTHING
+        `, [alicePostId, bob, '[Staging demo] Great read! Security is so important in Web3.', commentTime]);
+      }
+
+      // Seed comments on David's Web3 standards post
+      if (davidWeb3PostRows.length > 0) {
+        const davidPostId = davidWeb3PostRows[0].id;
+        const commentTime1 = new Date(feedBaseTime.getTime() - 1200000);
+        const commentTime2 = new Date(feedBaseTime.getTime() - 600000);
+
+        await pool.query(`
+          INSERT INTO feed_comments (post_id, user_id, content, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, $4), ($1, $5, $6, $7, $7)
+          ON CONFLICT DO NOTHING
+        `, [davidPostId, alice, '[Staging demo] Count me in! We should organize a discussion thread.', commentTime1, emma, '[Staging demo] This is an important topic for the ecosystem!', commentTime2]);
       }
     }
 
