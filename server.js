@@ -181,10 +181,10 @@ app.get('/api/conversations', async (req, res) => {
 
     // Simple query: get all conversations for this user, excluding archived ones
     const convQuery = `
-      SELECT id, participant_a_id, participant_b_id, archived_by, muted_by
+      SELECT id, participant_a_id, participant_b_id, archived_by, muted_by, updated_at, created_at
       FROM conversations
       WHERE (participant_a_id = $1 OR participant_b_id = $1) AND NOT (archived_by @> ARRAY[$1])
-      ORDER BY created_at DESC
+      ORDER BY updated_at DESC NULLS LAST, created_at DESC
       LIMIT $2 OFFSET $3
     `;
 
@@ -268,8 +268,8 @@ app.post('/api/conversations', async (req, res) => {
     let convId = rows[0]?.id;
     if (!convId) {
       const result = await pool.query(`
-        INSERT INTO conversations (participant_a_id, participant_b_id)
-        VALUES ($1, $2)
+        INSERT INTO conversations (participant_a_id, participant_b_id, created_at, updated_at)
+        VALUES ($1, $2, NOW(), NOW())
         RETURNING id
       `, [a, b]);
       convId = result.rows[0].id;
@@ -374,7 +374,7 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
     // Check if both users have accepted a request with each other
     const { rows: contactRows } = await pool.query(`
       SELECT COUNT(*) as count FROM user_contacts
-      WHERE (user_id = $1 AND contact_user_id = $2) AND (user_id = $3 AND contact_user_id = $4)
+      WHERE (user_id = $1 AND contact_user_id = $2) OR (user_id = $3 AND contact_user_id = $4)
     `, [userId, otherId, otherId, userId]);
 
     if (contactRows[0].count < 2) {
@@ -416,6 +416,11 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
     await pool.query(`
       UPDATE blockchain_audit_logs SET message_id = $1 WHERE id = $2
     `, [messageId, blockchainRecordingId]);
+
+    // Update conversation updated_at to reflect new message activity
+    await pool.query(`
+      UPDATE conversations SET updated_at = NOW() WHERE id = $1
+    `, [convId]);
 
     // Async: submit to blockchain in the background
     (async () => {
@@ -931,8 +936,8 @@ app.post('/api/conversation-requests/:requestId/accept', async (req, res) => {
     let convId = convRows[0]?.id;
     if (!convId) {
       const result = await pool.query(`
-        INSERT INTO conversations (participant_a_id, participant_b_id)
-        VALUES ($1, $2)
+        INSERT INTO conversations (participant_a_id, participant_b_id, created_at, updated_at)
+        VALUES ($1, $2, NOW(), NOW())
         RETURNING id
       `, [a, b]);
       convId = result.rows[0].id;
@@ -1308,6 +1313,7 @@ async function start() {
         archived_by INTEGER[],
         muted_by INTEGER[],
         created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE(participant_a_id, participant_b_id)
       )
     `);
@@ -1335,6 +1341,15 @@ async function start() {
     `);
     await pool.query(`
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS blockchain_audit_log_id BIGINT
+    `);
+
+    // Add updated_at column to conversations if it doesn't exist (idempotent migration)
+    await pool.query(`
+      ALTER TABLE conversations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_conversations_updated_created
+        ON conversations(updated_at DESC NULLS LAST, created_at DESC)
     `);
 
     // Create read_receipts table (marked private)
