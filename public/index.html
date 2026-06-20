@@ -350,8 +350,9 @@
       <div id="contactsView" class="hidden flex flex-col flex-1 overflow-hidden">
         <!-- Saved Contacts Section -->
         <div class="flex-1 flex flex-col overflow-hidden">
-          <div class="px-4 py-3 bg-zinc-100 dark:bg-zinc-800 sticky top-0 z-10">
+          <div class="px-4 py-3 bg-zinc-100 dark:bg-zinc-800 sticky top-0 z-10 space-y-2">
             <h2 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Contacts</h2>
+            <input id="contactsSearchInput" type="text" placeholder="Search by name or address" oninput="handleContactSearch(event)" class="w-full px-3 py-2 bg-white dark:bg-zinc-700 border border-zinc-300 dark:border-zinc-600 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition text-sm">
           </div>
           <div id="contactsList" class="flex-1 overflow-y-auto divide-y divide-zinc-300 dark:divide-zinc-800">
             <div class="flex flex-col items-center justify-center h-full text-center space-y-4">
@@ -1094,18 +1095,32 @@
       conversationsPollInterval = setInterval(loadConversations, 3000);
     }
 
+    let allContacts = [];
+
     async function loadContactsList() {
       const data = await apiCall('/api/contacts');
       if (!data) return;
 
       const list = document.getElementById('contactsList');
+      allContacts = data.contacts || [];
 
-      if (!data.contacts || data.contacts.length === 0) {
+      if (!allContacts || allContacts.length === 0) {
         list.innerHTML = '<div class="flex items-center justify-center h-full text-center space-y-4"><div class="text-zinc-600 dark:text-zinc-400"><p class="text-sm">No contacts yet. Start a conversation to build your contact list.</p></div></div>';
         return;
       }
 
-      list.innerHTML = data.contacts.map(contact => `
+      renderContactsList(allContacts);
+    }
+
+    function renderContactsList(contacts) {
+      const list = document.getElementById('contactsList');
+
+      if (!contacts || contacts.length === 0) {
+        list.innerHTML = '<div class="flex items-center justify-center h-full text-center space-y-4"><div class="text-zinc-600 dark:text-zinc-400"><p class="text-sm">No results found.</p></div></div>';
+        return;
+      }
+
+      list.innerHTML = contacts.map(contact => `
         <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer" onclick="startConversationWithContact(${contact.userId}, '${contact.username}')">
           <div class="flex justify-between items-start gap-2">
             <div class="flex-1 min-w-0">
@@ -1116,6 +1131,25 @@
           </div>
         </div>
       `).join('');
+    }
+
+    function filterContacts(query) {
+      if (!query) return allContacts;
+
+      const lowerQuery = query.toLowerCase();
+      return allContacts.filter(contact => {
+        const username = contact.username.toLowerCase();
+        const nickname = (contact.nickname || '').toLowerCase();
+        const wallet = (contact.usernode_pubkey || '').toLowerCase();
+
+        return username.includes(lowerQuery) || nickname.includes(lowerQuery) || wallet.includes(lowerQuery);
+      });
+    }
+
+    function handleContactSearch(event) {
+      const query = event.target.value;
+      const filtered = filterContacts(query);
+      renderContactsList(filtered);
     }
 
     async function startConversationWithContact(userId, username) {
@@ -1321,6 +1355,7 @@
       document.getElementById('menuBtn').classList.add('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
+      document.getElementById('contactsSearchInput').value = '';
       loadContactsList();
     }
 
