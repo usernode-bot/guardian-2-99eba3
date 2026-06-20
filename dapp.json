@@ -8,6 +8,8 @@
     { "name": "Sidebar toggles", "path": "/", "expectSelector": "#sidebar" },
     { "name": "Share contact modal works", "path": "/", "expectSelector": "#shareContactModal" },
     { "name": "Settings panel opens", "path": "/", "expectSelector": "#settingsPanel" },
-    { "name": "Network dropdown in settings", "path": "/", "expectSelector": "#networkSelect" }
+    { "name": "Network dropdown in settings", "path": "/", "expectSelector": "#networkSelect" },
+    { "name": "Groups view renders", "path": "/", "expectSelector": "#groupsView" },
+    { "name": "Groups list loads with seed data", "path": "/", "expectSelector": "#groupsList" }
   ]
 }
