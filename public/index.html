@@ -1333,8 +1333,8 @@
       if (data && !data.error) {
         alert(`Request sent to ${username}`);
         toggleSendRequestModal();
-        showRequestsView();
-        loadRequestsTab();
+        showConversationsView();
+        loadConversations();
       } else if (data === null) {
         alert('Not authenticated. Please log in.');
         button.disabled = false;
