@@ -546,6 +546,7 @@
     let currentContactName = null;
     let currentContactAddress = null;
     let pollInterval = null;
+    let requestsPollInterval = null;
     let sidebarOpen = false;
     let pendingDeleteContactId = null;
 
@@ -853,11 +854,36 @@
     async function loadConversations() {
       const data = await apiCall('/api/conversations');
       const sentData = await apiCall('/api/conversation-requests/sent');
+      const receivedData = await apiCall('/api/conversation-requests/received');
       if (!data) return;
 
       const list = document.getElementById('convList');
       let html = '';
 
+      // Show incoming requests first (for recipient)
+      if (receivedData && receivedData.requests && receivedData.requests.length > 0) {
+        const incomingRequests = receivedData.requests.filter(r => r.status === 'pending');
+        if (incomingRequests.length > 0) {
+          html += '<div class="bg-zinc-200 dark:bg-zinc-800 text-xs text-zinc-600 dark:text-zinc-400 px-4 py-2 font-semibold sticky top-0 z-10">Incoming Requests</div>';
+          html += incomingRequests.map(req => `
+            <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500">
+              <div class="flex justify-between items-start gap-2 mb-2">
+                <div class="flex-1 min-w-0">
+                  <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${req.senderUsername} <span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span></div>
+                  <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${req.senderWallet || 'No wallet'}</div>
+                  <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">Wants to connect</div>
+                </div>
+              </div>
+              <div class="flex gap-2">
+                <button onclick="acceptRequest(${req.id})" class="flex-1 px-2 py-1 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white text-xs rounded transition font-medium">Accept</button>
+                <button onclick="rejectRequest(${req.id})" class="flex-1 px-2 py-1 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 text-zinc-900 dark:text-zinc-100 text-xs rounded transition">Reject</button>
+              </div>
+            </div>
+          `).join('');
+        }
+      }
+
+      // Show outgoing pending requests (for sender)
       if (sentData && sentData.requests && sentData.requests.length > 0) {
         const pendingRequests = sentData.requests.filter(r => r.status === 'pending');
         if (pendingRequests.length > 0) {
@@ -877,7 +903,7 @@
         }
       }
 
-      if (data.conversations.length === 0 && (!sentData || !sentData.requests || sentData.requests.length === 0)) {
+      if (data.conversations.length === 0 && (!sentData || !sentData.requests || sentData.requests.length === 0) && (!receivedData || !receivedData.requests || receivedData.requests.length === 0)) {
         list.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">No conversations yet. <br>Tap "Find Contacts" to discover contacts.</div>';
         return;
       }
@@ -1357,6 +1383,7 @@
       document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
       if (pollInterval) clearInterval(pollInterval);
+      if (requestsPollInterval) clearInterval(requestsPollInterval);
       loadConversations();
     }
 
@@ -1372,6 +1399,9 @@
       document.getElementById('conversationMenuBtn').classList.add('hidden');
       if (pollInterval) clearInterval(pollInterval);
       loadRequestsTab();
+      // Start polling for new requests every 3 seconds
+      if (requestsPollInterval) clearInterval(requestsPollInterval);
+      requestsPollInterval = setInterval(loadRequestsTab, 3000);
     }
 
     async function loadRequestsTab() {
@@ -1416,12 +1446,8 @@
       if (data && data.conversationId) {
         await loadRequestsTab();
         await loadContactsList();
-        const convData = await apiCall(`/api/conversations/${data.conversationId}`);
-        if (convData && !convData.error) {
-          const requests = await apiCall('/api/conversation-requests/sent');
-          await loadConversations();
-          showConversationsView();
-        }
+        await loadConversations();
+        showConversationsView();
       }
     }
 
