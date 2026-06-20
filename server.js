@@ -179,12 +179,16 @@ app.get('/api/conversations', async (req, res) => {
     const offset = parseInt(req.query.offset || 0);
     const userId = req.user.id;
 
-    // Simple query: get all conversations for this user
+    // Get conversations only with accepted contacts
     const convQuery = `
-      SELECT id, participant_a_id, participant_b_id, archived_by, muted_by
-      FROM conversations
-      WHERE (participant_a_id = $1 OR participant_b_id = $1)
-      ORDER BY created_at DESC
+      SELECT conv.id, conv.participant_a_id, conv.participant_b_id, conv.archived_by, conv.muted_by
+      FROM conversations conv
+      INNER JOIN contacts c ON
+        (c.user_a_id = $1 OR c.user_b_id = $1) AND
+        ((c.user_a_id = conv.participant_a_id AND c.user_b_id = conv.participant_b_id) OR
+         (c.user_a_id = conv.participant_b_id AND c.user_b_id = conv.participant_a_id))
+      WHERE (conv.participant_a_id = $1 OR conv.participant_b_id = $1)
+      ORDER BY conv.created_at DESC
       LIMIT $2 OFFSET $3
     `;
 
@@ -259,7 +263,17 @@ app.post('/api/conversations', async (req, res) => {
       return res.status(400).json({ error: 'Invalid participant' });
     }
 
+    // Check if an accepted contact exists
     const [a, b] = [userId, participantId].sort((x, y) => x - y);
+    const { rows: contactRows } = await pool.query(`
+      SELECT id FROM contacts
+      WHERE user_a_id = $1 AND user_b_id = $2
+    `, [a, b]);
+
+    if (contactRows.length === 0) {
+      return res.status(403).json({ error: 'Contact not accepted yet' });
+    }
+
     const { rows } = await pool.query(`
       SELECT id FROM conversations
       WHERE participant_a_id = $1 AND participant_b_id = $2
@@ -357,6 +371,31 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
 
     if (!type || !content) {
       return res.status(400).json({ error: 'Invalid message' });
+    }
+
+    // Verify conversation exists and user is a participant
+    const { rows: convRows } = await pool.query(`
+      SELECT participant_a_id, participant_b_id FROM conversations WHERE id = $1
+    `, [convId]);
+
+    if (convRows.length === 0) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    const conv = convRows[0];
+    if (conv.participant_a_id !== userId && conv.participant_b_id !== userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    // Check if accepted contact exists with the other participant
+    const otherId = conv.participant_a_id === userId ? conv.participant_b_id : conv.participant_a_id;
+    const [a, b] = [userId, otherId].sort((x, y) => x - y);
+    const { rows: contactRows } = await pool.query(`
+      SELECT id FROM contacts WHERE user_a_id = $1 AND user_b_id = $2
+    `, [a, b]);
+
+    if (contactRows.length === 0) {
+      return res.status(403).json({ error: 'Contact not accepted yet' });
     }
 
     // Fetch user's network preference
@@ -916,6 +955,14 @@ app.post('/api/conversation-requests/:requestId/accept', async (req, res) => {
       convId = result.rows[0].id;
     }
 
+    // Create contact row (normalized: always smaller_id < larger_id)
+    const [contact_a, contact_b] = [senderId, recipientId].sort((x, y) => x - y);
+    await pool.query(`
+      INSERT INTO contacts (user_a_id, user_b_id, created_at, updated_at)
+      VALUES ($1, $2, NOW(), NOW())
+      ON CONFLICT (user_a_id, user_b_id) DO UPDATE SET updated_at = NOW()
+    `, [contact_a, contact_b]);
+
     // Update request status
     await pool.query(`
       UPDATE conversation_requests
@@ -1149,6 +1196,120 @@ app.get('/api/user/contact-info', (req, res) => {
     });
   } catch (err) {
     console.error('Error getting contact info:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ===== NEW CONTACTS ENDPOINTS (via contacts table) =====
+
+app.get('/api/contacts', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = req.user.id;
+    const { rows } = await pool.query(`
+      SELECT c.id,
+             CASE WHEN c.user_a_id = $1 THEN c.user_b_id ELSE c.user_a_id END as contact_user_id,
+             CASE WHEN c.user_a_id = $1 THEN c.nickname_b ELSE c.nickname_a END as nickname,
+             u.username, u.usernode_pubkey, u.verified_at, u.avatar_url,
+             c.created_at
+      FROM contacts c
+      JOIN users u ON (CASE WHEN c.user_a_id = $1 THEN c.user_b_id ELSE c.user_a_id END) = u.id
+      WHERE c.user_a_id = $1 OR c.user_b_id = $1
+      ORDER BY c.created_at DESC
+    `, [userId]);
+
+    const contacts = rows.map(r => ({
+      id: r.id,
+      userId: r.contact_user_id,
+      username: r.username,
+      usernode_pubkey: r.usernode_pubkey || null,
+      nickname: r.nickname || null,
+      verified: !!r.verified_at,
+      avatar_url: r.avatar_url || null,
+      addedAt: r.created_at,
+    }));
+
+    res.json({ contacts });
+  } catch (err) {
+    console.error('Error fetching contacts:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/contacts/:contactId', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { contactId } = req.params;
+    const { nickname } = req.body;
+    const userId = req.user.id;
+
+    // Get the contact to determine which user_id we are
+    const { rows: contactRows } = await pool.query(`
+      SELECT user_a_id, user_b_id FROM contacts WHERE id = $1
+    `, [contactId]);
+
+    if (contactRows.length === 0) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    const contact = contactRows[0];
+    const isUserA = contact.user_a_id === userId;
+    const isUserB = contact.user_b_id === userId;
+
+    if (!isUserA && !isUserB) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    // Update the appropriate nickname field
+    const nicknameField = isUserA ? 'nickname_a' : 'nickname_b';
+    await pool.query(`
+      UPDATE contacts
+      SET ${nicknameField} = $1, updated_at = NOW()
+      WHERE id = $2
+    `, [nickname || null, contactId]);
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error updating contact:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/contacts/:contactId', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { contactId } = req.params;
+    const userId = req.user.id;
+
+    // Verify user owns this contact
+    const { rows: contactRows } = await pool.query(`
+      SELECT user_a_id, user_b_id FROM contacts WHERE id = $1
+    `, [contactId]);
+
+    if (contactRows.length === 0) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    const contact = contactRows[0];
+    if (contact.user_a_id !== userId && contact.user_b_id !== userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    // Delete the contact
+    await pool.query(`DELETE FROM contacts WHERE id = $1`, [contactId]);
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error deleting contact:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1391,6 +1552,31 @@ async function start() {
         ON conversation_requests(sender_id, status)
     `);
 
+    // Create contacts table (marked private)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS contacts (
+        id BIGSERIAL PRIMARY KEY,
+        user_a_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        user_b_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        nickname_a VARCHAR(255),
+        nickname_b VARCHAR(255),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(user_a_id, user_b_id)
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_contacts_user_a ON contacts(user_a_id)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_contacts_user_b ON contacts(user_b_id)
+    `);
+
+    // Add content_type column to messages if it doesn't exist
+    await pool.query(`
+      ALTER TABLE messages ADD COLUMN IF NOT EXISTS content_type VARCHAR(50)
+    `);
+
     // Mark tables as private
     await pool.query(`COMMENT ON TABLE conversations IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE messages IS 'staging:private'`);
@@ -1398,6 +1584,7 @@ async function start() {
     await pool.query(`COMMENT ON TABLE user_contacts IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE blockchain_audit_logs IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE conversation_requests IS 'staging:private'`);
+    await pool.query(`COMMENT ON TABLE contacts IS 'staging:private'`);
 
     // Seed staging data
     if (IS_STAGING) {
@@ -1488,7 +1675,14 @@ async function start() {
         ON CONFLICT DO NOTHING
       `, [alice, convId, bob]);
 
-      // Seed contacts
+      // Seed contacts (normalized: always user_a_id < user_b_id)
+      await pool.query(`
+        INSERT INTO contacts (user_a_id, user_b_id, nickname_a, nickname_b, created_at, updated_at)
+        VALUES ($1, $2, 'Bob (demo)', 'Alice (demo)', NOW(), NOW())
+        ON CONFLICT DO NOTHING
+      `, [alice, bob]);
+
+      // Seed legacy user_contacts for backward compatibility
       await pool.query(`
         INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
         VALUES ($1, $2, 'Bob (demo contact)', NOW())

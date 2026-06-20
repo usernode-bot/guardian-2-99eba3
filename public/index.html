@@ -259,6 +259,12 @@
           </svg>
           Conversations
         </button>
+        <button onclick="showContactsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
+          <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 12H9m6 0a6 6 0 11-12 0 6 6 0 0112 0z" />
+          </svg>
+          Contacts
+        </button>
         <button onclick="showDiscoverView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
           <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -347,6 +353,13 @@
       <div id="requestsView" class="hidden flex flex-col flex-1 overflow-hidden">
         <div id="requestList" class="flex-1 overflow-y-auto divide-y divide-zinc-300 dark:divide-zinc-800">
           <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading requests...</div>
+        </div>
+      </div>
+
+      <!-- Contacts View -->
+      <div id="contactsView" class="hidden flex flex-col flex-1 overflow-hidden">
+        <div id="contactList" class="flex-1 overflow-y-auto divide-y divide-zinc-300 dark:divide-zinc-800">
+          <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading contacts...</div>
         </div>
       </div>
 
@@ -795,54 +808,30 @@
 
     async function loadConversations() {
       const data = await apiCall('/api/conversations');
-      const sentData = await apiCall('/api/conversation-requests/sent');
       if (!data) return;
 
       const list = document.getElementById('convList');
-      let html = '';
 
-      if (sentData && sentData.requests && sentData.requests.length > 0) {
-        const pendingRequests = sentData.requests.filter(r => r.status === 'pending');
-        if (pendingRequests.length > 0) {
-          html += '<div class="bg-zinc-200 dark:bg-zinc-800 text-xs text-zinc-600 dark:text-zinc-400 px-4 py-2 font-semibold sticky top-0 z-10">Pending Requests</div>';
-          html += pendingRequests.map(req => `
-            <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition">
-              <div class="flex justify-between items-start gap-2">
-                <div class="flex-1 min-w-0">
-                  <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${req.recipientUsername} <span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span></div>
-                  <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${req.recipientWallet || 'No wallet'}</div>
-                  <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">Awaiting response</div>
-                </div>
-                <button onclick="cancelRequest(${req.id})" class="text-zinc-600 dark:text-zinc-500 hover:text-red-600 dark:hover:text-red-400 text-xs">Cancel</button>
-              </div>
-            </div>
-          `).join('');
-        }
-      }
-
-      if (data.conversations.length === 0 && (!sentData || !sentData.requests || sentData.requests.length === 0)) {
-        list.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">No conversations yet. <br>Tap "Find Contacts" to discover contacts.</div>';
+      if (data.conversations.length === 0) {
+        list.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">No conversations yet. <br>Add a contact to start messaging.</div>';
         return;
       }
 
-      if (data.conversations.length > 0) {
-        if (html) html += '<div class="bg-zinc-200 dark:bg-zinc-800 text-xs text-zinc-600 dark:text-zinc-400 px-4 py-2 font-semibold sticky top-0 z-10">Conversations</div>';
-        html += data.conversations.map(conv => `
-          <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer transition" onclick="openConversation(${conv.id}, ${conv.otherId}, '${conv.username}')">
-            <div class="flex justify-between items-start gap-2">
-              <div class="flex-1 min-w-0">
-                <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${conv.username} <span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span></div>
-                <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${conv.usernode_pubkey || 'No wallet'}</div>
-                <div class="text-sm text-zinc-600 dark:text-zinc-400 truncate">${conv.lastMessage || 'No messages'}</div>
-              </div>
-              <div class="text-xs text-zinc-600 dark:text-zinc-500 text-right flex-shrink-0">
-                ${conv.lastMessageAt ? formatTime(new Date(conv.lastMessageAt)) : ''}
-                ${conv.unreadCount > 0 ? `<div class="mt-1 inline-block px-2 py-0.5 bg-cyan-600 rounded-full text-white text-xs">${conv.unreadCount}</div>` : ''}
-              </div>
+      const html = data.conversations.map(conv => `
+        <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer transition" onclick="openConversation(${conv.id}, ${conv.otherId}, '${conv.username}')">
+          <div class="flex justify-between items-start gap-2">
+            <div class="flex-1 min-w-0">
+              <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${conv.username} <span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span></div>
+              <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${conv.usernode_pubkey || 'No wallet'}</div>
+              <div class="text-sm text-zinc-600 dark:text-zinc-400 truncate">${conv.lastMessage || 'No messages'}</div>
+            </div>
+            <div class="text-xs text-zinc-600 dark:text-zinc-500 text-right flex-shrink-0">
+              ${conv.lastMessageAt ? formatTime(new Date(conv.lastMessageAt)) : ''}
+              ${conv.unreadCount > 0 ? `<div class="mt-1 inline-block px-2 py-0.5 bg-cyan-600 rounded-full text-white text-xs">${conv.unreadCount}</div>` : ''}
             </div>
           </div>
-        `).join('');
-      }
+        </div>
+      `).join('');
 
       list.innerHTML = html;
     }
@@ -1174,6 +1163,7 @@
       document.getElementById('chatView').classList.add('hidden');
       document.getElementById('discoverView').classList.add('hidden');
       document.getElementById('requestsView').classList.add('hidden');
+      document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('headerTitle').textContent = 'Guardian';
       document.getElementById('backBtn').classList.add('hidden');
@@ -1188,6 +1178,7 @@
       document.getElementById('chatView').classList.add('hidden');
       document.getElementById('discoverView').classList.add('hidden');
       document.getElementById('requestsView').classList.remove('hidden');
+      document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('headerTitle').textContent = 'Requests';
       document.getElementById('backBtn').classList.remove('hidden');
@@ -1257,11 +1248,76 @@
       }
     }
 
+    function showContactsView() {
+      document.getElementById('conversationsView').classList.add('hidden');
+      document.getElementById('chatView').classList.add('hidden');
+      document.getElementById('discoverView').classList.add('hidden');
+      document.getElementById('requestsView').classList.add('hidden');
+      document.getElementById('contactsView').classList.remove('hidden');
+      document.getElementById('inputFooter').classList.add('hidden');
+      document.getElementById('headerTitle').textContent = 'Contacts';
+      document.getElementById('backBtn').classList.remove('hidden');
+      document.getElementById('menuBtn').classList.add('hidden');
+      document.getElementById('deleteContactBtn').classList.add('hidden');
+      if (pollInterval) clearInterval(pollInterval);
+      loadContactsTab();
+    }
+
+    async function loadContactsTab() {
+      const data = await apiCall('/api/contacts');
+      if (!data) return;
+
+      const list = document.getElementById('contactList');
+
+      if (data.contacts.length === 0) {
+        list.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">No contacts yet.<br>Send a request or accept a request to get started.</div>';
+        return;
+      }
+
+      list.innerHTML = data.contacts.map(contact => `
+        <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition cursor-pointer" onclick="openConversationWithContact(${contact.userId}, '${contact.username}')">
+          <div class="flex justify-between items-start gap-2">
+            <div class="flex-1 min-w-0">
+              <div class="font-medium text-zinc-900 dark:text-zinc-100">${contact.username} <span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span></div>
+              <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${contact.usernode_pubkey || 'No wallet'}</div>
+              ${contact.nickname ? `<div class="text-sm text-zinc-600 dark:text-zinc-400 mt-1">${contact.nickname}</div>` : ''}
+              <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">${formatTime(new Date(contact.addedAt))}</div>
+            </div>
+            <button onclick="event.stopPropagation(); deleteContact(${contact.id}, '${contact.username}')" class="text-zinc-600 dark:text-zinc-500 hover:text-red-600 dark:hover:text-red-400 text-xs">🗑️</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function openConversationWithContact(contactId, username) {
+      const data = await apiCall('/api/conversations', {
+        method: 'POST',
+        body: JSON.stringify({ participantId: contactId })
+      });
+
+      if (data && data.id) {
+        openConversation(data.id, contactId, username);
+      }
+    }
+
+    async function deleteContact(contactId, username) {
+      if (!confirm(`Delete ${username} from contacts?`)) return;
+
+      const data = await apiCall(`/api/contacts/${contactId}`, {
+        method: 'DELETE'
+      });
+
+      if (data && data.ok) {
+        loadContactsTab();
+      }
+    }
+
     function showChatView() {
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.remove('hidden');
       document.getElementById('discoverView').classList.add('hidden');
       document.getElementById('requestsView').classList.add('hidden');
+      document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('hidden');
     }
 
@@ -1271,6 +1327,7 @@
       document.getElementById('chatView').classList.add('hidden');
       document.getElementById('discoverView').classList.remove('hidden');
       document.getElementById('requestsView').classList.add('hidden');
+      document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('headerTitle').textContent = 'Find contacts';
       document.getElementById('backBtn').classList.remove('hidden');
