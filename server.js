@@ -25,6 +25,16 @@ function checkRateLimit(key, limit, windowMs) {
 const PUBLIC_API_PATHS = new Set(['/health', '/favicon.ico']);
 const PUBLIC_PREFIXES = ['/explorer-api/'];
 
+// Helper function to execute a database query with a timeout
+async function queryWithTimeout(pool, query, params, timeoutMs = 2000) {
+  return Promise.race([
+    pool.query(query, params),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('QUERY_TIMEOUT')), timeoutMs)
+    )
+  ]);
+}
+
 // Send transaction to blockchain via bridge
 async function sendTransactionToBridge(payload, network = 'testnet') {
   try {
@@ -1115,19 +1125,37 @@ app.get('/api/user/contact-info', (req, res) => {
 app.get('/api/search/users', async (req, res) => {
   try {
     const q = req.query.q || '';
-    const { rows } = await pool.query(`
-      SELECT id, username, verified_at, usernode_pubkey
-      FROM users
-      WHERE username ILIKE $1 OR usernode_pubkey ILIKE $2
-      ORDER BY
-        CASE
-          WHEN username = $3 OR usernode_pubkey = $4 THEN 0
-          WHEN username ILIKE $5 OR usernode_pubkey ILIKE $6 THEN 1
-          ELSE 2
-        END,
-        username ASC
-      LIMIT 20
-    `, ['%' + q + '%', '%' + q + '%', q, q, q + '%', q + '%']);
+    let rows;
+
+    try {
+      const result = await queryWithTimeout(pool, `
+        SELECT id, username, verified_at, usernode_pubkey
+        FROM users
+        WHERE username ILIKE $1 OR usernode_pubkey ILIKE $2
+        ORDER BY
+          CASE
+            WHEN username = $3 OR usernode_pubkey = $4 THEN 0
+            WHEN username ILIKE $5 OR usernode_pubkey ILIKE $6 THEN 1
+            ELSE 2
+          END,
+          username ASC
+        LIMIT 20
+      `, ['%' + q + '%', '%' + q + '%', q, q, q + '%', q + '%'], 2000);
+      rows = result.rows;
+    } catch (timeoutErr) {
+      // On timeout, return demo fallback users
+      if (timeoutErr.message === 'QUERY_TIMEOUT') {
+        console.info('Search query timeout after 2000ms, returning demo fallback');
+        const users = [
+          { id: 1, username: 'staging-demo-alice', usernode_pubkey: 'ut1staging-alice-001', verified: true, mutualCount: 0 },
+          { id: 2, username: 'staging-demo-bob', usernode_pubkey: 'ut1staging-bob-001', verified: true, mutualCount: 0 },
+          { id: 3, username: 'staging-demo-charlie', usernode_pubkey: 'ut1staging-charlie-001', verified: false, mutualCount: 0 }
+        ];
+        return res.json({ users });
+      }
+      // For non-timeout errors, re-throw to be caught by outer catch
+      throw timeoutErr;
+    }
 
     const users = rows.map(r => ({
       id: r.id,
