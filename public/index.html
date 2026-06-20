@@ -2566,6 +2566,12 @@
               <span class="text-xs text-zinc-600 dark:text-zinc-500">${timestamp}</span>
             </div>
             ${content}
+            <div class="mt-3 pt-3 border-t border-zinc-200 dark:border-zinc-700">
+              <button onclick="toggleComments(${post.id})" class="text-xs text-cyan-600 dark:text-cyan-400 hover:underline">
+                <span id="commentCount-${post.id}">0</span> comments
+              </button>
+              <div id="commentsSection-${post.id}" class="hidden mt-3 space-y-3 max-h-96 overflow-y-auto"></div>
+            </div>
           </div>
         </div>
       `;
@@ -2610,6 +2616,183 @@
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
+    }
+
+    // ===== FEED COMMENTS FUNCTIONS =====
+
+    const commentsCache = {};
+
+    async function toggleComments(postId) {
+      const section = document.getElementById(`commentsSection-${postId}`);
+      const isHidden = section.classList.contains('hidden');
+
+      if (isHidden) {
+        // Load comments if not cached
+        if (!commentsCache[postId]) {
+          await loadComments(postId);
+        }
+        section.classList.remove('hidden');
+      } else {
+        section.classList.add('hidden');
+      }
+    }
+
+    async function loadComments(postId) {
+      try {
+        const data = await apiCall(`/api/feed/posts/${postId}/comments?limit=50&offset=0`);
+        if (!data || data.error) {
+          console.error('Failed to load comments:', data?.error);
+          return;
+        }
+
+        const section = document.getElementById(`commentsSection-${postId}`);
+        section.innerHTML = '';
+
+        const comments = data.comments || [];
+
+        // Display existing comments
+        comments.forEach(comment => {
+          const commentEl = renderComment(comment, postId);
+          section.appendChild(commentEl);
+        });
+
+        // Update comment count
+        document.getElementById(`commentCount-${postId}`).textContent = data.total || comments.length;
+
+        // Add comment input if user is authenticated
+        if (currentUser) {
+          const inputEl = document.createElement('div');
+          inputEl.className = 'mt-3 pt-3 border-t border-zinc-200 dark:border-zinc-700 space-y-2';
+          inputEl.innerHTML = `
+            <textarea id="commentInput-${postId}" placeholder="Add a comment..." class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-sm resize-none" rows="2"></textarea>
+            <button onclick="submitComment(${postId})" class="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 text-white rounded text-sm">Comment</button>
+          `;
+          section.appendChild(inputEl);
+        }
+
+        commentsCache[postId] = { comments, total: data.total };
+      } catch (err) {
+        console.error('Error loading comments:', err);
+      }
+    }
+
+    function renderComment(comment, postId) {
+      const commentEl = document.createElement('div');
+      commentEl.className = 'p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg group';
+      commentEl.id = `comment-${comment.id}`;
+
+      const timestamp = new Date(comment.createdAt).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+
+      const isOwner = currentUser && currentUser.id === comment.userId;
+
+      commentEl.innerHTML = `
+        <div class="flex gap-2 justify-between items-start">
+          <div class="flex-1">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="text-sm font-medium text-zinc-900 dark:text-zinc-100">${escapeHtml(comment.username)}</span>
+              ${comment.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs">✓</span>' : ''}
+              <span class="text-xs text-zinc-500 dark:text-zinc-400">${timestamp}</span>
+            </div>
+            <p class="text-sm text-zinc-700 dark:text-zinc-300">${escapeHtml(comment.content)}</p>
+          </div>
+          ${isOwner ? `
+            <button onclick="deleteComment(${postId}, ${comment.id})" class="text-zinc-400 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition text-xs" title="Delete">
+              🗑️
+            </button>
+          ` : ''}
+        </div>
+      `;
+
+      return commentEl;
+    }
+
+    async function submitComment(postId) {
+      const input = document.getElementById(`commentInput-${postId}`);
+      const content = input.value.trim();
+
+      if (!content) {
+        alert('Comment cannot be empty');
+        return;
+      }
+
+      try {
+        const data = await apiCall(`/api/feed/posts/${postId}/comments`, {
+          method: 'POST',
+          body: JSON.stringify({ content })
+        });
+
+        if (!data || data.error) {
+          alert('Failed to post comment: ' + (data?.error || 'Unknown error'));
+          return;
+        }
+
+        // Add new comment to DOM
+        const section = document.getElementById(`commentsSection-${postId}`);
+        const commentEl = renderComment(data, postId);
+
+        // Insert before the input area
+        const inputArea = section.querySelector('[id^="commentInput-"]')?.parentElement;
+        if (inputArea) {
+          section.insertBefore(commentEl, inputArea);
+        } else {
+          section.appendChild(commentEl);
+        }
+
+        // Clear input
+        input.value = '';
+
+        // Update count
+        const countEl = document.getElementById(`commentCount-${postId}`);
+        const currentCount = parseInt(countEl.textContent);
+        countEl.textContent = currentCount + 1;
+
+        // Update cache
+        if (commentsCache[postId]) {
+          commentsCache[postId].total += 1;
+        }
+      } catch (err) {
+        console.error('Error posting comment:', err);
+        alert('Failed to post comment');
+      }
+    }
+
+    async function deleteComment(postId, commentId) {
+      if (!confirm('Delete this comment?')) return;
+
+      try {
+        const data = await apiCall(`/api/feed/posts/${postId}/comments/${commentId}`, {
+          method: 'DELETE'
+        });
+
+        if (!data || data.error) {
+          alert('Failed to delete comment');
+          return;
+        }
+
+        // Remove from DOM
+        const commentEl = document.getElementById(`comment-${commentId}`);
+        if (commentEl) {
+          commentEl.remove();
+        }
+
+        // Update count
+        const countEl = document.getElementById(`commentCount-${postId}`);
+        const currentCount = parseInt(countEl.textContent);
+        countEl.textContent = Math.max(0, currentCount - 1);
+
+        // Update cache
+        if (commentsCache[postId]) {
+          commentsCache[postId].total = Math.max(0, commentsCache[postId].total - 1);
+        }
+      } catch (err) {
+        console.error('Error deleting comment:', err);
+        alert('Failed to delete comment');
+      }
     }
 
     // Close conversation menu when clicking outside
