@@ -938,8 +938,10 @@
         body: JSON.stringify({})
       });
 
-      if (data) {
+      if (data && !data.error) {
         loadConversations();
+      } else if (data && data.error) {
+        alert('Failed to cancel request: ' + data.error);
       }
     }
 
@@ -1346,7 +1348,7 @@
       const button = event.target.closest('button');
       if (!button) return;
 
-      const userId = button.getAttribute('data-user-id');
+      const userId = parseInt(button.getAttribute('data-user-id'), 10);
       const username = button.getAttribute('data-username');
       const originalText = button.textContent;
 
