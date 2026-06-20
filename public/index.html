@@ -302,6 +302,7 @@
       <button id="backBtn" class="text-sm text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 hidden transition">← Back</button>
       <h1 id="headerTitle" class="text-lg font-semibold flex-1">Guardian</h1>
       <div id="headerRight" class="text-sm text-zinc-600 dark:text-zinc-500 relative">
+        <button id="messageHistoryBtn" class="hidden text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare mr-3" title="Message history" onclick="openMessageHistory()">📜</button>
         <button id="conversationMenuBtn" class="hidden text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare" title="Conversation options" onclick="toggleConversationMenu(event)">⋯</button>
         <div id="conversationMenuDropdown" class="hidden absolute right-0 mt-2 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg shadow-lg z-50 min-w-40">
           <button id="addContactMenuBtn" onclick="toggleAddContactButton()" class="menu-item text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 w-full text-left">Add Contact</button>
@@ -654,6 +655,53 @@
     </div>
   </div>
 
+  <!-- Manage Group Members Modal -->
+  <div id="manageGroupMembersModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-2xl max-h-[90vh] flex flex-col">
+      <div class="p-6 border-b border-zinc-300 dark:border-zinc-700 flex justify-between items-center">
+        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Manage Group Members</h2>
+        <button onclick="closeManageGroupMembersModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
+      </div>
+      <div class="flex-1 overflow-hidden flex flex-col">
+        <div class="flex-1 overflow-y-auto p-6 space-y-4">
+          <div>
+            <h3 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-3">Members</h3>
+            <div id="groupMembersListContainer" class="space-y-2">
+              <div class="text-sm text-zinc-600 dark:text-zinc-400">Loading members...</div>
+            </div>
+          </div>
+          <div class="border-t border-zinc-300 dark:border-zinc-700 pt-4">
+            <h3 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-3">Add Members</h3>
+            <div class="space-y-3">
+              <input id="memberSearchInput" type="text" placeholder="Search by username or wallet address..." class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+              <div id="memberSearchResultsContainer" class="space-y-2"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="p-6 border-t border-zinc-300 dark:border-zinc-700">
+        <button onclick="closeManageGroupMembersModal()" class="w-full px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Message History Modal -->
+  <div id="messageHistoryModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-2xl max-h-[90vh] flex flex-col">
+      <div class="p-6 border-b border-zinc-300 dark:border-zinc-700 flex justify-between items-center">
+        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Message History</h2>
+        <button onclick="closeMessageHistoryModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
+      </div>
+      <div id="messageHistoryList" class="flex-1 overflow-y-auto p-6 space-y-3">
+        <div class="text-center text-zinc-600 dark:text-zinc-400 py-8">Loading messages...</div>
+      </div>
+      <div class="p-6 border-t border-zinc-300 dark:border-zinc-700 space-y-3">
+        <button id="loadMoreMessagesBtn" onclick="loadMoreMessages()" class="w-full px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100 text-sm">Load More</button>
+        <button onclick="closeMessageHistoryModal()" class="w-full px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Close</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token') || '';
@@ -674,6 +722,11 @@
     let activeMessagesTab = 'direct';
     let currentGroupId = null;
     let currentGroupContextMenuId = null;
+
+    // Message history state
+    let messageHistoryOldestTimestamp = null;
+    let messageHistoryGroupId = null;
+    let messageHistoryHasMore = true;
 
     // Settings functions
     let currentNetwork = 'testnet';
@@ -1191,6 +1244,8 @@
 
       document.getElementById('backBtn').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
+      document.getElementById('conversationMenuBtn').classList.add('hidden');
+      document.getElementById('messageHistoryBtn').classList.remove('hidden');
 
       showChatView();
       loadGroupMessages(groupId);
@@ -1295,16 +1350,124 @@
 
     // View group info
     function viewGroupInfo() {
-      // TODO: Implement view group info modal
-      alert('View Group Info - Coming soon');
+      apiCall(`/api/groups/${currentGroupContextMenuId}`).then(groupData => {
+        if (groupData && !groupData.error) {
+          const memberList = groupData.members.map(m => `${m.username} ${m.role === 'creator' ? '(Creator)' : ''}`).join(', ');
+          alert(`${groupData.name}\n\nMembers: ${memberList}`);
+        }
+      });
       document.getElementById('groupContextMenu').classList.add('hidden');
     }
 
     // Manage group members
-    function manageGroupMembers() {
-      // TODO: Implement manage members modal
-      alert('Manage Members - Coming soon');
+    async function manageGroupMembers() {
+      if (!currentGroupContextMenuId) return;
       document.getElementById('groupContextMenu').classList.add('hidden');
+
+      const groupData = await apiCall(`/api/groups/${currentGroupContextMenuId}`);
+      if (!groupData || groupData.error) return;
+
+      const isCreator = groupData.creatorId === currentUser.id;
+      const modal = document.getElementById('manageGroupMembersModal');
+      const membersContainer = document.getElementById('groupMembersListContainer');
+
+      // Render current members
+      const memberHtml = groupData.members.map(member => {
+        const roleLabel = member.role === 'creator' ? 'Creator' : 'Member';
+        const canRemove = isCreator && member.userId !== groupData.creatorId;
+        const removeBtn = canRemove ? `<button onclick="removeMemberFromGroup(${currentGroupContextMenuId}, ${member.userId})" class="px-2 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded">Remove</button>` : '';
+        return `
+          <div class="flex justify-between items-center p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
+            <div>
+              <div class="text-sm font-medium text-zinc-900 dark:text-zinc-100">${member.username}</div>
+              <div class="text-xs text-zinc-600 dark:text-zinc-400">${roleLabel}</div>
+            </div>
+            ${removeBtn}
+          </div>
+        `;
+      }).join('');
+
+      membersContainer.innerHTML = memberHtml || '<div class="text-sm text-zinc-600 dark:text-zinc-400">No members</div>';
+
+      // Setup search if creator
+      if (isCreator) {
+        const searchInput = document.getElementById('memberSearchInput');
+        const resultsContainer = document.getElementById('memberSearchResultsContainer');
+        let searchTimeout;
+
+        searchInput.addEventListener('input', async (e) => {
+          clearTimeout(searchTimeout);
+          const query = e.target.value.trim();
+          resultsContainer.innerHTML = '';
+          if (!query) return;
+
+          resultsContainer.innerHTML = '<div class="text-sm text-zinc-600 dark:text-zinc-400">Searching...</div>';
+          searchTimeout = setTimeout(async () => {
+            const results = await apiCall(`/api/search/users?q=${encodeURIComponent(query)}`);
+            if (!results || results.error) {
+              resultsContainer.innerHTML = '<div class="text-sm text-red-600 dark:text-red-400">Search failed</div>';
+              return;
+            }
+
+            const existingIds = new Set(groupData.members.map(m => m.userId));
+            const users = results.users || [];
+            const filtered = users.filter(u => !existingIds.has(u.id));
+
+            if (filtered.length === 0) {
+              resultsContainer.innerHTML = '<div class="text-sm text-zinc-600 dark:text-zinc-400">No users found or already members</div>';
+              return;
+            }
+
+            const resultHtml = filtered.map(user => `
+              <div class="flex justify-between items-center p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
+                <div>
+                  <div class="text-sm font-medium text-zinc-900 dark:text-zinc-100">${user.username}</div>
+                  <div class="text-xs text-zinc-600 dark:text-zinc-400">${user.usernode_pubkey ? user.usernode_pubkey.substring(0, 14) + '…' : 'No wallet'}</div>
+                </div>
+                <button onclick="addMemberToGroup(${currentGroupContextMenuId}, ${user.id})" class="px-2 py-1 text-xs bg-cyan-600 hover:bg-cyan-700 text-white rounded">Add</button>
+              </div>
+            `).join('');
+
+            resultsContainer.innerHTML = resultHtml;
+          }, 500);
+        });
+      } else {
+        document.getElementById('memberSearchInput').disabled = true;
+        document.getElementById('memberSearchInput').placeholder = 'Only group creator can add members';
+      }
+
+      modal.classList.remove('hidden');
+    }
+
+    async function addMemberToGroup(groupId, userId) {
+      const result = await apiCall(`/api/groups/${groupId}/members`, {
+        method: 'POST',
+        body: JSON.stringify({ userIds: [userId] })
+      });
+
+      if (result && !result.error) {
+        await manageGroupMembers();
+      } else {
+        alert('Failed to add member');
+      }
+    }
+
+    async function removeMemberFromGroup(groupId, userId) {
+      if (!confirm('Remove this member from the group?')) return;
+
+      const result = await apiCall(`/api/groups/${groupId}/members/${userId}`, {
+        method: 'DELETE'
+      });
+
+      if (result && !result.error) {
+        await manageGroupMembers();
+      } else {
+        alert('Failed to remove member');
+      }
+    }
+
+    function closeManageGroupMembersModal() {
+      document.getElementById('manageGroupMembersModal').classList.add('hidden');
     }
 
     // Rename group
@@ -1325,21 +1488,26 @@
     }
 
     // Leave group
-    function leaveGroup() {
+    async function leaveGroup() {
       if (!currentGroupContextMenuId) return;
-      if (confirm('Are you sure you want to leave this group?')) {
-        apiCall(`/api/groups/${currentGroupContextMenuId}/leave`, {
-          method: 'POST',
-          body: JSON.stringify({})
-        }).then(data => {
-          if (data) {
-            loadGroups();
-            document.getElementById('groupContextMenu').classList.add('hidden');
-            if (currentGroupId === currentGroupContextMenuId) {
-              showConversationsView();
-            }
-          }
-        });
+
+      // Fetch group data to show group name in confirmation
+      const groupData = await apiCall(`/api/groups/${currentGroupContextMenuId}`);
+      const groupName = groupData ? groupData.name : 'this group';
+
+      if (!confirm(`Leave "${groupName}"? You will no longer receive messages.`)) return;
+
+      const data = await apiCall(`/api/groups/${currentGroupContextMenuId}/leave`, {
+        method: 'POST',
+        body: JSON.stringify({})
+      });
+
+      if (data && !data.error) {
+        loadGroups();
+        document.getElementById('groupContextMenu').classList.add('hidden');
+        if (currentGroupId === currentGroupContextMenuId) {
+          showConversationsView();
+        }
       }
     }
 
@@ -1378,6 +1546,79 @@
       return Math.floor(diff / 86400000) + 'd';
     }
 
+    // Message history functions
+    async function openMessageHistory() {
+      if (!currentGroupId) return;
+      messageHistoryGroupId = currentGroupId;
+      messageHistoryOldestTimestamp = null;
+      messageHistoryHasMore = true;
+
+      const modal = document.getElementById('messageHistoryModal');
+      modal.classList.remove('hidden');
+
+      await loadMoreMessages();
+    }
+
+    async function loadMoreMessages() {
+      if (!messageHistoryGroupId) return;
+
+      const endpoint = messageHistoryOldestTimestamp
+        ? `/api/groups/${messageHistoryGroupId}/messages?limit=50&before=${messageHistoryOldestTimestamp}`
+        : `/api/groups/${messageHistoryGroupId}/messages?limit=50`;
+
+      const data = await apiCall(endpoint);
+      if (!data || data.error) {
+        document.getElementById('messageHistoryList').innerHTML = '<div class="text-center text-red-600 dark:text-red-400">Failed to load messages</div>';
+        return;
+      }
+
+      messageHistoryHasMore = data.hasMore || false;
+      const loadMoreBtn = document.getElementById('loadMoreMessagesBtn');
+      loadMoreBtn.style.display = messageHistoryHasMore ? 'block' : 'none';
+
+      if (data.messages.length > 0 && data.messages.length > 0) {
+        messageHistoryOldestTimestamp = data.messages[0].createdAt;
+      }
+
+      const list = document.getElementById('messageHistoryList');
+      let historyHtml = '';
+
+      // Group messages by date
+      const messagesByDate = {};
+      data.messages.forEach(msg => {
+        const date = new Date(msg.createdAt).toLocaleDateString();
+        if (!messagesByDate[date]) messagesByDate[date] = [];
+        messagesByDate[date].push(msg);
+      });
+
+      // Render messages grouped by date
+      const sortedDates = Object.keys(messagesByDate).sort((a, b) => new Date(a) - new Date(b));
+      sortedDates.forEach(date => {
+        historyHtml += `<div class="text-center py-2 text-xs text-zinc-600 dark:text-zinc-400">${date}</div>`;
+        messagesByDate[date].forEach(msg => {
+          const msgHtml = renderMessage(msg);
+          if (msgHtml) historyHtml += msgHtml;
+        });
+      });
+
+      if (messageHistoryOldestTimestamp) {
+        // Append to existing history
+        list.innerHTML += historyHtml;
+      } else {
+        // Initial load
+        list.innerHTML = historyHtml || '<div class="text-center text-zinc-600 dark:text-zinc-400 py-8">No messages</div>';
+      }
+
+      // Scroll to top
+      list.scrollTop = 0;
+    }
+
+    function closeMessageHistoryModal() {
+      document.getElementById('messageHistoryModal').classList.add('hidden');
+      messageHistoryGroupId = null;
+      messageHistoryOldestTimestamp = null;
+    }
+
     async function openConversation(convId, otherId, username) {
       currentConvId = convId;
       currentOtherId = otherId;
@@ -1385,6 +1626,7 @@
       document.getElementById('headerTitle').textContent = username + ' ✓';
       document.getElementById('backBtn').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
+      document.getElementById('messageHistoryBtn').classList.add('hidden');
 
       // Close conversation menu dropdown
       document.getElementById('conversationMenuDropdown').classList.add('hidden');
