@@ -885,7 +885,20 @@
         return;
       }
 
-      list.innerHTML = data.messages.map(msg => renderMessage(msg)).join('');
+      const processedMessages = data.messages.map(msg => {
+        let content = msg.content;
+        if (typeof content === 'string') {
+          try {
+            content = JSON.parse(content);
+          } catch (e) {
+            console.error('Failed to parse message content:', e, 'raw:', content);
+            content = {};
+          }
+        }
+        return { ...msg, content };
+      });
+
+      list.innerHTML = processedMessages.map(msg => renderMessage(msg)).join('');
       list.scrollTop = list.scrollHeight;
 
       await apiCall(`/api/conversations/${currentConvId}/read`, {
@@ -895,6 +908,8 @@
     }
 
     function renderMessage(msg) {
+      if (!msg || !msg.content) return '';
+
       const isOwn = msg.senderId === currentUser.id;
       const baseClass = isOwn ? 'ml-auto bg-cyan-600 dark:bg-cyan-600 text-white' : 'mr-auto bg-zinc-200 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100';
       const alignClass = isOwn ? 'justify-end' : 'justify-start';
@@ -904,8 +919,8 @@
         return `
           <div class="flex ${alignClass}">
             <div class="max-w-xs px-4 py-2 rounded-2xl ${baseClass} message-bubble">
-              <div class="text-xs opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'} mb-1">${msg.senderUsername}</div>
-              <div>${msg.content.text}</div>
+              <div class="text-xs opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'} mb-1">${msg.senderUsername || 'Unknown'}</div>
+              <div>${msg.content.text || '[Message content unavailable]'}</div>
               <div class="text-xs mt-2 opacity-70">${formatTime(new Date(msg.createdAt))}</div>
               ${blockchainStatusHtml}
             </div>
@@ -917,8 +932,8 @@
         return `
           <div class="flex ${alignClass}">
             <div class="max-w-xs rounded-2xl overflow-hidden ${baseClass}">
-              <img src="${msg.content.imageUrl}" alt="Message image" class="max-w-xs cursor-pointer hover:opacity-80 transition" onclick="showLightbox('${msg.content.imageUrl}')">
-              <div class="text-xs px-4 py-2 opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'}">${msg.senderUsername}</div>
+              <img src="${msg.content.imageUrl || ''}" alt="Message image" class="max-w-xs cursor-pointer hover:opacity-80 transition" onclick="showLightbox('${msg.content.imageUrl || ''}')">
+              <div class="text-xs px-4 py-2 opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'}">${msg.senderUsername || 'Unknown'}</div>
             </div>
           </div>
         `;
@@ -931,7 +946,7 @@
           <div class="flex ${alignClass}">
             <div class="max-w-xs px-4 py-2 rounded-2xl ${baseClass} border-2 border-yellow-500/40 message-bubble">
               <div class="text-xs mb-1 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'}">💰 Token Transfer</div>
-              <div class="font-bold text-lg">${c.amount} tokens</div>
+              <div class="font-bold text-lg">${c.amount || '0'} tokens</div>
               <div class="text-xs mt-1 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'}">${c.memo || 'No memo'}</div>
               <div class="text-xs mt-2 font-medium">${c.status === 'confirmed' ? '✓ Confirmed' : '⏳ Pending'}</div>
               <div class="text-xs mt-1 opacity-70">${formatTime(new Date(msg.createdAt))}</div>

@@ -322,16 +322,27 @@ app.get('/api/conversations/:convId', async (req, res) => {
     `, [convId, before, userId, limit]);
 
     messages.reverse();
-    const msgList = messages.map(m => ({
-      id: m.id,
-      senderId: m.sender_id,
-      senderUsername: m.sender_username,
-      type: m.type,
-      content: m.content,
-      createdAt: m.created_at,
-      blockchainRecorded: m.blockchain_recorded,
-      blockchainAuditLogId: m.blockchain_audit_log_id,
-    }));
+    const msgList = messages.map(m => {
+      let content = m.content;
+      if (typeof content === 'string') {
+        try {
+          content = JSON.parse(content);
+        } catch (e) {
+          console.error('Failed to parse message content:', e);
+          content = {};
+        }
+      }
+      return {
+        id: m.id,
+        senderId: m.sender_id,
+        senderUsername: m.sender_username,
+        type: m.type,
+        content: content,
+        createdAt: m.created_at,
+        blockchainRecorded: m.blockchain_recorded,
+        blockchainAuditLogId: m.blockchain_audit_log_id,
+      };
+    });
 
     res.json({ messages: msgList, hasMore: messages.length === limit });
   } catch (err) {
