@@ -1190,9 +1190,16 @@ app.get('/api/search/users', async (req, res) => {
     const { rows } = await pool.query(`
       SELECT id, username, verified_at, usernode_pubkey
       FROM users
-      WHERE username ILIKE $1
+      WHERE username ILIKE $1 OR usernode_pubkey ILIKE $2
+      ORDER BY
+        CASE
+          WHEN username = $3 OR usernode_pubkey = $4 THEN 0
+          WHEN username ILIKE $5 OR usernode_pubkey ILIKE $6 THEN 1
+          ELSE 2
+        END,
+        username ASC
       LIMIT 20
-    `, ['%' + q + '%']);
+    `, ['%' + q + '%', '%' + q + '%', q, q, q + '%', q + '%']);
 
     const users = rows.map(r => ({
       id: r.id,
