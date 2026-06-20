@@ -770,7 +770,7 @@ app.post('/api/conversation-requests', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const { recipientId } = req.body;
+    const recipientId = parseInt(req.body.recipientId, 10);
     const senderId = req.user.id;
 
     if (!recipientId || recipientId === senderId) {
@@ -1041,7 +1041,7 @@ app.post('/api/conversation-requests/:requestId/cancel', async (req, res) => {
       requestId: requestId,
     });
   } catch (err) {
-    console.error(err);
+    console.error('Error cancelling conversation request:', err);
     res.status(500).json({ error: err.message });
   }
 });
