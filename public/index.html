@@ -1139,14 +1139,118 @@
       const lowerQuery = query.toLowerCase();
       return allContacts.filter(contact => {
         const wallet = (contact.usernode_pubkey || '').toLowerCase();
-        return wallet.includes(lowerQuery);
+        const username = (contact.username || '').toLowerCase();
+        return wallet.includes(lowerQuery) || username.includes(lowerQuery);
       });
     }
 
-    function handleContactSearch(event) {
-      const query = event.target.value;
-      const filtered = filterContacts(query);
-      renderContactsList(filtered);
+    async function handleContactSearch(event) {
+      const query = event.target.value.trim();
+
+      if (!query) {
+        renderContactsList(allContacts);
+        return;
+      }
+
+      if (query.length < 2) {
+        renderContactsList([]);
+        return;
+      }
+
+      const searchData = await apiCall(`/api/search/users?q=${encodeURIComponent(query)}`);
+      if (!searchData || searchData.error) {
+        renderContactsList([]);
+        return;
+      }
+
+      const searchResults = searchData.users || [];
+      const savedContactIds = new Set(allContacts.map(c => c.userId));
+
+      const merged = [];
+      const addedIds = new Set();
+
+      for (const result of searchResults) {
+        if (savedContactIds.has(result.id)) {
+          const savedContact = allContacts.find(c => c.userId === result.id);
+          merged.push(savedContact);
+          addedIds.add(result.id);
+        }
+      }
+
+      for (const result of searchResults) {
+        if (!addedIds.has(result.id)) {
+          merged.push({
+            userId: result.id,
+            username: result.username,
+            usernode_pubkey: result.usernode_pubkey,
+            verified: result.verified,
+            avatar_url: result.avatar_url,
+            isSearchResult: true,
+            id: undefined
+          });
+        }
+      }
+
+      renderContactsListWithResults(merged, query);
+    }
+
+    function renderContactsListWithResults(results, query) {
+      const list = document.getElementById('contactsList');
+
+      if (!results || results.length === 0) {
+        list.innerHTML = '<div class="flex items-center justify-center h-full text-center space-y-4"><div class="text-zinc-600 dark:text-zinc-400"><p class="text-sm">No users found with that wallet address.</p></div></div>';
+        return;
+      }
+
+      list.innerHTML = results.map(item => {
+        const isSaved = !item.isSearchResult;
+        const displayName = item.nickname || item.username;
+        const wallet = item.usernode_pubkey || 'No wallet';
+
+        if (isSaved) {
+          return `
+            <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer" onclick="startConversationWithContact(${item.userId}, '${item.username}')">
+              <div class="flex justify-between items-start gap-2">
+                <div class="flex-1 min-w-0">
+                  <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${displayName} ${item.verified ? '<span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
+                  <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${wallet}</div>
+                </div>
+                <button onclick="event.stopPropagation(); showDeleteContactModal(${item.id}, '${displayName.replace(/'/g, "\\'")}')" class="text-zinc-600 dark:text-zinc-500 hover:text-red-600 dark:hover:text-red-400 text-sm transition">🗑️</button>
+              </div>
+            </div>
+          `;
+        } else {
+          return `
+            <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer" onclick="startConversationWithContact(${item.userId}, '${item.username}')">
+              <div class="flex justify-between items-start gap-2">
+                <div class="flex-1 min-w-0">
+                  <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${displayName} ${item.verified ? '<span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
+                  <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${wallet}</div>
+                </div>
+                <button onclick="event.stopPropagation(); addContactFromSearch(${item.userId}, '${item.username}')" class="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 text-sm transition">➕ Add</button>
+              </div>
+            </div>
+          `;
+        }
+      }).join('');
+    }
+
+    async function addContactFromSearch(userId, username) {
+      const data = await apiCall('/api/contacts/by-id', {
+        method: 'POST',
+        body: JSON.stringify({ user_id: userId, nickname: null })
+      });
+
+      if (data && !data.error) {
+        await loadContactsList();
+        const searchInput = document.getElementById('contactsSearchInput');
+        if (searchInput) {
+          const event = new Event('input');
+          searchInput.dispatchEvent(event);
+        }
+      } else {
+        alert('Failed to add contact: ' + (data?.error || 'Unknown error'));
+      }
     }
 
     async function startConversationWithContact(userId, username) {

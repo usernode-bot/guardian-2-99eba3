@@ -1501,6 +1501,13 @@ async function start() {
         VALUES ($1, $2, NULL, NOW())
         ON CONFLICT (user_id, contact_user_id) DO NOTHING
       `, [bob, alice]);
+
+      // Alice also has Charlie as a contact for testing wallet address search with saved contacts
+      await pool.query(`
+        INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
+        VALUES ($1, $2, NULL, NOW())
+        ON CONFLICT (user_id, contact_user_id) DO NOTHING
+      `, [alice, charlie]);
     }
 
     app.listen(port, () => console.log(`Listening on :${port}`));
