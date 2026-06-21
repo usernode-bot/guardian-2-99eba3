@@ -34,7 +34,36 @@
       }
     }
 
+    function restoreViewModeEarly() {
+      const allKeys = Object.keys(localStorage);
+      let viewMode = 'web';
+      for (const key of allKeys) {
+        if (key.startsWith('guardian_settings_')) {
+          try {
+            const settings = JSON.parse(localStorage.getItem(key));
+            viewMode = settings.view_mode || 'web';
+            break;
+          } catch (_) {}
+        }
+      }
+
+      const body = document.body;
+      if (body) {
+        body.classList.toggle('layout-mobile', viewMode === 'mobile');
+        body.classList.toggle('layout-web', viewMode === 'web');
+      } else {
+        document.addEventListener('DOMContentLoaded', function() {
+          const body = document.body;
+          if (body) {
+            body.classList.toggle('layout-mobile', viewMode === 'mobile');
+            body.classList.toggle('layout-web', viewMode === 'web');
+          }
+        });
+      }
+    }
+
     restoreThemeEarly();
+    restoreViewModeEarly();
   })();
   </script>
 
@@ -170,6 +199,145 @@
     .layout-compact #inputFooter { padding: 0.75rem; gap: 0.25rem; }
     .layout-compact nav.flex-1 { gap: 0.25rem; }
 
+    /* Mobile view mode */
+    .layout-mobile #sidebar {
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: 16rem;
+      height: 100%;
+      z-index: 40;
+      animation: slideInLeft 0.3s ease-out;
+    }
+
+    .layout-mobile #sidebarOverlay {
+      display: block !important;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 30;
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    .layout-mobile #content {
+      width: 100%;
+    }
+
+    .layout-mobile #messageList,
+    .layout-mobile #convList,
+    .layout-mobile #contactsList,
+    .layout-mobile #contactsView {
+      width: 100%;
+    }
+
+    .layout-mobile button {
+      min-height: 44px;
+      min-width: 44px;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes feedPostEnter {
+      from {
+        opacity: 0;
+      }
+      to {
+        opacity: 1;
+      }
+    }
+
+    .feed-post-enter {
+      animation: feedPostEnter 0.4s ease-out;
+    }
+
+    /* Feed mobile responsiveness */
+    @media (max-width: 639px) {
+      /* Feed header responsive */
+      #feedView .px-4.py-3 {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+      }
+
+      #feedView .px-4.py-3 h2 {
+        font-size: 0.8125rem;
+      }
+
+      /* Post composer responsive */
+      #feedView > div > div > .px-4.py-3 {
+        padding: 0.75rem;
+        gap: 0.375rem;
+      }
+
+      #feedView textarea {
+        padding: 0.5rem;
+        font-size: 0.875rem;
+      }
+
+      #feedView button[onclick="submitFeedPost()"] {
+        padding: 0.5rem 1rem;
+        font-size: 0.875rem;
+      }
+
+      /* Feed post cards responsive */
+      #feedList > div {
+        padding: 0.75rem;
+        margin: 0.5rem;
+        border-radius: 0.5rem;
+      }
+
+      /* Avatar sizing on mobile */
+      #feedList .flex.gap-3 > div:first-child {
+        width: 1.75rem;
+        height: 1.75rem;
+        min-width: 1.75rem;
+      }
+
+      /* Post author/timestamp gap */
+      #feedList .flex.items-center.gap-2 {
+        gap: 0.25rem;
+      }
+
+      #feedList .flex.items-center.gap-2 > span:nth-child(3) {
+        font-size: 0.7rem;
+      }
+
+      /* Post content spacing */
+      #feedList p {
+        margin-bottom: 0.5rem;
+      }
+
+      /* Link preview card responsive */
+      #feedList a[target="_blank"] {
+        padding: 0.5rem !important;
+      }
+
+      #feedList a[target="_blank"] > div {
+        gap: 0.5rem !important;
+      }
+
+      /* Link preview image on mobile */
+      #feedList img[alt="preview"] {
+        width: 3rem;
+        height: 3rem;
+      }
+
+      /* Remove hover states on touch devices */
+      @media (hover: none) {
+        #feedList > div {
+          background-color: transparent !important;
+          box-shadow: none !important;
+        }
+
+        #feedList > div:hover {
+          background-color: transparent !important;
+          box-shadow: none !important;
+        }
+      }
+    }
+
     .attachment-menu {
       position: absolute;
       background: white;
@@ -230,8 +398,17 @@
         </svg>
       </button>
       <button id="backBtn" class="text-sm text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 hidden transition">← Back</button>
-      <h1 id="headerTitle" class="text-lg font-semibold flex-1">Guardian</h1>
-      <div id="headerRight" class="text-sm text-zinc-600 dark:text-zinc-500 relative">
+      <div class="flex items-center gap-2">
+        <h1 id="headerTitle" class="text-lg font-semibold">Guardian</h1>
+        <div id="headerNetworkStatusContainer" class="relative group">
+          <span id="headerStatusDot" class="inline-block w-2 h-2 rounded-full bg-gray-400 transition-colors"></span>
+          <div class="absolute -bottom-6 left-0 px-2 py-1 bg-zinc-900 dark:bg-zinc-700 text-white dark:text-zinc-100 text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
+            <span id="headerStatusTooltip">Network Status</span>
+          </div>
+        </div>
+      </div>
+      <div id="headerRight" class="text-sm text-zinc-600 dark:text-zinc-500 relative flex flex-1 justify-end items-center gap-2">
+        <button id="messageHistoryBtn" class="hidden text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare mr-3" title="Message history" onclick="openMessageHistory()">📜</button>
         <button id="conversationMenuBtn" class="hidden text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare" title="Conversation options" onclick="toggleConversationMenu(event)">⋯</button>
         <div id="conversationMenuDropdown" class="hidden absolute right-0 mt-2 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg shadow-lg z-50 min-w-40">
           <button id="addContactMenuBtn" onclick="toggleAddContactButton()" class="menu-item text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 w-full text-left">Add Contact</button>
@@ -257,32 +434,40 @@
       </div>
 
       <nav class="flex-1 px-2 py-4 space-y-2">
-        <button onclick="showConversationsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300">
+        <button id="navMessagesBtn" onclick="showConversationsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300">
           <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
           </svg>
           Messages
         </button>
-        <button onclick="showContactsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
+        <button id="navFeedBtn" onclick="showFeedView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
+          <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v.756a3.5 3.5 0 015.618 1.401M12 8v8m-4-4h8" />
+          </svg>
+          Feed
+        </button>
+        <button id="navContactsBtn" onclick="showContactsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
           <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
           Contacts
         </button>
-        <button onclick="openSettingsPanel()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
-          <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-          Settings
-        </button>
       </nav>
 
-      <div id="sidebarUser" class="p-4 border-t border-zinc-200 dark:border-zinc-800 space-y-3">
-        <div>
-          <div class="text-sm text-zinc-600 dark:text-zinc-400">Logged in as</div>
-          <div id="sidebarUsername" class="font-medium text-cyan-600 dark:text-cyan-400 mt-1">Loading...</div>
-          <div id="sidebarWallet" class="text-xs text-zinc-600 dark:text-zinc-500 mt-1 break-all">Loading...</div>
+      <div id="sidebarUser" class="p-4 border-t border-zinc-200 dark:border-zinc-800">
+        <div class="flex items-start justify-between gap-2 mb-3">
+          <div class="flex-1 min-w-0">
+            <div class="text-sm text-zinc-600 dark:text-zinc-400">Logged in as</div>
+            <div id="sidebarUsername" class="font-medium text-cyan-600 dark:text-cyan-400 mt-1">Loading...</div>
+            <div id="sidebarWallet" class="text-xs text-zinc-600 dark:text-zinc-500 mt-1 break-all">Loading...</div>
+          </div>
+          <button id="navSettingsBtn" onclick="openSettingsPanel()" class="flex-shrink-0 text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300 transition relative group" title="Settings">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <span class="absolute bottom-full right-0 mb-1 px-2 py-1 bg-zinc-900 dark:bg-zinc-700 text-white dark:text-zinc-100 text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">Settings</span>
+          </button>
         </div>
         <button onclick="showShareContactModal()" class="w-full px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-sm text-zinc-900 dark:text-zinc-100">
           📤 Share Contact
@@ -292,8 +477,8 @@
 
     <!-- Settings Panel -->
     <div id="settingsPanel" class="hidden fixed left-0 top-0 w-64 h-full bg-zinc-50 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 z-40 flex flex-col overflow-y-auto">
-      <div class="p-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
-        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Settings</h2>
+      <div class="p-3 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+        <h2 class="text-base font-semibold text-zinc-900 dark:text-white">Settings</h2>
         <button onclick="closeSettingsPanel()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -301,11 +486,11 @@
         </button>
       </div>
 
-      <div class="flex-1 px-4 py-4 space-y-4">
+      <div class="flex-1 px-3 py-2 space-y-3">
         <!-- Theme -->
         <div class="space-y-2">
           <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Dark Mode</label>
-          <select id="themeSelect" onchange="applyTheme(this.value)" class="w-full px-3 py-2 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500">
+          <select id="themeSelect" onchange="applyTheme(this.value)" class="w-full px-2 py-1.5 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500">
             <option value="system">System</option>
             <option value="dark">Dark</option>
             <option value="light">Light</option>
@@ -316,25 +501,81 @@
         <div class="space-y-2">
           <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">App Layout</label>
           <div class="flex gap-2">
-            <button id="layoutComfort" onclick="applyLayout('comfortable')" class="flex-1 px-3 py-2 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-cyan-600 dark:border-cyan-500 hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Comfortable</button>
-            <button id="layoutCompact" onclick="applyLayout('compact')" class="flex-1 px-3 py-2 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-transparent hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Compact</button>
+            <button id="layoutComfort" onclick="applyLayout('comfortable')" class="flex-1 px-2 py-1.5 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-cyan-600 dark:border-cyan-500 hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Comfortable</button>
+            <button id="layoutCompact" onclick="applyLayout('compact')" class="flex-1 px-2 py-1.5 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-transparent hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Compact</button>
           </div>
         </div>
 
         <!-- Network -->
         <div class="space-y-2">
           <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Network</label>
-          <select id="networkSelect" onchange="applyNetwork(this.value)" class="w-full px-3 py-2 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500">
+          <select id="networkSelect" onchange="applyNetwork(this.value)" class="w-full px-2 py-1.5 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500">
             <option value="testnet">Testnet</option>
             <option value="mainnet">Mainnet</option>
           </select>
+        </div>
+
+        <!-- View Mode -->
+        <div class="space-y-2">
+          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">View Mode</label>
+          <div class="flex gap-2">
+            <button id="viewModeWeb" onclick="applyViewMode('web')" class="flex-1 px-2 py-1.5 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-cyan-600 dark:border-cyan-500 hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Web/Desktop</button>
+            <button id="viewModeMobile" onclick="applyViewMode('mobile')" class="flex-1 px-2 py-1.5 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-transparent hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Mobile</button>
+          </div>
+        </div>
+
+        <!-- Network Status Accordion -->
+        <div id="networkStatusSection" class="space-y-2 border-t border-zinc-200 dark:border-zinc-700 pt-3 mt-3">
+          <button id="networkStatusToggle" onclick="toggleNetworkStatusAccordion()" class="w-full flex items-center justify-between px-0 py-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
+            <span>Network Status</span>
+            <svg id="networkStatusArrow" class="w-5 h-5 transition-transform duration-200 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+            </svg>
+          </button>
+          <div id="networkStatusContent" class="hidden pt-2">
+            <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-xs text-zinc-700 dark:text-zinc-400">
+              <span class="text-left font-medium text-zinc-600 dark:text-zinc-500">Status</span>
+              <div class="flex items-center gap-2 text-zinc-900 dark:text-zinc-100">
+                <span id="networkStatusDot" class="inline-block w-2 h-2 rounded-full bg-gray-400"></span>
+                <span id="networkStatusText">—</span>
+              </div>
+
+              <span class="text-left font-medium text-zinc-600 dark:text-zinc-500">Node</span>
+              <span id="networkNodeText" class="text-zinc-900 dark:text-zinc-100">—</span>
+
+              <span class="text-left font-medium text-zinc-600 dark:text-zinc-500">Latency</span>
+              <span id="networkLatencyText" class="text-zinc-900 dark:text-zinc-100">—</span>
+
+              <span class="text-left font-medium text-zinc-600 dark:text-zinc-500">Last Sync</span>
+              <span id="networkLastSyncText" class="text-zinc-900 dark:text-zinc-100">—</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
     <!-- Main content -->
     <div id="content" class="flex-1 overflow-hidden flex flex-col">
-      <!-- Conversations List (initial view) -->
+      <!-- Messages View with Tabs -->
+      <div id="messagesView" class="hidden flex flex-col flex-1 overflow-hidden">
+        <!-- Tab Navigation -->
+        <div class="bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 flex">
+          <button id="directTab" onclick="switchMessagesTab('direct')" class="flex-1 px-4 py-3 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 border-b-2 border-transparent transition border-b-2 border-cyan-600 text-zinc-900 dark:text-zinc-100">Direct</button>
+          <button id="groupsTab" onclick="switchMessagesTab('groups')" class="flex-1 px-4 py-3 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 border-b-2 border-transparent transition">Groups</button>
+        </div>
+
+        <!-- Direct Messages List -->
+        <div id="directList" class="flex-1 overflow-y-auto">
+          <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading conversations...</div>
+        </div>
+
+        <!-- Groups List -->
+        <div id="groupsList" class="hidden flex-1 overflow-y-auto relative">
+          <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading groups...</div>
+        </div>
+      </div>
+
+      <!-- Conversations List (initial view) - DEPRECATED, kept for backward compatibility -->
       <div id="conversationsView" class="flex flex-col flex-1 overflow-hidden">
         <div id="convList" class="flex-1 overflow-y-auto">
           <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading conversations...</div>
@@ -344,6 +585,21 @@
       <!-- Chat View -->
       <div id="chatView" class="hidden flex flex-col flex-1 overflow-hidden">
         <div id="messageList" class="flex-1 overflow-y-auto space-y-3 p-4"></div>
+      </div>
+
+      <!-- Feed View -->
+      <div id="feedView" class="hidden flex flex-col flex-1 overflow-hidden">
+        <div class="flex-1 flex flex-col overflow-hidden">
+          <!-- Post Composer -->
+          <div class="px-4 py-3 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 space-y-2">
+            <textarea id="feedTextInput" placeholder="Share something..." class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition resize-none" rows="6"></textarea>
+            <button onclick="submitFeedPost()" class="w-full px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium min-h-10">Post</button>
+          </div>
+          <!-- Feed Posts List -->
+          <div id="feedList" class="flex-1 overflow-y-auto divide-y divide-zinc-200 dark:divide-zinc-800">
+            <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading feed...</div>
+          </div>
+        </div>
       </div>
 
       <!-- Contacts View (Saved Contacts only) -->
@@ -505,6 +761,103 @@
     </div>
   </div>
 
+
+  <!-- Group Context Menu -->
+  <div id="groupContextMenu" class="hidden fixed z-50 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg shadow-lg min-w-40">
+    <button onclick="viewGroupInfo()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">View Group Info</button>
+    <button onclick="manageGroupMembers()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">Manage Members</button>
+    <button id="renameGroupBtn" onclick="renameGroup()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">Rename Group</button>
+    <button onclick="leaveGroup()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">Leave Group</button>
+    <button id="deleteGroupBtn" onclick="deleteGroup()" class="menu-item w-full text-left px-4 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">Delete Group</button>
+  </div>
+
+  <!-- Create Group Modal -->
+  <div id="createGroupModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
+      <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Create Group</h2>
+      <input id="groupNameInput" type="text" placeholder="Group name" maxlength="255" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+      <textarea id="groupDescInput" placeholder="Description (optional)" maxlength="1000" rows="3" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"></textarea>
+      <div class="flex gap-2">
+        <button onclick="closeCreateGroupModal()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
+        <button onclick="createGroup()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Welcome Screen Modal -->
+  <div id="welcomeModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-8 w-full max-w-md space-y-6">
+      <div>
+        <h1 class="text-3xl font-bold text-zinc-900 dark:text-white mb-2">Welcome to Guardian</h1>
+        <p class="text-zinc-600 dark:text-zinc-400">A secure messenger for direct communication with verified contacts on the blockchain.</p>
+      </div>
+      <div class="space-y-3 text-sm text-zinc-700 dark:text-zinc-300">
+        <div class="flex items-start gap-3">
+          <span class="text-lg">💬</span>
+          <span>Send encrypted messages with your contacts</span>
+        </div>
+        <div class="flex items-start gap-3">
+          <span class="text-lg">📤</span>
+          <span>Share your contact via QR code or link</span>
+        </div>
+        <div class="flex items-start gap-3">
+          <span class="text-lg">💰</span>
+          <span>Transfer tokens directly in conversations</span>
+        </div>
+      </div>
+      <button onclick="dismissWelcome()" class="w-full px-4 py-3 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">
+        Get Started
+      </button>
+    </div>
+  </div>
+
+  <!-- Manage Group Members Modal -->
+  <div id="manageGroupMembersModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-2xl max-h-[90vh] flex flex-col">
+      <div class="p-6 border-b border-zinc-300 dark:border-zinc-700 flex justify-between items-center">
+        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Manage Group Members</h2>
+        <button onclick="closeManageGroupMembersModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
+      </div>
+      <div class="flex-1 overflow-hidden flex flex-col">
+        <div class="flex-1 overflow-y-auto p-6 space-y-4">
+          <div>
+            <h3 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-3">Members</h3>
+            <div id="groupMembersListContainer" class="space-y-2">
+              <div class="text-sm text-zinc-600 dark:text-zinc-400">Loading members...</div>
+            </div>
+          </div>
+          <div class="border-t border-zinc-300 dark:border-zinc-700 pt-4">
+            <h3 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-3">Add Members</h3>
+            <div class="space-y-3">
+              <input id="memberSearchInput" type="text" placeholder="Search by username or wallet address..." class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+              <div id="memberSearchResultsContainer" class="space-y-2"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="p-6 border-t border-zinc-300 dark:border-zinc-700">
+        <button onclick="closeManageGroupMembersModal()" class="w-full px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Message History Modal -->
+  <div id="messageHistoryModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-2xl max-h-[90vh] flex flex-col">
+      <div class="p-6 border-b border-zinc-300 dark:border-zinc-700 flex justify-between items-center">
+        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Message History</h2>
+        <button onclick="closeMessageHistoryModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
+      </div>
+      <div id="messageHistoryList" class="flex-1 overflow-y-auto p-6 space-y-3">
+        <div class="text-center text-zinc-600 dark:text-zinc-400 py-8">Loading messages...</div>
+      </div>
+      <div class="p-6 border-t border-zinc-300 dark:border-zinc-700 space-y-3">
+        <button id="loadMoreMessagesBtn" onclick="loadMoreMessages()" class="w-full px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100 text-sm">Load More</button>
+        <button onclick="closeMessageHistoryModal()" class="w-full px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Close</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token') || '';
@@ -520,9 +873,24 @@
     let conversationsPollInterval = null;
     let sidebarOpen = false;
     let pendingDeleteContactId = null;
+    let currentActiveView = 'messages';
+
+    // Messages tab state
+    let activeMessagesTab = 'direct';
+    let currentGroupId = null;
+    let currentGroupContextMenuId = null;
+
+    // Message history state
+    let messageHistoryOldestTimestamp = null;
+    let messageHistoryGroupId = null;
+    let messageHistoryHasMore = true;
 
     // Settings functions
     let currentNetwork = 'testnet';
+
+    // Network status polling
+    let networkStatusPollInterval = null;
+    let networkStatus = { status: 'unknown', node: null, latency: null, lastSyncAt: null };
 
     function loadSettings() {
       if (!currentUser) return {};
@@ -531,6 +899,7 @@
         theme: stored.theme || 'system',
         layout: stored.layout || 'comfortable',
         network: stored.network || 'testnet',
+        view_mode: stored.view_mode || 'web',
       };
     }
 
@@ -547,15 +916,147 @@
       const settings = loadSettings();
       applyTheme(settings.theme);
       applyLayout(settings.layout);
+      applyViewMode(settings.view_mode);
       currentNetwork = settings.network;
       document.getElementById('themeSelect').value = settings.theme;
       document.getElementById('networkSelect').value = settings.network;
       updateLayoutButtons(settings.layout);
+      updateViewModeButtons(settings.view_mode);
       window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
         if (loadSettings().theme === 'system') {
           applyTheme('system');
         }
       });
+    }
+
+    async function pollNetworkStatus() {
+      try {
+        const data = await apiCall('/api/usernode/status');
+        if (!data || data.error) {
+          networkStatus = { status: 'disconnected', node: null, latency: null, lastSyncAt: null, error: data?.error };
+        } else {
+          networkStatus = data;
+        }
+        updateNetworkStatusDisplay();
+      } catch (err) {
+        console.error('Error polling network status:', err);
+        networkStatus = { status: 'disconnected', error: err.message };
+      }
+    }
+
+    function updateNetworkStatusDisplay() {
+      const statusDot = document.getElementById('networkStatusDot');
+      const statusText = document.getElementById('networkStatusText');
+      const nodeText = document.getElementById('networkNodeText');
+      const latencyText = document.getElementById('networkLatencyText');
+      const lastSyncText = document.getElementById('networkLastSyncText');
+
+      const headerDot = document.getElementById('headerStatusDot');
+      const headerTooltip = document.getElementById('headerStatusTooltip');
+
+      if (!statusDot || !headerDot) return;
+
+      let dotColor = 'bg-gray-400';
+      let statusDisplay = '—';
+
+      if (networkStatus.status === 'connected') {
+        dotColor = 'bg-green-500';
+        statusDisplay = 'Connected';
+      } else if (networkStatus.status === 'connecting') {
+        dotColor = 'bg-yellow-500 animate-pulse';
+        statusDisplay = 'Connecting...';
+      } else if (networkStatus.status === 'disconnected') {
+        dotColor = 'bg-red-500';
+        statusDisplay = 'Disconnected';
+      }
+
+      statusDot.className = `inline-block w-2 h-2 rounded-full transition-colors ${dotColor}`;
+      headerDot.className = `inline-block w-2.5 h-2.5 rounded-full transition-colors ${dotColor}`;
+
+      statusText.textContent = statusDisplay;
+      nodeText.textContent = networkStatus.node || '—';
+      latencyText.textContent = networkStatus.latency ? `${networkStatus.latency}ms` : '—';
+
+      if (networkStatus.lastSyncAt) {
+        const lastSyncDate = new Date(networkStatus.lastSyncAt);
+        const nowDate = new Date();
+        const diffMs = nowDate - lastSyncDate;
+        const diffSec = Math.floor(diffMs / 1000);
+
+        if (diffSec < 5) {
+          lastSyncText.textContent = 'just now';
+        } else if (diffSec < 60) {
+          lastSyncText.textContent = `${diffSec}s ago`;
+        } else if (diffSec < 3600) {
+          const diffMin = Math.floor(diffSec / 60);
+          lastSyncText.textContent = `${diffMin}m ago`;
+        } else {
+          lastSyncText.textContent = lastSyncDate.toLocaleTimeString();
+        }
+      } else {
+        lastSyncText.textContent = '—';
+      }
+
+      let tooltipText = statusDisplay;
+      if (networkStatus.latency) tooltipText += ` • ${networkStatus.latency}ms`;
+      headerTooltip.textContent = tooltipText;
+    }
+
+    function scrollToNetworkStatus() {
+      const settingsPanel = document.getElementById('settingsPanel');
+      if (settingsPanel && !settingsPanel.classList.contains('hidden')) {
+        const networkSection = document.getElementById('networkStatusSection');
+        if (networkSection) {
+          networkSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      }
+    }
+
+    function startNetworkStatusPolling() {
+      if (networkStatusPollInterval) clearInterval(networkStatusPollInterval);
+      pollNetworkStatus();
+      networkStatusPollInterval = setInterval(pollNetworkStatus, 5000);
+    }
+
+    function stopNetworkStatusPolling() {
+      if (networkStatusPollInterval) clearInterval(networkStatusPollInterval);
+    }
+
+    function toggleNetworkStatusAccordion() {
+      const content = document.getElementById('networkStatusContent');
+      const arrow = document.getElementById('networkStatusArrow');
+      const isHidden = content.classList.contains('hidden');
+
+      if (isHidden) {
+        content.classList.remove('hidden');
+        arrow.style.transform = 'rotate(180deg)';
+      } else {
+        content.classList.add('hidden');
+        arrow.style.transform = 'rotate(0deg)';
+      }
+    }
+
+    function updateMenuHighlight(viewName) {
+      currentActiveView = viewName;
+      const buttons = {
+        'messages': document.getElementById('navMessagesBtn'),
+        'feed': document.getElementById('navFeedBtn'),
+        'contacts': document.getElementById('navContactsBtn'),
+        'settings': document.getElementById('navSettingsBtn')
+      };
+
+      Object.values(buttons).forEach(btn => {
+        if (btn) {
+          btn.classList.remove('text-cyan-600', 'dark:text-cyan-400', 'hover:text-cyan-700', 'dark:hover:text-cyan-300');
+          btn.classList.add('text-zinc-700', 'dark:text-zinc-400', 'hover:text-zinc-900', 'dark:hover:text-cyan-300');
+        }
+      });
+
+      const activeBtn = buttons[viewName];
+      if (activeBtn) {
+        activeBtn.classList.remove('text-zinc-700', 'dark:text-zinc-400', 'hover:text-zinc-900');
+        activeBtn.classList.add('text-cyan-600', 'dark:text-cyan-400', 'hover:text-cyan-700', 'dark:hover:text-cyan-300');
+      }
     }
 
     function applyTheme(theme) {
@@ -633,15 +1134,77 @@
       }
     }
 
+    async function applyViewMode(mode) {
+      if (!['web', 'mobile'].includes(mode)) {
+        console.error('Invalid view mode:', mode);
+        return;
+      }
+
+      const previousMode = loadSettings().view_mode;
+      try {
+        const response = await apiCall('/api/user/view-mode', {
+          method: 'PUT',
+          body: JSON.stringify({ viewMode: mode })
+        });
+
+        if (response && response.error) {
+          console.error('Failed to update view mode:', response.error);
+          updateViewModeButtons(previousMode);
+          return;
+        }
+
+        renderViewMode(mode);
+        const settings = loadSettings();
+        settings.view_mode = mode;
+        saveSettings(settings);
+        updateViewModeButtons(mode);
+      } catch (err) {
+        console.error('Error applying view mode:', err);
+        updateViewModeButtons(previousMode);
+      }
+    }
+
+    function renderViewMode(mode) {
+      document.body.classList.toggle('layout-mobile', mode === 'mobile');
+      document.body.classList.toggle('layout-web', mode === 'web');
+    }
+
+    function updateViewModeButtons(mode) {
+      const webBtn = document.getElementById('viewModeWeb');
+      const mobileBtn = document.getElementById('viewModeMobile');
+      if (mode === 'web') {
+        webBtn.classList.add('border-cyan-600', 'dark:border-cyan-500');
+        webBtn.classList.remove('border-transparent');
+        mobileBtn.classList.remove('border-cyan-600', 'dark:border-cyan-500');
+        mobileBtn.classList.add('border-transparent');
+      } else {
+        mobileBtn.classList.add('border-cyan-600', 'dark:border-cyan-500');
+        mobileBtn.classList.remove('border-transparent');
+        webBtn.classList.remove('border-cyan-600', 'dark:border-cyan-500');
+        webBtn.classList.add('border-transparent');
+      }
+    }
+
     function openSettingsPanel() {
+      updateMenuHighlight('settings');
+      document.getElementById('messagesView').classList.add('hidden');
+      document.getElementById('conversationsView').classList.add('hidden');
+      document.getElementById('chatView').classList.add('hidden');
+      document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('sidebar').classList.add('hidden');
       document.getElementById('settingsPanel').classList.remove('hidden');
+      document.getElementById('inputFooter').classList.add('hidden');
+      document.getElementById('headerTitle').textContent = 'Settings';
+      document.getElementById('backBtn').classList.remove('hidden');
+      document.getElementById('menuBtn').classList.add('hidden');
+      document.getElementById('conversationMenuBtn').classList.add('hidden');
       sidebarOpen = false;
     }
 
     function closeSettingsPanel() {
       document.getElementById('settingsPanel').classList.add('hidden');
       document.getElementById('sidebar').classList.remove('hidden');
+      showConversationsView();
     }
 
     async function apiCall(path, opts = {}) {
@@ -760,10 +1323,17 @@
       }
       currentUser = user;
       currentNetwork = user.network || 'testnet';
+      const viewMode = user.view_mode || 'web';
+      const settings = loadSettings();
+      settings.network = currentNetwork;
+      settings.view_mode = viewMode;
+      saveSettings(settings);
       document.getElementById('sidebarUsername').textContent = user.username + (user.verified ? ' ✓' : '');
       document.getElementById('sidebarWallet').textContent = user.usernode_pubkey || 'No wallet linked';
       initSettings();
-      loadConversations();
+      startNetworkStatusPolling();
+      showWelcome();
+      showConversationsView();
       setupEventListeners();
     }
 
@@ -771,6 +1341,7 @@
       document.getElementById('menuBtn').addEventListener('click', toggleSidebar);
       document.getElementById('backBtn').addEventListener('click', () => {
         currentConvId = null;
+        currentGroupId = null;
         showConversationsView();
       });
 
@@ -811,13 +1382,18 @@
           hideDeleteContactModal();
         }
       });
+
+      window.addEventListener('beforeunload', stopNetworkStatusPolling);
     }
 
     async function loadConversations() {
       const data = await apiCall('/api/conversations');
       if (!data) return;
 
-      const list = document.getElementById('convList');
+      // Support both old and new layout
+      const list = document.getElementById('directList') || document.getElementById('convList');
+      if (!list) return;
+
       const { active = [], pending = [], archived = [] } = data.conversations || {};
 
       if (active.length === 0 && pending.length === 0 && archived.length === 0) {
@@ -879,6 +1455,399 @@
       list.innerHTML = html;
     }
 
+    // Tab switching for Messages view
+    function switchMessagesTab(tab) {
+      activeMessagesTab = tab;
+      localStorage.setItem(`guardian_messages_tab_${currentUser.id}`, tab);
+
+      const directTab = document.getElementById('directTab');
+      const groupsTab = document.getElementById('groupsTab');
+      const directList = document.getElementById('directList');
+      const groupsList = document.getElementById('groupsList');
+
+      if (tab === 'direct') {
+        directTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
+        directTab.classList.remove('text-zinc-700', 'dark:text-zinc-300');
+        groupsTab.classList.remove('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
+        groupsTab.classList.add('text-zinc-700', 'dark:text-zinc-300');
+        directList.classList.remove('hidden');
+        groupsList.classList.add('hidden');
+        loadConversations();
+      } else {
+        groupsTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
+        groupsTab.classList.remove('text-zinc-700', 'dark:text-zinc-300');
+        directTab.classList.remove('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
+        directTab.classList.add('text-zinc-700', 'dark:text-zinc-300');
+        groupsList.classList.remove('hidden');
+        directList.classList.add('hidden');
+        loadGroups();
+      }
+    }
+
+    // Load groups list
+    async function loadGroups() {
+      const data = await apiCall('/api/groups');
+      if (!data || !data.groups) return;
+
+      const list = document.getElementById('groupsList');
+      if (!list) return;
+
+      if (data.groups.length === 0) {
+        list.innerHTML = '<div class="sticky top-0 z-10 bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 p-4"><button onclick="openCreateGroupModal()" class="w-full px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium text-sm">+ Create Group</button></div><div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No groups yet.<br><button onclick="openCreateGroupModal()" class="mt-2 text-cyan-600 dark:text-cyan-400 hover:underline">Create Group</button></div>';
+        return;
+      }
+
+      const groupsHtml = data.groups.map(group => {
+        const isActive = currentGroupId === group.id;
+        const activeClass = isActive ? 'border-l-4 border-cyan-600 bg-cyan-50 dark:bg-cyan-900/20' : '';
+        const lastMessage = group.lastMessage || 'No messages';
+        const lastTime = group.lastMessageAt ? formatTime(new Date(group.lastMessageAt)) : '';
+
+        return `
+          <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer transition border-b border-zinc-300 dark:border-zinc-800 ${activeClass}" onclick="openGroup(${group.id})" oncontextmenu="openGroupContextMenu(event, ${group.id})">
+            <div class="flex justify-between items-start gap-2">
+              <div class="flex-1 min-w-0">
+                <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${group.name}</div>
+                <div class="text-xs text-zinc-600 dark:text-zinc-400">${group.memberCount} members</div>
+                <div class="text-xs text-zinc-600 dark:text-zinc-400 truncate">${lastMessage}</div>
+              </div>
+              <div class="text-xs text-zinc-600 dark:text-zinc-500 text-right flex-shrink-0 flex items-center gap-1">
+                <span>${lastTime}</span>
+                <button onclick="event.stopPropagation(); openGroupContextMenu(event, ${group.id})" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare" title="Group options">⋯</button>
+                ${group.unreadCount > 0 ? `<div class="px-2 py-0.5 bg-cyan-600 rounded-full text-white text-xs">${group.unreadCount}</div>` : ''}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      const createButtonHtml = '<div class="sticky top-0 z-10 bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 p-4"><button onclick="openCreateGroupModal()" class="w-full px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium text-sm">+ Create Group</button></div>';
+
+      list.innerHTML = createButtonHtml + groupsHtml;
+    }
+
+    // Open a group
+    async function openGroup(groupId) {
+      currentGroupId = groupId;
+      currentConvId = null;
+      currentOtherId = null;
+
+      // Fetch group name for header
+      const groupData = await apiCall(`/api/groups/${groupId}`);
+      if (groupData) {
+        document.getElementById('headerTitle').textContent = groupData.name + ' ✓';
+      }
+
+      document.getElementById('backBtn').classList.remove('hidden');
+      document.getElementById('menuBtn').classList.add('hidden');
+      document.getElementById('conversationMenuBtn').classList.add('hidden');
+      document.getElementById('messageHistoryBtn').classList.remove('hidden');
+
+      showChatView();
+      loadGroupMessages(groupId);
+
+      if (pollInterval) clearInterval(pollInterval);
+      pollInterval = setInterval(() => loadGroupMessages(groupId), 2000);
+
+      if (window.matchMedia('(max-width: 768px)').matches) {
+        toggleSidebar();
+      }
+
+      loadGroups();
+    }
+
+    // Load group messages
+    async function loadGroupMessages(groupId) {
+      if (!currentGroupId) return;
+
+      const data = await apiCall(`/api/groups/${groupId}/messages?limit=50`);
+      if (!data) return;
+
+      const list = document.getElementById('messageList');
+
+      if (data.error) {
+        list.innerHTML = '<div class="text-center text-red-600 dark:text-red-400 py-8"><div class="text-sm">Failed to load group messages</div></div>';
+        return;
+      }
+
+      if (data.messages.length === 0) {
+        list.innerHTML = '<div class="text-center text-zinc-600 dark:text-zinc-500 py-4">No messages yet</div>';
+        return;
+      }
+
+      const wasAtBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 50;
+      list.innerHTML = data.messages.map(msg => renderMessage(msg)).join('');
+
+      if (wasAtBottom) {
+        list.scrollTop = list.scrollHeight;
+      }
+
+      // Mark as read
+      await apiCall(`/api/groups/${groupId}/read`, {
+        method: 'PUT',
+        body: JSON.stringify({ readUpTo: new Date().toISOString() })
+      });
+    }
+
+    // Open group context menu
+    function openGroupContextMenu(event, groupId) {
+      event.preventDefault();
+      currentGroupContextMenuId = groupId;
+
+      // Fetch group to check if user is creator
+      apiCall(`/api/groups/${groupId}`).then(groupData => {
+        const menu = document.getElementById('groupContextMenu');
+
+        // Show/hide creator-only buttons
+        const renameBtn = document.getElementById('renameGroupBtn');
+        const deleteBtn = document.getElementById('deleteGroupBtn');
+        const isCreator = groupData && groupData.creatorId === currentUser.id;
+
+        renameBtn.style.display = isCreator ? 'block' : 'none';
+        deleteBtn.style.display = isCreator ? 'block' : 'none';
+
+        // Position menu, accounting for viewport
+        let x = event.clientX;
+        let y = event.clientY;
+
+        menu.classList.remove('hidden');
+        menu.style.left = x + 'px';
+        menu.style.top = y + 'px';
+
+        // Check if menu goes off-screen and adjust
+        setTimeout(() => {
+          const rect = menu.getBoundingClientRect();
+          if (rect.right > window.innerWidth) {
+            menu.style.left = (x - rect.width) + 'px';
+          }
+          if (rect.bottom > window.innerHeight) {
+            menu.style.top = (y - rect.height) + 'px';
+          }
+        }, 0);
+      });
+    }
+
+    // Create group
+    async function createGroup() {
+      const name = document.getElementById('groupNameInput').value.trim();
+      const desc = document.getElementById('groupDescInput').value.trim();
+
+      if (!name) return alert('Group name is required');
+
+      const data = await apiCall('/api/groups', {
+        method: 'POST',
+        body: JSON.stringify({ name, description: desc || null })
+      });
+
+      if (data) {
+        closeCreateGroupModal();
+        loadGroups();
+      }
+    }
+
+    // Open create group modal
+    function openCreateGroupModal() {
+      document.getElementById('createGroupModal').classList.remove('hidden');
+      document.getElementById('groupNameInput').value = '';
+      document.getElementById('groupDescInput').value = '';
+    }
+
+    // Close create group modal
+    function closeCreateGroupModal() {
+      document.getElementById('createGroupModal').classList.add('hidden');
+      document.getElementById('groupNameInput').value = '';
+      document.getElementById('groupDescInput').value = '';
+    }
+
+    // View group info
+    function viewGroupInfo() {
+      apiCall(`/api/groups/${currentGroupContextMenuId}`).then(groupData => {
+        if (groupData && !groupData.error) {
+          const memberList = groupData.members.map(m => `${m.username} ${m.role === 'creator' ? '(Creator)' : ''}`).join(', ');
+          alert(`${groupData.name}\n\nMembers: ${memberList}`);
+        }
+      });
+      document.getElementById('groupContextMenu').classList.add('hidden');
+    }
+
+    // Manage group members
+    async function manageGroupMembers() {
+      if (!currentGroupContextMenuId) return;
+      document.getElementById('groupContextMenu').classList.add('hidden');
+
+      const groupData = await apiCall(`/api/groups/${currentGroupContextMenuId}`);
+      if (!groupData || groupData.error) return;
+
+      const isCreator = groupData.creatorId === currentUser.id;
+      const modal = document.getElementById('manageGroupMembersModal');
+      const membersContainer = document.getElementById('groupMembersListContainer');
+
+      // Render current members
+      const memberHtml = groupData.members.map(member => {
+        const roleLabel = member.role === 'creator' ? 'Creator' : 'Member';
+        const canRemove = isCreator && member.userId !== groupData.creatorId;
+        const removeBtn = canRemove ? `<button onclick="removeMemberFromGroup(${currentGroupContextMenuId}, ${member.userId})" class="px-2 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded">Remove</button>` : '';
+        return `
+          <div class="flex justify-between items-center p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
+            <div>
+              <div class="text-sm font-medium text-zinc-900 dark:text-zinc-100">${member.username}</div>
+              <div class="text-xs text-zinc-600 dark:text-zinc-400">${roleLabel}</div>
+            </div>
+            ${removeBtn}
+          </div>
+        `;
+      }).join('');
+
+      membersContainer.innerHTML = memberHtml || '<div class="text-sm text-zinc-600 dark:text-zinc-400">No members</div>';
+
+      // Setup search if creator
+      if (isCreator) {
+        const searchInput = document.getElementById('memberSearchInput');
+        const resultsContainer = document.getElementById('memberSearchResultsContainer');
+        let searchTimeout;
+
+        searchInput.addEventListener('input', async (e) => {
+          clearTimeout(searchTimeout);
+          const query = e.target.value.trim();
+          resultsContainer.innerHTML = '';
+          if (!query) return;
+
+          resultsContainer.innerHTML = '<div class="text-sm text-zinc-600 dark:text-zinc-400">Searching...</div>';
+          searchTimeout = setTimeout(async () => {
+            const results = await apiCall(`/api/search/users?q=${encodeURIComponent(query)}`);
+            if (!results || results.error) {
+              resultsContainer.innerHTML = '<div class="text-sm text-red-600 dark:text-red-400">Search failed</div>';
+              return;
+            }
+
+            const existingIds = new Set(groupData.members.map(m => m.userId));
+            const users = results.users || [];
+            const filtered = users.filter(u => !existingIds.has(u.id));
+
+            if (filtered.length === 0) {
+              resultsContainer.innerHTML = '<div class="text-sm text-zinc-600 dark:text-zinc-400">No users found or already members</div>';
+              return;
+            }
+
+            const resultHtml = filtered.map(user => `
+              <div class="flex justify-between items-center p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
+                <div>
+                  <div class="text-sm font-medium text-zinc-900 dark:text-zinc-100">${user.username}</div>
+                  <div class="text-xs text-zinc-600 dark:text-zinc-400">${user.usernode_pubkey ? user.usernode_pubkey.substring(0, 14) + '…' : 'No wallet'}</div>
+                </div>
+                <button onclick="addMemberToGroup(${currentGroupContextMenuId}, ${user.id})" class="px-2 py-1 text-xs bg-cyan-600 hover:bg-cyan-700 text-white rounded">Add</button>
+              </div>
+            `).join('');
+
+            resultsContainer.innerHTML = resultHtml;
+          }, 500);
+        });
+      } else {
+        document.getElementById('memberSearchInput').disabled = true;
+        document.getElementById('memberSearchInput').placeholder = 'Only group creator can add members';
+      }
+
+      modal.classList.remove('hidden');
+    }
+
+    async function addMemberToGroup(groupId, userId) {
+      const result = await apiCall(`/api/groups/${groupId}/members`, {
+        method: 'POST',
+        body: JSON.stringify({ userIds: [userId] })
+      });
+
+      if (result && !result.error) {
+        await manageGroupMembers();
+      } else {
+        alert('Failed to add member');
+      }
+    }
+
+    async function removeMemberFromGroup(groupId, userId) {
+      if (!confirm('Remove this member from the group?')) return;
+
+      const result = await apiCall(`/api/groups/${groupId}/members/${userId}`, {
+        method: 'DELETE'
+      });
+
+      if (result && !result.error) {
+        await manageGroupMembers();
+      } else {
+        alert('Failed to remove member');
+      }
+    }
+
+    function closeManageGroupMembersModal() {
+      document.getElementById('manageGroupMembersModal').classList.add('hidden');
+    }
+
+    // Rename group
+    function renameGroup() {
+      if (!currentGroupContextMenuId) return;
+      const newName = prompt('Enter new group name:');
+      if (newName && newName.trim()) {
+        apiCall(`/api/groups/${currentGroupContextMenuId}`, {
+          method: 'PUT',
+          body: JSON.stringify({ name: newName.trim() })
+        }).then(data => {
+          if (data) {
+            loadGroups();
+            document.getElementById('groupContextMenu').classList.add('hidden');
+          }
+        });
+      }
+    }
+
+    // Leave group
+    async function leaveGroup() {
+      if (!currentGroupContextMenuId) return;
+
+      // Fetch group data to show group name in confirmation
+      const groupData = await apiCall(`/api/groups/${currentGroupContextMenuId}`);
+      const groupName = groupData ? groupData.name : 'this group';
+
+      if (!confirm(`Leave "${groupName}"? You will no longer receive messages.`)) return;
+
+      const data = await apiCall(`/api/groups/${currentGroupContextMenuId}/leave`, {
+        method: 'POST',
+        body: JSON.stringify({})
+      });
+
+      if (data && !data.error) {
+        loadGroups();
+        document.getElementById('groupContextMenu').classList.add('hidden');
+        if (currentGroupId === currentGroupContextMenuId) {
+          showConversationsView();
+        }
+      }
+    }
+
+    // Delete group
+    function deleteGroup() {
+      if (!currentGroupContextMenuId) return;
+      if (confirm('Are you sure you want to delete this group? This cannot be undone.')) {
+        apiCall(`/api/groups/${currentGroupContextMenuId}`, {
+          method: 'DELETE'
+        }).then(data => {
+          if (data) {
+            loadGroups();
+            document.getElementById('groupContextMenu').classList.add('hidden');
+            if (currentGroupId === currentGroupContextMenuId) {
+              showConversationsView();
+            }
+          }
+        });
+      }
+    }
+
+    // Close context menu when clicking outside
+    document.addEventListener('click', (e) => {
+      const menu = document.getElementById('groupContextMenu');
+      if (menu && !e.target.closest('#groupContextMenu') && e.target.id !== 'groupContextMenu') {
+        menu.classList.add('hidden');
+      }
+    });
+
     function formatTime(date) {
       const now = new Date();
       const diff = now - date;
@@ -888,6 +1857,79 @@
       return Math.floor(diff / 86400000) + 'd';
     }
 
+    // Message history functions
+    async function openMessageHistory() {
+      if (!currentGroupId) return;
+      messageHistoryGroupId = currentGroupId;
+      messageHistoryOldestTimestamp = null;
+      messageHistoryHasMore = true;
+
+      const modal = document.getElementById('messageHistoryModal');
+      modal.classList.remove('hidden');
+
+      await loadMoreMessages();
+    }
+
+    async function loadMoreMessages() {
+      if (!messageHistoryGroupId) return;
+
+      const endpoint = messageHistoryOldestTimestamp
+        ? `/api/groups/${messageHistoryGroupId}/messages?limit=50&before=${messageHistoryOldestTimestamp}`
+        : `/api/groups/${messageHistoryGroupId}/messages?limit=50`;
+
+      const data = await apiCall(endpoint);
+      if (!data || data.error) {
+        document.getElementById('messageHistoryList').innerHTML = '<div class="text-center text-red-600 dark:text-red-400">Failed to load messages</div>';
+        return;
+      }
+
+      messageHistoryHasMore = data.hasMore || false;
+      const loadMoreBtn = document.getElementById('loadMoreMessagesBtn');
+      loadMoreBtn.style.display = messageHistoryHasMore ? 'block' : 'none';
+
+      if (data.messages.length > 0 && data.messages.length > 0) {
+        messageHistoryOldestTimestamp = data.messages[0].createdAt;
+      }
+
+      const list = document.getElementById('messageHistoryList');
+      let historyHtml = '';
+
+      // Group messages by date
+      const messagesByDate = {};
+      data.messages.forEach(msg => {
+        const date = new Date(msg.createdAt).toLocaleDateString();
+        if (!messagesByDate[date]) messagesByDate[date] = [];
+        messagesByDate[date].push(msg);
+      });
+
+      // Render messages grouped by date
+      const sortedDates = Object.keys(messagesByDate).sort((a, b) => new Date(a) - new Date(b));
+      sortedDates.forEach(date => {
+        historyHtml += `<div class="text-center py-2 text-xs text-zinc-600 dark:text-zinc-400">${date}</div>`;
+        messagesByDate[date].forEach(msg => {
+          const msgHtml = renderMessage(msg);
+          if (msgHtml) historyHtml += msgHtml;
+        });
+      });
+
+      if (messageHistoryOldestTimestamp) {
+        // Append to existing history
+        list.innerHTML += historyHtml;
+      } else {
+        // Initial load
+        list.innerHTML = historyHtml || '<div class="text-center text-zinc-600 dark:text-zinc-400 py-8">No messages</div>';
+      }
+
+      // Scroll to top
+      list.scrollTop = 0;
+    }
+
+    function closeMessageHistoryModal() {
+      document.getElementById('messageHistoryModal').classList.add('hidden');
+      messageHistoryGroupId = null;
+      messageHistoryOldestTimestamp = null;
+    }
+
     async function openConversation(convId, otherId, username) {
       currentConvId = convId;
       currentOtherId = otherId;
@@ -895,6 +1937,7 @@
       document.getElementById('headerTitle').textContent = username + ' ✓';
       document.getElementById('backBtn').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
+      document.getElementById('messageHistoryBtn').classList.add('hidden');
 
       // Close conversation menu dropdown
       document.getElementById('conversationMenuDropdown').classList.add('hidden');
@@ -1002,16 +2045,25 @@
     async function sendMessage() {
       const input = document.getElementById('msgInput');
       const text = input.value.trim();
-      if (!text || !currentConvId) return;
+      if (!text) return;
+
+      if (!currentConvId && !currentGroupId) return;
 
       input.value = '';
-      const data = await apiCall(`/api/conversations/${currentConvId}/messages`, {
+
+      const endpoint = currentGroupId ? `/api/groups/${currentGroupId}/messages` : `/api/conversations/${currentConvId}/messages`;
+
+      const data = await apiCall(endpoint, {
         method: 'POST',
         body: JSON.stringify({ type: 'text', content: { text } })
       });
 
       if (data) {
-        loadMessages();
+        if (currentGroupId) {
+          loadGroupMessages(currentGroupId);
+        } else {
+          loadMessages();
+        }
         if (data.blockchainRecordingId) {
           pollBlockchainStatus(data.blockchainRecordingId, data.id);
         }
@@ -1019,15 +2071,26 @@
     }
 
     async function handleImageUpload(file) {
-      if (!file || !currentConvId) return;
+      if (!file) return;
+      if (!currentConvId && !currentGroupId) return;
+
       const reader = new FileReader();
       reader.onload = async (e) => {
         const dataUri = e.target.result;
-        const data = await apiCall(`/api/conversations/${currentConvId}/messages`, {
+
+        const endpoint = currentGroupId ? `/api/groups/${currentGroupId}/messages` : `/api/conversations/${currentConvId}/messages`;
+
+        const data = await apiCall(endpoint, {
           method: 'POST',
           body: JSON.stringify({ type: 'image', content: { imageUrl: dataUri } })
         });
-        if (data) loadMessages();
+        if (data) {
+          if (currentGroupId) {
+            loadGroupMessages(currentGroupId);
+          } else {
+            loadMessages();
+          }
+        }
       };
       reader.readAsDataURL(file);
     }
@@ -1047,7 +2110,9 @@
 
     async function sendToken() {
       const amount = document.getElementById('tokenAmount').value;
-      if (!amount || !currentConvId || !currentOtherId) return;
+      if (!amount) return;
+
+      if (!currentConvId || !currentOtherId) return;
 
       const sendBtn = document.getElementById('tokenSend');
       const originalText = sendBtn.textContent;
@@ -1135,19 +2200,35 @@
     }
 
     function showConversationsView() {
-      document.getElementById('conversationsView').classList.remove('hidden');
+      updateMenuHighlight('messages');
+      // Load persisted tab preference
+      activeMessagesTab = localStorage.getItem(`guardian_messages_tab_${currentUser?.id}`) || 'direct';
+
+      document.getElementById('messagesView').classList.remove('hidden');
+      document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.add('hidden');
+      document.getElementById('feedView').classList.add('hidden');
       document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('headerTitle').textContent = 'Guardian';
       document.getElementById('backBtn').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
+
       if (pollInterval) clearInterval(pollInterval);
-      loadConversations();
-      // Start polling for conversations in this view
+
+      // Initialize tabs
+      switchMessagesTab(activeMessagesTab);
+
+      // Start polling for both tabs
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
-      conversationsPollInterval = setInterval(loadConversations, 2000);
+      conversationsPollInterval = setInterval(() => {
+        if (activeMessagesTab === 'direct') {
+          loadConversations();
+        } else {
+          loadGroups();
+        }
+      }, 2000);
     }
 
     let allContacts = [];
@@ -1539,25 +2620,393 @@
     }
 
     function showChatView() {
+      document.getElementById('messagesView').classList.add('hidden');
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.remove('hidden');
+      document.getElementById('feedView').classList.add('hidden');
       document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
     }
 
     function showContactsView() {
+      updateMenuHighlight('contacts');
+      document.getElementById('messagesView').classList.add('hidden');
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.add('hidden');
+      document.getElementById('feedView').classList.add('hidden');
       document.getElementById('contactsView').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('headerTitle').textContent = 'Contacts';
-      document.getElementById('backBtn').classList.remove('hidden');
-      document.getElementById('menuBtn').classList.add('hidden');
+      document.getElementById('backBtn').classList.add('hidden');
+      document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
       document.getElementById('contactsSearchInput').value = '';
       loadContactsList();
+    }
+
+    function showFeedView() {
+      updateMenuHighlight('feed');
+      document.getElementById('messagesView').classList.add('hidden');
+      document.getElementById('conversationsView').classList.add('hidden');
+      document.getElementById('chatView').classList.add('hidden');
+      document.getElementById('contactsView').classList.add('hidden');
+      document.getElementById('feedView').classList.remove('hidden');
+      document.getElementById('inputFooter').classList.add('hidden');
+      document.getElementById('headerTitle').textContent = 'Feed';
+      document.getElementById('backBtn').classList.add('hidden');
+      document.getElementById('menuBtn').classList.remove('hidden');
+      document.getElementById('conversationMenuBtn').classList.add('hidden');
+      if (conversationsPollInterval) clearInterval(conversationsPollInterval);
+      loadFeedPosts(0);
+    }
+
+    // ===== FEED FUNCTIONS =====
+
+    let feedOffset = 0;
+    let feedHasMore = true;
+
+    async function loadFeedPosts(offset) {
+      try {
+        const data = await apiCall(`/api/feed/posts?limit=50&offset=${offset}`);
+        if (!data || data.error) {
+          document.getElementById('feedList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Failed to load feed</div>';
+          return;
+        }
+
+        if (offset === 0) {
+          document.getElementById('feedList').innerHTML = '';
+          feedOffset = 0;
+        }
+
+        const posts = data.posts || [];
+        feedHasMore = data.hasMore || false;
+
+        if (posts.length === 0 && offset === 0) {
+          document.getElementById('feedList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">No posts yet. Be the first to share!</div>';
+          return;
+        }
+
+        const feedList = document.getElementById('feedList');
+        posts.forEach(post => {
+          const postEl = renderFeedPost(post);
+          feedList.appendChild(postEl);
+        });
+
+        feedOffset += posts.length;
+
+        // Setup infinite scroll
+        if (feedHasMore) {
+          const feedListEl = document.getElementById('feedList');
+          feedListEl.onscroll = () => {
+            if (feedListEl.scrollTop + feedListEl.clientHeight >= feedListEl.scrollHeight - 100) {
+              if (feedHasMore) {
+                feedHasMore = false;
+                loadFeedPosts(feedOffset);
+              }
+            }
+          };
+        }
+      } catch (err) {
+        console.error('Error loading feed:', err);
+        document.getElementById('feedList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Error loading feed</div>';
+      }
+    }
+
+    function formatRelativeTime(isoDateString) {
+      const date = new Date(isoDateString);
+      const now = new Date();
+      const diffMs = now - date;
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
+
+      if (diffMins < 1) return 'just now';
+      if (diffMins < 60) return diffMins + 'm ago';
+      if (diffHours < 24) return diffHours + 'h ago';
+      if (diffDays === 1) return 'Yesterday';
+      if (diffDays < 30) return diffDays + 'd ago';
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+
+    function renderFeedPost(post) {
+      const postEl = document.createElement('div');
+      postEl.className = 'border border-zinc-300 dark:border-zinc-700 rounded-lg p-4 bg-white dark:bg-zinc-800 hover:shadow-sm dark:hover:shadow-lg transition feed-post-enter';
+
+      const timestamp = formatRelativeTime(post.createdAt);
+
+      let content = '';
+      if (post.content.text) {
+        content += `<p class="text-zinc-900 dark:text-zinc-100 mb-3">${escapeHtml(post.content.text)}</p>`;
+      }
+
+      if (post.content.link) {
+        content += `
+          <a href="${escapeHtml(post.content.link)}" target="_blank" rel="noopener noreferrer" class="block p-2 border border-zinc-200 dark:border-zinc-700 rounded hover:bg-zinc-100 dark:hover:bg-zinc-700 transition mb-3">
+            <div class="flex gap-2 items-start">
+              ${post.content.linkImage ? `<img src="${escapeHtml(post.content.linkImage)}" alt="preview" class="w-12 h-12 object-cover rounded flex-shrink-0" onerror="this.style.display='none'">` : ''}
+              <div class="flex-1 min-w-0">
+                ${post.content.linkTitle ? `<div class="font-medium text-cyan-600 dark:text-cyan-400 truncate text-xs">${escapeHtml(post.content.linkTitle)}</div>` : ''}
+              </div>
+            </div>
+          </a>
+        `;
+      }
+
+      const avatarInitial = post.username ? post.username.charAt(0).toUpperCase() : '?';
+      const avatarHtml = post.avatarUrl
+        ? `<img src="${escapeHtml(post.avatarUrl)}" alt="${escapeHtml(post.username)}" class="w-8 h-8 rounded-full object-cover flex-shrink-0" onerror="this.style.display='none'">`
+        : `<div class="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">${avatarInitial}</div>`;
+
+      postEl.innerHTML = `
+        <div class="flex gap-3">
+          ${avatarHtml}
+          <div class="flex-1">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="font-medium text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username)}</span>
+              ${post.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs">✓</span>' : ''}
+              <span class="text-xs text-zinc-600 dark:text-zinc-500">${timestamp}</span>
+            </div>
+            ${content}
+            <div class="mt-3 pt-3 border-t border-zinc-200 dark:border-zinc-700">
+              <button onclick="toggleComments(${post.id})" class="px-3 py-1 bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300 rounded text-xs font-medium hover:bg-cyan-200 dark:hover:bg-cyan-800/50 transition">
+                <span id="commentCount-${post.id}">0</span> comments
+              </button>
+              <div id="commentsSection-${post.id}" class="hidden mt-3 space-y-3 max-h-96 overflow-y-auto"></div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      return postEl;
+    }
+
+    async function submitFeedPost() {
+      const textInput = document.getElementById('feedTextInput');
+      let text = textInput.value.trim();
+      let link = null;
+
+      // Extract URL from text
+      const urlMatch = text.match(/(https?:\/\/[^\s]+)/);
+      if (urlMatch) {
+        link = urlMatch[1];
+        text = text.replace(urlMatch[0], '').trim();
+      }
+
+      if (!text && !link) {
+        alert('Please enter some text or a link');
+        return;
+      }
+
+      try {
+        const payload = { text };
+        if (link) {
+          payload.link = link;
+        }
+
+        const data = await apiCall('/api/feed/posts', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+
+        if (!data || data.error) {
+          alert('Failed to post: ' + (data?.error || 'Unknown error'));
+          return;
+        }
+
+        textInput.value = '';
+        feedOffset = 0;
+        feedHasMore = true;
+        loadFeedPosts(0);
+      } catch (err) {
+        console.error('Error posting:', err);
+        alert('Failed to post');
+      }
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // ===== FEED COMMENTS FUNCTIONS =====
+
+    const commentsCache = {};
+
+    async function toggleComments(postId) {
+      const section = document.getElementById(`commentsSection-${postId}`);
+      const isHidden = section.classList.contains('hidden');
+
+      if (isHidden) {
+        // Load comments if not cached
+        if (!commentsCache[postId]) {
+          await loadComments(postId);
+        }
+        section.classList.remove('hidden');
+      } else {
+        section.classList.add('hidden');
+      }
+    }
+
+    async function loadComments(postId) {
+      try {
+        const data = await apiCall(`/api/feed/posts/${postId}/comments?limit=50&offset=0`);
+        if (!data || data.error) {
+          console.error('Failed to load comments:', data?.error);
+          return;
+        }
+
+        const section = document.getElementById(`commentsSection-${postId}`);
+        section.innerHTML = '';
+
+        const comments = data.comments || [];
+
+        // Display existing comments
+        comments.forEach(comment => {
+          const commentEl = renderComment(comment, postId);
+          section.appendChild(commentEl);
+        });
+
+        // Update comment count
+        document.getElementById(`commentCount-${postId}`).textContent = data.total || comments.length;
+
+        // Add comment input if user is authenticated
+        if (currentUser) {
+          const inputEl = document.createElement('div');
+          inputEl.className = 'mt-3 pt-3 border-t border-zinc-200 dark:border-zinc-700 space-y-2';
+          inputEl.innerHTML = `
+            <textarea id="commentInput-${postId}" placeholder="Add a comment..." class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-sm resize-none" rows="2"></textarea>
+            <button onclick="submitComment(${postId})" class="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 text-white rounded text-sm">Comment</button>
+          `;
+          section.appendChild(inputEl);
+        }
+
+        commentsCache[postId] = { comments, total: data.total };
+      } catch (err) {
+        console.error('Error loading comments:', err);
+      }
+    }
+
+    function renderComment(comment, postId) {
+      const commentEl = document.createElement('div');
+      commentEl.className = 'p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg group';
+      commentEl.id = `comment-${comment.id}`;
+
+      const timestamp = formatRelativeTime(comment.createdAt);
+      const isOwner = currentUser && currentUser.id === comment.userId;
+      const avatarInitial = comment.username ? comment.username.charAt(0).toUpperCase() : '?';
+      const avatarHtml = comment.avatarUrl
+        ? `<img src="${escapeHtml(comment.avatarUrl)}" alt="${escapeHtml(comment.username)}" class="w-6 h-6 rounded-full object-cover flex-shrink-0" onerror="this.style.display='none'">`
+        : `<div class="w-6 h-6 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">${avatarInitial}</div>`;
+
+      commentEl.innerHTML = `
+        <div class="flex gap-2 justify-between items-start">
+          <div class="flex gap-2 flex-1">
+            ${avatarHtml}
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 mb-1">
+                <span class="text-sm font-medium text-zinc-900 dark:text-zinc-100">${escapeHtml(comment.username)}</span>
+                ${comment.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs">✓</span>' : ''}
+                <span class="text-xs text-zinc-500 dark:text-zinc-400">${timestamp}</span>
+              </div>
+              <p class="text-sm text-zinc-700 dark:text-zinc-300">${escapeHtml(comment.content)}</p>
+            </div>
+          </div>
+          ${isOwner ? `
+            <button onclick="deleteComment(${postId}, ${comment.id})" class="text-zinc-400 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition text-xs flex-shrink-0" title="Delete">
+              🗑️
+            </button>
+          ` : ''}
+        </div>
+      `;
+
+      return commentEl;
+    }
+
+    async function submitComment(postId) {
+      const input = document.getElementById(`commentInput-${postId}`);
+      const content = input.value.trim();
+
+      if (!content) {
+        alert('Comment cannot be empty');
+        return;
+      }
+
+      try {
+        const data = await apiCall(`/api/feed/posts/${postId}/comments`, {
+          method: 'POST',
+          body: JSON.stringify({ content })
+        });
+
+        if (!data || data.error) {
+          alert('Failed to post comment: ' + (data?.error || 'Unknown error'));
+          return;
+        }
+
+        // Add new comment to DOM
+        const section = document.getElementById(`commentsSection-${postId}`);
+        const commentEl = renderComment(data, postId);
+
+        // Insert before the input area
+        const inputArea = section.querySelector('[id^="commentInput-"]')?.parentElement;
+        if (inputArea) {
+          section.insertBefore(commentEl, inputArea);
+        } else {
+          section.appendChild(commentEl);
+        }
+
+        // Clear input
+        input.value = '';
+
+        // Update count
+        const countEl = document.getElementById(`commentCount-${postId}`);
+        const currentCount = parseInt(countEl.textContent);
+        countEl.textContent = currentCount + 1;
+
+        // Update cache
+        if (commentsCache[postId]) {
+          commentsCache[postId].total += 1;
+        }
+      } catch (err) {
+        console.error('Error posting comment:', err);
+        alert('Failed to post comment');
+      }
+    }
+
+    async function deleteComment(postId, commentId) {
+      if (!confirm('Delete this comment?')) return;
+
+      try {
+        const data = await apiCall(`/api/feed/posts/${postId}/comments/${commentId}`, {
+          method: 'DELETE'
+        });
+
+        if (!data || data.error) {
+          alert('Failed to delete comment');
+          return;
+        }
+
+        // Remove from DOM
+        const commentEl = document.getElementById(`comment-${commentId}`);
+        if (commentEl) {
+          commentEl.remove();
+        }
+
+        // Update count
+        const countEl = document.getElementById(`commentCount-${postId}`);
+        const currentCount = parseInt(countEl.textContent);
+        countEl.textContent = Math.max(0, currentCount - 1);
+
+        // Update cache
+        if (commentsCache[postId]) {
+          commentsCache[postId].total = Math.max(0, commentsCache[postId].total - 1);
+        }
+      } catch (err) {
+        console.error('Error deleting comment:', err);
+        alert('Failed to delete comment');
+      }
     }
 
     // Close conversation menu when clicking outside
@@ -1568,6 +3017,18 @@
         dropdown.classList.add('hidden');
       }
     });
+
+
+    // ===== WELCOME SCREEN FUNCTIONS =====
+
+    function showWelcome() {
+      document.getElementById('welcomeModal').classList.remove('hidden');
+    }
+
+    function dismissWelcome() {
+      document.getElementById('welcomeModal').classList.add('hidden');
+      showConversationsView();
+    }
 
     init();
   </script>

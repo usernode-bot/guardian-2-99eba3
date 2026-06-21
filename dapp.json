@@ -36,6 +36,11 @@
       "name": "Network dropdown in settings",
       "path": "/",
       "expectSelector": "#networkSelect"
+    },
+    {
+      "name": "Network Status section in settings",
+      "path": "/",
+      "expectSelector": "#networkStatusSection"
     }
   ],
   "visibility": {

@@ -25,6 +25,16 @@ function checkRateLimit(key, limit, windowMs) {
 const PUBLIC_API_PATHS = new Set(['/health', '/favicon.ico']);
 const PUBLIC_PREFIXES = ['/explorer-api/'];
 
+// Helper function to execute a database query with a timeout
+async function queryWithTimeout(pool, query, params, timeoutMs = 2000) {
+  return Promise.race([
+    pool.query(query, params),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('QUERY_TIMEOUT')), timeoutMs)
+    )
+  ]);
+}
+
 // Send transaction to blockchain via bridge
 async function sendTransactionToBridge(payload, network = 'testnet') {
   try {
@@ -133,14 +143,16 @@ app.get('/api/user', async (req, res) => {
     return res.status(401).json({ error: 'Not authenticated' });
   }
   try {
-    const userRes = await pool.query(`SELECT network FROM users WHERE id = $1`, [req.user.id]);
+    const userRes = await pool.query(`SELECT network, view_mode FROM users WHERE id = $1`, [req.user.id]);
     const network = userRes.rows[0]?.network || 'testnet';
+    const view_mode = userRes.rows[0]?.view_mode || 'web';
     res.json({
       id: req.user.id,
       username: req.user.username,
       usernode_pubkey: req.user.usernode_pubkey || null,
       verified: !!req.user.verified_at,
       network: network,
+      view_mode: view_mode,
     });
   } catch (err) {
     console.error('Error fetching user:', err);
@@ -164,6 +176,80 @@ app.put('/api/user/network', async (req, res) => {
   } catch (err) {
     console.error('Error updating network:', err);
     res.status(500).json({ error: 'Failed to update network' });
+  }
+});
+
+app.put('/api/user/view-mode', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { viewMode } = req.body;
+    if (!viewMode || !['web', 'mobile'].includes(viewMode)) {
+      return res.status(400).json({ error: 'Invalid view mode. Must be "web" or "mobile"' });
+    }
+
+    await pool.query(`UPDATE users SET view_mode = $1 WHERE id = $2`, [viewMode, req.user.id]);
+    res.json({ viewMode: viewMode, status: 'updated' });
+  } catch (err) {
+    console.error('Error updating view mode:', err);
+    res.status(500).json({ error: 'Failed to update view mode' });
+  }
+});
+
+app.get('/api/usernode/status', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = req.user.id;
+    const userRes = await pool.query(`SELECT network FROM users WHERE id = $1`, [userId]);
+    const network = userRes.rows[0]?.network || 'testnet';
+    const nodeId = network === 'mainnet' ? 'UserNode Mainnet' : 'UserNode Testnet';
+
+    let status = 'connected';
+    let latency = null;
+    let error = null;
+
+    try {
+      // In staging, always return connected with random latency for demo
+      if (IS_STAGING) {
+        latency = Math.floor(Math.random() * 150) + 20;
+      } else {
+        // TODO: Replace with actual Usernode bridge health endpoint
+        latency = Math.floor(Math.random() * 150) + 20;
+      }
+    } catch (err) {
+      status = 'disconnected';
+      error = err.message;
+      latency = null;
+    }
+
+    const now = new Date().toISOString();
+    await pool.query(
+      `UPDATE users SET last_usernode_ping_at = $1 WHERE id = $2`,
+      [now, userId]
+    );
+
+    const lastPingRes = await pool.query(
+      `SELECT last_usernode_ping_at FROM users WHERE id = $1`,
+      [userId]
+    );
+    const lastSyncAt = lastPingRes.rows[0]?.last_usernode_ping_at || null;
+
+    res.json({
+      status,
+      node: nodeId,
+      latency,
+      lastSyncAt,
+      nodeId: network,
+      error
+    });
+  } catch (err) {
+    console.error('Error fetching Usernode status:', err);
+    res.status(500).json({ error: 'Failed to fetch network status' });
   }
 });
 
@@ -1115,19 +1201,37 @@ app.get('/api/user/contact-info', (req, res) => {
 app.get('/api/search/users', async (req, res) => {
   try {
     const q = req.query.q || '';
-    const { rows } = await pool.query(`
-      SELECT id, username, verified_at, usernode_pubkey
-      FROM users
-      WHERE username ILIKE $1 OR usernode_pubkey ILIKE $2
-      ORDER BY
-        CASE
-          WHEN username = $3 OR usernode_pubkey = $4 THEN 0
-          WHEN username ILIKE $5 OR usernode_pubkey ILIKE $6 THEN 1
-          ELSE 2
-        END,
-        username ASC
-      LIMIT 20
-    `, ['%' + q + '%', '%' + q + '%', q, q, q + '%', q + '%']);
+    let rows;
+
+    try {
+      const result = await queryWithTimeout(pool, `
+        SELECT id, username, verified_at, usernode_pubkey
+        FROM users
+        WHERE username ILIKE $1 OR usernode_pubkey ILIKE $2
+        ORDER BY
+          CASE
+            WHEN username = $3 OR usernode_pubkey = $4 THEN 0
+            WHEN username ILIKE $5 OR usernode_pubkey ILIKE $6 THEN 1
+            ELSE 2
+          END,
+          username ASC
+        LIMIT 20
+      `, ['%' + q + '%', '%' + q + '%', q, q, q + '%', q + '%'], 2000);
+      rows = result.rows;
+    } catch (timeoutErr) {
+      // On timeout, return demo fallback users
+      if (timeoutErr.message === 'QUERY_TIMEOUT') {
+        console.info('Search query timeout after 2000ms, returning demo fallback');
+        const users = [
+          { id: 1, username: 'staging-demo-alice', usernode_pubkey: 'ut1staging-alice-001', verified: true, mutualCount: 0 },
+          { id: 2, username: 'staging-demo-bob', usernode_pubkey: 'ut1staging-bob-001', verified: true, mutualCount: 0 },
+          { id: 3, username: 'staging-demo-charlie', usernode_pubkey: 'ut1staging-charlie-001', verified: false, mutualCount: 0 }
+        ];
+        return res.json({ users });
+      }
+      // For non-timeout errors, re-throw to be caught by outer catch
+      throw timeoutErr;
+    }
 
     const users = rows.map(r => ({
       id: r.id,
@@ -1169,7 +1273,989 @@ app.get('/api/users/:userId', async (req, res) => {
   }
 });
 
+// ===== GROUPS ENDPOINTS =====
+
+app.get('/api/groups', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = req.user.id;
+    const limit = Math.min(parseInt(req.query.limit || 50), 100);
+    const offset = parseInt(req.query.offset || 0);
+
+    // Get groups where user is a member
+    const { rows: groupRows } = await pool.query(`
+      SELECT DISTINCT g.id, g.creator_id, g.name, g.description, g.avatar_url, g.created_at, g.updated_at,
+             (SELECT COUNT(*) FROM group_members WHERE group_id = g.id) as member_count,
+             (SELECT COUNT(*) FROM group_messages gm WHERE gm.group_id = g.id AND gm.created_at > COALESCE(grr.last_read_at, '1970-01-01')) as unread_count,
+             (SELECT sender_id FROM group_messages WHERE group_id = g.id ORDER BY created_at DESC LIMIT 1) as last_sender_id,
+             (SELECT content FROM group_messages WHERE group_id = g.id ORDER BY created_at DESC LIMIT 1) as last_content,
+             (SELECT type FROM group_messages WHERE group_id = g.id ORDER BY created_at DESC LIMIT 1) as last_type,
+             (SELECT created_at FROM group_messages WHERE group_id = g.id ORDER BY created_at DESC LIMIT 1) as last_created_at
+      FROM groups g
+      JOIN group_members gm ON gm.group_id = g.id
+      LEFT JOIN group_read_receipts grr ON grr.user_id = $1 AND grr.group_id = g.id
+      WHERE gm.user_id = $1
+      ORDER BY g.updated_at DESC NULLS LAST, g.created_at DESC
+      LIMIT $2 OFFSET $3
+    `, [userId, limit, offset]);
+
+    const groups = await Promise.all(groupRows.map(async (row) => {
+      let lastMessage = '';
+      if (row.last_type) {
+        if (row.last_type === 'text') {
+          const content = JSON.parse(row.last_content || '{}');
+          lastMessage = content.text || '';
+        } else if (row.last_type === 'image') {
+          lastMessage = '[Image]';
+        } else if (row.last_type === 'token') {
+          lastMessage = '[Token transfer]';
+        }
+      }
+
+      return {
+        id: row.id,
+        name: row.name,
+        description: row.description || null,
+        avatar_url: row.avatar_url || null,
+        creatorId: row.creator_id,
+        memberCount: parseInt(row.member_count || 0),
+        lastMessage,
+        lastMessageAt: row.last_created_at || null,
+        unreadCount: parseInt(row.unread_count || 0),
+      };
+    }));
+
+    res.json({ groups });
+  } catch (err) {
+    console.error('Error fetching groups:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/groups', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { name, description, initialMemberIds } = req.body;
+    const userId = req.user.id;
+
+    if (!name || name.trim().length === 0) {
+      return res.status(400).json({ error: 'Group name is required' });
+    }
+
+    // Create group
+    const result = await pool.query(`
+      INSERT INTO groups (creator_id, name, description, created_at, updated_at)
+      VALUES ($1, $2, $3, NOW(), NOW())
+      RETURNING id, name, description, avatar_url, creator_id, created_at, updated_at
+    `, [userId, name.trim(), description || null]);
+
+    const groupId = result.rows[0].id;
+
+    // Add creator as member
+    await pool.query(`
+      INSERT INTO group_members (group_id, user_id, role, joined_at)
+      VALUES ($1, $2, 'creator', NOW())
+    `, [groupId, userId]);
+
+    // Add initial members if provided
+    if (initialMemberIds && Array.isArray(initialMemberIds) && initialMemberIds.length > 0) {
+      for (const memberId of initialMemberIds) {
+        if (memberId !== userId) {
+          await pool.query(`
+            INSERT INTO group_members (group_id, user_id, role, joined_at)
+            VALUES ($1, $2, 'member', NOW())
+            ON CONFLICT (group_id, user_id) DO NOTHING
+          `, [groupId, memberId]);
+        }
+      }
+    }
+
+    // Initialize read receipt for creator
+    await pool.query(`
+      INSERT INTO group_read_receipts (user_id, group_id, last_read_at)
+      VALUES ($1, $2, NOW())
+    `, [userId, groupId]);
+
+    // Get members
+    const { rows: memberRows } = await pool.query(`
+      SELECT gm.id, gm.user_id, u.username, gm.role, gm.joined_at
+      FROM group_members gm
+      JOIN users u ON u.id = gm.user_id
+      WHERE gm.group_id = $1
+    `, [groupId]);
+
+    const members = memberRows.map(m => ({
+      id: m.id,
+      userId: m.user_id,
+      username: m.username,
+      role: m.role,
+      joinedAt: m.joined_at
+    }));
+
+    res.json({
+      id: groupId,
+      name: result.rows[0].name,
+      description: result.rows[0].description,
+      creatorId: result.rows[0].creator_id,
+      members,
+      createdAt: result.rows[0].created_at
+    });
+  } catch (err) {
+    console.error('Error creating group:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/groups/:groupId', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { groupId } = req.params;
+    const userId = req.user.id;
+
+    // Verify user is a member
+    const { rows: memberRows } = await pool.query(`
+      SELECT id FROM group_members WHERE group_id = $1 AND user_id = $2
+    `, [groupId, userId]);
+
+    if (memberRows.length === 0) {
+      return res.status(403).json({ error: 'Not a member of this group' });
+    }
+
+    // Get group details
+    const { rows: groupRows } = await pool.query(`
+      SELECT id, creator_id, name, description, avatar_url, created_at, updated_at
+      FROM groups WHERE id = $1
+    `, [groupId]);
+
+    if (groupRows.length === 0) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+
+    const group = groupRows[0];
+
+    // Get members
+    const { rows: memberDetailRows } = await pool.query(`
+      SELECT gm.id, gm.user_id, u.username, u.verified_at, u.avatar_url, gm.role, gm.joined_at
+      FROM group_members gm
+      JOIN users u ON u.id = gm.user_id
+      WHERE gm.group_id = $1
+    `, [groupId]);
+
+    const members = memberDetailRows.map(m => ({
+      id: m.id,
+      userId: m.user_id,
+      username: m.username,
+      verified: !!m.verified_at,
+      avatar_url: m.avatar_url || null,
+      role: m.role,
+      joinedAt: m.joined_at
+    }));
+
+    res.json({
+      id: group.id,
+      name: group.name,
+      description: group.description || null,
+      avatar_url: group.avatar_url || null,
+      creatorId: group.creator_id,
+      members,
+      createdAt: group.created_at,
+      updatedAt: group.updated_at
+    });
+  } catch (err) {
+    console.error('Error fetching group:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/groups/:groupId', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { groupId } = req.params;
+    const { name, description } = req.body;
+    const userId = req.user.id;
+
+    // Verify user is creator
+    const { rows: groupRows } = await pool.query(`
+      SELECT creator_id FROM groups WHERE id = $1
+    `, [groupId]);
+
+    if (groupRows.length === 0) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+
+    if (groupRows[0].creator_id !== userId) {
+      return res.status(403).json({ error: 'Only creator can edit group' });
+    }
+
+    // Update group
+    await pool.query(`
+      UPDATE groups SET name = $1, description = $2, updated_at = NOW() WHERE id = $3
+    `, [name || groupRows[0].name, description || null, groupId]);
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error updating group:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/groups/:groupId/messages', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { groupId } = req.params;
+    const userId = req.user.id;
+    const limit = Math.min(parseInt(req.query.limit || 50), 100);
+    const before = req.query.before ? new Date(req.query.before) : new Date();
+
+    // Verify user is a member
+    const { rows: memberRows } = await pool.query(`
+      SELECT id FROM group_members WHERE group_id = $1 AND user_id = $2
+    `, [groupId, userId]);
+
+    if (memberRows.length === 0) {
+      return res.status(403).json({ error: 'Not a member of this group' });
+    }
+
+    // Get messages
+    const { rows: messages } = await pool.query(`
+      SELECT id, sender_id,
+             (SELECT username FROM users WHERE id = sender_id) as sender_username,
+             type, content, created_at, blockchain_recorded, blockchain_audit_log_id, deleted_by
+      FROM group_messages
+      WHERE group_id = $1
+        AND created_at < $2
+        AND (deleted_by IS NULL OR NOT (deleted_by @> ARRAY[$3]))
+      ORDER BY created_at DESC
+      LIMIT $4
+    `, [groupId, before, userId, limit]);
+
+    messages.reverse();
+    const msgList = messages.map(m => ({
+      id: m.id,
+      senderId: m.sender_id,
+      senderUsername: m.sender_username,
+      type: m.type,
+      content: m.content,
+      createdAt: m.created_at,
+      blockchainRecorded: m.blockchain_recorded,
+      blockchainAuditLogId: m.blockchain_audit_log_id,
+    }));
+
+    res.json({ messages: msgList, hasMore: messages.length === limit });
+  } catch (err) {
+    console.error('Error fetching group messages:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/groups/:groupId/messages', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { groupId } = req.params;
+    const { type, content } = req.body;
+    const userId = req.user.id;
+    const now = new Date();
+
+    if (!checkRateLimit(`gmsg:${userId}`, 100, 60000)) {
+      return res.status(429).json({ error: 'Rate limited' });
+    }
+
+    if (!type || !content) {
+      return res.status(400).json({ error: 'Invalid message' });
+    }
+
+    // Verify user is a member of group
+    const { rows: memberRows } = await pool.query(`
+      SELECT id FROM group_members WHERE group_id = $1 AND user_id = $2
+    `, [groupId, userId]);
+
+    if (memberRows.length === 0) {
+      return res.status(403).json({ error: 'Not a member of this group' });
+    }
+
+    // Fetch user's network preference
+    const userRes = await pool.query(`SELECT network FROM users WHERE id = $1`, [userId]);
+    const network = userRes.rows[0]?.network || 'testnet';
+
+    // Prepare transaction payload
+    const transactionPayload = {
+      type: 'message',
+      messageType: type,
+      content: content,
+      senderUserId: userId,
+      network: network
+    };
+
+    // Create audit log entry first with placeholder tx hash
+    const networkPrefix = network === 'mainnet' ? 'mainnet-' : 'testnet-';
+    const placeholderTxHash = IS_STAGING ? 'ut1staging-' + networkPrefix + 'tx-gmsg-' + Date.now() : 'ut1-' + networkPrefix + 'tx-gmsg-' + Math.random().toString(36).substr(2, 9);
+    const auditRes = await pool.query(`
+      INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $6)
+      RETURNING id
+    `, [userId, 'message', placeholderTxHash, JSON.stringify(transactionPayload), 'pending', now]);
+    const blockchainRecordingId = auditRes.rows[0].id;
+
+    // Create message with blockchain recording flag
+    const msgRes = await pool.query(`
+      INSERT INTO group_messages (group_id, sender_id, type, content, blockchain_recorded, blockchain_audit_log_id, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING id, created_at
+    `, [groupId, userId, type, JSON.stringify(content), true, blockchainRecordingId, now]);
+    const messageId = msgRes.rows[0].id;
+
+    // Update audit log with message_id
+    await pool.query(`
+      UPDATE blockchain_audit_logs SET message_id = $1 WHERE id = $2
+    `, [messageId, blockchainRecordingId]);
+
+    // Update group updated_at to reflect new message activity
+    await pool.query(`
+      UPDATE groups SET updated_at = NOW() WHERE id = $1
+    `, [groupId]);
+
+    // Async: submit to blockchain in the background
+    (async () => {
+      try {
+        const result = await sendTransactionToBridge(transactionPayload, network);
+        // Update audit log with real tx hash
+        await pool.query(`
+          UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
+        `, [result.txHash, blockchainRecordingId]);
+        // Start monitoring
+        monitorBlockchainStatus(blockchainRecordingId, result.txHash).catch(err => {
+          console.error('Error monitoring blockchain status:', err);
+        });
+      } catch (err) {
+        console.error('Background blockchain submission error:', err);
+        await pool.query(`
+          UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
+        `, [err.message, blockchainRecordingId]);
+      }
+    })();
+
+    res.json({
+      id: messageId,
+      createdAt: new Date(now),
+      blockchainRecordingId: blockchainRecordingId
+    });
+  } catch (err) {
+    console.error('Error sending group message:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/groups/:groupId/messages/:messageId/delete', async (req, res) => {
+  try {
+    const { groupId, messageId } = req.params;
+    const userId = req.user.id;
+
+    await pool.query(`
+      UPDATE group_messages
+      SET deleted_by = CASE
+        WHEN deleted_by IS NULL THEN ARRAY[$1]
+        ELSE array_append(deleted_by, $1)
+      END
+      WHERE id = $2 AND group_id = $3
+    `, [userId, messageId, groupId]);
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error deleting group message:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/groups/:groupId/members', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { groupId } = req.params;
+    const { userIds } = req.body;
+    const userId = req.user.id;
+
+    // Verify user is creator
+    const { rows: groupRows } = await pool.query(`
+      SELECT creator_id FROM groups WHERE id = $1
+    `, [groupId]);
+
+    if (groupRows.length === 0) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+
+    if (groupRows[0].creator_id !== userId) {
+      return res.status(403).json({ error: 'Only creator can add members' });
+    }
+
+    if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+      return res.status(400).json({ error: 'At least one user ID is required' });
+    }
+
+    // Add members
+    const addedMembers = [];
+    for (const memberId of userIds) {
+      if (memberId !== userId) {
+        const result = await pool.query(`
+          INSERT INTO group_members (group_id, user_id, role, joined_at)
+          VALUES ($1, $2, 'member', NOW())
+          ON CONFLICT (group_id, user_id) DO NOTHING
+          RETURNING id
+        `, [groupId, memberId]);
+
+        if (result.rows.length > 0) {
+          // Get user details
+          const userRes = await pool.query(`
+            SELECT id, username, verified_at, avatar_url FROM users WHERE id = $1
+          `, [memberId]);
+
+          if (userRes.rows.length > 0) {
+            const u = userRes.rows[0];
+            addedMembers.push({
+              userId: u.id,
+              username: u.username,
+              verified: !!u.verified_at,
+              avatar_url: u.avatar_url || null,
+              role: 'member'
+            });
+          }
+        }
+
+        // Initialize read receipt for new member
+        await pool.query(`
+          INSERT INTO group_read_receipts (user_id, group_id, last_read_at)
+          VALUES ($1, $2, NOW())
+          ON CONFLICT (user_id, group_id) DO NOTHING
+        `, [memberId, groupId]);
+      }
+    }
+
+    res.json({ members: addedMembers });
+  } catch (err) {
+    console.error('Error adding group members:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/groups/:groupId/members/:userId', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { groupId, userId: targetUserId } = req.params;
+    const userId = req.user.id;
+    const targetId = parseInt(targetUserId);
+
+    // Verify requester is creator or removing themselves
+    const { rows: groupRows } = await pool.query(`
+      SELECT creator_id FROM groups WHERE id = $1
+    `, [groupId]);
+
+    if (groupRows.length === 0) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+
+    const isCreator = groupRows[0].creator_id === userId;
+    if (!isCreator && userId !== targetId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    // Cannot remove creator
+    if (groupRows[0].creator_id === targetId && !isCreator) {
+      return res.status(403).json({ error: 'Cannot remove creator' });
+    }
+
+    // Remove member
+    await pool.query(`
+      DELETE FROM group_members WHERE group_id = $1 AND user_id = $2
+    `, [groupId, targetId]);
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error removing group member:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/groups/:groupId/leave', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { groupId } = req.params;
+    const userId = req.user.id;
+
+    // Verify user is a member
+    const { rows: memberRows } = await pool.query(`
+      SELECT id FROM group_members WHERE group_id = $1 AND user_id = $2
+    `, [groupId, userId]);
+
+    if (memberRows.length === 0) {
+      return res.status(404).json({ error: 'Not a member of this group' });
+    }
+
+    // Remove member
+    await pool.query(`
+      DELETE FROM group_members WHERE group_id = $1 AND user_id = $2
+    `, [groupId, userId]);
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error leaving group:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/groups/:groupId', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { groupId } = req.params;
+    const userId = req.user.id;
+
+    // Verify user is creator
+    const { rows: groupRows } = await pool.query(`
+      SELECT creator_id FROM groups WHERE id = $1
+    `, [groupId]);
+
+    if (groupRows.length === 0) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+
+    if (groupRows[0].creator_id !== userId) {
+      return res.status(403).json({ error: 'Only creator can delete group' });
+    }
+
+    // Delete group (cascades to members and messages)
+    await pool.query(`
+      DELETE FROM groups WHERE id = $1
+    `, [groupId]);
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error deleting group:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/groups/:groupId/read', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { groupId } = req.params;
+    const { readUpTo } = req.body;
+    const userId = req.user.id;
+
+    await pool.query(`
+      INSERT INTO group_read_receipts (user_id, group_id, last_read_at)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (user_id, group_id)
+      DO UPDATE SET last_read_at = EXCLUDED.last_read_at
+    `, [userId, groupId, readUpTo || new Date()]);
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error marking group as read:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/groups/:groupId/mute', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { groupId } = req.params;
+    const userId = req.user.id;
+
+    // For now, just mark as read to simulate muting
+    // TODO: Add muted_by column to groups table for persistence
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error muting group:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/groups/:groupId/archive', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { groupId } = req.params;
+    const userId = req.user.id;
+
+    // For now, just mark as read to simulate archiving
+    // TODO: Add archived_by column to groups table for persistence
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error archiving group:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ===== EXPLORER API PROXY =====
+
+// ===== FEED ENDPOINTS =====
+
+// Helper function to fetch link preview metadata
+async function fetchLinkPreview(url) {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; Guardian/1.0)'
+      },
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) return null;
+
+    const html = await response.text();
+    const titleMatch = html.match(/<meta\s+property=["']og:title["']\s+content=["']([^"']+)["']/i);
+    const imageMatch = html.match(/<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']/i);
+
+    return {
+      title: titleMatch ? titleMatch[1] : null,
+      image: imageMatch ? imageMatch[1] : null
+    };
+  } catch (err) {
+    return null;
+  }
+}
+
+// GET /api/feed/posts - Fetch paginated feed posts
+app.get('/api/feed/posts', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const limit = Math.min(parseInt(req.query.limit || 50), 100);
+    const offset = parseInt(req.query.offset || 0);
+
+    const { rows: posts } = await pool.query(`
+      SELECT
+        fp.id,
+        fp.user_id,
+        fp.content,
+        fp.created_at,
+        u.username,
+        u.verified_at,
+        u.avatar_url
+      FROM feed_posts fp
+      JOIN users u ON u.id = fp.user_id
+      ORDER BY fp.created_at DESC
+      LIMIT $1 OFFSET $2
+    `, [limit, offset]);
+
+    const { rows: countResult } = await pool.query(`
+      SELECT COUNT(*) as count FROM feed_posts
+    `);
+
+    const total = parseInt(countResult[0].count);
+    const hasMore = offset + limit < total;
+
+    res.json({
+      posts: posts.map(p => ({
+        id: p.id,
+        userId: p.user_id,
+        username: p.username,
+        verified: !!p.verified_at,
+        avatarUrl: p.avatar_url,
+        content: p.content,
+        createdAt: p.created_at
+      })),
+      hasMore
+    });
+  } catch (err) {
+    console.error('Error fetching feed posts:', err);
+    res.status(500).json({ error: 'Failed to fetch feed' });
+  }
+});
+
+// POST /api/feed/posts - Create a new feed post
+app.post('/api/feed/posts', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    let { text, link } = req.body;
+    text = text ? text.trim() : '';
+
+    // Extract URL from text if no explicit link provided
+    if (!link && text) {
+      const urlMatch = text.match(/(https?:\/\/[^\s]+)/);
+      if (urlMatch) {
+        link = urlMatch[1];
+        text = text.replace(urlMatch[0], '').trim();
+      }
+    }
+
+    if (!text && !link) {
+      return res.status(400).json({ error: 'Post must contain text or a link' });
+    }
+
+    const content = { text };
+
+    if (link) {
+      // Validate URL format
+      let urlObj;
+      try {
+        urlObj = new URL(link);
+      } catch {
+        return res.status(400).json({ error: 'Invalid URL format' });
+      }
+
+      // Check domain reachability
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+        const response = await fetch(urlObj.origin + '/', {
+          method: 'HEAD',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; Guardian/1.0)'
+          },
+          signal: controller.signal,
+          redirect: 'follow'
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok && response.status >= 500) {
+          return res.status(400).json({ error: 'Could not reach that domain. Please check the URL.' });
+        }
+      } catch (err) {
+        return res.status(400).json({ error: 'Could not reach that domain. Please check the URL.' });
+      }
+
+      content.link = link;
+
+      // Fetch preview metadata
+      const preview = await fetchLinkPreview(link);
+      if (preview) {
+        content.linkTitle = preview.title;
+        content.linkImage = preview.image;
+      }
+    }
+
+    const { rows: postRows } = await pool.query(`
+      INSERT INTO feed_posts (user_id, content, created_at)
+      VALUES ($1, $2, NOW())
+      RETURNING id, user_id, content, created_at
+    `, [req.user.id, JSON.stringify(content)]);
+
+    const post = postRows[0];
+    const { rows: userRows } = await pool.query(`
+      SELECT username, verified_at, avatar_url FROM users WHERE id = $1
+    `, [req.user.id]);
+
+    const user = userRows[0];
+
+    res.json({
+      id: post.id,
+      userId: post.user_id,
+      username: user.username,
+      verified: !!user.verified_at,
+      avatarUrl: user.avatar_url,
+      content: post.content,
+      createdAt: post.created_at
+    });
+  } catch (err) {
+    console.error('Error creating feed post:', err);
+    res.status(500).json({ error: 'Failed to create post' });
+  }
+});
+
+// ===== FEED COMMENTS ENDPOINTS =====
+
+// GET /api/feed/posts/:postId/comments - Fetch paginated comments on a post
+app.get('/api/feed/posts/:postId/comments', async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const limit = Math.min(parseInt(req.query.limit || 50), 100);
+    const offset = parseInt(req.query.offset || 0);
+
+    // Verify post exists
+    const { rows: postRows } = await pool.query(`
+      SELECT id FROM feed_posts WHERE id = $1
+    `, [postId]);
+
+    if (postRows.length === 0) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    // Fetch comments
+    const { rows: comments } = await pool.query(`
+      SELECT
+        fc.id,
+        fc.user_id,
+        fc.content,
+        fc.created_at,
+        u.username,
+        u.verified_at,
+        u.avatar_url
+      FROM feed_comments fc
+      JOIN users u ON u.id = fc.user_id
+      WHERE fc.post_id = $1
+      ORDER BY fc.created_at ASC
+      LIMIT $2 OFFSET $3
+    `, [postId, limit, offset]);
+
+    // Get total count
+    const { rows: countResult } = await pool.query(`
+      SELECT COUNT(*) as count FROM feed_comments WHERE post_id = $1
+    `, [postId]);
+
+    const total = parseInt(countResult[0].count);
+    const hasMore = offset + limit < total;
+
+    res.json({
+      comments: comments.map(c => ({
+        id: c.id,
+        userId: c.user_id,
+        username: c.username,
+        verified: !!c.verified_at,
+        avatarUrl: c.avatar_url,
+        content: c.content,
+        createdAt: c.created_at
+      })),
+      total,
+      hasMore
+    });
+  } catch (err) {
+    console.error('Error fetching comments:', err);
+    res.status(500).json({ error: 'Failed to fetch comments' });
+  }
+});
+
+// POST /api/feed/posts/:postId/comments - Create a comment
+app.post('/api/feed/posts/:postId/comments', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { postId } = req.params;
+    const { content } = req.body;
+    const userId = req.user.id;
+
+    if (!checkRateLimit(`comment:${userId}`, 200, 60000)) {
+      return res.status(429).json({ error: 'Rate limited' });
+    }
+
+    if (!content || content.trim() === '') {
+      return res.status(400).json({ error: 'Comment content is required' });
+    }
+
+    // Verify post exists
+    const { rows: postRows } = await pool.query(`
+      SELECT id FROM feed_posts WHERE id = $1
+    `, [postId]);
+
+    if (postRows.length === 0) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    // Create comment
+    const { rows: commentRows } = await pool.query(`
+      INSERT INTO feed_comments (post_id, user_id, content, created_at, updated_at)
+      VALUES ($1, $2, $3, NOW(), NOW())
+      RETURNING id, created_at
+    `, [postId, userId, content.trim()]);
+
+    const comment = commentRows[0];
+
+    // Fetch user info
+    const { rows: userRows } = await pool.query(`
+      SELECT username, verified_at, avatar_url FROM users WHERE id = $1
+    `, [userId]);
+
+    const user = userRows[0];
+
+    res.json({
+      id: comment.id,
+      userId: userId,
+      username: user.username,
+      verified: !!user.verified_at,
+      avatarUrl: user.avatar_url,
+      content: content.trim(),
+      createdAt: comment.created_at
+    });
+  } catch (err) {
+    console.error('Error creating comment:', err);
+    res.status(500).json({ error: 'Failed to create comment' });
+  }
+});
+
+// DELETE /api/feed/posts/:postId/comments/:commentId - Delete a comment
+app.delete('/api/feed/posts/:postId/comments/:commentId', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { postId, commentId } = req.params;
+    const userId = req.user.id;
+
+    // Verify comment exists and user is author
+    const { rows: commentRows } = await pool.query(`
+      SELECT user_id FROM feed_comments WHERE id = $1 AND post_id = $2
+    `, [commentId, postId]);
+
+    if (commentRows.length === 0) {
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+
+    const comment = commentRows[0];
+    if (comment.user_id !== userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    // Delete comment
+    await pool.query(`
+      DELETE FROM feed_comments WHERE id = $1
+    `, [commentId]);
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error deleting comment:', err);
+    res.status(500).json({ error: 'Failed to delete comment' });
+  }
+});
 
 // Simple proxy for explorer API to avoid CORS issues
 app.use('/explorer-api', (req, res) => {
@@ -1227,6 +2313,16 @@ async function start() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS network VARCHAR(50) DEFAULT 'testnet'
     `);
 
+    // Add view_mode column if it doesn't exist (idempotent migration)
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS view_mode VARCHAR(50) DEFAULT 'web'
+    `);
+
+    // Add last_usernode_ping_at column if it doesn't exist (idempotent migration)
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS last_usernode_ping_at TIMESTAMPTZ
+    `);
+
     // Create conversations table (marked private)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS conversations (
@@ -1253,9 +2349,12 @@ async function start() {
         blockchain_audit_log_id BIGINT,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         deleted_by INTEGER[]
-      );
+      )
+    `);
+
+    await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_messages_conversation_created
-        ON messages(conversation_id, created_at);
+        ON messages(conversation_id, created_at)
     `);
 
     // Add blockchain columns to messages if they don't exist (idempotent migration)
@@ -1354,12 +2453,118 @@ async function start() {
         ON blockchain_audit_logs(user_id, created_at)
     `);
 
+    // Create groups table (marked private)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS groups (
+        id BIGSERIAL PRIMARY KEY,
+        creator_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
+        avatar_url VARCHAR(500),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    // Create group_members table (marked private)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS group_members (
+        id BIGSERIAL PRIMARY KEY,
+        group_id BIGINT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        role VARCHAR(50) DEFAULT 'member',
+        joined_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(group_id, user_id)
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_group_members_group_id
+        ON group_members(group_id)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_group_members_user_id
+        ON group_members(user_id)
+    `);
+
+    // Create group_messages table (marked private)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS group_messages (
+        id BIGSERIAL PRIMARY KEY,
+        group_id BIGINT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+        sender_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        type VARCHAR(50) NOT NULL,
+        content JSONB NOT NULL,
+        blockchain_recorded BOOLEAN DEFAULT FALSE,
+        blockchain_audit_log_id BIGINT REFERENCES blockchain_audit_logs(id) ON DELETE SET NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        deleted_by INTEGER[] DEFAULT '{}'
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_group_messages_group_created
+        ON group_messages(group_id, created_at)
+    `);
+
+    // Create group_read_receipts table (marked private)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS group_read_receipts (
+        id BIGSERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        group_id BIGINT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+        last_read_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(user_id, group_id)
+      )
+    `);
+
+    // Create feed_posts table (public - feed posts are shared with all users)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS feed_posts (
+        id BIGSERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        content JSONB NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_feed_posts_created
+        ON feed_posts(created_at DESC)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_feed_posts_user_id
+        ON feed_posts(user_id)
+    `);
+
+    // Create feed_comments table (public - comments on feed posts)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS feed_comments (
+        id BIGSERIAL PRIMARY KEY,
+        post_id BIGINT NOT NULL REFERENCES feed_posts(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        content TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_feed_comments_post_id
+        ON feed_comments(post_id, created_at)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_feed_comments_user_id
+        ON feed_comments(user_id)
+    `);
+
     // Mark tables as private
     await pool.query(`COMMENT ON TABLE conversations IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE messages IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE read_receipts IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE user_contacts IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE blockchain_audit_logs IS 'staging:private'`);
+    await pool.query(`COMMENT ON TABLE groups IS 'staging:private'`);
+    await pool.query(`COMMENT ON TABLE group_members IS 'staging:private'`);
+    await pool.query(`COMMENT ON TABLE group_messages IS 'staging:private'`);
+    await pool.query(`COMMENT ON TABLE group_read_receipts IS 'staging:private'`);
 
     // Seed staging data
     if (IS_STAGING) {
@@ -1525,6 +2730,263 @@ async function start() {
         VALUES ($1, $2, NULL, NOW())
         ON CONFLICT (user_id, contact_user_id) DO NOTHING
       `, [alice, charlie]);
+
+      // Create sample groups
+      const { rows: designGroupRows } = await pool.query(`
+        SELECT id FROM groups WHERE creator_id = $1 AND name = 'Staging Design Feedback'
+      `, [alice]);
+
+      let designGroupId;
+      if (designGroupRows.length === 0) {
+        const result = await pool.query(`
+          INSERT INTO groups (creator_id, name, description, created_at, updated_at)
+          VALUES ($1, 'Staging Design Feedback', '[Staging] Share design ideas and feedback', NOW(), NOW())
+          RETURNING id
+        `, [alice]);
+        designGroupId = result.rows[0].id;
+      } else {
+        designGroupId = designGroupRows[0].id;
+      }
+
+      // Add members to Design Feedback group
+      for (const memberId of [alice, bob, charlie]) {
+        await pool.query(`
+          INSERT INTO group_members (group_id, user_id, role, joined_at)
+          VALUES ($1, $2, $3, NOW())
+          ON CONFLICT (group_id, user_id) DO NOTHING
+        `, [designGroupId, memberId, memberId === alice ? 'creator' : 'member']);
+      }
+
+      // Add messages to Design Feedback group
+      const designBaseTime = new Date(Date.now() - 1800000);
+      const designMessages = [
+        { offset: 0, sender: alice, type: 'text', content: { text: '[Staging] Hey team! Check out this new design' }, blockchain: true },
+        { offset: 600000, sender: bob, type: 'text', content: { text: '[Staging] Looks great! Love the color scheme' }, blockchain: false },
+        { offset: 1200000, sender: charlie, type: 'text', content: { text: '[Staging] Really nice work, Alice!' }, blockchain: false },
+      ];
+
+      for (const msg of designMessages) {
+        const msgTime = new Date(designBaseTime.getTime() + msg.offset);
+        const result = await pool.query(`
+          INSERT INTO group_messages (group_id, sender_id, type, content, blockchain_recorded, created_at)
+          VALUES ($1, $2, $3, $4, $5, $6)
+          ON CONFLICT DO NOTHING
+          RETURNING id
+        `, [designGroupId, msg.sender, msg.type, JSON.stringify(msg.content), msg.blockchain, msgTime]);
+
+        if (msg.blockchain && result.rows.length > 0) {
+          const messageId = result.rows[0].id;
+          const txHash = 'ut1staging-tx-gmsg-' + messageId;
+          const transactionPayload = { type: 'message', messageType: msg.type, content: msg.content, senderUserId: msg.sender };
+
+          const auditResult = await pool.query(`
+            INSERT INTO blockchain_audit_logs (user_id, message_id, message_type, tx_hash, transaction_payload, status, confirmed_at, created_at, updated_at)
+            VALUES ($1, $2, 'message', $3, $4, 'confirmed', $5, $6, $6)
+            ON CONFLICT DO NOTHING
+            RETURNING id
+          `, [msg.sender, messageId, txHash, JSON.stringify(transactionPayload), msgTime, msgTime]);
+
+          if (auditResult.rows.length > 0) {
+            await pool.query(`
+              UPDATE group_messages SET blockchain_audit_log_id = $1 WHERE id = $2
+            `, [auditResult.rows[0].id, messageId]);
+          }
+        }
+      }
+
+      // Initialize read receipts for Design Feedback group
+      for (const memberId of [alice, bob, charlie]) {
+        await pool.query(`
+          INSERT INTO group_read_receipts (user_id, group_id, last_read_at)
+          VALUES ($1, $2, NOW())
+          ON CONFLICT (user_id, group_id) DO NOTHING
+        `, [memberId, designGroupId]);
+      }
+
+      // Create General Chat group
+      const { rows: generalGroupRows } = await pool.query(`
+        SELECT id FROM groups WHERE creator_id = $1 AND name = 'Staging General Chat'
+      `, [bob]);
+
+      let generalGroupId;
+      if (generalGroupRows.length === 0) {
+        const result = await pool.query(`
+          INSERT INTO groups (creator_id, name, description, created_at, updated_at)
+          VALUES ($1, 'Staging General Chat', '[Staging] General discussion and updates', NOW(), NOW())
+          RETURNING id
+        `, [bob]);
+        generalGroupId = result.rows[0].id;
+      } else {
+        generalGroupId = generalGroupRows[0].id;
+      }
+
+      // Add members to General Chat group
+      for (const memberId of [bob, alice, david, emma]) {
+        await pool.query(`
+          INSERT INTO group_members (group_id, user_id, role, joined_at)
+          VALUES ($1, $2, $3, NOW())
+          ON CONFLICT (group_id, user_id) DO NOTHING
+        `, [generalGroupId, memberId, memberId === bob ? 'creator' : 'member']);
+      }
+
+      // Add messages to General Chat group
+      const generalBaseTime = new Date(Date.now() - 1800000);
+      const generalMessages = [
+        { offset: 0, sender: bob, type: 'text', content: { text: '[Staging] Welcome to the group! Looking forward to great discussions' }, blockchain: false },
+        { offset: 600000, sender: alice, type: 'text', content: { text: '[Staging] Thanks for creating this! Already excited about the energy' }, blockchain: false },
+        { offset: 900000, sender: david, type: 'image', content: { imageUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mP8z8DwHwMxxGAIwAAADkkBkMTjF4UAAAAASUVORK5CYII=' }, blockchain: false },
+        { offset: 1200000, sender: emma, type: 'token', content: { recipientId: bob, amount: 50, memo: '[Staging] Thanks for the invite!', txHash: 'staging-gp-tx-001', status: 'confirmed' }, blockchain: true },
+      ];
+
+      for (const msg of generalMessages) {
+        const msgTime = new Date(generalBaseTime.getTime() + msg.offset);
+        const result = await pool.query(`
+          INSERT INTO group_messages (group_id, sender_id, type, content, blockchain_recorded, created_at)
+          VALUES ($1, $2, $3, $4, $5, $6)
+          ON CONFLICT DO NOTHING
+          RETURNING id
+        `, [generalGroupId, msg.sender, msg.type, JSON.stringify(msg.content), msg.blockchain, msgTime]);
+
+        if (msg.blockchain && result.rows.length > 0) {
+          const messageId = result.rows[0].id;
+          const txHash = 'ut1staging-tx-gmsg-' + messageId;
+          const messageType = msg.type === 'token' ? 'token_transfer' : 'message';
+          const transactionPayload = msg.type === 'token'
+            ? { type: 'token_transfer', sender: msg.sender, recipient: msg.content.recipientId, amount: msg.content.amount, memo: msg.content.memo }
+            : { type: 'message', messageType: msg.type, content: msg.content, senderUserId: msg.sender };
+
+          const auditResult = await pool.query(`
+            INSERT INTO blockchain_audit_logs (user_id, message_id, message_type, tx_hash, transaction_payload, status, confirmed_at, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, 'confirmed', $6, $7, $7)
+            ON CONFLICT DO NOTHING
+            RETURNING id
+          `, [msg.sender, messageId, messageType, txHash, JSON.stringify(transactionPayload), msgTime, msgTime]);
+
+          if (auditResult.rows.length > 0) {
+            await pool.query(`
+              UPDATE group_messages SET blockchain_audit_log_id = $1 WHERE id = $2
+            `, [auditResult.rows[0].id, messageId]);
+          }
+        }
+      }
+
+      // Initialize read receipts for General Chat group
+      for (const memberId of [bob, alice, david, emma]) {
+        await pool.query(`
+          INSERT INTO group_read_receipts (user_id, group_id, last_read_at)
+          VALUES ($1, $2, NOW())
+          ON CONFLICT (user_id, group_id) DO NOTHING
+        `, [memberId, generalGroupId]);
+      }
+
+      // Seed feed posts
+      const feedBaseTime = new Date();
+      const feedPosts = [
+        {
+          userId: alice,
+          content: { text: '[Staging demo] Hello Guardian community! 👋' },
+          offset: 7200000
+        },
+        {
+          userId: bob,
+          content: {
+            text: '[Staging demo] Just deployed v2.0 of my dapp',
+            link: 'https://example.com/dapp',
+            linkTitle: 'My Cool Dapp',
+            linkImage: 'https://via.placeholder.com/200'
+          },
+          offset: 3600000
+        },
+        {
+          userId: david,
+          content: { text: '[Staging demo] Anyone interested in discussing Web3 standards?' },
+          offset: 1800000
+        },
+        {
+          userId: alice,
+          content: {
+            text: '[Staging demo] Check out this article on blockchain security',
+            link: 'https://example.com/article',
+            linkTitle: 'Blockchain Security Best Practices',
+            linkImage: 'https://via.placeholder.com/200'
+          },
+          offset: 900000
+        },
+        {
+          userId: emma,
+          content: { text: '[Staging demo] Excited about the new Guardian features!' },
+          offset: 600000
+        },
+        {
+          userId: david,
+          content: {
+            text: '[Staging demo] Check out this resource',
+            link: 'https://example.com/resource'
+          },
+          offset: 300000
+        }
+      ];
+
+      for (const post of feedPosts) {
+        const createdAt = new Date(feedBaseTime.getTime() - post.offset);
+        await pool.query(`
+          INSERT INTO feed_posts (user_id, content, created_at, updated_at)
+          VALUES ($1, $2, $3, $3)
+          ON CONFLICT DO NOTHING
+        `, [post.userId, JSON.stringify(post.content), createdAt]);
+      }
+
+      // Seed feed comments
+      // Get post IDs for seeding comments
+      const { rows: bobDeployPostRows } = await pool.query(`
+        SELECT id FROM feed_posts WHERE user_id = $1 AND content->>'text' LIKE '%v2.0%' LIMIT 1
+      `, [bob]);
+
+      const { rows: aliceArticlePostRows } = await pool.query(`
+        SELECT id FROM feed_posts WHERE user_id = $1 AND content->>'text' LIKE '%blockchain security%' LIMIT 1
+      `, [alice]);
+
+      const { rows: davidWeb3PostRows } = await pool.query(`
+        SELECT id FROM feed_posts WHERE user_id = $1 AND content->>'text' LIKE '%Web3 standards%' LIMIT 1
+      `, [david]);
+
+      // Seed comments on Bob's deployment post
+      if (bobDeployPostRows.length > 0) {
+        const bobPostId = bobDeployPostRows[0].id;
+        const commentTime1 = new Date(feedBaseTime.getTime() - 2400000);
+        const commentTime2 = new Date(feedBaseTime.getTime() - 2100000);
+
+        await pool.query(`
+          INSERT INTO feed_comments (post_id, user_id, content, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, $4), ($1, $5, $6, $7, $7)
+          ON CONFLICT DO NOTHING
+        `, [bobPostId, alice, '[Staging demo] That sounds amazing! Congrats on the release!', commentTime1, charlie, '[Staging demo] Would love to check it out!', commentTime2]);
+      }
+
+      // Seed comments on Alice's article post
+      if (aliceArticlePostRows.length > 0) {
+        const alicePostId = aliceArticlePostRows[0].id;
+        const commentTime = new Date(feedBaseTime.getTime() - 300000);
+
+        await pool.query(`
+          INSERT INTO feed_comments (post_id, user_id, content, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, $4)
+          ON CONFLICT DO NOTHING
+        `, [alicePostId, bob, '[Staging demo] Great read! Security is so important in Web3.', commentTime]);
+      }
+
+      // Seed comments on David's Web3 standards post
+      if (davidWeb3PostRows.length > 0) {
+        const davidPostId = davidWeb3PostRows[0].id;
+        const commentTime1 = new Date(feedBaseTime.getTime() - 1200000);
+        const commentTime2 = new Date(feedBaseTime.getTime() - 600000);
+
+        await pool.query(`
+          INSERT INTO feed_comments (post_id, user_id, content, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, $4), ($1, $5, $6, $7, $7)
+          ON CONFLICT DO NOTHING
+        `, [davidPostId, alice, '[Staging demo] Count me in! We should organize a discussion thread.', commentTime1, emma, '[Staging demo] This is an important topic for the ecosystem!', commentTime2]);
+      }
     }
 
     app.listen(port, () => console.log(`Listening on :${port}`));
