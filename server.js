@@ -1504,11 +1504,11 @@ app.get('/api/groups', async (req, res) => {
     const { rows: groupRows } = await pool.query(`
       SELECT DISTINCT g.id, g.creator_id, g.name, g.description, g.avatar_url, g.created_at, g.updated_at,
              (SELECT COUNT(*) FROM group_members WHERE group_id = g.id) as member_count,
-             (SELECT COUNT(*) FROM group_messages gm WHERE gm.group_id = g.id AND gm.created_at > COALESCE(grr.last_read_at, '1970-01-01')) as unread_count,
              (SELECT sender_id FROM group_messages WHERE group_id = g.id ORDER BY created_at DESC LIMIT 1) as last_sender_id,
              (SELECT content FROM group_messages WHERE group_id = g.id ORDER BY created_at DESC LIMIT 1) as last_content,
              (SELECT type FROM group_messages WHERE group_id = g.id ORDER BY created_at DESC LIMIT 1) as last_type,
-             (SELECT created_at FROM group_messages WHERE group_id = g.id ORDER BY created_at DESC LIMIT 1) as last_created_at
+             (SELECT created_at FROM group_messages WHERE group_id = g.id ORDER BY created_at DESC LIMIT 1) as last_created_at,
+             grr.last_read_at
       FROM groups g
       JOIN group_members gm ON gm.group_id = g.id
       LEFT JOIN group_read_receipts grr ON grr.user_id = $1 AND grr.group_id = g.id
@@ -1537,6 +1537,23 @@ app.get('/api/groups', async (req, res) => {
         }
       }
 
+      // Calculate unread count by comparing last read timestamp with message creation times
+      let unreadCount = 0;
+      if (row.last_read_at) {
+        const { rows: unreadRows } = await pool.query(`
+          SELECT COUNT(*) as count FROM group_messages
+          WHERE group_id = $1 AND created_at > $2
+        `, [row.id, row.last_read_at]);
+        unreadCount = parseInt(unreadRows[0]?.count || 0);
+      } else {
+        // If no read receipt, count all messages in the group
+        const { rows: totalRows } = await pool.query(`
+          SELECT COUNT(*) as count FROM group_messages
+          WHERE group_id = $1
+        `, [row.id]);
+        unreadCount = parseInt(totalRows[0]?.count || 0);
+      }
+
       return {
         id: row.id,
         name: row.name,
@@ -1546,7 +1563,7 @@ app.get('/api/groups', async (req, res) => {
         memberCount: parseInt(row.member_count || 0),
         lastMessage,
         lastMessageAt: row.last_created_at || null,
-        unreadCount: parseInt(row.unread_count || 0),
+        unreadCount,
       };
     }));
 
