@@ -3,12 +3,15 @@
   "secrets": [],
   "tests": [
     { "name": "Home loads", "path": "/", "expectSelector": "#conversationsView" },
-    { "name": "Chat thread loads", "path": "/", "expectSelector": "#messageList" },
+    { "name": "Direct Messages tab loads", "path": "/", "expectSelector": "#directList" },
+    { "name": "Chat thread loads with messages", "path": "/", "expectSelector": "#messageList" },
     { "name": "Discover contacts via sidebar", "path": "/", "expectSelector": "#contactsView" },
     { "name": "Sidebar toggles", "path": "/", "expectSelector": "#sidebar" },
     { "name": "Share contact modal works", "path": "/", "expectSelector": "#shareContactModal" },
     { "name": "Settings panel opens", "path": "/", "expectSelector": "#settingsPanel" },
     { "name": "Network dropdown in settings", "path": "/", "expectSelector": "#networkSelect" },
-    { "name": "Network Status section in settings", "path": "/", "expectSelector": "#networkAccordion" }
+    { "name": "Network Status section in settings", "path": "/", "expectSelector": "#networkAccordion" },
+    { "name": "Transaction status visible in chat", "path": "/", "expectText": "Confirmed" },
+    { "name": "Token transfer message displays", "path": "/", "expectText": "Token transfer" }
   ]
 }
