@@ -996,6 +996,7 @@
     }
 
     let currentUser = null;
+    let isDemoMode = false;
     let currentConvId = null;
     let currentOtherId = null;
     let currentContactId = null;
@@ -1501,8 +1502,10 @@
 
     // Helper function to check if wallet is available
     function isWalletAvailable() {
-      return typeof window.usernode !== 'undefined' &&
-             typeof window.usernode.sendTransaction === 'function';
+      return isDemoMode || (
+        typeof window.usernode !== 'undefined' &&
+        typeof window.usernode.sendTransaction === 'function'
+      );
     }
 
     // Validate and log wallet address information
@@ -1637,6 +1640,7 @@
         return;
       }
       currentUser = user;
+      isDemoMode = user.isDemoMode ?? false;
 
       // Validate and log wallet address information
       console.log('\n--- User Profile & Wallet Address Validation ---');
@@ -2131,6 +2135,42 @@
         console.log('window.solana:', typeof window.solana);
         console.log('window.phantom:', typeof window.phantom);
         console.log('window.metaMask:', typeof window.metaMask);
+
+        // Handle demo mode - bypass wallet entirely
+        if (isDemoMode) {
+          console.log('\n--- DEMO MODE DETECTED - Bypassing Wallet Interaction ---');
+          console.log('isDemoMode:', isDemoMode);
+          console.log('Generating mock transaction hash...');
+
+          // Generate mock tx hash in format: ut1staging-testnet-action-<timestamp>
+          const mockTxHash = 'ut1staging-' + (currentNetwork || 'testnet') + '-action-' + Date.now();
+          console.log('Mock transaction hash:', mockTxHash);
+          console.log('Calling action handler immediately with mock hash...');
+
+          try {
+            const result = await pendingWalletAction.onApprove(mockTxHash);
+            console.log('✓ Demo action completed successfully');
+            console.log('Result:', result);
+
+            if (walletConfirmResolver) {
+              walletConfirmResolver.resolve(result);
+              walletConfirmResolver = null;
+            }
+            closeWalletConfirm();
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = originalText;
+          } catch (err) {
+            console.error('Demo action failed:', err);
+            showToast('Demo action failed: ' + err.message, 'error');
+            if (walletConfirmResolver) {
+              walletConfirmResolver.reject(err);
+              walletConfirmResolver = null;
+            }
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = originalText;
+          }
+          return;
+        }
 
         // Check wallet availability using qualified reference (window.usernode)
         if (!isWalletAvailable()) {

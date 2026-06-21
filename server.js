@@ -160,6 +160,7 @@ app.get('/api/user', async (req, res) => {
       verified: !!req.user.verified_at,
       network: network,
       view_mode: view_mode,
+      isDemoMode: IS_STAGING,
     });
   } catch (err) {
     console.error('Error fetching user:', err);
