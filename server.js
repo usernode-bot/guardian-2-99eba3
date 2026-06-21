@@ -9,6 +9,7 @@ const port = process.env.PORT || 3000;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const JWT_SECRET = process.env.JWT_SECRET;
 const IS_STAGING = process.env.USERNODE_ENV === 'staging';
+const ENABLE_DEMO_MODE = process.env.ENABLE_DEMO_MODE === 'true' || IS_STAGING;
 
 // Rate limit tracking (in-memory; could use Redis for production)
 const rateLimits = new Map();
@@ -160,7 +161,7 @@ app.get('/api/user', async (req, res) => {
       verified: !!req.user.verified_at,
       network: network,
       view_mode: view_mode,
-      isDemoMode: IS_STAGING,
+      isDemoMode: ENABLE_DEMO_MODE,
     });
   } catch (err) {
     console.error('Error fetching user:', err);
@@ -537,9 +538,9 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
 
     // Create audit log entry for message
     const networkPrefix = network === 'mainnet' ? 'mainnet-' : 'testnet-';
-    const placeholderTxHash = IS_STAGING ? 'ut1staging-' + networkPrefix + 'message-' + messageId + '-' + Date.now() : 'ut1-' + networkPrefix + 'tx-msg-' + Math.random().toString(36).substr(2, 9);
-    const auditStatus = IS_STAGING ? 'confirmed' : 'pending';
-    const confirmedAt = IS_STAGING ? now : null;
+    const placeholderTxHash = ENABLE_DEMO_MODE ? 'ut1staging-' + networkPrefix + 'message-' + messageId + '-' + Date.now() : 'ut1-' + networkPrefix + 'tx-msg-' + Math.random().toString(36).substr(2, 9);
+    const auditStatus = ENABLE_DEMO_MODE ? 'confirmed' : 'pending';
+    const confirmedAt = ENABLE_DEMO_MODE ? now : null;
     const auditRes = await pool.query(`
       INSERT INTO blockchain_audit_logs (user_id, message_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
@@ -558,7 +559,7 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
     `, [convId]);
 
     // Async: submit to blockchain in the background (production only)
-    if (!IS_STAGING) {
+    if (!ENABLE_DEMO_MODE) {
       (async () => {
         try {
           const result = await sendTransactionToBridge(transactionPayload, network);
@@ -747,7 +748,7 @@ app.post('/api/tokens/send', async (req, res) => {
 
     // Create audit log entry with placeholder tx hash
     const networkPrefix = network === 'mainnet' ? 'mainnet-' : 'testnet-';
-    const placeholderTxHash = IS_STAGING ? 'ut1staging-' + networkPrefix + 'tx-token-' + Date.now() : 'ut1-' + networkPrefix + 'tx-token-' + Math.random().toString(36).substr(2, 9);
+    const placeholderTxHash = ENABLE_DEMO_MODE ? 'ut1staging-' + networkPrefix + 'tx-token-' + Date.now() : 'ut1-' + networkPrefix + 'tx-token-' + Math.random().toString(36).substr(2, 9);
     const auditRes = await pool.query(`
       INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $6)
@@ -1562,10 +1563,10 @@ app.post('/api/groups', async (req, res) => {
 
     // Blockchain: Create audit log entry
     const networkPrefix = network === 'mainnet' ? 'mainnet-' : 'testnet-';
-    const placeholderTxHash = IS_STAGING ? 'ut1staging-' + networkPrefix + 'group-create-' + groupId + '-' + Date.now() : 'ut1-' + networkPrefix + 'tx-group-' + Math.random().toString(36).substr(2, 9);
-    const auditStatus = IS_STAGING ? 'confirmed' : 'pending';
-    const confirmedAt = IS_STAGING ? now : null;
-    console.log(`[POST /api/groups::BLOCKCHAIN] Creating audit log: txHash=${placeholderTxHash}, status=${auditStatus}, confirmedAt=${confirmedAt ? confirmedAt.toISOString() : 'null'}, env=${IS_STAGING ? 'staging' : 'production'}`);
+    const placeholderTxHash = ENABLE_DEMO_MODE ? 'ut1staging-' + networkPrefix + 'group-create-' + groupId + '-' + Date.now() : 'ut1-' + networkPrefix + 'tx-group-' + Math.random().toString(36).substr(2, 9);
+    const auditStatus = ENABLE_DEMO_MODE ? 'confirmed' : 'pending';
+    const confirmedAt = ENABLE_DEMO_MODE ? now : null;
+    console.log(`[POST /api/groups::BLOCKCHAIN] Creating audit log: txHash=${placeholderTxHash}, status=${auditStatus}, confirmedAt=${confirmedAt ? confirmedAt.toISOString() : 'null'}, env=${IS_STAGING ? 'staging' : 'production'}, demoMode=${ENABLE_DEMO_MODE}`);
 
     const auditRes = await pool.query(`
       INSERT INTO blockchain_audit_logs (user_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
@@ -1581,7 +1582,7 @@ app.post('/api/groups', async (req, res) => {
     console.log(`[POST /api/groups::BLOCKCHAIN] Audit log created: id=${blockchainRecordingId}, rowCount=${auditRes.rowCount}`);
 
     // Blockchain: Async background task launch
-    if (!IS_STAGING) {
+    if (!ENABLE_DEMO_MODE) {
       console.log(`[POST /api/groups::BLOCKCHAIN] Spawning background blockchain submission task (production only)`);
       (async () => {
         try {
@@ -1608,7 +1609,7 @@ app.post('/api/groups', async (req, res) => {
         }
       })();
     } else {
-      console.log(`[POST /api/groups::BLOCKCHAIN] Background blockchain submission skipped (staging environment)`);
+      console.log(`[POST /api/groups::BLOCKCHAIN] Background blockchain submission skipped (demo mode enabled)`);
     }
 
     // Database: Get members for response
@@ -1766,7 +1767,7 @@ app.put('/api/groups/:groupId', async (req, res) => {
 
     // Create audit log entry for group update
     const networkPrefix = network === 'mainnet' ? 'mainnet-' : 'testnet-';
-    const placeholderTxHash = IS_STAGING ? 'ut1staging-' + networkPrefix + 'tx-update-' + Date.now() : 'ut1-' + networkPrefix + 'tx-update-' + Math.random().toString(36).substr(2, 9);
+    const placeholderTxHash = ENABLE_DEMO_MODE ? 'ut1staging-' + networkPrefix + 'tx-update-' + Date.now() : 'ut1-' + networkPrefix + 'tx-update-' + Math.random().toString(36).substr(2, 9);
     const auditRes = await pool.query(`
       INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $6)
@@ -1915,9 +1916,9 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
 
     // Create audit log entry for message
     const networkPrefix = network === 'mainnet' ? 'mainnet-' : 'testnet-';
-    const placeholderTxHash = IS_STAGING ? 'ut1staging-' + networkPrefix + 'message-' + messageId + '-' + Date.now() : 'ut1-' + networkPrefix + 'tx-msg-' + Math.random().toString(36).substr(2, 9);
-    const auditStatus = IS_STAGING ? 'confirmed' : 'pending';
-    const confirmedAt = IS_STAGING ? now : null;
+    const placeholderTxHash = ENABLE_DEMO_MODE ? 'ut1staging-' + networkPrefix + 'message-' + messageId + '-' + Date.now() : 'ut1-' + networkPrefix + 'tx-msg-' + Math.random().toString(36).substr(2, 9);
+    const auditStatus = ENABLE_DEMO_MODE ? 'confirmed' : 'pending';
+    const confirmedAt = ENABLE_DEMO_MODE ? now : null;
     const auditRes = await pool.query(`
       INSERT INTO blockchain_audit_logs (user_id, message_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
@@ -1936,7 +1937,7 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
     `, [groupId]);
 
     // Async: submit to blockchain in the background (production only)
-    if (!IS_STAGING) {
+    if (!ENABLE_DEMO_MODE) {
       (async () => {
         try {
           const result = await sendTransactionToBridge(transactionPayload, network);
@@ -2079,7 +2080,7 @@ app.post('/api/groups/:groupId/members', async (req, res) => {
 
     // Create audit log entry for adding members
     const networkPrefix = network === 'mainnet' ? 'mainnet-' : 'testnet-';
-    const placeholderTxHash = IS_STAGING ? 'ut1staging-' + networkPrefix + 'tx-addmem-' + Date.now() : 'ut1-' + networkPrefix + 'tx-addmem-' + Math.random().toString(36).substr(2, 9);
+    const placeholderTxHash = ENABLE_DEMO_MODE ? 'ut1staging-' + networkPrefix + 'tx-addmem-' + Date.now() : 'ut1-' + networkPrefix + 'tx-addmem-' + Math.random().toString(36).substr(2, 9);
     const auditRes = await pool.query(`
       INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $6)
@@ -2166,7 +2167,7 @@ app.delete('/api/groups/:groupId/members/:userId', async (req, res) => {
 
     // Create audit log entry for removing member
     const networkPrefix = network === 'mainnet' ? 'mainnet-' : 'testnet-';
-    const placeholderTxHash = IS_STAGING ? 'ut1staging-' + networkPrefix + 'tx-remmem-' + Date.now() : 'ut1-' + networkPrefix + 'tx-remmem-' + Math.random().toString(36).substr(2, 9);
+    const placeholderTxHash = ENABLE_DEMO_MODE ? 'ut1staging-' + networkPrefix + 'tx-remmem-' + Date.now() : 'ut1-' + networkPrefix + 'tx-remmem-' + Math.random().toString(36).substr(2, 9);
     const auditRes = await pool.query(`
       INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $6)
@@ -2242,7 +2243,7 @@ app.post('/api/groups/:groupId/leave', async (req, res) => {
 
     // Create audit log entry for leaving group
     const networkPrefix = network === 'mainnet' ? 'mainnet-' : 'testnet-';
-    const placeholderTxHash = IS_STAGING ? 'ut1staging-' + networkPrefix + 'tx-leave-' + Date.now() : 'ut1-' + networkPrefix + 'tx-leave-' + Math.random().toString(36).substr(2, 9);
+    const placeholderTxHash = ENABLE_DEMO_MODE ? 'ut1staging-' + networkPrefix + 'tx-leave-' + Date.now() : 'ut1-' + networkPrefix + 'tx-leave-' + Math.random().toString(36).substr(2, 9);
     const auditRes = await pool.query(`
       INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $6)
@@ -2321,7 +2322,7 @@ app.delete('/api/groups/:groupId', async (req, res) => {
 
     // Create audit log entry for group deletion
     const networkPrefix = network === 'mainnet' ? 'mainnet-' : 'testnet-';
-    const placeholderTxHash = IS_STAGING ? 'ut1staging-' + networkPrefix + 'tx-delete-' + Date.now() : 'ut1-' + networkPrefix + 'tx-delete-' + Math.random().toString(36).substr(2, 9);
+    const placeholderTxHash = ENABLE_DEMO_MODE ? 'ut1staging-' + networkPrefix + 'tx-delete-' + Date.now() : 'ut1-' + networkPrefix + 'tx-delete-' + Math.random().toString(36).substr(2, 9);
     const auditRes = await pool.query(`
       INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $6)
