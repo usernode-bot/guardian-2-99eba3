@@ -40,7 +40,7 @@
     {
       "name": "Network Status section in settings",
       "path": "/",
-      "expectSelector": "#networkStatusSection"
+      "expectSelector": "#networkAccordion"
     }
   ],
   "visibility": {
