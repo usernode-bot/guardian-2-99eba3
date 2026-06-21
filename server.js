@@ -700,19 +700,35 @@ app.post('/api/tokens/send', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const { recipientId, amount, memo } = req.body;
+    const { recipientId, groupId, amount, memo } = req.body;
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
     const now = new Date();
 
-    if (!recipientId || !amount) {
-      return res.status(400).json({ error: 'Invalid token transfer' });
+    // Validate: either recipientId (direct) or groupId (group), not both
+    if ((!recipientId && !groupId) || (recipientId && groupId)) {
+      return res.status(400).json({ error: 'Either recipientId or groupId must be provided, not both' });
+    }
+
+    if (!amount) {
+      return res.status(400).json({ error: 'Amount is required' });
     }
 
     if (!checkRateLimit(`token:${userId}`, 20, 60000)) {
       return res.status(429).json({ error: 'Rate limited' });
+    }
+
+    // If groupId provided, verify user is a member
+    if (groupId) {
+      const { rows: memberRows } = await pool.query(`
+        SELECT id FROM group_members WHERE group_id = $1 AND user_id = $2
+      `, [groupId, userId]);
+
+      if (memberRows.length === 0) {
+        return res.status(403).json({ error: 'Not a member of this group' });
+      }
     }
 
     // Fetch user's network preference
@@ -723,7 +739,8 @@ app.post('/api/tokens/send', async (req, res) => {
     const transactionPayload = {
       type: 'token_transfer',
       sender: userId,
-      recipient: recipientId,
+      recipient: recipientId || null,
+      groupId: groupId || null,
       amount: parseInt(amount),
       memo: memo || '',
       network: network
@@ -733,11 +750,32 @@ app.post('/api/tokens/send', async (req, res) => {
     const networkPrefix = network === 'mainnet' ? 'mainnet-' : 'testnet-';
     const placeholderTxHash = IS_STAGING ? 'ut1staging-' + networkPrefix + 'tx-token-' + Date.now() : 'ut1-' + networkPrefix + 'tx-token-' + Math.random().toString(36).substr(2, 9);
     const auditRes = await pool.query(`
-      INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $6)
+      INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, created_at, updated_at, group_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $6, $7)
       RETURNING id
-    `, [userId, 'token_transfer', placeholderTxHash, JSON.stringify(transactionPayload), 'pending', now]);
+    `, [userId, 'token_transfer', placeholderTxHash, JSON.stringify(transactionPayload), 'pending', now, groupId || null]);
     const blockchainRecordingId = auditRes.rows[0].id;
+
+    // For group token transfers, create a visible message record
+    let messageId = null;
+    if (groupId) {
+      const msgRes = await pool.query(`
+        INSERT INTO group_messages (group_id, sender_id, type, content, blockchain_recorded, blockchain_audit_log_id, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id
+      `, [groupId, userId, 'token_transfer', JSON.stringify({ amount: parseInt(amount), memo: memo || '', txHash: placeholderTxHash, status: 'pending' }), true, blockchainRecordingId, now]);
+      messageId = msgRes.rows[0].id;
+
+      // Update audit log with message_id
+      await pool.query(`
+        UPDATE blockchain_audit_logs SET message_id = $1 WHERE id = $2
+      `, [messageId, blockchainRecordingId]);
+
+      // Update group updated_at
+      await pool.query(`
+        UPDATE groups SET updated_at = NOW() WHERE id = $1
+      `, [groupId]);
+    }
 
     // Async: submit to blockchain in the background
     (async () => {
@@ -761,10 +799,12 @@ app.post('/api/tokens/send', async (req, res) => {
 
     res.json({
       blockchainRecordingId: blockchainRecordingId,
+      messageId: messageId,
       txHash: placeholderTxHash,
       status: 'pending',
       sender: userId,
-      recipient: recipientId,
+      recipient: recipientId || null,
+      groupId: groupId || null,
       amount,
       memo: memo || ''
     });

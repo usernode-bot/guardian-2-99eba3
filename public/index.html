@@ -2263,9 +2263,17 @@
     }
 
     function showTokenModal() {
-      apiCall(`/api/users/${currentOtherId}`).then(u => {
-        document.getElementById('tokenRecipient').textContent = u ? u.username : 'Unknown';
-      });
+      if (currentGroupId) {
+        // Show group name from header title
+        const headerTitle = document.getElementById('headerTitle').textContent;
+        const groupName = headerTitle.replace(' ✓', '') || 'Group';
+        document.getElementById('tokenRecipient').textContent = groupName;
+      } else {
+        // Show contact name for direct token transfers
+        apiCall(`/api/users/${currentOtherId}`).then(u => {
+          document.getElementById('tokenRecipient').textContent = u ? u.username : 'Unknown';
+        });
+      }
       document.getElementById('tokenModal').classList.remove('hidden');
     }
 
@@ -2279,31 +2287,48 @@
       const amount = document.getElementById('tokenAmount').value;
       if (!amount) return;
 
-      if (!currentConvId || !currentOtherId) return;
+      if (!currentConvId && !currentGroupId) return;
 
       const sendBtn = document.getElementById('tokenSend');
       const originalText = sendBtn.textContent;
       sendBtn.disabled = true;
       sendBtn.textContent = 'Sending...';
 
+      const requestBody = { amount: parseInt(amount), memo: document.getElementById('tokenMemo').value };
+      if (currentGroupId) {
+        requestBody.groupId = currentGroupId;
+      } else {
+        requestBody.recipientId = currentOtherId;
+      }
+
       const data = await apiCall('/api/tokens/send', {
         method: 'POST',
-        body: JSON.stringify({ recipientId: currentOtherId, amount: parseInt(amount), memo: document.getElementById('tokenMemo').value })
+        body: JSON.stringify(requestBody)
       });
 
       if (data && !data.error) {
-        const msgData = await apiCall(`/api/conversations/${currentConvId}/messages`, {
-          method: 'POST',
-          body: JSON.stringify({
-            type: 'token',
-            content: { recipientId: currentOtherId, amount: parseInt(amount), memo: document.getElementById('tokenMemo').value, txHash: data.txHash, status: data.status }
-          })
-        });
-        if (msgData && data.blockchainRecordingId) {
-          pollBlockchainStatus(data.blockchainRecordingId, msgData.id);
+        if (currentGroupId) {
+          // For group transfers, the message is already created on the backend
+          if (data.messageId && data.blockchainRecordingId) {
+            pollBlockchainStatus(data.blockchainRecordingId, data.messageId);
+          }
+        } else {
+          // For direct transfers, create the message record
+          const msgData = await apiCall(`/api/conversations/${currentConvId}/messages`, {
+            method: 'POST',
+            body: JSON.stringify({
+              type: 'token',
+              content: { recipientId: currentOtherId, amount: parseInt(amount), memo: document.getElementById('tokenMemo').value, txHash: data.txHash, status: data.status }
+            })
+          });
+          if (msgData && data.blockchainRecordingId) {
+            pollBlockchainStatus(data.blockchainRecordingId, msgData.id);
+          }
         }
         hideTokenModal();
         loadMessages();
+      } else {
+        showToast('Failed to send tokens', 'error');
       }
 
       sendBtn.disabled = false;
