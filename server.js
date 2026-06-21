@@ -822,38 +822,42 @@ app.post('/api/tokens/send', async (req, res) => {
 
     // Create audit log entry with placeholder tx hash
     const networkPrefix = network === 'mainnet' ? 'mainnet-' : 'testnet-';
-    const placeholderTxHash = ENABLE_DEMO_MODE ? 'ut1staging-' + networkPrefix + 'tx-token-' + Date.now() : 'ut1-' + networkPrefix + 'tx-token-' + Math.random().toString(36).substr(2, 9);
+    const placeholderTxHash = ENABLE_DEMO_MODE ? 'ut1staging-' + networkPrefix + 'token-' + Date.now() : 'ut1-' + networkPrefix + 'tx-token-' + Math.random().toString(36).substr(2, 9);
+    const auditStatus = ENABLE_DEMO_MODE ? 'confirmed' : 'pending';
+    const confirmedAt = ENABLE_DEMO_MODE ? now : null;
     const auditRes = await pool.query(`
-      INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $6)
+      INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
       RETURNING id
-    `, [userId, 'token_transfer', placeholderTxHash, JSON.stringify(transactionPayload), 'pending', now]);
+    `, [userId, 'token_transfer', placeholderTxHash, JSON.stringify(transactionPayload), auditStatus, confirmedAt, null, req.user.usernode_pubkey || null, now, now]);
     const blockchainRecordingId = auditRes.rows[0].id;
 
-    // Async: submit to blockchain in the background
-    (async () => {
-      try {
-        const result = await sendTransactionToBridge(transactionPayload, network);
-        // Update audit log with real tx hash
-        await pool.query(`
-          UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
-        `, [result.txHash, blockchainRecordingId]);
-        // Start monitoring
-        monitorBlockchainStatus(blockchainRecordingId, result.txHash).catch(err => {
-          console.error('Error monitoring blockchain status:', err);
-        });
-      } catch (err) {
-        console.error('Background blockchain submission error:', err);
-        await pool.query(`
-          UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
-        `, [err.message, blockchainRecordingId]);
-      }
-    })();
+    // Async: submit to blockchain in the background (production only, skipped in demo mode)
+    if (!ENABLE_DEMO_MODE) {
+      (async () => {
+        try {
+          const result = await sendTransactionToBridge(transactionPayload, network);
+          // Update audit log with real tx hash
+          await pool.query(`
+            UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
+          `, [result.txHash, blockchainRecordingId]);
+          // Start monitoring
+          monitorBlockchainStatus(blockchainRecordingId, result.txHash).catch(err => {
+            console.error('Error monitoring blockchain status:', err);
+          });
+        } catch (err) {
+          console.error('Background blockchain submission error:', err);
+          await pool.query(`
+            UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
+          `, [err.message, blockchainRecordingId]);
+        }
+      })();
+    }
 
     res.json({
       blockchainRecordingId: blockchainRecordingId,
       txHash: placeholderTxHash,
-      status: 'pending',
+      status: auditStatus,
       sender: userId,
       recipient: recipientId,
       amount,
