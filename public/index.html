@@ -2874,6 +2874,7 @@
         if (isDemoMode) {
           // Show wallet confirmation modal in demo mode
           await showWalletConfirm('Send Message', { text }, async (txHash) => {
+            showToast('Message sent successfully', 'success');
             const data = await apiCall(endpoint, {
               method: 'POST',
               body: JSON.stringify({ type: 'text', content: { text } })
@@ -2929,6 +2930,7 @@
           if (isDemoMode) {
             // Show wallet confirmation modal in demo mode
             await showWalletConfirm('Send Image', { imageSize: imageSizeKb + ' KB' }, async (txHash) => {
+              showToast('Image sent successfully', 'success');
               const data = await apiCall(endpoint, {
                 method: 'POST',
                 body: JSON.stringify({ type: 'image', content: { imageUrl: dataUri } })
@@ -2997,6 +2999,7 @@
         await showWalletConfirm('Send Tokens', { recipient: 'selected contact', amount: `${amount} tokens`, memo: memo || '(none)' }, async (txHash) => {
           sendBtn.disabled = true;
           sendBtn.textContent = 'Sending...';
+          showToast('Token sent successfully', 'success');
 
           try {
             const data = await apiCall('/api/tokens/send', {
@@ -3015,7 +3018,6 @@
               if (msgData && data.blockchainRecordingId) {
                 pollBlockchainStatus(data.blockchainRecordingId, msgData.id);
               }
-              showToast('Tokens sent successfully', 'success');
               hideTokenModal();
               loadMessages();
               return data;
