@@ -1642,6 +1642,14 @@
       currentUser = user;
       isDemoMode = user.isDemoMode ?? false;
 
+      // Log demo mode detection prominently
+      console.log('\n╔════════════════════════════════════════════════════════════════╗');
+      console.log('║              DEMO MODE INITIALIZATION DETECTED                 ║');
+      console.log('╚════════════════════════════════════════════════════════════════╝');
+      console.log('isDemoMode from API response:', isDemoMode);
+      console.log('user.isDemoMode raw value:', user.isDemoMode);
+      console.log('USERNODE_ENV at server time:', user.isDemoMode ? 'staging' : 'production');
+
       // Validate and log wallet address information
       console.log('\n--- User Profile & Wallet Address Validation ---');
       console.log('User loaded:', {
@@ -2108,6 +2116,11 @@
         console.log('Action:', pendingWalletAction.action);
         console.log('Network:', currentNetwork || 'testnet');
         console.log('User wallet address:', currentUser?.usernode_pubkey || 'Not available');
+        console.log('\n⚠ CRITICAL: isDemoMode variable state:');
+        console.log('  isDemoMode:', isDemoMode);
+        console.log('  typeof isDemoMode:', typeof isDemoMode);
+        console.log('  isDemoMode === true:', isDemoMode === true);
+        console.log('  isDemoMode truthy:', !!isDemoMode);
 
         console.log('\n--- Bridge Availability Check ---');
         console.log('window.usernode exists:', typeof window.usernode !== 'undefined');
@@ -2137,6 +2150,8 @@
         console.log('window.metaMask:', typeof window.metaMask);
 
         // Handle demo mode - bypass wallet entirely
+        console.log('\n--- DEMO MODE CHECK POINT ---');
+        console.log('About to check: if (isDemoMode) where isDemoMode =', isDemoMode);
         if (isDemoMode) {
           console.log('\n--- DEMO MODE DETECTED - Bypassing Wallet Interaction ---');
           console.log('isDemoMode:', isDemoMode);
