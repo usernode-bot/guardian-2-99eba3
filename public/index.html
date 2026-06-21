@@ -558,6 +558,12 @@
           </div>
         </div>
       </div>
+
+      <!-- Settings Footer -->
+      <div class="border-t border-zinc-200 dark:border-zinc-700 pt-2 pb-3 px-3 flex flex-col items-center justify-center text-center">
+        <div class="text-xs text-zinc-500 dark:text-zinc-500 leading-tight">Guardian v0.9.2-beta</div>
+        <div id="settingsFooterNetwork" class="text-xs text-zinc-500 dark:text-zinc-500 leading-tight">UserNode Testnet</div>
+      </div>
     </div>
 
     <!-- Main content -->
@@ -1010,6 +1016,12 @@
       let tooltipText = statusDisplay;
       if (networkStatus.latency) tooltipText += ` • ${networkStatus.latency}ms`;
       headerTooltip.textContent = tooltipText;
+
+      const settingsFooterNetwork = document.getElementById('settingsFooterNetwork');
+      if (settingsFooterNetwork) {
+        const networkName = currentNetwork === 'testnet' ? 'UserNode Testnet' : 'UserNode Mainnet';
+        settingsFooterNetwork.textContent = networkName;
+      }
     }
 
     function scrollToNetworkStatus() {
