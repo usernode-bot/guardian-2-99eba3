@@ -2811,8 +2811,18 @@
       const originalText = sendBtn.textContent;
 
       try {
+        // Get recipient/group name for confirmation
+        let recipientName = 'Unknown';
+        if (currentGroupId) {
+          const headerTitle = document.getElementById('headerTitle').textContent;
+          recipientName = headerTitle.replace(' ✓', '') || 'Group';
+        } else {
+          const recipientUser = await apiCall(`/api/users/${currentOtherId}`);
+          recipientName = recipientUser?.username || 'Unknown';
+        }
+
         // Show wallet confirmation modal
-        await showWalletConfirm('Send Tokens', { recipient: 'selected contact', amount: `${amount} tokens`, memo: memo || '(none)' }, async (txHash) => {
+        await showWalletConfirm('Confirm token transfer', { recipient: recipientName, amount: `${amount} tokens`, memo: memo || '(none)' }, async (txHash) => {
           sendBtn.disabled = true;
           sendBtn.textContent = 'Sending...';
 
