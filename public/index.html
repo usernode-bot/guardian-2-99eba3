@@ -4008,7 +4008,7 @@
 
       if (post.content.link) {
         content += `
-          <a href="${escapeHtml(post.content.link)}" target="_blank" rel="noopener noreferrer" class="block p-1.5 border border-zinc-200 dark:border-zinc-700 rounded hover:bg-zinc-100 dark:hover:bg-zinc-700 transition mb-2">
+          <a href="${escapeHtml(post.content.link)}" target="_blank" rel="noopener noreferrer" class="block p-2 bg-zinc-50 dark:bg-zinc-700/30 rounded hover:bg-zinc-100 dark:hover:bg-zinc-700/50 transition mb-2">
             <div class="flex gap-2 items-start">
               ${post.content.linkImage ? `<img src="${escapeHtml(post.content.linkImage)}" alt="preview" class="w-10 h-10 object-cover rounded flex-shrink-0" onerror="this.style.display='none'">` : ''}
               <div class="flex-1 min-w-0">
