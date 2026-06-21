@@ -386,6 +386,54 @@
       color: inherit;
       font-family: inherit;
     }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes fadeOut {
+      from { opacity: 1; }
+      to { opacity: 0; }
+    }
+
+    @keyframes slideInFromRight {
+      from { transform: translateX(384px); }
+      to { transform: translateX(0); }
+    }
+
+    @keyframes slideOutToRight {
+      from { transform: translateX(0); }
+      to { transform: translateX(384px); }
+    }
+
+    .animate-in {
+      animation: fadeIn 0.3s ease-in-out;
+    }
+
+    .animate-out {
+      animation: fadeOut 0.3s ease-in-out;
+    }
+
+    .fade-in {
+      animation: fadeIn 0.3s ease-in-out;
+    }
+
+    .fade-out {
+      animation: fadeOut 0.3s ease-in-out;
+    }
+
+    .slide-in-from-right-4 {
+      animation: slideInFromRight 0.3s ease-in-out;
+    }
+
+    .slide-out-to-right-4 {
+      animation: slideOutToRight 0.3s ease-in-out;
+    }
+
+    .duration-300 {
+      animation-duration: 0.3s;
+    }
   </style>
 </head>
 <body class="bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100 min-h-screen flex flex-col">
@@ -870,10 +918,31 @@
     </div>
   </div>
 
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
   <script>
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token') || '';
     const headers = token ? { 'x-usernode-token': token } : {};
+
+    function showToast(message, type = 'success') {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      const bgColor = type === 'success' ? 'bg-green-600' : type === 'error' ? 'bg-red-600' : 'bg-blue-600';
+      const icon = type === 'success' ? '✓' : type === 'error' ? '✕' : 'ℹ';
+
+      toast.className = `${bgColor} text-white px-4 py-3 rounded-lg shadow-lg pointer-events-auto animate-in fade-in slide-in-from-right-4 duration-300`;
+      toast.innerHTML = `<span class="flex items-center gap-2"><span>${icon}</span><span>${message}</span></span>`;
+
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.classList.remove('animate-in');
+        toast.classList.add('animate-out', 'fade-out', 'slide-out-to-right-4', 'duration-300');
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
 
     let currentUser = null;
     let currentConvId = null;
@@ -1746,7 +1815,9 @@
     // View group info
     function viewGroupInfo() {
       apiCall(`/api/groups/${currentGroupContextMenuId}`).then(groupData => {
-        if (groupData && !groupData.error) {
+        if (groupData && groupData.error) {
+          alert(`Failed to load group info: ${groupData.error}`);
+        } else if (groupData) {
           const memberList = groupData.members.map(m => `${m.username} ${m.role === 'creator' ? '(Creator)' : ''}`).join(', ');
           alert(`${groupData.name}\n\nMembers: ${memberList}`);
         }
@@ -1840,10 +1911,11 @@
         body: JSON.stringify({ userIds: [userId] })
       });
 
-      if (result && !result.error) {
+      if (result && result.error) {
+        showToast(`Failed to add member: ${result.error}`, 'error');
+      } else if (result) {
+        showToast('Member added successfully', 'success');
         await manageGroupMembers();
-      } else {
-        alert('Failed to add member');
       }
     }
 
@@ -1854,10 +1926,11 @@
         method: 'DELETE'
       });
 
-      if (result && !result.error) {
+      if (result && result.error) {
+        showToast(`Failed to remove member: ${result.error}`, 'error');
+      } else if (result) {
+        showToast('Member removed successfully', 'success');
         await manageGroupMembers();
-      } else {
-        alert('Failed to remove member');
       }
     }
 
@@ -1874,7 +1947,10 @@
           method: 'PUT',
           body: JSON.stringify({ name: newName.trim() })
         }).then(data => {
-          if (data) {
+          if (data && data.error) {
+            showToast(`Failed to rename group: ${data.error}`, 'error');
+          } else if (data) {
+            showToast('Group renamed successfully', 'success');
             loadGroups();
             document.getElementById('groupContextMenu').classList.add('hidden');
           }
@@ -1888,7 +1964,7 @@
 
       // Fetch group data to show group name in confirmation
       const groupData = await apiCall(`/api/groups/${currentGroupContextMenuId}`);
-      const groupName = groupData ? groupData.name : 'this group';
+      const groupName = groupData && !groupData.error ? groupData.name : 'this group';
 
       if (!confirm(`Leave "${groupName}"? You will no longer receive messages.`)) return;
 
@@ -1897,7 +1973,10 @@
         body: JSON.stringify({})
       });
 
-      if (data && !data.error) {
+      if (data && data.error) {
+        showToast(`Failed to leave group: ${data.error}`, 'error');
+      } else if (data) {
+        showToast('Left group successfully', 'success');
         loadGroups();
         document.getElementById('groupContextMenu').classList.add('hidden');
         if (currentGroupId === currentGroupContextMenuId) {
@@ -1913,7 +1992,10 @@
         apiCall(`/api/groups/${currentGroupContextMenuId}`, {
           method: 'DELETE'
         }).then(data => {
-          if (data) {
+          if (data && data.error) {
+            showToast(`Failed to delete group: ${data.error}`, 'error');
+          } else if (data) {
+            showToast('Group deleted successfully', 'success');
             loadGroups();
             document.getElementById('groupContextMenu').classList.add('hidden');
             if (currentGroupId === currentGroupContextMenuId) {
