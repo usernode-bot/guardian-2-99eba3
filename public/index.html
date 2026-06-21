@@ -532,14 +532,23 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
             </svg>
           </button>
-          <div id="networkStatusContent" class="hidden space-y-1.5 text-xs text-zinc-700 dark:text-zinc-400">
-            <div class="flex items-center gap-2">
-              <span id="networkStatusDot" class="inline-block w-2 h-2 rounded-full bg-gray-400"></span>
-              <span>Status: <span id="networkStatusText">—</span></span>
+          <div id="networkStatusContent" class="hidden pt-2">
+            <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-xs text-zinc-700 dark:text-zinc-400">
+              <span class="text-left font-medium text-zinc-600 dark:text-zinc-500">Status</span>
+              <div class="flex items-center gap-2 text-zinc-900 dark:text-zinc-100">
+                <span id="networkStatusDot" class="inline-block w-2 h-2 rounded-full bg-gray-400"></span>
+                <span id="networkStatusText">—</span>
+              </div>
+
+              <span class="text-left font-medium text-zinc-600 dark:text-zinc-500">Node</span>
+              <span id="networkNodeText" class="text-zinc-900 dark:text-zinc-100">—</span>
+
+              <span class="text-left font-medium text-zinc-600 dark:text-zinc-500">Latency</span>
+              <span id="networkLatencyText" class="text-zinc-900 dark:text-zinc-100">—</span>
+
+              <span class="text-left font-medium text-zinc-600 dark:text-zinc-500">Last Sync</span>
+              <span id="networkLastSyncText" class="text-zinc-900 dark:text-zinc-100">—</span>
             </div>
-            <div>Node: <span id="networkNodeText" class="text-zinc-900 dark:text-zinc-100">—</span></div>
-            <div>Latency: <span id="networkLatencyText" class="text-zinc-900 dark:text-zinc-100">—</span></div>
-            <div>Last Sync: <span id="networkLastSyncText" class="text-zinc-900 dark:text-zinc-100">—</span></div>
           </div>
         </div>
       </div>
