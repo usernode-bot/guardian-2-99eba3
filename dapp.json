@@ -1,6 +1,14 @@
 {
   "name": "Guardian",
-  "secrets": [],
+  "secrets": [
+    {
+      "key": "ENABLE_DEMO_MODE",
+      "description": "Enable demo mode in this environment (bypasses wallet confirmation, creates fake blockchain transactions). Defaults to staging environment behavior.",
+      "required": false,
+      "private": false,
+      "default": "false"
+    }
+  ],
   "tests": [
     { "name": "Home loads", "path": "/", "expectSelector": "#conversationsView" },
     { "name": "Chat thread loads", "path": "/", "expectSelector": "#messageList" },
