@@ -513,12 +513,12 @@ app.get('/api/conversations/:convId', async (req, res) => {
 
     const { rows: messages } = await pool.query(`
       SELECT id, sender_id,
-             (SELECT username FROM users WHERE id = sender_id) as sender_username,
+             (SELECT username FROM users WHERE id = m.sender_id) as sender_username,
              type, content, created_at, blockchain_recorded, blockchain_audit_log_id
-      FROM messages
+      FROM messages m
       WHERE conversation_id = $1
         AND created_at < $2
-        AND (deleted_by IS NULL OR NOT (deleted_by @> ARRAY[$3]))
+        AND (deleted_by IS NULL OR NOT (deleted_by @> ARRAY[$3]::integer[]))
       ORDER BY created_at DESC
       LIMIT $4
     `, [convId, before, userId, limit]);
@@ -735,7 +735,7 @@ app.put('/api/conversations/:convId/mute', async (req, res) => {
     await pool.query(`
       UPDATE conversations
       SET muted_by = CASE
-        WHEN muted_by @> ARRAY[$1] THEN array_remove(muted_by, $1)
+        WHEN muted_by @> ARRAY[$1]::integer[] THEN array_remove(muted_by, $1)
         ELSE CASE WHEN muted_by IS NULL THEN ARRAY[$1] ELSE array_append(muted_by, $1) END
       END
       WHERE id = $2
@@ -763,7 +763,7 @@ app.post('/api/conversations/:convId/archive', async (req, res) => {
     await pool.query(`
       UPDATE conversations
       SET archived_by = CASE
-        WHEN archived_by @> ARRAY[$1] THEN array_remove(archived_by, $1)
+        WHEN archived_by @> ARRAY[$1]::integer[] THEN array_remove(archived_by, $1)
         ELSE CASE WHEN archived_by IS NULL THEN ARRAY[$1] ELSE array_append(archived_by, $1) END
       END
       WHERE id = $2
@@ -1934,12 +1934,12 @@ app.get('/api/groups/:groupId/messages', async (req, res) => {
     // Get messages
     const { rows: messages } = await pool.query(`
       SELECT id, sender_id,
-             (SELECT username FROM users WHERE id = sender_id) as sender_username,
+             (SELECT username FROM users WHERE id = gm.sender_id) as sender_username,
              type, content, created_at, blockchain_recorded, blockchain_audit_log_id, deleted_by
-      FROM group_messages
+      FROM group_messages gm
       WHERE group_id = $1
         AND created_at < $2
-        AND (deleted_by IS NULL OR NOT (deleted_by @> ARRAY[$3]))
+        AND (deleted_by IS NULL OR NOT (deleted_by @> ARRAY[$3]::integer[]))
       ORDER BY created_at DESC
       LIMIT $4
     `, [groupId, before, userId, limit]);
