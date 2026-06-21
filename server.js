@@ -1451,61 +1451,103 @@ app.get('/api/groups', async (req, res) => {
 });
 
 app.post('/api/groups', async (req, res) => {
+  const requestId = Math.random().toString(36).substr(2, 9);
+  const startTime = new Date().toISOString();
+  console.log(`[POST /api/groups::ENTRY] Request ID=${requestId}, timestamp=${startTime}, env=${IS_STAGING ? 'staging' : 'production'}`);
+  console.log(`[POST /api/groups::ENTRY] Payload: name="${req.body.name}", description="${req.body.description || '(none)'}", initialMemberIds=${req.body.initialMemberIds ? req.body.initialMemberIds.length : 0} members`);
+
   try {
+    // Validation: check authentication
+    console.log(`[POST /api/groups::VALIDATE] Checking authentication: req.user exists=${!!req.user}`);
     if (!req.user) {
+      console.error(`[POST /api/groups::VALIDATE] Authentication failed - no req.user`);
       return res.status(401).json({ error: 'Not authenticated' });
     }
+    console.log(`[POST /api/groups::VALIDATE] Authentication successful: userId=${req.user.id}`);
 
     const { name, description, initialMemberIds } = req.body;
+
+    // Validation: parse and validate user ID
     const userId = parseInt(req.user.id, 10);
+    console.log(`[POST /api/groups::VALIDATE] User ID parsing: raw=${req.user.id}, parsed=${userId}, isNaN=${isNaN(userId)}`);
     if (isNaN(userId)) {
+      console.error(`[POST /api/groups::VALIDATE] Invalid user ID: ${req.user.id}`);
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
+    // Validation: check group name
+    console.log(`[POST /api/groups::VALIDATE] Group name validation: provided="${name}", trimmed="${name ? name.trim() : '(null)'}", length=${name ? name.trim().length : 0}`);
     if (!name || name.trim().length === 0) {
+      console.error(`[POST /api/groups::VALIDATE] Group name validation failed: empty or missing`);
       return res.status(400).json({ error: 'Group name is required' });
     }
+    console.log(`[POST /api/groups::VALIDATE] All validations passed`);
 
-    // Fetch user's network preference
+    // Database: Fetch user's network preference
+    console.log(`[POST /api/groups::DB] Fetching user network preference for userId=${userId}`);
     const userRes = await pool.query(`SELECT network FROM users WHERE id = $1`, [userId]);
+    console.log(`[POST /api/groups::DB] User query returned ${userRes.rows.length} row(s)`);
+    if (userRes.rows.length === 0) {
+      console.warn(`[POST /api/groups::DB] User not found in database, using default network='testnet'`);
+    } else {
+      console.log(`[POST /api/groups::DB] User network from database: ${userRes.rows[0].network}`);
+    }
     const network = userRes.rows[0]?.network || 'testnet';
     const now = new Date();
 
-    // Create group
+    // Database: Create group
+    console.log(`[POST /api/groups::DB] Creating group with: creator_id=${userId}, name="${name.trim()}", description="${description || '(null)'}", network=${network}`);
     const result = await pool.query(`
       INSERT INTO groups (creator_id, name, description, created_at, updated_at)
       VALUES ($1, $2, $3, NOW(), NOW())
       RETURNING id, name, description, avatar_url, creator_id, created_at, updated_at
     `, [userId, name.trim(), description || null]);
 
+    if (result.rows.length === 0) {
+      console.error(`[POST /api/groups::DB] Group insert returned no rows`);
+      throw new Error('Group creation query returned no results');
+    }
     const groupId = result.rows[0].id;
+    console.log(`[POST /api/groups::DB] Group created successfully: id=${groupId}, name="${result.rows[0].name}"`);
 
-    // Add creator as member
-    await pool.query(`
+    // Database: Add creator as member
+    console.log(`[POST /api/groups::DB] Adding creator as member: groupId=${groupId}, userId=${userId}, role='creator'`);
+    const creatorMemberRes = await pool.query(`
       INSERT INTO group_members (group_id, user_id, role, joined_at)
       VALUES ($1, $2, 'creator', NOW())
     `, [groupId, userId]);
+    console.log(`[POST /api/groups::DB] Creator member insert: rowCount=${creatorMemberRes.rowCount}`);
 
-    // Add initial members if provided
+    // Database: Add initial members if provided
     if (initialMemberIds && Array.isArray(initialMemberIds) && initialMemberIds.length > 0) {
-      for (const memberId of initialMemberIds) {
+      console.log(`[POST /api/groups::DB] Processing ${initialMemberIds.length} initial member(s)`);
+      for (let idx = 0; idx < initialMemberIds.length; idx++) {
+        const memberId = initialMemberIds[idx];
         if (memberId !== userId) {
-          await pool.query(`
+          console.log(`[POST /api/groups::DB] Adding member ${idx + 1}/${initialMemberIds.length}: memberId=${memberId}`);
+          const memberRes = await pool.query(`
             INSERT INTO group_members (group_id, user_id, role, joined_at)
             VALUES ($1, $2, 'member', NOW())
             ON CONFLICT (group_id, user_id) DO NOTHING
           `, [groupId, memberId]);
+          console.log(`[POST /api/groups::DB] Member insert: rowCount=${memberRes.rowCount} (0 if conflict)`);
+        } else {
+          console.log(`[POST /api/groups::DB] Skipping member ${idx + 1}/${initialMemberIds.length}: same as creator`);
         }
       }
+    } else {
+      console.log(`[POST /api/groups::DB] No initial members provided`);
     }
 
-    // Initialize read receipt for creator
-    await pool.query(`
+    // Database: Initialize read receipt for creator
+    console.log(`[POST /api/groups::DB] Creating read receipt: userId=${userId}, groupId=${groupId}`);
+    const readReceiptRes = await pool.query(`
       INSERT INTO group_read_receipts (user_id, group_id, last_read_at)
       VALUES ($1, $2, NOW())
     `, [userId, groupId]);
+    console.log(`[POST /api/groups::DB] Read receipt insert: rowCount=${readReceiptRes.rowCount}`);
 
-    // Prepare transaction payload for blockchain
+    // Blockchain: Prepare transaction payload for blockchain
     const transactionPayload = {
       type: 'group_create',
       groupId: groupId,
@@ -1516,48 +1558,68 @@ app.post('/api/groups', async (req, res) => {
       timestamp: now.toISOString(),
       network: network
     };
+    console.log(`[POST /api/groups::BLOCKCHAIN] Transaction payload prepared: type=${transactionPayload.type}, groupId=${transactionPayload.groupId}, memberCount=${transactionPayload.memberIds.length}, network=${transactionPayload.network}, userPubkeyPresent=${!!transactionPayload.userPubkey}`);
 
-    // Create audit log entry for group creation
+    // Blockchain: Create audit log entry
     const networkPrefix = network === 'mainnet' ? 'mainnet-' : 'testnet-';
     const placeholderTxHash = IS_STAGING ? 'ut1staging-' + networkPrefix + 'group-create-' + groupId + '-' + Date.now() : 'ut1-' + networkPrefix + 'tx-group-' + Math.random().toString(36).substr(2, 9);
     const auditStatus = IS_STAGING ? 'confirmed' : 'pending';
     const confirmedAt = IS_STAGING ? now : null;
+    console.log(`[POST /api/groups::BLOCKCHAIN] Creating audit log: txHash=${placeholderTxHash}, status=${auditStatus}, confirmedAt=${confirmedAt ? confirmedAt.toISOString() : 'null'}, env=${IS_STAGING ? 'staging' : 'production'}`);
+
     const auditRes = await pool.query(`
       INSERT INTO blockchain_audit_logs (user_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
       RETURNING id
     `, [userId, groupId, 'group_create', placeholderTxHash, JSON.stringify(transactionPayload), auditStatus, confirmedAt, null, req.user.usernode_pubkey || null, now, now]);
-    const blockchainRecordingId = auditRes.rows[0].id;
 
-    // Async: submit to blockchain in the background (production only)
+    if (auditRes.rows.length === 0) {
+      console.error(`[POST /api/groups::BLOCKCHAIN] Audit log insert returned no rows`);
+      throw new Error('Audit log creation query returned no results');
+    }
+    const blockchainRecordingId = auditRes.rows[0].id;
+    console.log(`[POST /api/groups::BLOCKCHAIN] Audit log created: id=${blockchainRecordingId}, rowCount=${auditRes.rowCount}`);
+
+    // Blockchain: Async background task launch
     if (!IS_STAGING) {
+      console.log(`[POST /api/groups::BLOCKCHAIN] Spawning background blockchain submission task (production only)`);
       (async () => {
         try {
+          console.log(`[POST /api/groups::BLOCKCHAIN::ASYNC] Background task started for auditId=${blockchainRecordingId}`);
           const result = await sendTransactionToBridge(transactionPayload, network);
+          console.log(`[POST /api/groups::BLOCKCHAIN::ASYNC] Bridge returned txHash=${result.txHash}, status=${result.status}`);
+
           // Update audit log with real tx hash
-          await pool.query(`
+          const updateRes = await pool.query(`
             UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
           `, [result.txHash, blockchainRecordingId]);
+          console.log(`[POST /api/groups::BLOCKCHAIN::ASYNC] Audit log updated with real txHash, rowCount=${updateRes.rowCount}`);
+
           // Start monitoring
+          console.log(`[POST /api/groups::BLOCKCHAIN::ASYNC] Starting blockchain status monitoring`);
           monitorBlockchainStatus(blockchainRecordingId, result.txHash).catch(err => {
-            console.error('Error monitoring blockchain status:', err);
+            console.error(`[POST /api/groups::BLOCKCHAIN::ASYNC] Error monitoring blockchain status: ${err.message}`, err);
           });
         } catch (err) {
-          console.error('Background blockchain submission error:', err);
+          console.error(`[POST /api/groups::BLOCKCHAIN::ASYNC] Background blockchain submission error: ${err.message}`, err);
           await pool.query(`
             UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
           `, [err.message, blockchainRecordingId]);
         }
       })();
+    } else {
+      console.log(`[POST /api/groups::BLOCKCHAIN] Background blockchain submission skipped (staging environment)`);
     }
 
-    // Get members
+    // Database: Get members for response
+    console.log(`[POST /api/groups::DB] Fetching members for response: groupId=${groupId}`);
     const { rows: memberRows } = await pool.query(`
       SELECT gm.id, gm.user_id, u.username, gm.role, gm.joined_at
       FROM group_members gm
       JOIN users u ON u.id = gm.user_id
       WHERE gm.group_id = $1
     `, [groupId]);
+    console.log(`[POST /api/groups::DB] Member fetch returned ${memberRows.length} member(s)`);
 
     const members = memberRows.map(m => ({
       id: m.id,
@@ -1567,7 +1629,8 @@ app.post('/api/groups', async (req, res) => {
       joinedAt: m.joined_at
     }));
 
-    res.json({
+    // Response: Send successful response
+    const responsePayload = {
       id: groupId,
       name: result.rows[0].name,
       description: result.rows[0].description,
@@ -1575,9 +1638,17 @@ app.post('/api/groups', async (req, res) => {
       members,
       createdAt: result.rows[0].created_at,
       blockchainRecordingId: blockchainRecordingId
-    });
+    };
+    console.log(`[POST /api/groups::RESPONSE] Success response prepared: id=${responsePayload.id}, name="${responsePayload.name}", memberCount=${responsePayload.members.length}, blockchainRecordingId=${responsePayload.blockchainRecordingId}`);
+    console.log(`[POST /api/groups::COMPLETE] Request completed successfully, requestId=${requestId}`);
+
+    res.json(responsePayload);
   } catch (err) {
-    console.error('Error creating group:', err);
+    console.error(`[POST /api/groups::ERROR] Exception caught, requestId=${requestId}`);
+    console.error(`[POST /api/groups::ERROR] Error type: ${err.constructor.name}`);
+    console.error(`[POST /api/groups::ERROR] Error message: ${err.message}`);
+    console.error(`[POST /api/groups::ERROR] Error stack:`, err.stack);
+    console.error(`[POST /api/groups::ERROR] Full error object:`, err);
     res.status(500).json({ error: err.message });
   }
 });
