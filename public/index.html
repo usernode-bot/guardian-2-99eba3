@@ -973,6 +973,65 @@
     let networkStatusPollInterval = null;
     let networkStatus = { status: 'unknown', node: null, latency: null, lastSyncAt: null };
 
+    // Bridge readiness state
+    let bridgeReady = false;
+    let bridgeReadyPromise = null;
+    let demoModeNotificationShown = false;
+
+    function initBridgeReadiness() {
+      if (bridgeReadyPromise) return bridgeReadyPromise;
+
+      bridgeReadyPromise = new Promise((resolve) => {
+        // If bridge is already present, resolve immediately
+        if (typeof window.usernode !== 'undefined' && window.usernode && window.usernode.isNative) {
+          bridgeReady = true;
+          resolve(true);
+          return;
+        }
+
+        // Set up a timeout: if bridge doesn't appear within 5 seconds, assume it's not available
+        const timeoutId = setTimeout(() => {
+          bridgeReady = false;
+          showDemoModeNotification();
+          resolve(false);
+        }, 5000);
+
+        // Listen for the bridge becoming available
+        const handleBridgeReady = () => {
+          clearTimeout(timeoutId);
+          if (typeof window.usernode !== 'undefined' && window.usernode && window.usernode.isNative) {
+            bridgeReady = true;
+            resolve(true);
+          } else {
+            // Bridge exists but isNative is false
+            bridgeReady = false;
+            showDemoModeNotification();
+            resolve(false);
+          }
+        };
+
+        // Check periodically if bridge has loaded (polling fallback)
+        const pollIntervalId = setInterval(() => {
+          if (typeof window.usernode !== 'undefined' && window.usernode) {
+            clearInterval(pollIntervalId);
+            clearTimeout(timeoutId);
+            handleBridgeReady();
+          }
+        }, 100);
+
+        // Also listen for usernode ready event if supported
+        window.addEventListener('usernode:ready', handleBridgeReady, { once: true });
+      });
+
+      return bridgeReadyPromise;
+    }
+
+    function showDemoModeNotification() {
+      if (demoModeNotificationShown) return;
+      demoModeNotificationShown = true;
+      showToast('Running in demo mode - blockchain features are unavailable', 'info');
+    }
+
     function loadSettings() {
       if (!currentUser) return {};
       const stored = JSON.parse(localStorage.getItem(`guardian_settings_${currentUser.id}`) || '{}');
@@ -1426,6 +1485,9 @@
     }
 
     async function init() {
+      // Wait for bridge to be ready before proceeding
+      await initBridgeReadiness();
+
       const user = await apiCall('/api/user');
       if (!user || user.error) {
         console.error('Failed to load user:', user?.error || 'No response');
