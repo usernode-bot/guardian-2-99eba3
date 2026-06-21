@@ -1234,15 +1234,29 @@
         ...opts,
         headers: { 'Content-Type': 'application/json', ...headers, ...opts.headers }
       });
-      if (response.status === 401) {
-        alert('Not authenticated');
-        return null;
-      }
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        return { error: data.error || 'Request failed', status: response.status };
+        try {
+          const data = await response.json();
+          let errorMsg = 'Request failed';
+          if (data && typeof data === 'object' && data.error) {
+            errorMsg = typeof data.error === 'string' ? data.error : 'Request failed';
+          }
+          console.error(`API error (${response.status}) on ${path}:`, { errorMsg, data });
+          return { error: errorMsg, status: response.status };
+        } catch (parseErr) {
+          const text = await response.text().catch(() => '');
+          console.error(`API error (${response.status}) on ${path} with invalid JSON:`, text);
+          return { error: 'Request failed', status: response.status };
+        }
       }
-      return response.json();
+      try {
+        const data = await response.json();
+        return data;
+      } catch (err) {
+        const text = await response.text().catch(() => '');
+        console.error(`Failed to parse JSON response from ${path}:`, { error: err.message, text });
+        return { error: 'Invalid response format', status: response.status };
+      }
     }
 
     function toggleSidebar() {
@@ -1339,8 +1353,8 @@
 
     async function init() {
       const user = await apiCall('/api/user');
-      if (!user) {
-        console.error('Failed to load user');
+      if (!user || user.error) {
+        console.error('Failed to load user:', user?.error || 'No response');
         return;
       }
       currentUser = user;
@@ -1355,7 +1369,8 @@
       initSettings();
       startNetworkStatusPolling();
       showWelcome();
-      showConversationsView();
+      // Ensure currentUser is set before showing conversations view (which may load groups)
+      await showConversationsView();
       setupEventListeners();
     }
 
@@ -1416,11 +1431,19 @@
       if (!list) return;
 
       if (data && data.error) {
-        list.innerHTML = '<div class="text-center py-8 text-red-600 dark:text-red-400"><div class="text-sm mb-3">Failed to load conversations</div><button onclick="loadConversations()" class="px-3 py-1 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded text-xs hover:bg-red-200 dark:hover:bg-red-800 transition">Retry</button></div>';
+        let errorMsg = 'Failed to load conversations';
+        if (data.status === 401) {
+          errorMsg = 'Authentication required - please log in';
+        } else if (data.error && data.error !== 'Request failed' && typeof data.error === 'string') {
+          errorMsg = data.error;
+        }
+        console.error('Error loading conversations:', data.error);
+        list.innerHTML = '<div class="text-center py-8 text-red-600 dark:text-red-400"><div class="text-sm mb-3">' + String(errorMsg) + '</div><button onclick="loadConversations()" class="px-3 py-1 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded text-xs hover:bg-red-200 dark:hover:bg-red-800 transition">Retry</button></div>';
         return;
       }
 
       if (!data || !data.conversations) {
+        console.error('Invalid conversations response:', data);
         list.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Failed to load conversations</div>';
         return;
       }
@@ -1488,6 +1511,10 @@
 
     // Tab switching for Messages view
     async function switchMessagesTab(tab) {
+      if (!currentUser) {
+        console.warn('switchMessagesTab called before currentUser initialized');
+        return;
+      }
       activeMessagesTab = tab;
       localStorage.setItem(`guardian_messages_tab_${currentUser.id}`, tab);
 
@@ -1517,16 +1544,29 @@
 
     // Load groups list
     async function loadGroups() {
+      if (!currentUser) {
+        console.warn('loadGroups called before currentUser initialized');
+        return;
+      }
+
       const data = await apiCall('/api/groups');
       const list = document.getElementById('groupsList');
       if (!list) return;
 
       if (data && data.error) {
-        list.innerHTML = '<div class="text-center py-8 text-red-600 dark:text-red-400"><div class="text-sm mb-3">Failed to load groups</div><button onclick="loadGroups()" class="px-3 py-1 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded text-xs hover:bg-red-200 dark:hover:bg-red-800 transition">Retry</button></div>';
+        let errorMsg = 'Failed to load groups';
+        if (data.status === 401) {
+          errorMsg = 'Authentication required - please log in';
+        } else if (data.error && data.error !== 'Request failed' && typeof data.error === 'string') {
+          errorMsg = data.error;
+        }
+        console.error('Error loading groups:', data.error);
+        list.innerHTML = '<div class="text-center py-8 text-red-600 dark:text-red-400"><div class="text-sm mb-3">' + String(errorMsg) + '</div><button onclick="loadGroups()" class="px-3 py-1 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded text-xs hover:bg-red-200 dark:hover:bg-red-800 transition">Retry</button></div>';
         return;
       }
 
       if (!data || !data.groups) {
+        console.error('Invalid groups response:', data);
         list.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Failed to load groups</div>';
         return;
       }
