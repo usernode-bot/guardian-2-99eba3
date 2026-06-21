@@ -621,6 +621,25 @@
           </div>
         </div>
 
+        <!-- On-Chain Activity (Demo Mode) -->
+        <div id="transactionHistoryAccordion" class="hidden space-y-1 border-t border-zinc-200 dark:border-zinc-700 pt-1.5 mt-1.5">
+          <button id="transactionToggle" onclick="toggleTransactionAccordion()" class="w-full flex items-center justify-between px-0 py-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
+            <div class="flex items-center gap-2">
+              <span>On-Chain Activity</span>
+              <span id="transactionHeaderDot" class="inline-block w-2.5 h-2.5 rounded-full bg-gray-400 transition-colors"></span>
+            </div>
+            <svg id="transactionArrow" class="w-5 h-5 transition-transform duration-200 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+            </svg>
+          </button>
+          <div id="transactionContent" class="hidden pt-2 space-y-2">
+            <!-- Transaction History List -->
+            <div id="transactionHistoryList" class="max-h-64 overflow-y-auto space-y-1 text-xs">
+              <div class="text-center py-4 text-zinc-500 dark:text-zinc-400">Loading...</div>
+            </div>
+          </div>
+        </div>
+
         <!-- Secrets UI -->
         <div id="configAccordion" class="space-y-1 border-t border-zinc-200 dark:border-zinc-700 pt-1.5 mt-1.5">
           <button id="configToggle" onclick="toggleConfigAccordion()" class="w-full flex items-center justify-between px-0 py-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
@@ -1234,6 +1253,7 @@
           const checkbox = document.getElementById('demModeToggle');
           const noPermission = document.getElementById('configNoPermission');
           const accordion = document.getElementById('configAccordion');
+          const transactionAccordion = document.getElementById('transactionHistoryAccordion');
 
           checkbox.checked = config.isDemoMode;
           checkbox.disabled = !config.canEdit;
@@ -1248,6 +1268,19 @@
 
           // Update dot color based on demo mode state
           updateConfigDotColor(config.isDemoMode);
+
+          // Show/hide transaction history based on demo mode
+          if (config.isDemoMode) {
+            transactionAccordion.classList.remove('hidden');
+            pollTransactionHistory();
+            transactionHistoryIntervalId = setInterval(pollTransactionHistory, 2000);
+          } else {
+            transactionAccordion.classList.add('hidden');
+            if (transactionHistoryIntervalId) {
+              clearInterval(transactionHistoryIntervalId);
+              transactionHistoryIntervalId = null;
+            }
+          }
         }
       } catch (err) {
         console.error('Error loading config state:', err);
@@ -1262,6 +1295,8 @@
         dot.className = 'inline-block w-2.5 h-2.5 rounded-full bg-gray-400 transition-colors';
       }
     }
+
+    let transactionHistoryIntervalId = null;
 
     async function updateDemoMode(enabled) {
       const checkbox = document.getElementById('demModeToggle');
@@ -1280,6 +1315,19 @@
         if (result && !result.error) {
           updateConfigDotColor(enabled);
           showToast('Demo mode ' + (enabled ? 'enabled' : 'disabled'), 'success');
+
+          const accordion = document.getElementById('transactionHistoryAccordion');
+          if (enabled) {
+            accordion.classList.remove('hidden');
+            pollTransactionHistory();
+            transactionHistoryIntervalId = setInterval(pollTransactionHistory, 2000);
+          } else {
+            accordion.classList.add('hidden');
+            if (transactionHistoryIntervalId) {
+              clearInterval(transactionHistoryIntervalId);
+              transactionHistoryIntervalId = null;
+            }
+          }
         } else if (result && result.error) {
           checkbox.checked = previousState;
           if (result.error.includes('Not authorized')) {
@@ -1295,6 +1343,119 @@
       } finally {
         loading.classList.add('hidden');
         checkbox.disabled = false;
+      }
+    }
+
+    function toggleTransactionAccordion() {
+      const content = document.getElementById('transactionContent');
+      const arrow = document.getElementById('transactionArrow');
+      const isHidden = content.classList.contains('hidden');
+
+      if (isHidden) {
+        content.classList.remove('hidden');
+        arrow.classList.add('rotate-180');
+      } else {
+        content.classList.add('hidden');
+        arrow.classList.remove('rotate-180');
+      }
+    }
+
+    function formatTimestamp(createdAt) {
+      const now = new Date();
+      const created = new Date(createdAt);
+      const diffMs = now - created;
+      const diffSecs = Math.floor(diffMs / 1000);
+      const diffMins = Math.floor(diffSecs / 60);
+      const diffHours = Math.floor(diffMins / 60);
+      const diffDays = Math.floor(diffHours / 24);
+
+      if (diffSecs < 60) return 'Just now';
+      if (diffMins < 60) return `${diffMins}m ago`;
+      if (diffHours < 24) return `${diffHours}h ago`;
+      if (diffDays < 7) return `${diffDays}d ago`;
+      return created.toLocaleDateString();
+    }
+
+    function getTransactionTypeLabel(messageType) {
+      const labels = {
+        'message': 'Message',
+        'token_transfer': 'Token Transfer',
+        'group_create': 'Create Group',
+        'group_update': 'Update Group',
+        'group_member_add': 'Add Member',
+        'group_member_remove': 'Remove Member',
+        'group_leave': 'Leave Group'
+      };
+      return labels[messageType] || messageType;
+    }
+
+    function getTransactionContext(transaction) {
+      const payload = typeof transaction.transactionPayload === 'string'
+        ? JSON.parse(transaction.transactionPayload)
+        : transaction.transactionPayload;
+
+      if (transaction.recipientUsername) {
+        return `to @${transaction.recipientUsername}`;
+      }
+      if (transaction.groupName) {
+        return transaction.groupName;
+      }
+      if (payload && payload.groupName) {
+        return payload.groupName;
+      }
+      return '';
+    }
+
+    async function pollTransactionHistory() {
+      try {
+        if (!isDemoMode) return;
+
+        const response = await apiCall('/api/transactions-by-user?limit=20&offset=0');
+        if (!response || !response.transactions) return;
+
+        const list = document.getElementById('transactionHistoryList');
+        if (!list) return;
+
+        if (response.transactions.length === 0) {
+          list.innerHTML = '<div class="text-center py-4 text-zinc-500 dark:text-zinc-400">No transactions yet</div>';
+          return;
+        }
+
+        let html = '';
+        for (const tx of response.transactions) {
+          const typeLabel = getTransactionTypeLabel(tx.messageType);
+          const context = getTransactionContext(tx);
+          const timestamp = formatTimestamp(tx.createdAt);
+          const shortHash = tx.txHash.substring(0, 10);
+
+          let statusClass = 'text-gray-500';
+          let statusText = '⏳ Pending';
+          if (tx.status === 'confirmed') {
+            statusClass = 'text-green-600 dark:text-green-400';
+            statusText = '✓ Confirmed';
+          } else if (tx.status === 'failed') {
+            statusClass = 'text-red-600 dark:text-red-400';
+            statusText = '✗ Failed';
+          }
+
+          html += `
+            <div class="p-2 bg-zinc-100 dark:bg-zinc-800 rounded border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition cursor-pointer" title="${tx.txHash}">
+              <div class="flex justify-between items-start gap-2">
+                <div class="flex-1 min-w-0">
+                  <div class="text-xs font-medium text-zinc-900 dark:text-zinc-100 truncate">${typeLabel}${context ? ' ' + context : ''}</div>
+                  <div class="text-xs text-zinc-600 dark:text-zinc-400">${shortHash}...</div>
+                </div>
+                <div class="text-right flex-shrink-0">
+                  <div class="text-xs font-medium ${statusClass}">${statusText}</div>
+                  <div class="text-xs text-zinc-600 dark:text-zinc-400">${timestamp}</div>
+                </div>
+              </div>
+            </div>
+          `;
+        }
+        list.innerHTML = html;
+      } catch (err) {
+        console.error('Error polling transaction history:', err);
       }
     }
 

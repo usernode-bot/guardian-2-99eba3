@@ -993,10 +993,22 @@ app.get('/api/transactions-by-user', async (req, res) => {
     }
 
     const { rows } = await pool.query(`
-      SELECT id, message_id, message_type, tx_hash, status, error_message, confirmed_at, created_at
-      FROM blockchain_audit_logs
-      WHERE user_id = $1
-      ORDER BY created_at DESC
+      SELECT
+        bal.id,
+        bal.message_id,
+        bal.group_id,
+        bal.message_type,
+        bal.tx_hash,
+        bal.status,
+        bal.error_message,
+        bal.confirmed_at,
+        bal.created_at,
+        bal.transaction_payload,
+        g.name as group_name
+      FROM blockchain_audit_logs bal
+      LEFT JOIN groups g ON g.id = bal.group_id
+      WHERE bal.user_id = $1
+      ORDER BY bal.created_at DESC
       LIMIT $2 OFFSET $3
     `, [userId, limit, offset]);
 
@@ -1004,16 +1016,32 @@ app.get('/api/transactions-by-user', async (req, res) => {
       SELECT COUNT(*) as total FROM blockchain_audit_logs WHERE user_id = $1
     `, [userId]);
 
-    const transactions = rows.map(r => ({
-      id: r.id,
-      messageId: r.message_id,
-      messageType: r.message_type,
-      txHash: r.tx_hash,
-      status: r.status,
-      errorMessage: r.error_message || null,
-      confirmedAt: r.confirmed_at || null,
-      createdAt: r.created_at
-    }));
+    const transactions = rows.map(r => {
+      let recipientUsername = null;
+      let groupName = r.group_name || null;
+
+      if (r.message_id && r.message_type === 'message') {
+        const payload = typeof r.transaction_payload === 'string'
+          ? JSON.parse(r.transaction_payload)
+          : r.transaction_payload;
+        recipientUsername = payload?.recipientUsername || null;
+      }
+
+      return {
+        id: r.id,
+        messageId: r.message_id,
+        groupId: r.group_id,
+        messageType: r.message_type,
+        txHash: r.tx_hash,
+        status: r.status,
+        errorMessage: r.error_message || null,
+        confirmedAt: r.confirmed_at || null,
+        createdAt: r.created_at,
+        groupName: groupName,
+        recipientUsername: recipientUsername,
+        transactionPayload: r.transaction_payload
+      };
+    });
 
     res.json({
       transactions,
