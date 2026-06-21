@@ -2303,10 +2303,13 @@
         return;
       }
 
+      // Check if this is an initial load (empty list) or an update
+      const isInitialLoad = list.children.length === 0;
       const wasAtBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 50;
       list.innerHTML = data.messages.map(msg => renderMessage(msg, 'group')).join('');
 
-      if (wasAtBottom) {
+      // Scroll to bottom on initial load or if user was already at bottom
+      if (isInitialLoad || wasAtBottom) {
         list.scrollTop = list.scrollHeight;
       }
 
@@ -3066,7 +3069,8 @@
         return;
       }
 
-      // Preserve scroll position if we're just updating existing messages
+      // Check if this is an initial load (empty list) or an update
+      const isInitialLoad = list.children.length === 0;
       const wasAtBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 50;
       const messageIds = new Set(data.messages.map(m => m.id));
       const oldMessageIds = new Set(Array.from(list.querySelectorAll('[data-message-id]')).map(el => parseInt(el.getAttribute('data-message-id'))));
@@ -3074,8 +3078,8 @@
       // Re-render message list with IDs for stable DOM references
       list.innerHTML = data.messages.map(msg => renderMessage(msg, 'dm')).join('');
 
-      // Restore scroll position
-      if (wasAtBottom) {
+      // Scroll to bottom on initial load or if user was already at bottom
+      if (isInitialLoad || wasAtBottom) {
         list.scrollTop = list.scrollHeight;
       }
 
