@@ -175,6 +175,21 @@
       }
     }
 
+    @keyframes slideIn {
+      from {
+        transform: translateX(400px);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    .animate-slideIn {
+      animation: slideIn 0.3s ease-out;
+    }
+
     .sidebar-enter {
       animation: slideInLeft 0.3s ease-out;
     }
@@ -918,8 +933,44 @@
     </div>
   </div>
 
+  <!-- Wallet Confirmation Modal -->
+  <div id="walletConfirmModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-md shadow-lg">
+      <div class="p-6 border-b border-zinc-300 dark:border-zinc-700">
+        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Confirm On-Chain Action</h2>
+      </div>
+      <div class="p-6 space-y-4">
+        <div class="bg-zinc-100 dark:bg-zinc-800 p-4 rounded-lg space-y-3 text-sm">
+          <div>
+            <div class="text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">Action</div>
+            <div id="walletConfirmAction" class="text-zinc-900 dark:text-zinc-100 font-medium"></div>
+          </div>
+          <div>
+            <div class="text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">Network</div>
+            <div id="walletConfirmNetwork" class="text-zinc-900 dark:text-zinc-100 font-medium capitalize"></div>
+          </div>
+          <div>
+            <div class="text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">Wallet Address</div>
+            <div id="walletConfirmWallet" class="text-zinc-900 dark:text-zinc-100 font-mono text-xs break-all"></div>
+          </div>
+          <div id="walletConfirmDetails" class="pt-2 border-t border-zinc-300 dark:border-zinc-700"></div>
+        </div>
+        <p class="text-xs text-zinc-600 dark:text-zinc-400">
+          Your wallet will be prompted to sign this transaction. This action cannot be undone.
+        </p>
+      </div>
+      <div class="p-6 border-t border-zinc-300 dark:border-zinc-700 flex gap-3">
+        <button onclick="closeWalletConfirm()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100 font-medium text-sm">Cancel</button>
+        <button id="walletConfirmBtn" onclick="submitWalletConfirm()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg transition font-medium text-sm">Sign & Send</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notification Container -->
   <div id="toastContainer" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- UserNode Bridge for wallet signing -->
+  <script src="https://social-vibecoding.usernodelabs.org/usernode-bridge/v1/bridge.js"></script>
 
   <script>
     const params = new URLSearchParams(window.location.search);
@@ -972,6 +1023,10 @@
     // Network status polling
     let networkStatusPollInterval = null;
     let networkStatus = { status: 'unknown', node: null, latency: null, lastSyncAt: null };
+
+    // Wallet confirmation state
+    let pendingWalletAction = null;
+    let walletConfirmResolver = null;
 
     function loadSettings() {
       if (!currentUser) return {};
@@ -1333,6 +1388,25 @@
       }
     }
 
+    function showToast(message, type = 'success', duration = 3000) {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      const bgColor = type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500';
+      const textColor = 'text-white';
+
+      toast.className = `${bgColor} ${textColor} px-4 py-3 rounded-lg shadow-lg text-sm font-medium animate-slideIn`;
+      toast.textContent = message;
+
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(400px)';
+        toast.style.transition = 'all 0.3s ease-out';
+        setTimeout(() => toast.remove(), 300);
+      }, duration);
+    }
+
     function toggleSidebar() {
       sidebarOpen = !sidebarOpen;
       const sidebar = document.getElementById('sidebar');
@@ -1425,13 +1499,162 @@
       }
     }
 
+    // Helper function to check if wallet is available
+    function isWalletAvailable() {
+      return typeof window.usernode !== 'undefined' &&
+             typeof window.usernode.sendTransaction === 'function';
+    }
+
+    // Validate and log wallet address information
+    function validateWalletAddress(pubkey) {
+      const validation = {
+        address: pubkey,
+        exists: !!pubkey,
+        length: pubkey ? pubkey.length : 0,
+        format: {
+          startsWithUt1: pubkey && pubkey.startsWith('ut1'),
+          isValidHex: pubkey && /^[a-f0-9]+$/i.test(pubkey.replace(/^ut1/, '')),
+          endsWithHex: pubkey && /[a-f0-9]{4}$/.test(pubkey)
+        }
+      };
+      return validation;
+    }
+
+    // Wait for bridge to load with timeout
+    async function waitForBridge(timeoutMs = 3000) {
+      const startTime = Date.now();
+      while (!isWalletAvailable() && (Date.now() - startTime) < timeoutMs) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      return isWalletAvailable();
+    }
+
+    // Comprehensive bridge diagnostic function for platform maintainers
+    function runBridgeDiagnostics() {
+      const diagnostic = {
+        timestamp: new Date().toISOString(),
+        environment: {
+          userAgent: navigator.userAgent,
+          location: window.location.href,
+          frameContext: window.self !== window.top ? 'iframe' : 'top-level'
+        },
+        bridgeScript: {
+          scriptTagLoaded: document.querySelector('script[src*="usernode-bridge"]') !== null,
+          scriptSrc: 'https://social-vibecoding.usernodelabs.org/usernode-bridge/v1/bridge.js'
+        },
+        windowUsernode: {
+          exists: typeof window.usernode !== 'undefined',
+          type: typeof window.usernode,
+          isObject: typeof window.usernode === 'object',
+          isFunction: typeof window.usernode === 'function'
+        },
+        bridgeMethods: {},
+        walletProvider: {
+          sendTransaction: typeof window.usernode?.sendTransaction,
+          sendTransactionIsFunction: typeof window.usernode?.sendTransaction === 'function',
+          getNodeAddress: typeof window.usernode?.getNodeAddress,
+          requestLlmAccess: typeof window.usernode?.requestLlmAccess,
+          getLlmAccess: typeof window.usernode?.getLlmAccess,
+          invariants: typeof window.usernode?.invariants
+        },
+        globalWalletProviders: {
+          ethereum: typeof window.ethereum,
+          web3: typeof window.web3,
+          solana: typeof window.solana,
+          phantom: typeof window.phantom,
+          metaMask: typeof window.metaMask
+        }
+      };
+
+      // Safely extract all methods on window.usernode
+      if (typeof window.usernode === 'object' && window.usernode !== null) {
+        try {
+          diagnostic.bridgeMethods = Object.keys(window.usernode).reduce((acc, key) => {
+            acc[key] = typeof window.usernode[key];
+            return acc;
+          }, {});
+        } catch (e) {
+          diagnostic.bridgeMethods.error = 'Failed to enumerate methods: ' + e.message;
+        }
+      }
+
+      // Check each wallet provider's methods
+      if (typeof window.ethereum === 'object' && window.ethereum) {
+        diagnostic.ethereumMethods = Object.keys(window.ethereum).slice(0, 10);
+      }
+
+      // Log comprehensive report
+      console.log('╔════════════════════════════════════════════════════════════════╗');
+      console.log('║        UserNode Bridge Diagnostic Report (For Maintainers)      ║');
+      console.log('╚════════════════════════════════════════════════════════════════╝');
+      console.log('Environment:', diagnostic.environment);
+      console.log('Bridge Script:', diagnostic.bridgeScript);
+      console.log('window.usernode Status:', diagnostic.windowUsernode);
+      console.log('Available Bridge Methods:', diagnostic.bridgeMethods);
+      console.log('Wallet Provider Detection:', diagnostic.walletProvider);
+      console.log('Global Wallet Providers:', diagnostic.globalWalletProviders);
+      console.log('Full Diagnostic Object:', diagnostic);
+
+      // Store in window for easier inspection
+      window.__guardianBridgeDiagnostic = diagnostic;
+      console.log('Diagnostic stored at window.__guardianBridgeDiagnostic');
+
+      return diagnostic;
+    }
+
     async function init() {
+      // Run comprehensive bridge diagnostics
+      console.log('=== Guardian 2 Initialization ===');
+      const diagnostic = runBridgeDiagnostics();
+
+      // Log bridge availability on page load
+      console.log('=== Page Load: Checking UserNode Bridge ===');
+      console.log('window.usernode exists:', typeof window.usernode !== 'undefined');
+      if (typeof window.usernode !== 'undefined') {
+        console.log('window.usernode object:', window.usernode);
+        console.log('Available methods on usernode:', Object.keys(window.usernode));
+        console.log('usernode.sendTransaction exists:', typeof window.usernode.sendTransaction !== 'undefined');
+        console.log('usernode.getNodeAddress exists:', typeof window.usernode.getNodeAddress !== 'undefined');
+        console.log('usernode.requestLlmAccess exists:', typeof window.usernode.requestLlmAccess !== 'undefined');
+      } else {
+        console.warn('UserNode bridge NOT available at startup - window.usernode is undefined');
+        console.log('Waiting for bridge to load...');
+        const bridgeLoaded = await waitForBridge(3000);
+        if (bridgeLoaded) {
+          console.log('Bridge loaded successfully after waiting');
+          console.log('Available methods on usernode:', Object.keys(window.usernode));
+          // Re-run diagnostics after bridge loads
+          runBridgeDiagnostics();
+        } else {
+          console.error('CRITICAL: UserNode bridge failed to load after 3 second timeout');
+          console.warn('Wallet features will not be available');
+        }
+      }
+
       const user = await apiCall('/api/user');
       if (!user || user.error) {
         console.error('Failed to load user:', user?.error || 'No response');
         return;
       }
       currentUser = user;
+
+      // Validate and log wallet address information
+      console.log('\n--- User Profile & Wallet Address Validation ---');
+      console.log('User loaded:', {
+        id: user.id,
+        username: user.username,
+        verified: user.verified,
+        network: user.network,
+        has_usernode_pubkey: !!user.usernode_pubkey
+      });
+
+      if (user.usernode_pubkey) {
+        const addressValidation = validateWalletAddress(user.usernode_pubkey);
+        console.log('Wallet Address Validation:', addressValidation);
+      } else {
+        console.warn('⚠ No wallet address linked to this user');
+      }
+
       currentNetwork = user.network || 'testnet';
       const viewMode = user.view_mode || 'web';
       const settings = loadSettings();
@@ -1787,14 +2010,30 @@
 
       if (!name) return alert('Group name is required');
 
-      const data = await apiCall('/api/groups', {
-        method: 'POST',
-        body: JSON.stringify({ name, description: desc || null })
-      });
+      try {
+        // Show wallet confirmation modal
+        await showWalletConfirm('Create Group', { name, description: desc || '(none)' }, async (txHash) => {
+          // After wallet confirms, submit the group creation
+          const data = await apiCall('/api/groups', {
+            method: 'POST',
+            body: JSON.stringify({ name, description: desc || null })
+          });
 
-      if (data) {
-        closeCreateGroupModal();
-        loadGroups();
+          if (data && !data.error) {
+            showToast('Group created successfully', 'success');
+            closeCreateGroupModal();
+            loadGroups();
+            return data;
+          } else if (data && data.error) {
+            showToast(`Failed to create group: ${data.error}`, 'error');
+            throw new Error(data.error);
+          }
+        });
+      } catch (err) {
+        if (err.message !== 'User cancelled wallet confirmation') {
+          console.error('Create group error:', err);
+          showToast(`Error: ${err.message}`, 'error');
+        }
       }
     }
 
@@ -1810,6 +2049,188 @@
       document.getElementById('createGroupModal').classList.add('hidden');
       document.getElementById('groupNameInput').value = '';
       document.getElementById('groupDescInput').value = '';
+    }
+
+    // Wallet confirmation modal functions
+    async function showWalletConfirm(action, details, onApprove) {
+      pendingWalletAction = { action, details, onApprove };
+
+      // Update modal with action details
+      document.getElementById('walletConfirmAction').textContent = action;
+      document.getElementById('walletConfirmNetwork').textContent = currentNetwork || 'testnet';
+      document.getElementById('walletConfirmWallet').textContent = currentUser.usernode_pubkey || 'Not connected';
+
+      // Show action-specific details
+      const detailsHtml = Object.entries(details)
+        .map(([key, value]) => {
+          const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1');
+          return `<div><span class="text-xs text-zinc-600 dark:text-zinc-400">${label}</span><div class="text-zinc-900 dark:text-zinc-100 font-medium">${value}</div></div>`;
+        })
+        .join('');
+      document.getElementById('walletConfirmDetails').innerHTML = detailsHtml;
+
+      // Show modal
+      document.getElementById('walletConfirmModal').classList.remove('hidden');
+
+      // Return a promise that resolves when user confirms
+      return new Promise((resolve, reject) => {
+        walletConfirmResolver = { resolve, reject };
+      });
+    }
+
+    function closeWalletConfirm() {
+      document.getElementById('walletConfirmModal').classList.add('hidden');
+      if (walletConfirmResolver) {
+        walletConfirmResolver.reject(new Error('User cancelled wallet confirmation'));
+        walletConfirmResolver = null;
+      }
+      pendingWalletAction = null;
+    }
+
+    async function submitWalletConfirm() {
+      if (!pendingWalletAction) return;
+
+      const confirmBtn = document.getElementById('walletConfirmBtn');
+      const originalText = confirmBtn.textContent;
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'Signing...';
+
+      try {
+        // Call usernode bridge to request wallet signature
+        console.log('╔════════════════════════════════════════════════════════════════╗');
+        console.log('║     Wallet Confirmation Submission - Full Diagnostic Log        ║');
+        console.log('╚════════════════════════════════════════════════════════════════╝');
+        console.log('Timestamp:', new Date().toISOString());
+        console.log('Action:', pendingWalletAction.action);
+        console.log('Network:', currentNetwork || 'testnet');
+        console.log('User wallet address:', currentUser?.usernode_pubkey || 'Not available');
+
+        console.log('\n--- Bridge Availability Check ---');
+        console.log('window.usernode exists:', typeof window.usernode !== 'undefined');
+
+        if (typeof window.usernode !== 'undefined') {
+          console.log('window.usernode object:', window.usernode);
+          const methods = Object.keys(window.usernode);
+          console.log('Available bridge methods:', methods);
+          console.log('Number of methods:', methods.length);
+          console.log('Method details:');
+          methods.forEach(method => {
+            const type = typeof window.usernode[method];
+            const isFunc = type === 'function' ? '✓ FUNCTION' : type;
+            console.log(`  - ${method}: ${isFunc}`);
+          });
+          console.log('sendTransaction method:', typeof window.usernode.sendTransaction);
+          console.log('sendTransaction callable:', typeof window.usernode.sendTransaction === 'function');
+        } else {
+          console.error('CRITICAL: window.usernode is undefined - bridge not loaded');
+        }
+
+        console.log('\n--- Wallet Provider Detection ---');
+        console.log('window.ethereum:', typeof window.ethereum);
+        console.log('window.web3:', typeof window.web3);
+        console.log('window.solana:', typeof window.solana);
+        console.log('window.phantom:', typeof window.phantom);
+        console.log('window.metaMask:', typeof window.metaMask);
+
+        // Check wallet availability using qualified reference (window.usernode)
+        if (!isWalletAvailable()) {
+          console.log('\n--- Wallet Availability Check FAILED ---');
+          console.error('Wallet not available:');
+          console.error('- typeof window.usernode:', typeof window.usernode);
+          console.error('- window.usernode value:', window.usernode);
+          console.error('- window.usernode.sendTransaction:', window.usernode?.sendTransaction);
+          console.error('- isWalletAvailable() result:', isWalletAvailable());
+          throw new Error('Bridge not loaded - wallet provider unavailable');
+        }
+
+        console.log('\n--- Wallet Available - Preparing Transaction ---');
+        const txPayload = {
+          type: 'application',
+          actionType: pendingWalletAction.action,
+          details: pendingWalletAction.details,
+          network: currentNetwork || 'testnet'
+        };
+        console.log('Transaction payload:', txPayload);
+        console.log('Calling window.usernode.sendTransaction()...');
+
+        // Send transaction to wallet using qualified reference
+        let txResult;
+        try {
+          console.log('Invoking wallet signing...');
+          txResult = await window.usernode.sendTransaction(txPayload);
+          console.log('✓ sendTransaction returned successfully');
+        } catch (signErr) {
+          console.log('\n--- Wallet Signature Error ---');
+          console.error('Wallet signature failed:', signErr);
+          console.error('Error details:', {
+            message: signErr.message,
+            name: signErr.name,
+            code: signErr.code,
+            stack: signErr.stack
+          });
+          // Distinguish between cancelled and failed
+          if (signErr.message && signErr.message.includes('cancelled')) {
+            throw new Error('User cancelled wallet signature');
+          } else if (signErr.message && signErr.message.includes('not signed in')) {
+            throw new Error('Wallet not signed in - please log in to your wallet');
+          } else {
+            throw new Error(`Wallet signature failed: ${signErr.message || 'Unknown error'}`);
+          }
+        }
+
+        console.log('\n--- Transaction Result Processing ---');
+        console.log('Transaction result:', txResult);
+        console.log('Has txHash:', txResult && 'txHash' in txResult);
+        console.log('txHash value:', txResult?.txHash);
+
+        if (txResult && txResult.txHash) {
+          console.log('✓ Transaction hash obtained:', txResult.txHash);
+          console.log('Calling action handler...');
+          // User approved - call the action handler
+          const result = await pendingWalletAction.onApprove(txResult.txHash);
+          console.log('✓ Action handler completed successfully');
+          console.log('Result:', result);
+          if (walletConfirmResolver) {
+            walletConfirmResolver.resolve(result);
+            walletConfirmResolver = null;
+          }
+          closeWalletConfirm();
+        } else {
+          console.error('Transaction result missing txHash:', txResult);
+          throw new Error('Wallet did not return transaction hash');
+        }
+      } catch (err) {
+        console.log('\n╔════════════════════════════════════════════════════════════════╗');
+        console.log('║          Wallet Confirmation Error - Full Context              ║');
+        console.log('╚════════════════════════════════════════════════════════════════╝');
+        console.error('Error message:', err.message);
+        console.error('Error name:', err.name);
+        console.error('Error code:', err.code);
+        console.error('Error stack:', err.stack);
+        console.error('Full error object:', err);
+
+        console.log('\n--- Bridge State at Error Time ---');
+        console.log('window.usernode exists:', typeof window.usernode !== 'undefined');
+        if (typeof window.usernode !== 'undefined') {
+          console.log('Available methods:', Object.keys(window.usernode));
+        }
+
+        // Provide clearer error messages to user
+        let userMessage = err.message || 'Failed to sign transaction';
+        if (userMessage.includes('usernode is not defined')) {
+          userMessage = 'Wallet provider not available - bridge failed to load';
+        } else if (!userMessage.startsWith('Wallet') && !userMessage.startsWith('Bridge')) {
+          userMessage = 'Wallet error: ' + userMessage;
+        }
+
+        showToast(userMessage, 'error');
+        if (walletConfirmResolver) {
+          walletConfirmResolver.reject(err);
+          walletConfirmResolver = null;
+        }
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = originalText;
+      }
     }
 
     // View group info
@@ -1906,31 +2327,61 @@
     }
 
     async function addMemberToGroup(groupId, userId) {
-      const result = await apiCall(`/api/groups/${groupId}/members`, {
-        method: 'POST',
-        body: JSON.stringify({ userIds: [userId] })
-      });
+      try {
+        // Get user details for display
+        const userDetails = await apiCall(`/api/users/${userId}`);
+        const userName = userDetails?.username || `User ${userId}`;
 
-      if (result && result.error) {
-        showToast(`Failed to add member: ${result.error}`, 'error');
-      } else if (result) {
-        showToast('Member added successfully', 'success');
-        await manageGroupMembers();
+        // Show wallet confirmation modal
+        await showWalletConfirm('Add Group Member', { groupId, memberName: userName }, async (txHash) => {
+          const result = await apiCall(`/api/groups/${groupId}/members`, {
+            method: 'POST',
+            body: JSON.stringify({ userIds: [userId] })
+          });
+
+          if (result && result.error) {
+            showToast(`Failed to add member: ${result.error}`, 'error');
+            throw new Error(result.error);
+          } else if (result) {
+            showToast('Member added successfully', 'success');
+            await manageGroupMembers();
+            return result;
+          }
+        });
+      } catch (err) {
+        if (err.message !== 'User cancelled wallet confirmation') {
+          console.error('Add member error:', err);
+        }
       }
     }
 
     async function removeMemberFromGroup(groupId, userId) {
       if (!confirm('Remove this member from the group?')) return;
 
-      const result = await apiCall(`/api/groups/${groupId}/members/${userId}`, {
-        method: 'DELETE'
-      });
+      try {
+        // Get user details for display
+        const userDetails = await apiCall(`/api/users/${userId}`);
+        const userName = userDetails?.username || `User ${userId}`;
 
-      if (result && result.error) {
-        showToast(`Failed to remove member: ${result.error}`, 'error');
-      } else if (result) {
-        showToast('Member removed successfully', 'success');
-        await manageGroupMembers();
+        // Show wallet confirmation modal
+        await showWalletConfirm('Remove Group Member', { groupId, memberName: userName }, async (txHash) => {
+          const result = await apiCall(`/api/groups/${groupId}/members/${userId}`, {
+            method: 'DELETE'
+          });
+
+          if (result && result.error) {
+            showToast(`Failed to remove member: ${result.error}`, 'error');
+            throw new Error(result.error);
+          } else if (result) {
+            showToast('Member removed successfully', 'success');
+            await manageGroupMembers();
+            return result;
+          }
+        });
+      } catch (err) {
+        if (err.message !== 'User cancelled wallet confirmation') {
+          console.error('Remove member error:', err);
+        }
       }
     }
 
@@ -1939,22 +2390,33 @@
     }
 
     // Rename group
-    function renameGroup() {
+    async function renameGroup() {
       if (!currentGroupContextMenuId) return;
       const newName = prompt('Enter new group name:');
       if (newName && newName.trim()) {
-        apiCall(`/api/groups/${currentGroupContextMenuId}`, {
-          method: 'PUT',
-          body: JSON.stringify({ name: newName.trim() })
-        }).then(data => {
-          if (data && data.error) {
-            showToast(`Failed to rename group: ${data.error}`, 'error');
-          } else if (data) {
-            showToast('Group renamed successfully', 'success');
-            loadGroups();
-            document.getElementById('groupContextMenu').classList.add('hidden');
+        try {
+          // Show wallet confirmation modal
+          await showWalletConfirm('Update Group Name', { groupId: currentGroupContextMenuId, newName: newName.trim() }, async (txHash) => {
+            const data = await apiCall(`/api/groups/${currentGroupContextMenuId}`, {
+              method: 'PUT',
+              body: JSON.stringify({ name: newName.trim() })
+            });
+
+            if (data && data.error) {
+              showToast(`Failed to rename group: ${data.error}`, 'error');
+              throw new Error(data.error);
+            } else if (data) {
+              showToast('Group renamed successfully', 'success');
+              loadGroups();
+              document.getElementById('groupContextMenu').classList.add('hidden');
+              return data;
+            }
+          });
+        } catch (err) {
+          if (err.message !== 'User cancelled wallet confirmation') {
+            console.error('Rename group error:', err);
           }
-        });
+        }
       }
     }
 
@@ -1968,41 +2430,63 @@
 
       if (!confirm(`Leave "${groupName}"? You will no longer receive messages.`)) return;
 
-      const data = await apiCall(`/api/groups/${currentGroupContextMenuId}/leave`, {
-        method: 'POST',
-        body: JSON.stringify({})
-      });
+      try {
+        // Show wallet confirmation modal
+        await showWalletConfirm('Leave Group', { groupId: currentGroupContextMenuId, groupName }, async (txHash) => {
+          const data = await apiCall(`/api/groups/${currentGroupContextMenuId}/leave`, {
+            method: 'POST',
+            body: JSON.stringify({})
+          });
 
-      if (data && data.error) {
-        showToast(`Failed to leave group: ${data.error}`, 'error');
-      } else if (data) {
-        showToast('Left group successfully', 'success');
-        loadGroups();
-        document.getElementById('groupContextMenu').classList.add('hidden');
-        if (currentGroupId === currentGroupContextMenuId) {
-          showConversationsView();
-        }
-      }
-    }
-
-    // Delete group
-    function deleteGroup() {
-      if (!currentGroupContextMenuId) return;
-      if (confirm('Are you sure you want to delete this group? This cannot be undone.')) {
-        apiCall(`/api/groups/${currentGroupContextMenuId}`, {
-          method: 'DELETE'
-        }).then(data => {
           if (data && data.error) {
-            showToast(`Failed to delete group: ${data.error}`, 'error');
+            showToast(`Failed to leave group: ${data.error}`, 'error');
+            throw new Error(data.error);
           } else if (data) {
-            showToast('Group deleted successfully', 'success');
+            showToast('Left group successfully', 'success');
             loadGroups();
             document.getElementById('groupContextMenu').classList.add('hidden');
             if (currentGroupId === currentGroupContextMenuId) {
               showConversationsView();
             }
+            return data;
           }
         });
+      } catch (err) {
+        if (err.message !== 'User cancelled wallet confirmation') {
+          console.error('Leave group error:', err);
+        }
+      }
+    }
+
+    // Delete group
+    async function deleteGroup() {
+      if (!currentGroupContextMenuId) return;
+      if (confirm('Are you sure you want to delete this group? This cannot be undone.')) {
+        try {
+          // Show wallet confirmation modal
+          await showWalletConfirm('Delete Group', { groupId: currentGroupContextMenuId }, async (txHash) => {
+            const data = await apiCall(`/api/groups/${currentGroupContextMenuId}`, {
+              method: 'DELETE'
+            });
+
+            if (data && data.error) {
+              showToast(`Failed to delete group: ${data.error}`, 'error');
+              throw new Error(data.error);
+            } else if (data) {
+              showToast('Group deleted successfully', 'success');
+              loadGroups();
+              document.getElementById('groupContextMenu').classList.add('hidden');
+              if (currentGroupId === currentGroupContextMenuId) {
+                showConversationsView();
+              }
+              return data;
+            }
+          });
+        } catch (err) {
+          if (err.message !== 'User cancelled wallet confirmation') {
+            console.error('Delete group error:', err);
+          }
+        }
       }
     }
 
@@ -2165,14 +2649,12 @@
       const alignClass = isOwn ? 'justify-end' : 'justify-start';
 
       if (msg.type === 'text') {
-        const blockchainStatusHtml = msg.blockchainRecorded ? `<div class="text-xs mt-2 text-amber-600 dark:text-amber-400" id="blockchain-status-${msg.id}">⏳ Recording on blockchain...</div>` : '';
         return `
           <div class="flex ${alignClass}" data-message-id="${msg.id}">
             <div class="max-w-xs px-4 py-2 rounded-2xl ${baseClass} message-bubble">
               <div class="text-xs opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'} mb-1">${msg.senderUsername}</div>
               <div>${msg.content.text}</div>
               <div class="text-xs mt-2 opacity-70">${formatTime(new Date(msg.createdAt))}</div>
-              ${blockchainStatusHtml}
             </div>
           </div>
         `;
@@ -2191,7 +2673,6 @@
 
       if (msg.type === 'token') {
         const c = msg.content;
-        const blockchainStatusHtml = msg.blockchainRecorded ? `<div class="text-xs mt-2 text-amber-600 dark:text-amber-400" id="blockchain-status-${msg.id}">⏳ Recording on blockchain...</div>` : '';
         return `
           <div class="flex ${alignClass}" data-message-id="${msg.id}">
             <div class="max-w-xs px-4 py-2 rounded-2xl ${baseClass} border-2 border-yellow-500/40 message-bubble">
@@ -2200,7 +2681,6 @@
               <div class="text-xs mt-1 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'}">${c.memo || 'No memo'}</div>
               <div class="text-xs mt-2 font-medium">${c.status === 'confirmed' ? '✓ Confirmed' : '⏳ Pending'}</div>
               <div class="text-xs mt-1 opacity-70">${formatTime(new Date(msg.createdAt))}</div>
-              ${blockchainStatusHtml}
             </div>
           </div>
         `;
@@ -2230,9 +2710,6 @@
           loadGroupMessages(currentGroupId);
         } else {
           loadMessages();
-        }
-        if (data.blockchainRecordingId) {
-          pollBlockchainStatus(data.blockchainRecordingId, data.id);
         }
       }
     }
@@ -2281,33 +2758,54 @@
 
       if (!currentConvId || !currentOtherId) return;
 
+      const memo = document.getElementById('tokenMemo').value;
       const sendBtn = document.getElementById('tokenSend');
       const originalText = sendBtn.textContent;
-      sendBtn.disabled = true;
-      sendBtn.textContent = 'Sending...';
 
-      const data = await apiCall('/api/tokens/send', {
-        method: 'POST',
-        body: JSON.stringify({ recipientId: currentOtherId, amount: parseInt(amount), memo: document.getElementById('tokenMemo').value })
-      });
+      try {
+        // Show wallet confirmation modal
+        await showWalletConfirm('Send Tokens', { recipient: 'selected contact', amount: `${amount} tokens`, memo: memo || '(none)' }, async (txHash) => {
+          sendBtn.disabled = true;
+          sendBtn.textContent = 'Sending...';
 
-      if (data && !data.error) {
-        const msgData = await apiCall(`/api/conversations/${currentConvId}/messages`, {
-          method: 'POST',
-          body: JSON.stringify({
-            type: 'token',
-            content: { recipientId: currentOtherId, amount: parseInt(amount), memo: document.getElementById('tokenMemo').value, txHash: data.txHash, status: data.status }
-          })
+          try {
+            const data = await apiCall('/api/tokens/send', {
+              method: 'POST',
+              body: JSON.stringify({ recipientId: currentOtherId, amount: parseInt(amount), memo })
+            });
+
+            if (data && !data.error) {
+              const msgData = await apiCall(`/api/conversations/${currentConvId}/messages`, {
+                method: 'POST',
+                body: JSON.stringify({
+                  type: 'token',
+                  content: { recipientId: currentOtherId, amount: parseInt(amount), memo, txHash: data.txHash, status: data.status }
+                })
+              });
+              if (msgData && data.blockchainRecordingId) {
+                pollBlockchainStatus(data.blockchainRecordingId, msgData.id);
+              }
+              showToast('Tokens sent successfully', 'success');
+              hideTokenModal();
+              loadMessages();
+              return data;
+            } else if (data && data.error) {
+              showToast(`Failed to send tokens: ${data.error}`, 'error');
+              throw new Error(data.error);
+            }
+          } finally {
+            sendBtn.disabled = false;
+            sendBtn.textContent = originalText;
+          }
         });
-        if (msgData && data.blockchainRecordingId) {
-          pollBlockchainStatus(data.blockchainRecordingId, msgData.id);
+      } catch (err) {
+        if (err.message !== 'User cancelled wallet confirmation') {
+          console.error('Send token error:', err);
+          showToast(`Error: ${err.message}`, 'error');
         }
-        hideTokenModal();
-        loadMessages();
+        sendBtn.disabled = false;
+        sendBtn.textContent = originalText;
       }
-
-      sendBtn.disabled = false;
-      sendBtn.textContent = originalText;
     }
 
     function showLightbox(imageUrl) {
@@ -3199,5 +3697,8 @@
 
     init();
   </script>
+
+  <!-- Toast notifications container -->
+  <div id="toastContainer" class="fixed bottom-4 right-4 space-y-2 z-50"></div>
 </body>
 </html>
