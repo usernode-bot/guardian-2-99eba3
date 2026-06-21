@@ -793,7 +793,9 @@ app.post('/api/blockchain-audit/:auditLogId/retry', async (req, res) => {
     // Re-submit to blockchain
     (async () => {
       try {
-        const payload = JSON.parse(auditLog.transaction_payload);
+        const payload = typeof auditLog.transaction_payload === 'string'
+          ? JSON.parse(auditLog.transaction_payload)
+          : (auditLog.transaction_payload || {});
         const network = payload.network || 'testnet';
         const result = await sendTransactionToBridge(payload, network);
         // Update audit log with new tx hash
@@ -1306,8 +1308,15 @@ app.get('/api/groups', async (req, res) => {
       let lastMessage = '';
       if (row.last_type) {
         if (row.last_type === 'text') {
-          const content = JSON.parse(row.last_content || '{}');
-          lastMessage = content.text || '';
+          try {
+            const content = typeof row.last_content === 'string'
+              ? JSON.parse(row.last_content || '{}')
+              : (row.last_content || {});
+            lastMessage = (content && content.text) || '';
+          } catch (e) {
+            console.error('Failed to parse last_content:', row.last_content, e);
+            lastMessage = '';
+          }
         } else if (row.last_type === 'image') {
           lastMessage = '[Image]';
         } else if (row.last_type === 'token') {

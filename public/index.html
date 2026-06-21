@@ -1235,18 +1235,26 @@
         headers: { 'Content-Type': 'application/json', ...headers, ...opts.headers }
       });
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        let errorMsg = 'Request failed';
-        if (data && typeof data === 'object' && data.error) {
-          errorMsg = typeof data.error === 'string' ? data.error : 'Request failed';
+        try {
+          const data = await response.json();
+          let errorMsg = 'Request failed';
+          if (data && typeof data === 'object' && data.error) {
+            errorMsg = typeof data.error === 'string' ? data.error : 'Request failed';
+          }
+          console.error(`API error (${response.status}) on ${path}:`, { errorMsg, data });
+          return { error: errorMsg, status: response.status };
+        } catch (parseErr) {
+          const text = await response.text().catch(() => '');
+          console.error(`API error (${response.status}) on ${path} with invalid JSON:`, text);
+          return { error: 'Request failed', status: response.status };
         }
-        console.error(`API error (${response.status}) on ${path}:`, errorMsg);
-        return { error: errorMsg, status: response.status };
       }
       try {
-        return await response.json();
+        const data = await response.json();
+        return data;
       } catch (err) {
-        console.error(`Failed to parse JSON response from ${path}:`, err);
+        const text = await response.text().catch(() => '');
+        console.error(`Failed to parse JSON response from ${path}:`, { error: err.message, text });
         return { error: 'Invalid response format', status: response.status };
       }
     }
