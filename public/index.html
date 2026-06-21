@@ -205,7 +205,7 @@
     .layout-compact #sidebarUser { padding: 0.75rem; }
     .layout-compact #sidebarUser > div { gap: 0.5rem; }
     .layout-compact #convList > div { padding: 0.75rem; }
-    .layout-compact #messageList { gap: 0.5rem; }
+    .layout-compact #messageList { gap: 0.375rem; }
     .layout-compact #header { padding: 0.5rem 0.75rem; }
     .layout-compact #inputFooter { padding: 0.75rem; gap: 0.25rem; }
     .layout-compact nav.flex-1 { gap: 0.25rem; }
@@ -716,7 +716,7 @@
 
       <!-- Chat View -->
       <div id="chatView" class="hidden flex flex-col flex-1 overflow-hidden">
-        <div id="messageList" class="flex-1 overflow-y-auto space-y-3 p-4"></div>
+        <div id="messageList" class="flex-1 overflow-y-auto space-y-1.5 p-4 pb-20"></div>
       </div>
 
       <!-- Feed View -->
@@ -764,7 +764,7 @@
     </div>
 
     <!-- Chat Input (shown only in chat view) -->
-    <div id="inputFooter" class="hidden bg-white dark:bg-zinc-900 border-t border-zinc-300 dark:border-zinc-800 p-3 space-y-1 relative">
+    <div id="inputFooter" class="hidden bg-white dark:bg-zinc-900 border-t border-zinc-300 dark:border-zinc-800 p-3 space-y-1 sticky bottom-0 z-40">
       <div class="flex gap-2 items-center">
         <input id="msgInput" type="text" placeholder="Type a message..." class="flex-1 px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
         <button id="attachmentMenuBtn" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition" title="Attachment menu">
@@ -2303,10 +2303,13 @@
         return;
       }
 
+      // Check if this is an initial load (empty list) or an update
+      const isInitialLoad = list.children.length === 0;
       const wasAtBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 50;
-      list.innerHTML = data.messages.map(msg => renderMessage(msg)).join('');
+      list.innerHTML = data.messages.map(msg => renderMessage(msg, 'group')).join('');
 
-      if (wasAtBottom) {
+      // Scroll to bottom on initial load or if user was already at bottom
+      if (isInitialLoad || wasAtBottom) {
         list.scrollTop = list.scrollHeight;
       }
 
@@ -2957,7 +2960,7 @@
       sortedDates.forEach(date => {
         historyHtml += `<div class="text-center py-2 text-xs text-zinc-600 dark:text-zinc-400">${date}</div>`;
         messagesByDate[date].forEach(msg => {
-          const msgHtml = renderMessage(msg);
+          const msgHtml = renderMessage(msg, 'group');
           if (msgHtml) historyHtml += msgHtml;
         });
       });
@@ -3066,16 +3069,17 @@
         return;
       }
 
-      // Preserve scroll position if we're just updating existing messages
+      // Check if this is an initial load (empty list) or an update
+      const isInitialLoad = list.children.length === 0;
       const wasAtBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 50;
       const messageIds = new Set(data.messages.map(m => m.id));
       const oldMessageIds = new Set(Array.from(list.querySelectorAll('[data-message-id]')).map(el => parseInt(el.getAttribute('data-message-id'))));
 
       // Re-render message list with IDs for stable DOM references
-      list.innerHTML = data.messages.map(msg => renderMessage(msg)).join('');
+      list.innerHTML = data.messages.map(msg => renderMessage(msg, 'dm')).join('');
 
-      // Restore scroll position
-      if (wasAtBottom) {
+      // Scroll to bottom on initial load or if user was already at bottom
+      if (isInitialLoad || wasAtBottom) {
         list.scrollTop = list.scrollHeight;
       }
 
@@ -3090,16 +3094,18 @@
       });
     }
 
-    function renderMessage(msg) {
+    function renderMessage(msg, context) {
       const isOwn = msg.senderId === currentUser.id;
       const baseClass = isOwn ? 'ml-auto bg-cyan-600 dark:bg-cyan-600 text-white' : 'mr-auto bg-zinc-200 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100';
       const alignClass = isOwn ? 'justify-end' : 'justify-start';
+      const shouldShowSenderName = context === 'group';
 
       if (msg.type === 'text') {
+        const senderNameLine = shouldShowSenderName ? `<div class="text-xs opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'} mb-1">${msg.senderUsername}</div>` : '';
         return `
           <div class="flex ${alignClass}" data-message-id="${msg.id}">
             <div class="max-w-xs px-4 py-2 rounded-2xl ${baseClass} message-bubble">
-              <div class="text-xs opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'} mb-1">${msg.senderUsername}</div>
+              ${senderNameLine}
               <div>${msg.content.text}</div>
               <div class="text-xs mt-2 opacity-70">${formatTime(new Date(msg.createdAt))}</div>
             </div>
@@ -3108,11 +3114,12 @@
       }
 
       if (msg.type === 'image') {
+        const senderNameLine = shouldShowSenderName ? `<div class="text-xs px-4 py-2 opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'}">${msg.senderUsername}</div>` : '';
         return `
           <div class="flex ${alignClass}" data-message-id="${msg.id}">
             <div class="max-w-xs rounded-2xl overflow-hidden ${baseClass}">
               <img src="${msg.content.imageUrl}" alt="Message image" class="max-w-xs cursor-pointer hover:opacity-80 transition" onclick="showLightbox('${msg.content.imageUrl}')">
-              <div class="text-xs px-4 py-2 opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'}">${msg.senderUsername}</div>
+              ${senderNameLine}
             </div>
           </div>
         `;
@@ -3120,14 +3127,17 @@
 
       if (msg.type === 'token') {
         const c = msg.content;
+        const memoLine = c.memo && c.memo !== 'No memo' ? `<div class="text-xs mt-1 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'}">${c.memo}</div>` : '';
+        const statusIcon = c.status === 'confirmed' ? '✓' : '⏳';
         return `
           <div class="flex ${alignClass}" data-message-id="${msg.id}">
-            <div class="max-w-xs px-4 py-2 rounded-2xl ${baseClass} border-2 border-yellow-500/40 message-bubble">
-              <div class="text-xs mb-1 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'}">💰 Token Transfer</div>
-              <div class="font-bold text-lg">${c.amount} tokens</div>
-              <div class="text-xs mt-1 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'}">${c.memo || 'No memo'}</div>
-              <div class="text-xs mt-2 font-medium">${c.status === 'confirmed' ? '✓ Confirmed' : '⏳ Pending'}</div>
-              <div class="text-xs mt-1 opacity-70">${formatTime(new Date(msg.createdAt))}</div>
+            <div class="max-w-xs px-3 py-2 rounded-2xl ${baseClass} border-2 border-yellow-500/40 message-bubble">
+              <div class="font-bold text-lg flex items-center justify-between gap-2">
+                <span>💰 ${c.amount} tokens</span>
+                <span class="text-xs">${statusIcon}</span>
+              </div>
+              ${memoLine}
+              <div class="text-xs mt-2 opacity-70">${formatTime(new Date(msg.createdAt))}</div>
             </div>
           </div>
         `;
