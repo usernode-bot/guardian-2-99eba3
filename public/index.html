@@ -486,7 +486,7 @@
         </button>
       </div>
 
-      <div class="flex-1 px-3 py-2 space-y-2">
+      <div class="flex-1 px-3 py-2 space-y-1.5">
         <!-- Theme -->
         <div class="space-y-1">
           <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Dark Mode</label>
@@ -520,24 +520,25 @@
           </div>
         </div>
 
-        <!-- Network -->
-        <div class="space-y-1">
-          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Network</label>
-          <select id="networkSelect" onchange="applyNetwork(this.value)" class="w-full px-2 py-2 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500">
-            <option value="testnet">Testnet</option>
-            <option value="mainnet">Mainnet</option>
-          </select>
-        </div>
-
-        <!-- Network Status Accordion -->
-        <div id="networkStatusSection" class="space-y-1 border-t border-zinc-200 dark:border-zinc-700 pt-2 mt-2">
-          <button id="networkStatusToggle" onclick="toggleNetworkStatusAccordion()" class="w-full flex items-center justify-between px-0 py-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
-            <span>Network Status</span>
-            <svg id="networkStatusArrow" class="w-5 h-5 transition-transform duration-200 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <!-- Network (Unified Accordion) -->
+        <div id="networkAccordion" class="space-y-1 border-t border-zinc-200 dark:border-zinc-700 pt-1.5 mt-1.5">
+          <button id="networkToggle" onclick="toggleNetworkAccordion()" class="w-full flex items-center justify-between px-0 py-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
+            <div class="flex items-center gap-2">
+              <span>Network</span>
+              <span id="networkHeaderDot" class="inline-block w-2.5 h-2.5 rounded-full bg-gray-400 transition-colors"></span>
+            </div>
+            <svg id="networkArrow" class="w-5 h-5 transition-transform duration-200 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
             </svg>
           </button>
-          <div id="networkStatusContent" class="hidden pt-2">
+          <div id="networkContent" class="hidden pt-2 space-y-2">
+            <!-- Network Selector -->
+            <select id="networkSelect" onchange="applyNetwork(this.value)" class="w-full px-2 py-2 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500">
+              <option value="testnet">Testnet</option>
+              <option value="mainnet">Mainnet</option>
+            </select>
+
+            <!-- Network Status Details -->
             <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-xs text-zinc-700 dark:text-zinc-400">
               <span class="text-left font-medium text-zinc-600 dark:text-zinc-500">Status</span>
               <div class="flex items-center gap-2 text-zinc-900 dark:text-zinc-100">
@@ -958,6 +959,7 @@
 
       const headerDot = document.getElementById('headerStatusDot');
       const headerTooltip = document.getElementById('headerStatusTooltip');
+      const networkHeaderDot = document.getElementById('networkHeaderDot');
 
       if (!statusDot || !headerDot) return;
 
@@ -977,6 +979,9 @@
 
       statusDot.className = `inline-block w-2 h-2 rounded-full transition-colors ${dotColor}`;
       headerDot.className = `inline-block w-2.5 h-2.5 rounded-full transition-colors ${dotColor}`;
+      if (networkHeaderDot) {
+        networkHeaderDot.className = `inline-block w-2.5 h-2.5 rounded-full transition-colors ${dotColor}`;
+      }
 
       statusText.textContent = statusDisplay;
       nodeText.textContent = networkStatus.node || '—';
@@ -1010,7 +1015,7 @@
     function scrollToNetworkStatus() {
       const settingsPanel = document.getElementById('settingsPanel');
       if (settingsPanel && !settingsPanel.classList.contains('hidden')) {
-        const networkSection = document.getElementById('networkStatusSection');
+        const networkSection = document.getElementById('networkAccordion');
         if (networkSection) {
           networkSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
@@ -1027,9 +1032,9 @@
       if (networkStatusPollInterval) clearInterval(networkStatusPollInterval);
     }
 
-    function toggleNetworkStatusAccordion() {
-      const content = document.getElementById('networkStatusContent');
-      const arrow = document.getElementById('networkStatusArrow');
+    function toggleNetworkAccordion() {
+      const content = document.getElementById('networkContent');
+      const arrow = document.getElementById('networkArrow');
       const isHidden = content.classList.contains('hidden');
 
       if (isHidden) {
