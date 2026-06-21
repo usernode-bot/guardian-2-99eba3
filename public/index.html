@@ -716,7 +716,7 @@
 
       <!-- Chat View -->
       <div id="chatView" class="hidden flex flex-col flex-1 overflow-hidden">
-        <div id="messageList" class="flex-1 overflow-y-auto space-y-1.5 p-4"></div>
+        <div id="messageList" class="flex-1 overflow-y-auto space-y-1.5 p-4 pb-20"></div>
       </div>
 
       <!-- Feed View -->
@@ -764,7 +764,7 @@
     </div>
 
     <!-- Chat Input (shown only in chat view) -->
-    <div id="inputFooter" class="hidden bg-white dark:bg-zinc-900 border-t border-zinc-300 dark:border-zinc-800 p-3 space-y-1 relative">
+    <div id="inputFooter" class="hidden bg-white dark:bg-zinc-900 border-t border-zinc-300 dark:border-zinc-800 p-3 space-y-1 sticky bottom-0 z-40">
       <div class="flex gap-2 items-center">
         <input id="msgInput" type="text" placeholder="Type a message..." class="flex-1 px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
         <button id="attachmentMenuBtn" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition" title="Attachment menu">
