@@ -524,10 +524,15 @@
           </div>
         </div>
 
-        <!-- Network Status -->
-        <div id="networkStatusSection" class="space-y-2 border-t border-zinc-200 dark:border-zinc-700 pt-3 mt-3">
-          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Network Status</label>
-          <div class="space-y-1.5 text-xs text-zinc-700 dark:text-zinc-400">
+        <!-- Network Status Accordion -->
+        <div class="space-y-2 border-t border-zinc-200 dark:border-zinc-700 pt-3 mt-3">
+          <button id="networkStatusToggle" onclick="toggleNetworkStatusAccordion()" class="w-full flex items-center justify-between px-0 py-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
+            <span>Network Status</span>
+            <svg id="networkStatusArrow" class="w-5 h-5 transition-transform duration-200 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+            </svg>
+          </button>
+          <div id="networkStatusContent" class="hidden space-y-1.5 text-xs text-zinc-700 dark:text-zinc-400">
             <div class="flex items-center gap-2">
               <span id="networkStatusDot" class="inline-block w-2 h-2 rounded-full bg-gray-400"></span>
               <span>Status: <span id="networkStatusText">—</span></span>
@@ -1006,6 +1011,20 @@
 
     function stopNetworkStatusPolling() {
       if (networkStatusPollInterval) clearInterval(networkStatusPollInterval);
+    }
+
+    function toggleNetworkStatusAccordion() {
+      const content = document.getElementById('networkStatusContent');
+      const arrow = document.getElementById('networkStatusArrow');
+      const isHidden = content.classList.contains('hidden');
+
+      if (isHidden) {
+        content.classList.remove('hidden');
+        arrow.style.transform = 'rotate(180deg)';
+      } else {
+        content.classList.add('hidden');
+        arrow.style.transform = 'rotate(0deg)';
+      }
     }
 
     function updateMenuHighlight(viewName) {
