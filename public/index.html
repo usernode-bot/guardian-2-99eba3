@@ -1505,6 +1505,21 @@
              typeof window.usernode.sendTransaction === 'function';
     }
 
+    // Validate and log wallet address information
+    function validateWalletAddress(pubkey) {
+      const validation = {
+        address: pubkey,
+        exists: !!pubkey,
+        length: pubkey ? pubkey.length : 0,
+        format: {
+          startsWithUt1: pubkey && pubkey.startsWith('ut1'),
+          isValidHex: pubkey && /^[a-f0-9]+$/i.test(pubkey.replace(/^ut1/, '')),
+          endsWithHex: pubkey && /[a-f0-9]{4}$/.test(pubkey)
+        }
+      };
+      return validation;
+    }
+
     // Wait for bridge to load with timeout
     async function waitForBridge(timeoutMs = 3000) {
       const startTime = Date.now();
@@ -1514,7 +1529,84 @@
       return isWalletAvailable();
     }
 
+    // Comprehensive bridge diagnostic function for platform maintainers
+    function runBridgeDiagnostics() {
+      const diagnostic = {
+        timestamp: new Date().toISOString(),
+        environment: {
+          userAgent: navigator.userAgent,
+          location: window.location.href,
+          frameContext: window.self !== window.top ? 'iframe' : 'top-level'
+        },
+        bridgeScript: {
+          scriptTagLoaded: document.querySelector('script[src*="usernode-bridge"]') !== null,
+          scriptSrc: 'https://social-vibecoding.usernodelabs.org/usernode-bridge/v1/bridge.js'
+        },
+        windowUsernode: {
+          exists: typeof window.usernode !== 'undefined',
+          type: typeof window.usernode,
+          isObject: typeof window.usernode === 'object',
+          isFunction: typeof window.usernode === 'function'
+        },
+        bridgeMethods: {},
+        walletProvider: {
+          sendTransaction: typeof window.usernode?.sendTransaction,
+          sendTransactionIsFunction: typeof window.usernode?.sendTransaction === 'function',
+          getNodeAddress: typeof window.usernode?.getNodeAddress,
+          requestLlmAccess: typeof window.usernode?.requestLlmAccess,
+          getLlmAccess: typeof window.usernode?.getLlmAccess,
+          invariants: typeof window.usernode?.invariants
+        },
+        globalWalletProviders: {
+          ethereum: typeof window.ethereum,
+          web3: typeof window.web3,
+          solana: typeof window.solana,
+          phantom: typeof window.phantom,
+          metaMask: typeof window.metaMask
+        }
+      };
+
+      // Safely extract all methods on window.usernode
+      if (typeof window.usernode === 'object' && window.usernode !== null) {
+        try {
+          diagnostic.bridgeMethods = Object.keys(window.usernode).reduce((acc, key) => {
+            acc[key] = typeof window.usernode[key];
+            return acc;
+          }, {});
+        } catch (e) {
+          diagnostic.bridgeMethods.error = 'Failed to enumerate methods: ' + e.message;
+        }
+      }
+
+      // Check each wallet provider's methods
+      if (typeof window.ethereum === 'object' && window.ethereum) {
+        diagnostic.ethereumMethods = Object.keys(window.ethereum).slice(0, 10);
+      }
+
+      // Log comprehensive report
+      console.log('╔════════════════════════════════════════════════════════════════╗');
+      console.log('║        UserNode Bridge Diagnostic Report (For Maintainers)      ║');
+      console.log('╚════════════════════════════════════════════════════════════════╝');
+      console.log('Environment:', diagnostic.environment);
+      console.log('Bridge Script:', diagnostic.bridgeScript);
+      console.log('window.usernode Status:', diagnostic.windowUsernode);
+      console.log('Available Bridge Methods:', diagnostic.bridgeMethods);
+      console.log('Wallet Provider Detection:', diagnostic.walletProvider);
+      console.log('Global Wallet Providers:', diagnostic.globalWalletProviders);
+      console.log('Full Diagnostic Object:', diagnostic);
+
+      // Store in window for easier inspection
+      window.__guardianBridgeDiagnostic = diagnostic;
+      console.log('Diagnostic stored at window.__guardianBridgeDiagnostic');
+
+      return diagnostic;
+    }
+
     async function init() {
+      // Run comprehensive bridge diagnostics
+      console.log('=== Guardian 2 Initialization ===');
+      const diagnostic = runBridgeDiagnostics();
+
       // Log bridge availability on page load
       console.log('=== Page Load: Checking UserNode Bridge ===');
       console.log('window.usernode exists:', typeof window.usernode !== 'undefined');
@@ -1531,6 +1623,8 @@
         if (bridgeLoaded) {
           console.log('Bridge loaded successfully after waiting');
           console.log('Available methods on usernode:', Object.keys(window.usernode));
+          // Re-run diagnostics after bridge loads
+          runBridgeDiagnostics();
         } else {
           console.error('CRITICAL: UserNode bridge failed to load after 3 second timeout');
           console.warn('Wallet features will not be available');
@@ -1543,6 +1637,24 @@
         return;
       }
       currentUser = user;
+
+      // Validate and log wallet address information
+      console.log('\n--- User Profile & Wallet Address Validation ---');
+      console.log('User loaded:', {
+        id: user.id,
+        username: user.username,
+        verified: user.verified,
+        network: user.network,
+        has_usernode_pubkey: !!user.usernode_pubkey
+      });
+
+      if (user.usernode_pubkey) {
+        const addressValidation = validateWalletAddress(user.usernode_pubkey);
+        console.log('Wallet Address Validation:', addressValidation);
+      } else {
+        console.warn('⚠ No wallet address linked to this user');
+      }
+
       currentNetwork = user.network || 'testnet';
       const viewMode = user.view_mode || 'web';
       const settings = loadSettings();
@@ -1985,49 +2097,75 @@
 
       try {
         // Call usernode bridge to request wallet signature
-        console.log('=== Wallet Confirmation Submission ===');
-        console.log('Checking wallet availability...');
+        console.log('╔════════════════════════════════════════════════════════════════╗');
+        console.log('║     Wallet Confirmation Submission - Full Diagnostic Log        ║');
+        console.log('╚════════════════════════════════════════════════════════════════╝');
+        console.log('Timestamp:', new Date().toISOString());
+        console.log('Action:', pendingWalletAction.action);
+        console.log('Network:', currentNetwork || 'testnet');
+        console.log('User wallet address:', currentUser?.usernode_pubkey || 'Not available');
+
+        console.log('\n--- Bridge Availability Check ---');
         console.log('window.usernode exists:', typeof window.usernode !== 'undefined');
 
         if (typeof window.usernode !== 'undefined') {
           console.log('window.usernode object:', window.usernode);
-          console.log('Available methods:', Object.keys(window.usernode));
-          console.log('usernode.sendTransaction method:', typeof window.usernode.sendTransaction);
-          console.log('usernode.sendTransaction:', window.usernode.sendTransaction);
+          const methods = Object.keys(window.usernode);
+          console.log('Available bridge methods:', methods);
+          console.log('Number of methods:', methods.length);
+          console.log('Method details:');
+          methods.forEach(method => {
+            const type = typeof window.usernode[method];
+            const isFunc = type === 'function' ? '✓ FUNCTION' : type;
+            console.log(`  - ${method}: ${isFunc}`);
+          });
+          console.log('sendTransaction method:', typeof window.usernode.sendTransaction);
+          console.log('sendTransaction callable:', typeof window.usernode.sendTransaction === 'function');
         } else {
           console.error('CRITICAL: window.usernode is undefined - bridge not loaded');
         }
 
+        console.log('\n--- Wallet Provider Detection ---');
+        console.log('window.ethereum:', typeof window.ethereum);
+        console.log('window.web3:', typeof window.web3);
+        console.log('window.solana:', typeof window.solana);
+        console.log('window.phantom:', typeof window.phantom);
+        console.log('window.metaMask:', typeof window.metaMask);
+
         // Check wallet availability using qualified reference (window.usernode)
         if (!isWalletAvailable()) {
+          console.log('\n--- Wallet Availability Check FAILED ---');
           console.error('Wallet not available:');
           console.error('- typeof window.usernode:', typeof window.usernode);
           console.error('- window.usernode value:', window.usernode);
           console.error('- window.usernode.sendTransaction:', window.usernode?.sendTransaction);
+          console.error('- isWalletAvailable() result:', isWalletAvailable());
           throw new Error('Bridge not loaded - wallet provider unavailable');
         }
 
-        console.log('Wallet available, calling sendTransaction with payload:', {
+        console.log('\n--- Wallet Available - Preparing Transaction ---');
+        const txPayload = {
           type: 'application',
           actionType: pendingWalletAction.action,
           details: pendingWalletAction.details,
           network: currentNetwork || 'testnet'
-        });
+        };
+        console.log('Transaction payload:', txPayload);
+        console.log('Calling window.usernode.sendTransaction()...');
 
         // Send transaction to wallet using qualified reference
         let txResult;
         try {
-          txResult = await window.usernode.sendTransaction({
-            type: 'application',
-            actionType: pendingWalletAction.action,
-            details: pendingWalletAction.details,
-            network: currentNetwork || 'testnet'
-          });
+          console.log('Invoking wallet signing...');
+          txResult = await window.usernode.sendTransaction(txPayload);
+          console.log('✓ sendTransaction returned successfully');
         } catch (signErr) {
+          console.log('\n--- Wallet Signature Error ---');
           console.error('Wallet signature failed:', signErr);
           console.error('Error details:', {
             message: signErr.message,
             name: signErr.name,
+            code: signErr.code,
             stack: signErr.stack
           });
           // Distinguish between cancelled and failed
@@ -2040,13 +2178,18 @@
           }
         }
 
-        console.log('Transaction result received:', txResult);
+        console.log('\n--- Transaction Result Processing ---');
+        console.log('Transaction result:', txResult);
+        console.log('Has txHash:', txResult && 'txHash' in txResult);
+        console.log('txHash value:', txResult?.txHash);
 
         if (txResult && txResult.txHash) {
-          console.log('Transaction hash obtained, calling action handler with txHash:', txResult.txHash);
+          console.log('✓ Transaction hash obtained:', txResult.txHash);
+          console.log('Calling action handler...');
           // User approved - call the action handler
           const result = await pendingWalletAction.onApprove(txResult.txHash);
-          console.log('Action handler completed, resolving promise');
+          console.log('✓ Action handler completed successfully');
+          console.log('Result:', result);
           if (walletConfirmResolver) {
             walletConfirmResolver.resolve(result);
             walletConfirmResolver = null;
@@ -2057,8 +2200,20 @@
           throw new Error('Wallet did not return transaction hash');
         }
       } catch (err) {
-        console.error('Wallet confirmation error:', err);
+        console.log('\n╔════════════════════════════════════════════════════════════════╗');
+        console.log('║          Wallet Confirmation Error - Full Context              ║');
+        console.log('╚════════════════════════════════════════════════════════════════╝');
+        console.error('Error message:', err.message);
+        console.error('Error name:', err.name);
+        console.error('Error code:', err.code);
         console.error('Error stack:', err.stack);
+        console.error('Full error object:', err);
+
+        console.log('\n--- Bridge State at Error Time ---');
+        console.log('window.usernode exists:', typeof window.usernode !== 'undefined');
+        if (typeof window.usernode !== 'undefined') {
+          console.log('Available methods:', Object.keys(window.usernode));
+        }
 
         // Provide clearer error messages to user
         let userMessage = err.message || 'Failed to sign transaction';
