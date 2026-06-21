@@ -2011,6 +2011,18 @@
       if (!name) return alert('Group name is required');
 
       try {
+        // Wait for bridge to be ready before showing wallet confirmation
+        console.log('Creating group: checking bridge availability...');
+        const bridgeReady = await waitForBridge(5000);
+
+        if (!bridgeReady) {
+          showToast('Wallet provider not available - bridge failed to load. Please refresh the page and try again.', 'error');
+          console.error('Bridge not ready after timeout. Wallet unavailable for group creation.');
+          return;
+        }
+
+        console.log('Bridge ready, showing wallet confirmation modal...');
+
         // Show wallet confirmation modal
         await showWalletConfirm('Create Group', { name, description: desc || '(none)' }, async (txHash) => {
           // After wallet confirms, submit the group creation
