@@ -742,7 +742,7 @@
 
       <!-- Chat View -->
       <div id="chatView" class="hidden flex flex-col flex-1 overflow-hidden">
-        <div id="messageList" class="flex-1 overflow-y-auto space-y-1 p-4 pb-4 pt-20"></div>
+        <div id="messageList" class="flex-1 overflow-y-auto space-y-1 p-4 pb-28 pt-20"></div>
       </div>
 
       <!-- Feed View -->
@@ -2333,12 +2333,14 @@
 
       // Check if this is an initial load (empty list) or an update
       const isInitialLoad = list.children.length === 0;
-      const wasAtBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 50;
+      const wasAtBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 500;
       list.innerHTML = data.messages.map(msg => renderMessage(msg, 'group')).join('');
 
-      // Scroll to bottom on initial load or if user was already at bottom
+      // Auto-scroll to bottom on initial load or if user was already at bottom (within 500px)
       if (isInitialLoad || wasAtBottom) {
-        list.scrollTop = list.scrollHeight;
+        setTimeout(() => {
+          list.scrollTop = list.scrollHeight - list.clientHeight;
+        }, 15);
       }
 
       console.log('[loadGroupMessages] Rendered messages:', {
@@ -3099,16 +3101,18 @@
 
       // Check if this is an initial load (empty list) or an update
       const isInitialLoad = list.children.length === 0;
-      const wasAtBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 50;
+      const wasAtBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 500;
       const messageIds = new Set(data.messages.map(m => m.id));
       const oldMessageIds = new Set(Array.from(list.querySelectorAll('[data-message-id]')).map(el => parseInt(el.getAttribute('data-message-id'))));
 
       // Re-render message list with IDs for stable DOM references
       list.innerHTML = data.messages.map(msg => renderMessage(msg, 'dm')).join('');
 
-      // Scroll to bottom on initial load or if user was already at bottom
+      // Auto-scroll to bottom on initial load or if user was already at bottom (within 500px)
       if (isInitialLoad || wasAtBottom) {
-        list.scrollTop = list.scrollHeight;
+        setTimeout(() => {
+          list.scrollTop = list.scrollHeight - list.clientHeight;
+        }, 15);
       }
 
       console.log('[loadMessages] Rendered messages:', {
@@ -3128,12 +3132,13 @@
       const alignClass = isOwn ? 'justify-end' : 'justify-start';
       const shouldShowSenderName = context === 'group';
       const isMobile = document.body.classList.contains('layout-mobile');
+      const marginClass = isMobile ? 'mx-1.5' : 'mx-2';
 
       if (msg.type === 'text') {
         const senderNameLine = shouldShowSenderName ? `<div class="text-xs opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'} mb-1">${msg.senderUsername}</div>` : '';
         const bubbleClasses = isMobile ? 'px-3 py-1.5 rounded-xl text-sm' : 'px-4 py-2 rounded-2xl text-base';
         return `
-          <div class="flex ${alignClass}" data-message-id="${msg.id}">
+          <div class="flex ${alignClass} ${marginClass}" data-message-id="${msg.id}">
             <div class="max-w-xs ${bubbleClasses} ${baseClass} message-bubble">
               ${senderNameLine}
               <div>${msg.content.text}</div>
@@ -3147,7 +3152,7 @@
         const senderNameLine = shouldShowSenderName ? `<div class="text-xs px-4 py-2 opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'}">${msg.senderUsername}</div>` : '';
         const borderRadius = isMobile ? 'rounded-lg' : 'rounded-2xl';
         return `
-          <div class="flex ${alignClass}" data-message-id="${msg.id}">
+          <div class="flex ${alignClass} ${marginClass}" data-message-id="${msg.id}">
             <div class="max-w-xs ${borderRadius} overflow-hidden ${baseClass}">
               <img src="${msg.content.imageUrl}" alt="Message image" class="max-w-xs cursor-pointer hover:opacity-80 transition" onclick="showLightbox('${msg.content.imageUrl}')">
               ${senderNameLine}
@@ -3162,7 +3167,7 @@
         const statusIcon = c.status === 'confirmed' ? '✓' : '⏳';
         const bubbleClasses = isMobile ? 'px-2.5 py-1.5 rounded-lg text-sm' : 'px-3 py-2 rounded-2xl text-base';
         return `
-          <div class="flex ${alignClass}" data-message-id="${msg.id}">
+          <div class="flex ${alignClass} ${marginClass}" data-message-id="${msg.id}">
             <div class="max-w-xs ${bubbleClasses} ${baseClass} border-2 border-yellow-500/40 message-bubble">
               <div class="font-bold ${isMobile ? 'text-base' : 'text-lg'} flex items-center justify-between gap-2">
                 <span>💰 ${c.amount} tokens</span>
