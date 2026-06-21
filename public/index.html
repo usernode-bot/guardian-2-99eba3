@@ -969,6 +969,9 @@
   <!-- Toast Notification Container -->
   <div id="toastContainer" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
+  <!-- UserNode Bridge for wallet signing -->
+  <script src="https://social-vibecoding.usernodelabs.org/usernode-bridge/v1/bridge.js"></script>
+
   <script>
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token') || '';
@@ -1496,6 +1499,21 @@
       }
     }
 
+    // Helper function to check if wallet is available
+    function isWalletAvailable() {
+      return typeof window.usernode !== 'undefined' &&
+             typeof window.usernode.sendTransaction === 'function';
+    }
+
+    // Wait for bridge to load with timeout
+    async function waitForBridge(timeoutMs = 3000) {
+      const startTime = Date.now();
+      while (!isWalletAvailable() && (Date.now() - startTime) < timeoutMs) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      return isWalletAvailable();
+    }
+
     async function init() {
       // Log bridge availability on page load
       console.log('=== Page Load: Checking UserNode Bridge ===');
@@ -1507,7 +1525,16 @@
         console.log('usernode.getNodeAddress exists:', typeof window.usernode.getNodeAddress !== 'undefined');
         console.log('usernode.requestLlmAccess exists:', typeof window.usernode.requestLlmAccess !== 'undefined');
       } else {
-        console.warn('UserNode bridge NOT available - window.usernode is undefined');
+        console.warn('UserNode bridge NOT available at startup - window.usernode is undefined');
+        console.log('Waiting for bridge to load...');
+        const bridgeLoaded = await waitForBridge(3000);
+        if (bridgeLoaded) {
+          console.log('Bridge loaded successfully after waiting');
+          console.log('Available methods on usernode:', Object.keys(window.usernode));
+        } else {
+          console.error('CRITICAL: UserNode bridge failed to load after 3 second timeout');
+          console.warn('Wallet features will not be available');
+        }
       }
 
       const user = await apiCall('/api/user');
@@ -1971,12 +1998,13 @@
           console.error('CRITICAL: window.usernode is undefined - bridge not loaded');
         }
 
-        if (typeof usernode === 'undefined' || !usernode.sendTransaction) {
+        // Check wallet availability using qualified reference (window.usernode)
+        if (!isWalletAvailable()) {
           console.error('Wallet not available:');
-          console.error('- typeof usernode:', typeof usernode);
-          console.error('- usernode value:', usernode);
-          console.error('- usernode.sendTransaction:', usernode?.sendTransaction);
-          throw new Error('Wallet not available');
+          console.error('- typeof window.usernode:', typeof window.usernode);
+          console.error('- window.usernode value:', window.usernode);
+          console.error('- window.usernode.sendTransaction:', window.usernode?.sendTransaction);
+          throw new Error('Bridge not loaded - wallet provider unavailable');
         }
 
         console.log('Wallet available, calling sendTransaction with payload:', {
@@ -1986,13 +2014,31 @@
           network: currentNetwork || 'testnet'
         });
 
-        // Send transaction to wallet
-        const txResult = await usernode.sendTransaction({
-          type: 'application',
-          actionType: pendingWalletAction.action,
-          details: pendingWalletAction.details,
-          network: currentNetwork || 'testnet'
-        });
+        // Send transaction to wallet using qualified reference
+        let txResult;
+        try {
+          txResult = await window.usernode.sendTransaction({
+            type: 'application',
+            actionType: pendingWalletAction.action,
+            details: pendingWalletAction.details,
+            network: currentNetwork || 'testnet'
+          });
+        } catch (signErr) {
+          console.error('Wallet signature failed:', signErr);
+          console.error('Error details:', {
+            message: signErr.message,
+            name: signErr.name,
+            stack: signErr.stack
+          });
+          // Distinguish between cancelled and failed
+          if (signErr.message && signErr.message.includes('cancelled')) {
+            throw new Error('User cancelled wallet signature');
+          } else if (signErr.message && signErr.message.includes('not signed in')) {
+            throw new Error('Wallet not signed in - please log in to your wallet');
+          } else {
+            throw new Error(`Wallet signature failed: ${signErr.message || 'Unknown error'}`);
+          }
+        }
 
         console.log('Transaction result received:', txResult);
 
@@ -2008,12 +2054,21 @@
           closeWalletConfirm();
         } else {
           console.error('Transaction result missing txHash:', txResult);
-          throw new Error('No transaction hash returned');
+          throw new Error('Wallet did not return transaction hash');
         }
       } catch (err) {
         console.error('Wallet confirmation error:', err);
         console.error('Error stack:', err.stack);
-        showToast(`Wallet error: ${err.message || 'Failed to sign'}`, 'error');
+
+        // Provide clearer error messages to user
+        let userMessage = err.message || 'Failed to sign transaction';
+        if (userMessage.includes('usernode is not defined')) {
+          userMessage = 'Wallet provider not available - bridge failed to load';
+        } else if (!userMessage.startsWith('Wallet') && !userMessage.startsWith('Bridge')) {
+          userMessage = 'Wallet error: ' + userMessage;
+        }
+
+        showToast(userMessage, 'error');
         if (walletConfirmResolver) {
           walletConfirmResolver.reject(err);
           walletConfirmResolver = null;
