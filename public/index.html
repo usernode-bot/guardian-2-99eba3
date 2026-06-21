@@ -1034,6 +1034,11 @@
     const token = params.get('token') || '';
     const headers = token ? { 'x-usernode-token': token } : {};
 
+    function escapeHtml(text) {
+      const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+      return String(text).replace(/[&<>"']/g, m => map[m]);
+    }
+
     function showToast(message, type = 'success') {
       const container = document.getElementById('toastContainer');
       const toast = document.createElement('div');
@@ -2243,15 +2248,53 @@
     // Load group messages
     async function loadGroupMessages(groupId) {
       if (!currentGroupId) return;
-
-      const data = await apiCall(`/api/groups/${groupId}/messages?limit=50`);
-      if (!data) return;
+      if (!groupId || isNaN(groupId)) {
+        console.error('[loadGroupMessages] Invalid groupId:', groupId);
+        return;
+      }
 
       const list = document.getElementById('messageList');
+      const endpoint = `/api/groups/${groupId}/messages?limit=50`;
+
+      console.log('[loadGroupMessages] Fetching:', {
+        groupId,
+        currentUserId: currentUser?.id,
+        currentUsername: currentUser?.username,
+        userWallet: currentUser?.usernode_pubkey,
+        timestamp: new Date().toISOString(),
+        endpoint
+      });
+
+      const data = await apiCall(endpoint);
+      if (!data) {
+        console.error('[loadGroupMessages] No response from API');
+        return;
+      }
+
+      console.log('[loadGroupMessages] API response:', {
+        hasError: !!data.error,
+        messageCount: data.messages?.length || 0,
+        responseBody: data
+      });
 
       if (data.error) {
-        console.error('[loadGroupMessages] error:', data.error, 'status:', data.status);
-        list.innerHTML = '<div class="text-center text-red-600 dark:text-red-400 py-8"><div class="text-sm">Failed to load group messages</div></div>';
+        console.error('[loadGroupMessages] API error:', {
+          error: data.error,
+          status: data.status,
+          groupId,
+          endpoint
+        });
+        list.innerHTML = `
+          <div class="text-center py-8 flex flex-col items-center justify-center h-full">
+            <div class="text-red-600 dark:text-red-400">
+              <div class="text-sm font-medium mb-2">Failed to load messages</div>
+              <div class="text-xs text-zinc-600 dark:text-zinc-400 mb-4">${escapeHtml(data.error)}</div>
+            </div>
+            <button onclick="loadGroupMessages(${groupId})" class="px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-xs font-medium transition">
+              Retry
+            </button>
+          </div>
+        `;
         return;
       }
 
@@ -2266,6 +2309,11 @@
       if (wasAtBottom) {
         list.scrollTop = list.scrollHeight;
       }
+
+      console.log('[loadGroupMessages] Rendered messages:', {
+        count: data.messages.length,
+        groupId
+      });
 
       // Mark as read
       await apiCall(`/api/groups/${groupId}/read`, {
@@ -2956,17 +3004,59 @@
 
     async function loadMessages() {
       if (!currentConvId) return;
-      const data = await apiCall(`/api/conversations/${currentConvId}?limit=50`);
-      if (!data) return;
+      if (!currentConvId || isNaN(currentConvId)) {
+        console.error('[loadMessages] Invalid conversationId:', currentConvId);
+        return;
+      }
 
       const list = document.getElementById('messageList');
+      const endpoint = `/api/conversations/${currentConvId}?limit=50`;
+
+      console.log('[loadMessages] Fetching:', {
+        conversationId: currentConvId,
+        currentUserId: currentUser?.id,
+        currentUsername: currentUser?.username,
+        userWallet: currentUser?.usernode_pubkey,
+        recipientId: currentOtherId,
+        recipientUsername: currentContactName,
+        recipientWallet: currentContactAddress,
+        timestamp: new Date().toISOString(),
+        endpoint
+      });
+
+      const data = await apiCall(endpoint);
+      if (!data) {
+        console.error('[loadMessages] No response from API');
+        return;
+      }
+
+      console.log('[loadMessages] API response:', {
+        hasError: !!data.error,
+        messageCount: data.messages?.length || 0,
+        responseBody: data
+      });
 
       if (data.error) {
-        console.error('[loadMessages] error:', data.error, 'status:', data.status);
+        console.error('[loadMessages] API error:', {
+          error: data.error,
+          status: data.status,
+          conversationId: currentConvId,
+          endpoint
+        });
         if (data.status === 403) {
           list.innerHTML = '<div class="text-center text-red-600 dark:text-red-400 py-8"><div class="text-sm">This conversation is no longer available</div></div>';
         } else {
-          list.innerHTML = '<div class="text-center text-red-600 dark:text-red-400 py-8"><div class="text-sm">Failed to load messages</div><button onclick="loadMessages()" class="mt-2 px-3 py-1 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded text-xs text-zinc-900 dark:text-zinc-100">Retry</button></div>';
+          list.innerHTML = `
+            <div class="text-center py-8 flex flex-col items-center justify-center h-full">
+              <div class="text-red-600 dark:text-red-400">
+                <div class="text-sm font-medium mb-2">Failed to load messages</div>
+                <div class="text-xs text-zinc-600 dark:text-zinc-400 mb-4">${escapeHtml(data.error)}</div>
+              </div>
+              <button onclick="loadMessages()" class="px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-xs font-medium transition">
+                Retry
+              </button>
+            </div>
+          `;
         }
         return;
       }
@@ -2988,6 +3078,11 @@
       if (wasAtBottom) {
         list.scrollTop = list.scrollHeight;
       }
+
+      console.log('[loadMessages] Rendered messages:', {
+        count: data.messages.length,
+        conversationId: currentConvId
+      });
 
       await apiCall(`/api/conversations/${currentConvId}/read`, {
         method: 'PUT',
