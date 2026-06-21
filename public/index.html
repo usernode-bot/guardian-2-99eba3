@@ -398,8 +398,16 @@
         </svg>
       </button>
       <button id="backBtn" class="text-sm text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 hidden transition">← Back</button>
-      <h1 id="headerTitle" class="text-lg font-semibold flex-1">Guardian</h1>
-      <div id="headerRight" class="text-sm text-zinc-600 dark:text-zinc-500 relative">
+      <div class="flex items-center gap-2">
+        <h1 id="headerTitle" class="text-lg font-semibold">Guardian</h1>
+        <div id="headerNetworkStatusContainer" class="relative group">
+          <span id="headerStatusDot" class="inline-block w-2 h-2 rounded-full bg-gray-400 transition-colors"></span>
+          <div class="absolute -bottom-6 left-0 px-2 py-1 bg-zinc-900 dark:bg-zinc-700 text-white dark:text-zinc-100 text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
+            <span id="headerStatusTooltip">Network Status</span>
+          </div>
+        </div>
+      </div>
+      <div id="headerRight" class="text-sm text-zinc-600 dark:text-zinc-500 relative flex flex-1 justify-end items-center gap-2">
         <button id="messageHistoryBtn" class="hidden text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare mr-3" title="Message history" onclick="openMessageHistory()">📜</button>
         <button id="conversationMenuBtn" class="hidden text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare" title="Conversation options" onclick="toggleConversationMenu(event)">⋯</button>
         <div id="conversationMenuDropdown" class="hidden absolute right-0 mt-2 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg shadow-lg z-50 min-w-40">
@@ -513,6 +521,34 @@
           <div class="flex gap-2">
             <button id="viewModeWeb" onclick="applyViewMode('web')" class="flex-1 px-2 py-1.5 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-cyan-600 dark:border-cyan-500 hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Web/Desktop</button>
             <button id="viewModeMobile" onclick="applyViewMode('mobile')" class="flex-1 px-2 py-1.5 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-transparent hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Mobile</button>
+          </div>
+        </div>
+
+        <!-- Network Status Accordion -->
+        <div id="networkStatusSection" class="space-y-2 border-t border-zinc-200 dark:border-zinc-700 pt-3 mt-3">
+          <button id="networkStatusToggle" onclick="toggleNetworkStatusAccordion()" class="w-full flex items-center justify-between px-0 py-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
+            <span>Network Status</span>
+            <svg id="networkStatusArrow" class="w-5 h-5 transition-transform duration-200 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+            </svg>
+          </button>
+          <div id="networkStatusContent" class="hidden pt-2">
+            <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-xs text-zinc-700 dark:text-zinc-400">
+              <span class="text-left font-medium text-zinc-600 dark:text-zinc-500">Status</span>
+              <div class="flex items-center gap-2 text-zinc-900 dark:text-zinc-100">
+                <span id="networkStatusDot" class="inline-block w-2 h-2 rounded-full bg-gray-400"></span>
+                <span id="networkStatusText">—</span>
+              </div>
+
+              <span class="text-left font-medium text-zinc-600 dark:text-zinc-500">Node</span>
+              <span id="networkNodeText" class="text-zinc-900 dark:text-zinc-100">—</span>
+
+              <span class="text-left font-medium text-zinc-600 dark:text-zinc-500">Latency</span>
+              <span id="networkLatencyText" class="text-zinc-900 dark:text-zinc-100">—</span>
+
+              <span class="text-left font-medium text-zinc-600 dark:text-zinc-500">Last Sync</span>
+              <span id="networkLastSyncText" class="text-zinc-900 dark:text-zinc-100">—</span>
+            </div>
           </div>
         </div>
       </div>
@@ -852,6 +888,10 @@
     // Settings functions
     let currentNetwork = 'testnet';
 
+    // Network status polling
+    let networkStatusPollInterval = null;
+    let networkStatus = { status: 'unknown', node: null, latency: null, lastSyncAt: null };
+
     function loadSettings() {
       if (!currentUser) return {};
       const stored = JSON.parse(localStorage.getItem(`guardian_settings_${currentUser.id}`) || '{}');
@@ -887,6 +927,113 @@
           applyTheme('system');
         }
       });
+    }
+
+    async function pollNetworkStatus() {
+      try {
+        const data = await apiCall('/api/usernode/status');
+        if (!data || data.error) {
+          networkStatus = { status: 'disconnected', node: null, latency: null, lastSyncAt: null, error: data?.error };
+        } else {
+          networkStatus = data;
+        }
+        updateNetworkStatusDisplay();
+      } catch (err) {
+        console.error('Error polling network status:', err);
+        networkStatus = { status: 'disconnected', error: err.message };
+      }
+    }
+
+    function updateNetworkStatusDisplay() {
+      const statusDot = document.getElementById('networkStatusDot');
+      const statusText = document.getElementById('networkStatusText');
+      const nodeText = document.getElementById('networkNodeText');
+      const latencyText = document.getElementById('networkLatencyText');
+      const lastSyncText = document.getElementById('networkLastSyncText');
+
+      const headerDot = document.getElementById('headerStatusDot');
+      const headerTooltip = document.getElementById('headerStatusTooltip');
+
+      if (!statusDot || !headerDot) return;
+
+      let dotColor = 'bg-gray-400';
+      let statusDisplay = '—';
+
+      if (networkStatus.status === 'connected') {
+        dotColor = 'bg-green-500';
+        statusDisplay = 'Connected';
+      } else if (networkStatus.status === 'connecting') {
+        dotColor = 'bg-yellow-500 animate-pulse';
+        statusDisplay = 'Connecting...';
+      } else if (networkStatus.status === 'disconnected') {
+        dotColor = 'bg-red-500';
+        statusDisplay = 'Disconnected';
+      }
+
+      statusDot.className = `inline-block w-2 h-2 rounded-full transition-colors ${dotColor}`;
+      headerDot.className = `inline-block w-2.5 h-2.5 rounded-full transition-colors ${dotColor}`;
+
+      statusText.textContent = statusDisplay;
+      nodeText.textContent = networkStatus.node || '—';
+      latencyText.textContent = networkStatus.latency ? `${networkStatus.latency}ms` : '—';
+
+      if (networkStatus.lastSyncAt) {
+        const lastSyncDate = new Date(networkStatus.lastSyncAt);
+        const nowDate = new Date();
+        const diffMs = nowDate - lastSyncDate;
+        const diffSec = Math.floor(diffMs / 1000);
+
+        if (diffSec < 5) {
+          lastSyncText.textContent = 'just now';
+        } else if (diffSec < 60) {
+          lastSyncText.textContent = `${diffSec}s ago`;
+        } else if (diffSec < 3600) {
+          const diffMin = Math.floor(diffSec / 60);
+          lastSyncText.textContent = `${diffMin}m ago`;
+        } else {
+          lastSyncText.textContent = lastSyncDate.toLocaleTimeString();
+        }
+      } else {
+        lastSyncText.textContent = '—';
+      }
+
+      let tooltipText = statusDisplay;
+      if (networkStatus.latency) tooltipText += ` • ${networkStatus.latency}ms`;
+      headerTooltip.textContent = tooltipText;
+    }
+
+    function scrollToNetworkStatus() {
+      const settingsPanel = document.getElementById('settingsPanel');
+      if (settingsPanel && !settingsPanel.classList.contains('hidden')) {
+        const networkSection = document.getElementById('networkStatusSection');
+        if (networkSection) {
+          networkSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      }
+    }
+
+    function startNetworkStatusPolling() {
+      if (networkStatusPollInterval) clearInterval(networkStatusPollInterval);
+      pollNetworkStatus();
+      networkStatusPollInterval = setInterval(pollNetworkStatus, 5000);
+    }
+
+    function stopNetworkStatusPolling() {
+      if (networkStatusPollInterval) clearInterval(networkStatusPollInterval);
+    }
+
+    function toggleNetworkStatusAccordion() {
+      const content = document.getElementById('networkStatusContent');
+      const arrow = document.getElementById('networkStatusArrow');
+      const isHidden = content.classList.contains('hidden');
+
+      if (isHidden) {
+        content.classList.remove('hidden');
+        arrow.style.transform = 'rotate(180deg)';
+      } else {
+        content.classList.add('hidden');
+        arrow.style.transform = 'rotate(0deg)';
+      }
     }
 
     function updateMenuHighlight(viewName) {
@@ -1184,6 +1331,7 @@
       document.getElementById('sidebarUsername').textContent = user.username + (user.verified ? ' ✓' : '');
       document.getElementById('sidebarWallet').textContent = user.usernode_pubkey || 'No wallet linked';
       initSettings();
+      startNetworkStatusPolling();
       showWelcome();
       showConversationsView();
       setupEventListeners();
@@ -1234,6 +1382,8 @@
           hideDeleteContactModal();
         }
       });
+
+      window.addEventListener('beforeunload', stopNetworkStatusPolling);
     }
 
     async function loadConversations() {
