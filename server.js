@@ -2643,9 +2643,12 @@ app.get('/api/feed/posts', async (req, res) => {
         fp.user_id,
         fp.content,
         fp.created_at,
+        fp.on_chain,
         u.username,
         u.verified_at,
-        u.avatar_url
+        u.avatar_url,
+        (SELECT COUNT(*) FROM feed_likes WHERE post_id = fp.id)::INTEGER as like_count,
+        (SELECT COUNT(*) FROM feed_comments WHERE post_id = fp.id)::INTEGER as comment_count
       FROM feed_posts fp
       JOIN users u ON u.id = fp.user_id
       ORDER BY fp.created_at DESC
@@ -2667,7 +2670,10 @@ app.get('/api/feed/posts', async (req, res) => {
         verified: !!p.verified_at,
         avatarUrl: p.avatar_url,
         content: p.content,
-        createdAt: p.created_at
+        createdAt: p.created_at,
+        onChain: p.on_chain,
+        likeCount: p.like_count || 0,
+        commentCount: p.comment_count || 0
       })),
       hasMore
     });
@@ -3252,6 +3258,27 @@ async function start() {
         ON feed_comments(user_id)
     `);
 
+    // Create feed_likes table (public - likes on feed posts)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS feed_likes (
+        id BIGSERIAL PRIMARY KEY,
+        post_id BIGINT NOT NULL REFERENCES feed_posts(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(post_id, user_id)
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_feed_likes_post_id
+        ON feed_likes(post_id)
+    `);
+
+    // Add on_chain column to feed_posts if it doesn't exist
+    await pool.query(`
+      ALTER TABLE feed_posts
+      ADD COLUMN IF NOT EXISTS on_chain BOOLEAN DEFAULT FALSE
+    `);
+
     // Mark tables as private
     await pool.query(`COMMENT ON TABLE conversations IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE messages IS 'staging:private'`);
@@ -3746,11 +3773,32 @@ async function start() {
 
       for (const post of feedPosts) {
         const createdAt = new Date(feedBaseTime.getTime() - post.offset);
+        const isOnChain = Math.random() > 0.5;
         await pool.query(`
-          INSERT INTO feed_posts (user_id, content, created_at, updated_at)
-          VALUES ($1, $2, $3, $3)
+          INSERT INTO feed_posts (user_id, content, on_chain, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, $4)
           ON CONFLICT DO NOTHING
-        `, [post.userId, JSON.stringify(post.content), createdAt]);
+        `, [post.userId, JSON.stringify(post.content), isOnChain, createdAt]);
+      }
+
+      // Seed feed likes on posts
+      const { rows: allPosts } = await pool.query(`
+        SELECT id, user_id FROM feed_posts LIMIT 10
+      `);
+
+      for (const post of allPosts) {
+        const likers = [alice, bob, charlie, david, emma].filter(id => id !== post.user_id);
+        const likeCount = Math.floor(Math.random() * likers.length) + 1;
+        const selectedLikers = likers.sort(() => Math.random() - 0.5).slice(0, likeCount);
+
+        for (const likerId of selectedLikers) {
+          const likeTime = new Date(feedBaseTime.getTime() - Math.random() * 3600000);
+          await pool.query(`
+            INSERT INTO feed_likes (post_id, user_id, created_at)
+            VALUES ($1, $2, $3)
+            ON CONFLICT DO NOTHING
+          `, [post.id, likerId, likeTime]);
+        }
       }
 
       // Seed feed comments
