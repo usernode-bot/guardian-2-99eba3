@@ -9,7 +9,7 @@ const port = process.env.PORT || 3000;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const JWT_SECRET = process.env.JWT_SECRET;
 const IS_STAGING = process.env.USERNODE_ENV === 'staging';
-const ENABLE_DEMO_MODE = process.env.ENABLE_DEMO_MODE === 'true' || IS_STAGING;
+let ENABLE_DEMO_MODE = process.env.ENABLE_DEMO_MODE === 'true' || IS_STAGING;
 
 // Rate limit tracking (in-memory; could use Redis for production)
 const rateLimits = new Map();
@@ -264,6 +264,80 @@ app.get('/api/usernode/status', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch network status' });
   }
 });
+
+// ===== CONFIGURATION ENDPOINTS =====
+
+app.get('/api/config', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    // Check if user is authorized (first user OR has created a group)
+    const canEdit = userId === 1 || (await userHasCreatedGroup(userId));
+
+    res.json({
+      isDemoMode: ENABLE_DEMO_MODE,
+      canEdit: canEdit,
+      description: 'When enabled, all blockchain transactions use fake tx hashes and audit logs are immediately confirmed. When disabled, real wallet interaction is required and audit logs are pending until blockchain confirmation.'
+    });
+  } catch (err) {
+    console.error('Error fetching config:', err);
+    res.status(500).json({ error: 'Failed to fetch configuration' });
+  }
+});
+
+app.put('/api/config/demo-mode', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    const { enabled } = req.body;
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'Invalid input: enabled must be a boolean' });
+    }
+
+    // Check authorization (first user OR has created a group)
+    const canEdit = userId === 1 || (await userHasCreatedGroup(userId));
+    if (!canEdit) {
+      return res.status(403).json({ error: 'Not authorized to modify configuration' });
+    }
+
+    // Update in-memory state
+    ENABLE_DEMO_MODE = enabled;
+    console.log(`[CONFIG] Demo mode updated: ${enabled} (by user ${userId})`);
+
+    res.json({
+      isDemoMode: ENABLE_DEMO_MODE,
+      status: 'updated'
+    });
+  } catch (err) {
+    console.error('Error updating config:', err);
+    res.status(500).json({ error: 'Failed to update configuration' });
+  }
+});
+
+// Helper function to check if user has created a group
+async function userHasCreatedGroup(userId) {
+  try {
+    const result = await pool.query(`SELECT id FROM groups WHERE creator_id = $1 LIMIT 1`, [userId]);
+    return result.rows.length > 0;
+  } catch (err) {
+    console.error('Error checking if user has created groups:', err);
+    return false;
+  }
+}
 
 // ===== CONVERSATION ENDPOINTS =====
 

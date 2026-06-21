@@ -620,6 +620,35 @@
             </div>
           </div>
         </div>
+
+        <!-- Configuration -->
+        <div id="configAccordion" class="space-y-1 border-t border-zinc-200 dark:border-zinc-700 pt-1.5 mt-1.5">
+          <button id="configToggle" onclick="toggleConfigAccordion()" class="w-full flex items-center justify-between px-0 py-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
+            <div class="flex items-center gap-2">
+              <span>Configuration</span>
+              <span id="configHeaderDot" class="inline-block w-2.5 h-2.5 rounded-full bg-gray-400 transition-colors"></span>
+            </div>
+            <svg id="configArrow" class="w-5 h-5 transition-transform duration-200 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+            </svg>
+          </button>
+          <div id="configContent" class="hidden pt-2 space-y-3">
+            <!-- Demo Mode Toggle -->
+            <div class="space-y-2">
+              <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400 flex items-center gap-2">
+                <input id="demModeToggle" type="checkbox" onchange="updateDemoMode(this.checked)" class="rounded cursor-pointer" />
+                <span>Enable Demo Mode</span>
+                <span id="demoModeLoading" class="hidden inline-block w-3 h-3 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></span>
+              </label>
+              <p class="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">When enabled, blockchain transactions use fake tx hashes and audit logs are immediately confirmed. When disabled, real wallet confirmation required.</p>
+            </div>
+
+            <!-- Permission Notice -->
+            <div id="configNoPermission" class="hidden text-xs text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800 p-2 rounded">
+              You don't have permission to change configuration settings.
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Settings Footer -->
@@ -1059,6 +1088,7 @@
       document.getElementById('networkSelect').value = settings.network;
       updateLayoutButtons(settings.layout);
       updateViewModeButtons(settings.view_mode);
+      loadConfigState();
       window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
         if (loadSettings().theme === 'system') {
           applyTheme('system');
@@ -1180,6 +1210,91 @@
       } else {
         content.classList.add('hidden');
         arrow.style.transform = 'rotate(0deg)';
+      }
+    }
+
+    function toggleConfigAccordion() {
+      const content = document.getElementById('configContent');
+      const arrow = document.getElementById('configArrow');
+      const isHidden = content.classList.contains('hidden');
+
+      if (isHidden) {
+        content.classList.remove('hidden');
+        arrow.style.transform = 'rotate(180deg)';
+      } else {
+        content.classList.add('hidden');
+        arrow.style.transform = 'rotate(0deg)';
+      }
+    }
+
+    async function loadConfigState() {
+      try {
+        const config = await apiCall('/api/config');
+        if (config && !config.error) {
+          const checkbox = document.getElementById('demModeToggle');
+          const noPermission = document.getElementById('configNoPermission');
+          const accordion = document.getElementById('configAccordion');
+
+          checkbox.checked = config.isDemoMode;
+          checkbox.disabled = !config.canEdit;
+
+          if (!config.canEdit) {
+            noPermission.classList.remove('hidden');
+            accordion.classList.add('opacity-60');
+          } else {
+            noPermission.classList.add('hidden');
+            accordion.classList.remove('opacity-60');
+          }
+
+          // Update dot color based on demo mode state
+          updateConfigDotColor(config.isDemoMode);
+        }
+      } catch (err) {
+        console.error('Error loading config state:', err);
+      }
+    }
+
+    function updateConfigDotColor(isDemoMode) {
+      const dot = document.getElementById('configHeaderDot');
+      if (isDemoMode) {
+        dot.className = 'inline-block w-2.5 h-2.5 rounded-full bg-cyan-500 transition-colors';
+      } else {
+        dot.className = 'inline-block w-2.5 h-2.5 rounded-full bg-gray-400 transition-colors';
+      }
+    }
+
+    async function updateDemoMode(enabled) {
+      const checkbox = document.getElementById('demModeToggle');
+      const loading = document.getElementById('demoModeLoading');
+      const previousState = !enabled;
+
+      try {
+        loading.classList.remove('hidden');
+        checkbox.disabled = true;
+
+        const result = await apiCall('/api/config/demo-mode', {
+          method: 'PUT',
+          body: JSON.stringify({ enabled: enabled })
+        });
+
+        if (result && !result.error) {
+          updateConfigDotColor(enabled);
+          showToast('Demo mode ' + (enabled ? 'enabled' : 'disabled'), 'success');
+        } else if (result && result.error) {
+          checkbox.checked = previousState;
+          if (result.error.includes('Not authorized')) {
+            showToast('You do not have permission to change this setting', 'error');
+          } else {
+            showToast('Failed to update demo mode: ' + result.error, 'error');
+          }
+        }
+      } catch (err) {
+        console.error('Error updating demo mode:', err);
+        checkbox.checked = previousState;
+        showToast('Error updating configuration', 'error');
+      } finally {
+        loading.classList.add('hidden');
+        checkbox.disabled = false;
       }
     }
 
