@@ -785,7 +785,7 @@
             </div>
           </div>
           <!-- Feed Posts List -->
-          <div id="feedList" class="flex-1 overflow-y-auto divide-y divide-zinc-200 dark:divide-zinc-800">
+          <div id="feedList" class="flex-1 overflow-y-auto space-y-3 p-2">
             <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading feed...</div>
           </div>
         </div>
@@ -3997,7 +3997,7 @@
 
     function renderFeedPost(post) {
       const postEl = document.createElement('div');
-      postEl.className = 'p-3 bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-700/50 transition feed-post-enter';
+      postEl.className = 'p-3 bg-white dark:bg-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-lg transition feed-post-enter';
 
       const timestamp = formatRelativeTime(post.createdAt);
 
@@ -4037,7 +4037,7 @@
               ${onChainBadge}
             </div>
             ${content}
-            <div class="flex gap-3 mt-2 pt-2 border-t border-zinc-200 dark:border-zinc-700 text-xs text-zinc-600 dark:text-zinc-400">
+            <div class="flex gap-3 mt-2 text-xs text-zinc-600 dark:text-zinc-400">
               <span>❤️ <span id="likeCount-${post.id}">${post.likeCount || 0}</span></span>
               <button onclick="toggleComments(${post.id})" class="hover:text-cyan-600 dark:hover:text-cyan-400 transition">💬 <span id="commentCount-${post.id}">${post.commentCount || 0}</span></button>
             </div>
