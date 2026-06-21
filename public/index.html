@@ -187,11 +187,23 @@
     }
 
     .sidebar-enter {
-      animation: slideInLeft 0.3s ease-out;
+      animation: slideInLeft 0.25s ease-out forwards;
+      will-change: transform;
     }
 
     .sidebar-exit {
-      animation: slideOutLeft 0.3s ease-out;
+      animation: slideOutLeft 0.25s ease-out forwards;
+      will-change: transform;
+    }
+
+    .sidebar-overlay-visible {
+      opacity: 1;
+      transition: opacity 0.25s ease-out;
+    }
+
+    .sidebar-overlay-hidden {
+      opacity: 0;
+      transition: opacity 0.25s ease-out;
     }
 
     .message-bubble {
@@ -218,7 +230,6 @@
       width: 16rem;
       height: 100%;
       z-index: 40;
-      animation: slideInLeft 0.3s ease-out;
     }
 
     .layout-mobile #sidebarOverlay {
@@ -227,7 +238,6 @@
       inset: 0;
       background: rgba(0, 0, 0, 0.5);
       z-index: 30;
-      animation: fadeIn 0.3s ease-out;
     }
 
     .layout-mobile #content {
@@ -503,7 +513,7 @@
     </div>
 
     <!-- Sidebar Overlay -->
-    <div id="sidebarOverlay" class="hidden fixed inset-0 bg-black/50 z-40 transition-opacity duration-300" onclick="if (event.target === this) toggleSidebar()"></div>
+    <div id="sidebarOverlay" class="hidden fixed inset-0 bg-black/50 z-40 sidebar-overlay-hidden" onclick="if (event.target === this) toggleSidebar()"></div>
 
     <!-- Sidebar -->
     <div id="sidebar" class="hidden fixed left-0 top-0 w-64 h-full bg-zinc-50 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 z-50 flex flex-col overflow-y-auto">
@@ -1746,18 +1756,19 @@
       if (sidebarOpen) {
         sidebar.classList.remove('hidden');
         overlay.classList.remove('hidden');
-        setTimeout(() => {
-          sidebar.classList.add('sidebar-enter');
-          overlay.style.opacity = '1';
-        }, 0);
+        void sidebar.offsetWidth;
+        sidebar.classList.add('sidebar-enter');
+        overlay.classList.add('sidebar-overlay-visible');
+        overlay.classList.remove('sidebar-overlay-hidden');
       } else {
         sidebar.classList.add('sidebar-exit');
-        overlay.style.opacity = '0';
+        overlay.classList.add('sidebar-overlay-hidden');
+        overlay.classList.remove('sidebar-overlay-visible');
         setTimeout(() => {
           sidebar.classList.add('hidden');
           overlay.classList.add('hidden');
           sidebar.classList.remove('sidebar-enter', 'sidebar-exit');
-        }, 300);
+        }, 250);
       }
     }
 
