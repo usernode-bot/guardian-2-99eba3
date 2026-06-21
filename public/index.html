@@ -2868,18 +2868,49 @@
 
       input.value = '';
 
-      const endpoint = currentGroupId ? `/api/groups/${currentGroupId}/messages` : `/api/conversations/${currentConvId}/messages`;
+      try {
+        const endpoint = currentGroupId ? `/api/groups/${currentGroupId}/messages` : `/api/conversations/${currentConvId}/messages`;
 
-      const data = await apiCall(endpoint, {
-        method: 'POST',
-        body: JSON.stringify({ type: 'text', content: { text } })
-      });
+        if (isDemoMode) {
+          // Show wallet confirmation modal in demo mode
+          await showWalletConfirm('Send Message', { text }, async (txHash) => {
+            showToast('Message sent successfully', 'success');
+            const data = await apiCall(endpoint, {
+              method: 'POST',
+              body: JSON.stringify({ type: 'text', content: { text } })
+            });
 
-      if (data) {
-        if (currentGroupId) {
-          loadGroupMessages(currentGroupId);
+            if (data && !data.error) {
+              if (currentGroupId) {
+                loadGroupMessages(currentGroupId);
+              } else {
+                loadMessages();
+              }
+              return data;
+            } else {
+              throw new Error(data?.error || 'Failed to send message');
+            }
+          });
         } else {
-          loadMessages();
+          // Non-demo mode: send directly without confirmation
+          const data = await apiCall(endpoint, {
+            method: 'POST',
+            body: JSON.stringify({ type: 'text', content: { text } })
+          });
+
+          if (data) {
+            if (currentGroupId) {
+              loadGroupMessages(currentGroupId);
+            } else {
+              loadMessages();
+            }
+          }
+        }
+      } catch (err) {
+        if (err.message !== 'User cancelled wallet confirmation') {
+          console.error('Send message error:', err);
+          showToast(`Error: ${err.message}`, 'error');
+          document.getElementById('msgInput').value = text; // Restore input on error
         }
       }
     }
@@ -2891,18 +2922,49 @@
       const reader = new FileReader();
       reader.onload = async (e) => {
         const dataUri = e.target.result;
+        const imageSizeKb = Math.round(dataUri.length / 1024);
 
-        const endpoint = currentGroupId ? `/api/groups/${currentGroupId}/messages` : `/api/conversations/${currentConvId}/messages`;
+        try {
+          const endpoint = currentGroupId ? `/api/groups/${currentGroupId}/messages` : `/api/conversations/${currentConvId}/messages`;
 
-        const data = await apiCall(endpoint, {
-          method: 'POST',
-          body: JSON.stringify({ type: 'image', content: { imageUrl: dataUri } })
-        });
-        if (data) {
-          if (currentGroupId) {
-            loadGroupMessages(currentGroupId);
+          if (isDemoMode) {
+            // Show wallet confirmation modal in demo mode
+            await showWalletConfirm('Send Image', { imageSize: imageSizeKb + ' KB' }, async (txHash) => {
+              showToast('Image sent successfully', 'success');
+              const data = await apiCall(endpoint, {
+                method: 'POST',
+                body: JSON.stringify({ type: 'image', content: { imageUrl: dataUri } })
+              });
+
+              if (data && !data.error) {
+                if (currentGroupId) {
+                  loadGroupMessages(currentGroupId);
+                } else {
+                  loadMessages();
+                }
+                return data;
+              } else {
+                throw new Error(data?.error || 'Failed to send image');
+              }
+            });
           } else {
-            loadMessages();
+            // Non-demo mode: send directly without confirmation
+            const data = await apiCall(endpoint, {
+              method: 'POST',
+              body: JSON.stringify({ type: 'image', content: { imageUrl: dataUri } })
+            });
+            if (data) {
+              if (currentGroupId) {
+                loadGroupMessages(currentGroupId);
+              } else {
+                loadMessages();
+              }
+            }
+          }
+        } catch (err) {
+          if (err.message !== 'User cancelled wallet confirmation') {
+            console.error('Image upload error:', err);
+            showToast(`Error: ${err.message}`, 'error');
           }
         }
       };
@@ -2937,6 +2999,7 @@
         await showWalletConfirm('Send Tokens', { recipient: 'selected contact', amount: `${amount} tokens`, memo: memo || '(none)' }, async (txHash) => {
           sendBtn.disabled = true;
           sendBtn.textContent = 'Sending...';
+          showToast('Token sent successfully', 'success');
 
           try {
             const data = await apiCall('/api/tokens/send', {
@@ -2955,7 +3018,6 @@
               if (msgData && data.blockchainRecordingId) {
                 pollBlockchainStatus(data.blockchainRecordingId, msgData.id);
               }
-              showToast('Tokens sent successfully', 'success');
               hideTokenModal();
               loadMessages();
               return data;
