@@ -486,46 +486,51 @@
         </button>
       </div>
 
-      <div class="flex-1 px-3 py-2 space-y-3">
+      <div class="flex-1 px-3 py-2 space-y-2">
         <!-- Theme -->
-        <div class="space-y-2">
+        <div class="space-y-1">
           <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Dark Mode</label>
-          <select id="themeSelect" onchange="applyTheme(this.value)" class="w-full px-2 py-1.5 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500">
+          <select id="themeSelect" onchange="applyTheme(this.value)" class="w-full px-2 py-2 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500">
             <option value="system">System</option>
             <option value="dark">Dark</option>
             <option value="light">Light</option>
           </select>
         </div>
 
-        <!-- Layout -->
+        <!-- Display -->
         <div class="space-y-2">
-          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">App Layout</label>
-          <div class="flex gap-2">
-            <button id="layoutComfort" onclick="applyLayout('comfortable')" class="flex-1 px-2 py-1.5 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-cyan-600 dark:border-cyan-500 hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Comfortable</button>
-            <button id="layoutCompact" onclick="applyLayout('compact')" class="flex-1 px-2 py-1.5 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-transparent hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Compact</button>
+          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Display</label>
+          <div class="space-y-2">
+            <!-- Layout Subsection -->
+            <div class="space-y-1">
+              <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400">Layout</label>
+              <div class="flex gap-2">
+                <button id="layoutComfort" onclick="applyLayout('comfortable')" class="flex-1 px-2 py-2 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-cyan-600 dark:border-cyan-500 hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Comfortable</button>
+                <button id="layoutCompact" onclick="applyLayout('compact')" class="flex-1 px-2 py-2 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-transparent hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Compact</button>
+              </div>
+            </div>
+            <!-- Mode Subsection -->
+            <div class="space-y-1">
+              <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400">Mode</label>
+              <div class="flex gap-2">
+                <button id="viewModeWeb" onclick="applyViewMode('web')" class="flex-1 px-2 py-2 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-cyan-600 dark:border-cyan-500 hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Web/Desktop</button>
+                <button id="viewModeMobile" onclick="applyViewMode('mobile')" class="flex-1 px-2 py-2 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-transparent hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Mobile</button>
+              </div>
+            </div>
           </div>
         </div>
 
         <!-- Network -->
-        <div class="space-y-2">
+        <div class="space-y-1">
           <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Network</label>
-          <select id="networkSelect" onchange="applyNetwork(this.value)" class="w-full px-2 py-1.5 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500">
+          <select id="networkSelect" onchange="applyNetwork(this.value)" class="w-full px-2 py-2 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500">
             <option value="testnet">Testnet</option>
             <option value="mainnet">Mainnet</option>
           </select>
         </div>
 
-        <!-- View Mode -->
-        <div class="space-y-2">
-          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">View Mode</label>
-          <div class="flex gap-2">
-            <button id="viewModeWeb" onclick="applyViewMode('web')" class="flex-1 px-2 py-1.5 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-cyan-600 dark:border-cyan-500 hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Web/Desktop</button>
-            <button id="viewModeMobile" onclick="applyViewMode('mobile')" class="flex-1 px-2 py-1.5 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-transparent hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Mobile</button>
-          </div>
-        </div>
-
         <!-- Network Status Accordion -->
-        <div id="networkStatusSection" class="space-y-2 border-t border-zinc-200 dark:border-zinc-700 pt-3 mt-3">
+        <div id="networkStatusSection" class="space-y-1 border-t border-zinc-200 dark:border-zinc-700 pt-2 mt-2">
           <button id="networkStatusToggle" onclick="toggleNetworkStatusAccordion()" class="w-full flex items-center justify-between px-0 py-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
             <span>Network Status</span>
             <svg id="networkStatusArrow" class="w-5 h-5 transition-transform duration-200 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
