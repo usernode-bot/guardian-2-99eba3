@@ -2349,9 +2349,12 @@ async function start() {
         blockchain_audit_log_id BIGINT,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         deleted_by INTEGER[]
-      );
+      )
+    `);
+
+    await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_messages_conversation_created
-        ON messages(conversation_id, created_at);
+        ON messages(conversation_id, created_at)
     `);
 
     // Add blockchain columns to messages if they don't exist (idempotent migration)
