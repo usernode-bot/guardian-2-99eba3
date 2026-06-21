@@ -1230,32 +1230,37 @@
     }
 
     async function apiCall(path, opts = {}) {
-      const response = await fetch(path, {
-        ...opts,
-        headers: { 'Content-Type': 'application/json', ...headers, ...opts.headers }
-      });
-      if (!response.ok) {
+      try {
+        const response = await fetch(path, {
+          ...opts,
+          headers: { 'Content-Type': 'application/json', ...headers, ...opts.headers }
+        });
+        if (!response.ok) {
+          try {
+            const data = await response.json();
+            let errorMsg = 'Request failed';
+            if (data && typeof data === 'object' && data.error) {
+              errorMsg = typeof data.error === 'string' ? data.error : 'Request failed';
+            }
+            console.error(`API error (${response.status}) on ${path}:`, { errorMsg, data });
+            return { error: errorMsg, status: response.status };
+          } catch (parseErr) {
+            const text = await response.text().catch(() => '');
+            console.error(`API error (${response.status}) on ${path} with invalid JSON:`, text);
+            return { error: 'Request failed', status: response.status };
+          }
+        }
         try {
           const data = await response.json();
-          let errorMsg = 'Request failed';
-          if (data && typeof data === 'object' && data.error) {
-            errorMsg = typeof data.error === 'string' ? data.error : 'Request failed';
-          }
-          console.error(`API error (${response.status}) on ${path}:`, { errorMsg, data });
-          return { error: errorMsg, status: response.status };
-        } catch (parseErr) {
+          return data;
+        } catch (err) {
           const text = await response.text().catch(() => '');
-          console.error(`API error (${response.status}) on ${path} with invalid JSON:`, text);
-          return { error: 'Request failed', status: response.status };
+          console.error(`Failed to parse JSON response from ${path}:`, { error: err.message, text });
+          return { error: 'Invalid response format', status: response.status };
         }
-      }
-      try {
-        const data = await response.json();
-        return data;
       } catch (err) {
-        const text = await response.text().catch(() => '');
-        console.error(`Failed to parse JSON response from ${path}:`, { error: err.message, text });
-        return { error: 'Invalid response format', status: response.status };
+        console.error(`Network error on ${path}:`, err.message);
+        return { error: err.message || 'Network error', status: 0 };
       }
     }
 
@@ -1644,6 +1649,7 @@
       const list = document.getElementById('messageList');
 
       if (data.error) {
+        console.error('[loadGroupMessages] error:', data.error, 'status:', data.status);
         list.innerHTML = '<div class="text-center text-red-600 dark:text-red-400 py-8"><div class="text-sm">Failed to load group messages</div></div>';
         return;
       }
@@ -2038,6 +2044,7 @@
       const list = document.getElementById('messageList');
 
       if (data.error) {
+        console.error('[loadMessages] error:', data.error, 'status:', data.status);
         if (data.status === 403) {
           list.innerHTML = '<div class="text-center text-red-600 dark:text-red-400 py-8"><div class="text-sm">This conversation is no longer available</div></div>';
         } else {

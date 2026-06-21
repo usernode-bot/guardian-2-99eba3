@@ -204,7 +204,10 @@ app.get('/api/usernode/status', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
     const userRes = await pool.query(`SELECT network FROM users WHERE id = $1`, [userId]);
     const network = userRes.rows[0]?.network || 'testnet';
     const nodeId = network === 'mainnet' ? 'UserNode Mainnet' : 'UserNode Testnet';
@@ -263,7 +266,10 @@ app.get('/api/conversations', async (req, res) => {
 
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
     const offset = parseInt(req.query.offset || 0);
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
 
     // Optimized query using joins to eliminate N+1 lookups
     const convQuery = `
@@ -345,7 +351,7 @@ app.get('/api/conversations', async (req, res) => {
     res.json({ conversations: { active, pending, archived } });
   } catch (err) {
     console.error('Error fetching conversations:', err);
-    res.status(200).json({ conversations: { active: [], pending: [], archived: [] } });
+    res.status(500).json({ error: 'Failed to fetch conversations' });
   }
 });
 
@@ -356,7 +362,10 @@ app.post('/api/conversations', async (req, res) => {
     }
 
     const { participantId } = req.body;
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
 
     if (!participantId || participantId === userId) {
       return res.status(400).json({ error: 'Invalid participant' });
@@ -391,10 +400,17 @@ app.post('/api/conversations', async (req, res) => {
 
 app.get('/api/conversations/:convId', async (req, res) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
     const { convId } = req.params;
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
     const before = req.query.before ? new Date(req.query.before) : new Date();
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
 
     // Verify user is a participant in this conversation
     const { rows: convRows } = await pool.query(`
@@ -451,7 +467,10 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
 
     const { convId } = req.params;
     const { type, content } = req.body;
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
     const now = new Date();
 
     if (!checkRateLimit(`msg:${userId}`, 100, 60000)) {
@@ -557,8 +576,15 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
 
 app.post('/api/conversations/:convId/messages/:messageId/delete', async (req, res) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
     const { convId, messageId } = req.params;
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
 
     await pool.query(`
       UPDATE messages
@@ -578,9 +604,16 @@ app.post('/api/conversations/:convId/messages/:messageId/delete', async (req, re
 
 app.put('/api/conversations/:convId/read', async (req, res) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
     const { convId } = req.params;
     const { readUpTo } = req.body;
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
 
     await pool.query(`
       INSERT INTO read_receipts (user_id, conversation_id, last_read_at)
@@ -598,8 +631,15 @@ app.put('/api/conversations/:convId/read', async (req, res) => {
 
 app.put('/api/conversations/:convId/mute', async (req, res) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
     const { convId } = req.params;
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
 
     await pool.query(`
       UPDATE conversations
@@ -619,8 +659,15 @@ app.put('/api/conversations/:convId/mute', async (req, res) => {
 
 app.post('/api/conversations/:convId/archive', async (req, res) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
     const { convId } = req.params;
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
 
     await pool.query(`
       UPDATE conversations
@@ -654,7 +701,10 @@ app.post('/api/tokens/send', async (req, res) => {
     }
 
     const { recipientId, amount, memo } = req.body;
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
     const now = new Date();
 
     if (!recipientId || !amount) {
@@ -733,12 +783,16 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
     }
 
     const { auditLogId } = req.params;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
 
     const { rows } = await pool.query(`
       SELECT id, user_id, message_id, message_type, tx_hash, status, error_message, confirmed_at
       FROM blockchain_audit_logs
       WHERE id = $1 AND user_id = $2
-    `, [auditLogId, req.user.id]);
+    `, [auditLogId, userId]);
 
     if (rows.length === 0) {
       return res.status(404).json({ error: 'Audit log not found' });
@@ -767,7 +821,10 @@ app.post('/api/blockchain-audit/:auditLogId/retry', async (req, res) => {
     }
 
     const { auditLogId } = req.params;
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
 
     const { rows } = await pool.query(`
       SELECT id, status, transaction_payload FROM blockchain_audit_logs
@@ -829,7 +886,10 @@ app.get('/api/transactions-by-user', async (req, res) => {
 
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
     const offset = parseInt(req.query.offset || 0);
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
 
     const { rows } = await pool.query(`
       SELECT id, message_id, message_type, tx_hash, status, error_message, confirmed_at, created_at
@@ -875,7 +935,10 @@ app.post('/api/conversations/:convId/accept', async (req, res) => {
     }
 
     const { convId } = req.params;
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
 
     // Verify user is a participant
     const { rows: convRows } = await pool.query(`
@@ -915,7 +978,10 @@ app.post('/api/conversations/:convId/ignore', async (req, res) => {
     }
 
     const { convId } = req.params;
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
 
     // Verify user is a participant
     const { rows: convRows } = await pool.query(`
@@ -955,7 +1021,10 @@ app.post('/api/conversations/:convId/block', async (req, res) => {
     }
 
     const { convId } = req.params;
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
 
     // Verify user is a participant
     const { rows: convRows } = await pool.query(`
@@ -999,7 +1068,10 @@ app.get('/api/contacts', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
     const { rows } = await pool.query(`
       SELECT uc.id, u.id as user_id, u.username, u.usernode_pubkey, u.verified_at, u.avatar_url, uc.nickname
       FROM user_contacts uc
@@ -1032,7 +1104,10 @@ app.post('/api/contacts', async (req, res) => {
     }
 
     const { usernode_pubkey, nickname } = req.body;
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
 
     if (!usernode_pubkey) {
       return res.status(400).json({ error: 'usernode_pubkey is required' });
@@ -1099,7 +1174,10 @@ app.post('/api/contacts/by-id', async (req, res) => {
     }
 
     const { user_id, nickname } = req.body;
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
 
     if (!user_id) {
       return res.status(400).json({ error: 'user_id is required' });
@@ -1162,7 +1240,10 @@ app.delete('/api/contacts/:contactId', async (req, res) => {
     }
 
     const { contactId } = req.params;
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
 
     const result = await pool.query(`
       DELETE FROM user_contacts
@@ -1283,7 +1364,10 @@ app.get('/api/groups', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
     const offset = parseInt(req.query.offset || 0);
 
@@ -1351,7 +1435,10 @@ app.post('/api/groups', async (req, res) => {
     }
 
     const { name, description, initialMemberIds } = req.body;
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
 
     if (!name || name.trim().length === 0) {
       return res.status(400).json({ error: 'Group name is required' });
@@ -1428,7 +1515,10 @@ app.get('/api/groups/:groupId', async (req, res) => {
     }
 
     const { groupId } = req.params;
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
 
     // Verify user is a member
     const { rows: memberRows } = await pool.query(`
@@ -1493,7 +1583,10 @@ app.put('/api/groups/:groupId', async (req, res) => {
 
     const { groupId } = req.params;
     const { name, description } = req.body;
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
 
     // Verify user is creator
     const { rows: groupRows } = await pool.query(`
@@ -1527,7 +1620,10 @@ app.get('/api/groups/:groupId/messages', async (req, res) => {
     }
 
     const { groupId } = req.params;
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
     const before = req.query.before ? new Date(req.query.before) : new Date();
 
@@ -1580,7 +1676,10 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
 
     const { groupId } = req.params;
     const { type, content } = req.body;
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
     const now = new Date();
 
     if (!checkRateLimit(`gmsg:${userId}`, 100, 60000)) {
@@ -1674,8 +1773,15 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
 
 app.post('/api/groups/:groupId/messages/:messageId/delete', async (req, res) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
     const { groupId, messageId } = req.params;
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
 
     await pool.query(`
       UPDATE group_messages
@@ -1701,7 +1807,10 @@ app.post('/api/groups/:groupId/members', async (req, res) => {
 
     const { groupId } = req.params;
     const { userIds } = req.body;
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
 
     // Verify user is creator
     const { rows: groupRows } = await pool.query(`
@@ -1772,7 +1881,10 @@ app.delete('/api/groups/:groupId/members/:userId', async (req, res) => {
     }
 
     const { groupId, userId: targetUserId } = req.params;
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
     const targetId = parseInt(targetUserId);
 
     // Verify requester is creator or removing themselves
@@ -1813,7 +1925,10 @@ app.post('/api/groups/:groupId/leave', async (req, res) => {
     }
 
     const { groupId } = req.params;
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
 
     // Verify user is a member
     const { rows: memberRows } = await pool.query(`
@@ -1843,7 +1958,10 @@ app.delete('/api/groups/:groupId', async (req, res) => {
     }
 
     const { groupId } = req.params;
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
 
     // Verify user is creator
     const { rows: groupRows } = await pool.query(`
@@ -1878,7 +1996,10 @@ app.put('/api/groups/:groupId/read', async (req, res) => {
 
     const { groupId } = req.params;
     const { readUpTo } = req.body;
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
 
     await pool.query(`
       INSERT INTO group_read_receipts (user_id, group_id, last_read_at)
@@ -1901,7 +2022,10 @@ app.put('/api/groups/:groupId/mute', async (req, res) => {
     }
 
     const { groupId } = req.params;
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
 
     // For now, just mark as read to simulate muting
     // TODO: Add muted_by column to groups table for persistence
@@ -1919,7 +2043,10 @@ app.post('/api/groups/:groupId/archive', async (req, res) => {
     }
 
     const { groupId } = req.params;
-    const userId = req.user.id;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
 
     // For now, just mark as read to simulate archiving
     // TODO: Add archived_by column to groups table for persistence
