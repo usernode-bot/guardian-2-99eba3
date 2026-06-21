@@ -2935,6 +2935,110 @@ app.delete('/api/feed/posts/:postId/comments/:commentId', async (req, res) => {
   }
 });
 
+// GET /api/feed/posts/likes - Get current user's liked post IDs
+app.get('/api/feed/posts/likes', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = req.user.id;
+
+    const { rows } = await pool.query(`
+      SELECT post_id FROM feed_likes WHERE user_id = $1
+    `, [userId]);
+
+    const likedPostIds = rows.map(r => r.post_id);
+    res.json({ likedPostIds });
+  } catch (err) {
+    console.error('Error fetching likes:', err);
+    res.status(500).json({ error: 'Failed to fetch likes' });
+  }
+});
+
+// POST /api/feed/posts/:postId/like - Like a post
+app.post('/api/feed/posts/:postId/like', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { postId } = req.params;
+    const userId = req.user.id;
+
+    // Verify post exists
+    const { rows: postRows } = await pool.query(`
+      SELECT id FROM feed_posts WHERE id = $1
+    `, [postId]);
+
+    if (postRows.length === 0) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    // Check if already liked
+    const { rows: likeRows } = await pool.query(`
+      SELECT id FROM feed_likes WHERE post_id = $1 AND user_id = $2
+    `, [postId, userId]);
+
+    if (likeRows.length > 0) {
+      return res.json({ ok: true, liked: true, message: 'Already liked' });
+    }
+
+    // Insert like
+    await pool.query(`
+      INSERT INTO feed_likes (post_id, user_id, created_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (post_id, user_id) DO NOTHING
+    `, [postId, userId]);
+
+    // Get updated count
+    const { rows: countRows } = await pool.query(`
+      SELECT COUNT(*)::INTEGER as like_count FROM feed_likes WHERE post_id = $1
+    `, [postId]);
+
+    res.json({ ok: true, liked: true, likeCount: countRows[0].like_count });
+  } catch (err) {
+    console.error('Error liking post:', err);
+    res.status(500).json({ error: 'Failed to like post' });
+  }
+});
+
+// DELETE /api/feed/posts/:postId/like - Unlike a post
+app.delete('/api/feed/posts/:postId/like', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { postId } = req.params;
+    const userId = req.user.id;
+
+    // Verify post exists
+    const { rows: postRows } = await pool.query(`
+      SELECT id FROM feed_posts WHERE id = $1
+    `, [postId]);
+
+    if (postRows.length === 0) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    // Delete like
+    await pool.query(`
+      DELETE FROM feed_likes WHERE post_id = $1 AND user_id = $2
+    `, [postId, userId]);
+
+    // Get updated count
+    const { rows: countRows } = await pool.query(`
+      SELECT COUNT(*)::INTEGER as like_count FROM feed_likes WHERE post_id = $1
+    `, [postId]);
+
+    res.json({ ok: true, liked: false, likeCount: countRows[0].like_count });
+  } catch (err) {
+    console.error('Error unliking post:', err);
+    res.status(500).json({ error: 'Failed to unlike post' });
+  }
+});
+
 // Simple proxy for explorer API to avoid CORS issues
 app.use('/explorer-api', (req, res) => {
   // Forward requests to testnet explorer

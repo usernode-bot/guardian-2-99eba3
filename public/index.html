@@ -3924,6 +3924,7 @@
       document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
+      loadUserLikes();
       loadFeedPosts(0);
     }
 
@@ -3931,6 +3932,69 @@
 
     let feedOffset = 0;
     let feedHasMore = true;
+    let userLikedPostIds = new Set();
+
+    async function loadUserLikes() {
+      try {
+        const data = await apiCall('/api/feed/posts/likes');
+        if (data && data.likedPostIds) {
+          userLikedPostIds = new Set(data.likedPostIds);
+          updateLikeButtons();
+        }
+      } catch (err) {
+        console.error('Error loading user likes:', err);
+      }
+    }
+
+    function updateLikeButtons() {
+      userLikedPostIds.forEach(postId => {
+        const btn = document.getElementById(`likeBtn-${postId}`);
+        if (btn) {
+          btn.classList.add('text-red-600', 'dark:text-red-400');
+          btn.classList.remove('text-zinc-600', 'dark:text-zinc-400');
+        }
+      });
+    }
+
+    async function toggleLike(postId, event) {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const isLiked = userLikedPostIds.has(postId);
+      const endpoint = `/api/feed/posts/${postId}/like`;
+      const method = isLiked ? 'DELETE' : 'POST';
+
+      try {
+        const data = await apiCall(endpoint, { method });
+        if (data && data.ok) {
+          if (data.liked) {
+            userLikedPostIds.add(postId);
+          } else {
+            userLikedPostIds.delete(postId);
+          }
+
+          const countEl = document.getElementById(`likeCount-${postId}`);
+          const btnEl = document.getElementById(`likeBtn-${postId}`);
+
+          if (countEl) {
+            countEl.textContent = data.likeCount || 0;
+          }
+
+          if (btnEl) {
+            if (data.liked) {
+              btnEl.classList.add('text-red-600', 'dark:text-red-400');
+              btnEl.classList.remove('text-zinc-600', 'dark:text-zinc-400');
+            } else {
+              btnEl.classList.remove('text-red-600', 'dark:text-red-400');
+              btnEl.classList.add('text-zinc-600', 'dark:text-zinc-400');
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error toggling like:', err);
+        showToast('Failed to update like', 'error');
+      }
+    }
 
     async function loadFeedPosts(offset) {
       try {
@@ -4038,7 +4102,7 @@
             </div>
             ${content}
             <div class="flex gap-3 mt-2 text-xs text-zinc-600 dark:text-zinc-400">
-              <span>❤️ <span id="likeCount-${post.id}">${post.likeCount || 0}</span></span>
+              <button onclick="toggleLike(${post.id}, event)" class="hover:text-red-600 dark:hover:text-red-400 transition cursor-pointer" id="likeBtn-${post.id}">❤️ <span id="likeCount-${post.id}">${post.likeCount || 0}</span></button>
               <button onclick="toggleComments(${post.id})" class="hover:text-cyan-600 dark:hover:text-cyan-400 transition">💬 <span id="commentCount-${post.id}">${post.commentCount || 0}</span></button>
             </div>
             <div id="commentsSection-${post.id}" class="hidden mt-2 space-y-2 max-h-48 overflow-y-auto"></div>
