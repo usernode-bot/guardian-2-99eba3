@@ -175,6 +175,21 @@
       }
     }
 
+    @keyframes slideIn {
+      from {
+        transform: translateX(400px);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    .animate-slideIn {
+      animation: slideIn 0.3s ease-out;
+    }
+
     .sidebar-enter {
       animation: slideInLeft 0.3s ease-out;
     }
@@ -1333,6 +1348,25 @@
       }
     }
 
+    function showToast(message, type = 'success', duration = 3000) {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      const bgColor = type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500';
+      const textColor = 'text-white';
+
+      toast.className = `${bgColor} ${textColor} px-4 py-3 rounded-lg shadow-lg text-sm font-medium animate-slideIn`;
+      toast.textContent = message;
+
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(400px)';
+        toast.style.transition = 'all 0.3s ease-out';
+        setTimeout(() => toast.remove(), 300);
+      }, duration);
+    }
+
     function toggleSidebar() {
       sidebarOpen = !sidebarOpen;
       const sidebar = document.getElementById('sidebar');
@@ -1792,9 +1826,12 @@
         body: JSON.stringify({ name, description: desc || null })
       });
 
-      if (data) {
+      if (data && !data.error) {
+        showToast('Group created successfully', 'success');
         closeCreateGroupModal();
         loadGroups();
+      } else if (data && data.error) {
+        showToast(`Failed to create group: ${data.error}`, 'error');
       }
     }
 
@@ -2165,14 +2202,12 @@
       const alignClass = isOwn ? 'justify-end' : 'justify-start';
 
       if (msg.type === 'text') {
-        const blockchainStatusHtml = msg.blockchainRecorded ? `<div class="text-xs mt-2 text-amber-600 dark:text-amber-400" id="blockchain-status-${msg.id}">⏳ Recording on blockchain...</div>` : '';
         return `
           <div class="flex ${alignClass}" data-message-id="${msg.id}">
             <div class="max-w-xs px-4 py-2 rounded-2xl ${baseClass} message-bubble">
               <div class="text-xs opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'} mb-1">${msg.senderUsername}</div>
               <div>${msg.content.text}</div>
               <div class="text-xs mt-2 opacity-70">${formatTime(new Date(msg.createdAt))}</div>
-              ${blockchainStatusHtml}
             </div>
           </div>
         `;
@@ -2191,7 +2226,6 @@
 
       if (msg.type === 'token') {
         const c = msg.content;
-        const blockchainStatusHtml = msg.blockchainRecorded ? `<div class="text-xs mt-2 text-amber-600 dark:text-amber-400" id="blockchain-status-${msg.id}">⏳ Recording on blockchain...</div>` : '';
         return `
           <div class="flex ${alignClass}" data-message-id="${msg.id}">
             <div class="max-w-xs px-4 py-2 rounded-2xl ${baseClass} border-2 border-yellow-500/40 message-bubble">
@@ -2200,7 +2234,6 @@
               <div class="text-xs mt-1 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'}">${c.memo || 'No memo'}</div>
               <div class="text-xs mt-2 font-medium">${c.status === 'confirmed' ? '✓ Confirmed' : '⏳ Pending'}</div>
               <div class="text-xs mt-1 opacity-70">${formatTime(new Date(msg.createdAt))}</div>
-              ${blockchainStatusHtml}
             </div>
           </div>
         `;
@@ -2230,9 +2263,6 @@
           loadGroupMessages(currentGroupId);
         } else {
           loadMessages();
-        }
-        if (data.blockchainRecordingId) {
-          pollBlockchainStatus(data.blockchainRecordingId, data.id);
         }
       }
     }
@@ -3199,5 +3229,8 @@
 
     init();
   </script>
+
+  <!-- Toast notifications container -->
+  <div id="toastContainer" class="fixed bottom-4 right-4 space-y-2 z-50"></div>
 </body>
 </html>
