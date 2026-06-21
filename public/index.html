@@ -8,26 +8,22 @@
   (function () {
     function restoreThemeEarly() {
       const allKeys = Object.keys(localStorage);
-      let theme = 'system';
+      let theme = 'light';
       for (const key of allKeys) {
         if (key.startsWith('guardian_settings_')) {
           try {
             const settings = JSON.parse(localStorage.getItem(key));
-            theme = settings.theme || 'system';
+            theme = settings.theme || 'light';
+            if (theme === 'system') {
+              theme = 'light';
+            }
             break;
           } catch (_) {}
         }
       }
 
       const html = document.documentElement;
-      if (theme === 'system') {
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        if (prefersDark) {
-          html.classList.add('dark');
-        } else {
-          html.classList.remove('dark');
-        }
-      } else if (theme === 'dark') {
+      if (theme === 'dark') {
         html.classList.add('dark');
       } else if (theme === 'light') {
         html.classList.remove('dark');
@@ -552,9 +548,8 @@
       <div class="flex-1 px-3 py-2 space-y-1.5">
         <!-- Theme -->
         <div class="space-y-1">
-          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Dark Mode</label>
+          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Mode</label>
           <select id="themeSelect" onchange="applyTheme(this.value)" class="w-full px-2 py-2 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500">
-            <option value="system">System</option>
             <option value="dark">Dark</option>
             <option value="light">Light</option>
           </select>
@@ -1094,8 +1089,12 @@
     function loadSettings() {
       if (!currentUser) return {};
       const stored = JSON.parse(localStorage.getItem(`guardian_settings_${currentUser.id}`) || '{}');
+      let theme = stored.theme || 'light';
+      if (theme === 'system') {
+        theme = 'light';
+      }
       return {
-        theme: stored.theme || 'system',
+        theme: theme,
         layout: stored.layout || 'comfortable',
         network: stored.network || 'testnet',
         view_mode: stored.view_mode || 'web',
@@ -1122,11 +1121,6 @@
       updateLayoutButtons(settings.layout);
       updateViewModeButtons(settings.view_mode);
       loadConfigState();
-      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-        if (loadSettings().theme === 'system') {
-          applyTheme('system');
-        }
-      });
     }
 
     async function pollNetworkStatus() {
@@ -1521,14 +1515,7 @@
       settings.theme = theme;
       const html = document.documentElement;
 
-      if (theme === 'system') {
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        if (prefersDark) {
-          html.classList.add('dark');
-        } else {
-          html.classList.remove('dark');
-        }
-      } else if (theme === 'dark') {
+      if (theme === 'dark') {
         html.classList.add('dark');
       } else if (theme === 'light') {
         html.classList.remove('dark');
