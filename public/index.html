@@ -1529,6 +1529,62 @@
       return isWalletAvailable();
     }
 
+    // Execute wallet operation with automatic retry on transient failures
+    async function executeWalletOperation(methodName, args, { maxRetries = 2, timeoutMs = 5000, bridgeTimeoutMs = 5000 } = {}) {
+      let lastError = null;
+
+      // First, ensure bridge is ready
+      const bridgeReady = await waitForBridge(bridgeTimeoutMs);
+      if (!bridgeReady) {
+        throw new Error('Wallet bridge failed to load after waiting 5 seconds. Please refresh the page and try again.');
+      }
+
+      // Retry loop for wallet operation
+      for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
+        try {
+          const method = window.usernode?.[methodName];
+          if (typeof method !== 'function') {
+            throw new Error(`Wallet method '${methodName}' is not available`);
+          }
+
+          console.log(`Wallet operation attempt ${attempt}/${maxRetries + 1}: calling ${methodName}`);
+          const result = await Promise.race([
+            method.call(window.usernode, args),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('Wallet operation timeout')), timeoutMs)
+            )
+          ]);
+
+          console.log(`✓ ${methodName} succeeded on attempt ${attempt}`);
+          return result;
+        } catch (err) {
+          lastError = err;
+          console.log(`✗ ${methodName} failed on attempt ${attempt}:`, err.message);
+
+          // Check if error is retryable (transient) vs. permanent (user action)
+          const isRetryable = err.message?.includes('timeout') ||
+                             err.message?.includes('network') ||
+                             err.message?.includes('ECONNREFUSED') ||
+                             err.message?.includes('ETIMEDOUT');
+
+          if (!isRetryable) {
+            // Permanent errors: cancelled, not signed in, invalid params — don't retry
+            throw err;
+          }
+
+          if (attempt <= maxRetries) {
+            // Wait before retrying (exponential backoff: 500ms, 1s, 2s)
+            const delayMs = 500 * Math.pow(2, attempt - 1);
+            console.log(`Retrying after ${delayMs}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+          }
+        }
+      }
+
+      // All retries exhausted
+      throw lastError || new Error('Wallet operation failed after retries');
+    }
+
     // Comprehensive bridge diagnostic function for platform maintainers
     function runBridgeDiagnostics() {
       const diagnostic = {
@@ -2016,7 +2072,7 @@
         const bridgeReady = await waitForBridge(5000);
 
         if (!bridgeReady) {
-          showToast('Wallet provider not available - bridge failed to load. Please refresh the page and try again.', 'error');
+          showToast('Your wallet connection is unavailable. Please refresh the page and try again.', 'error');
           console.error('Bridge not ready after timeout. Wallet unavailable for group creation.');
           return;
         }
@@ -2165,11 +2221,11 @@
         console.log('Transaction payload:', txPayload);
         console.log('Calling window.usernode.sendTransaction()...');
 
-        // Send transaction to wallet using qualified reference
+        // Send transaction to wallet using the retry wrapper
         let txResult;
         try {
-          console.log('Invoking wallet signing...');
-          txResult = await window.usernode.sendTransaction(txPayload);
+          console.log('Invoking wallet signing with retry logic...');
+          txResult = await executeWalletOperation('sendTransaction', txPayload, { maxRetries: 2, timeoutMs: 10000 });
           console.log('✓ sendTransaction returned successfully');
         } catch (signErr) {
           console.log('\n--- Wallet Signature Error ---');
@@ -2182,11 +2238,15 @@
           });
           // Distinguish between cancelled and failed
           if (signErr.message && signErr.message.includes('cancelled')) {
-            throw new Error('User cancelled wallet signature');
+            throw new Error('You cancelled the wallet operation.');
           } else if (signErr.message && signErr.message.includes('not signed in')) {
-            throw new Error('Wallet not signed in - please log in to your wallet');
+            throw new Error('You need to sign in to your wallet. Please check your wallet extension.');
+          } else if (signErr.message && signErr.message.includes('timeout')) {
+            throw new Error('Wallet operation took too long. Please try again.');
+          } else if (signErr.message && signErr.message.includes('bridge failed')) {
+            throw new Error('Your wallet connection is unavailable. Please refresh the page and try again.');
           } else {
-            throw new Error(`Wallet signature failed: ${signErr.message || 'Unknown error'}`);
+            throw new Error(`Wallet operation failed: ${signErr.message || 'Unknown error'}`);
           }
         }
 
@@ -2228,11 +2288,19 @@
         }
 
         // Provide clearer error messages to user
-        let userMessage = err.message || 'Failed to sign transaction';
-        if (userMessage.includes('usernode is not defined')) {
-          userMessage = 'Wallet provider not available - bridge failed to load';
-        } else if (!userMessage.startsWith('Wallet') && !userMessage.startsWith('Bridge')) {
-          userMessage = 'Wallet error: ' + userMessage;
+        let userMessage = err.message || 'Wallet operation failed. Please try again.';
+        if (userMessage.includes('bridge failed to load')) {
+          userMessage = 'Your wallet connection is unavailable. Please refresh the page and try again.';
+        } else if (userMessage.includes('Wallet operation timeout')) {
+          userMessage = 'Wallet operation took too long. Please try again.';
+        } else if (userMessage.includes('cancelled')) {
+          userMessage = 'You cancelled the wallet operation.';
+        } else if (userMessage.includes('not signed in')) {
+          userMessage = 'You need to sign in to your wallet. Please check your wallet extension.';
+        } else if (userMessage.includes('usernode is not defined')) {
+          userMessage = 'Your wallet connection is unavailable. Please refresh the page and try again.';
+        } else if (userMessage.includes('not available')) {
+          userMessage = 'Wallet operation failed. If this persists, try refreshing the page.';
         }
 
         showToast(userMessage, 'error');
@@ -2775,6 +2843,16 @@
       const originalText = sendBtn.textContent;
 
       try {
+        // Check bridge availability before showing wallet confirmation
+        console.log('Sending tokens: checking bridge availability...');
+        const bridgeReady = await waitForBridge(5000);
+
+        if (!bridgeReady) {
+          showToast('Your wallet connection is unavailable. Please refresh the page and try again.', 'error');
+          console.error('Bridge not ready after timeout. Wallet unavailable for token send.');
+          return;
+        }
+
         // Show wallet confirmation modal
         await showWalletConfirm('Send Tokens', { recipient: 'selected contact', amount: `${amount} tokens`, memo: memo || '(none)' }, async (txHash) => {
           sendBtn.disabled = true;
