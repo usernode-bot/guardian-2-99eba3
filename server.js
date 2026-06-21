@@ -328,6 +328,274 @@ app.put('/api/config/demo-mode', async (req, res) => {
   }
 });
 
+app.post('/api/demo/seed-data', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    if (!ENABLE_DEMO_MODE) {
+      return res.status(403).json({ error: 'Demo mode is not enabled' });
+    }
+
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    // Only seed for users > 5 (not the pre-seeded test users)
+    if (userId <= 5) {
+      return res.json({ status: 'skipped', reason: 'Pre-seeded user, demo data already available' });
+    }
+
+    console.log(`[DEMO] Seeding demo data for user ${userId}`);
+
+    // Create demo partner user
+    const partnerId = 100000 + userId;
+    const partnerUsername = `__demo_user_${userId}`;
+    const partnerPubkey = `ut1staging-demo-${userId}`;
+
+    await pool.query(`
+      INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at)
+      VALUES ($1, $2, $3, NOW(), NOW())
+      ON CONFLICT (id) DO NOTHING
+    `, [partnerId, partnerUsername, partnerPubkey]);
+
+    // Create direct conversation between current user and demo partner
+    const [participantA, participantB] = [userId, partnerId].sort((x, y) => x - y);
+    const { rows: convRows } = await pool.query(`
+      SELECT id FROM conversations WHERE participant_a_id = $1 AND participant_b_id = $2
+    `, [participantA, participantB]);
+
+    let convId;
+    if (convRows.length === 0) {
+      const result = await pool.query(`
+        INSERT INTO conversations (participant_a_id, participant_b_id, created_at, updated_at)
+        VALUES ($1, $2, NOW(), NOW())
+        RETURNING id
+      `, [participantA, participantB]);
+      convId = result.rows[0].id;
+    } else {
+      convId = convRows[0].id;
+    }
+
+    // Seed direct messages
+    const baseTime = new Date(Date.now() - 3600000);
+    const dmMessages = [
+      { offset: 0, sender: partnerId, type: 'text', content: { text: '[Demo] Hey! Welcome to Guardian' } },
+      { offset: 600000, sender: userId, type: 'text', content: { text: '[Demo] Thanks for the intro!' } },
+      { offset: 1200000, sender: partnerId, type: 'image', content: { imageUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mP8z8DwHwMxxGAIwAAADkkBkMTjF4UAAAAASUVORK5CYII=' } },
+      { offset: 1800000, sender: userId, type: 'text', content: { text: '[Demo] Nice image!' } },
+      { offset: 2400000, sender: userId, type: 'token', content: { recipientId: partnerId, amount: 50, memo: '[Demo] Thanks for helping!', txHash: 'ut1staging-demo-msg-' + Date.now(), status: 'confirmed' } },
+      { offset: 3000000, sender: partnerId, type: 'text', content: { text: '[Demo] Thanks for the tokens!' } },
+    ];
+
+    for (const msg of dmMessages) {
+      const msgTime = new Date(baseTime.getTime() + msg.offset);
+      const result = await pool.query(`
+        INSERT INTO messages (conversation_id, sender_id, type, content, blockchain_recorded, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT DO NOTHING
+        RETURNING id
+      `, [convId, msg.sender, msg.type, JSON.stringify(msg.content), msg.type === 'token', msgTime]);
+
+      // Seed blockchain audit log for token transfers
+      if (msg.type === 'token' && result.rows.length > 0) {
+        const messageId = result.rows[0].id;
+        const contentHash = computeContentHash(msg.content);
+        const txHash = 'ut1staging-testnet-message-' + messageId + '-' + msgTime.getTime();
+        const transactionPayload = {
+          type: 'token_transfer',
+          messageId: messageId,
+          sender: msg.sender,
+          recipient: msg.content.recipientId,
+          amount: msg.content.amount,
+          memo: msg.content.memo,
+          userPubkey: partnerPubkey,
+          contentHash: contentHash,
+          timestamp: msgTime.toISOString()
+        };
+
+        await pool.query(`
+          INSERT INTO blockchain_audit_logs (user_id, message_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, $5, 'confirmed', $6, $7, $8, $9, $10, $10)
+          ON CONFLICT DO NOTHING
+        `, [msg.sender, messageId, 'token_transfer', txHash, JSON.stringify(transactionPayload), msgTime, contentHash, partnerPubkey, msgTime, msgTime]);
+
+        await pool.query(`
+          UPDATE messages SET blockchain_audit_log_id = (SELECT id FROM blockchain_audit_logs WHERE message_id = $1 LIMIT 1) WHERE id = $1
+        `, [messageId]);
+      }
+    }
+
+    // Initialize read receipts for direct conversation
+    await pool.query(`
+      INSERT INTO read_receipts (user_id, conversation_id, last_read_at)
+      VALUES ($1, $2, NOW()), ($3, $2, NOW())
+      ON CONFLICT DO NOTHING
+    `, [userId, convId, partnerId]);
+
+    // Create two demo groups
+    // Group 1: Demo Engineering Team
+    const group1Name = 'Demo Engineering Team';
+    const { rows: group1Rows } = await pool.query(`
+      SELECT id FROM groups WHERE creator_id = $1 AND name = $2
+    `, [partnerId, group1Name]);
+
+    let group1Id;
+    if (group1Rows.length === 0) {
+      const result = await pool.query(`
+        INSERT INTO groups (creator_id, name, description, created_at, updated_at)
+        VALUES ($1, $2, '[Demo] Engineering team collaboration space', NOW(), NOW())
+        RETURNING id
+      `, [partnerId, group1Name]);
+      group1Id = result.rows[0].id;
+    } else {
+      group1Id = group1Rows[0].id;
+    }
+
+    // Create colleague users for groups
+    const colleague1Id = 100001 + userId;
+    const colleague2Id = 100002 + userId;
+
+    await pool.query(`
+      INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at)
+      VALUES ($1, '__demo_colleague_' || $2 || '_1', $3, NOW(), NOW()),
+             ($4, '__demo_colleague_' || $2 || '_2', $5, NOW(), NOW())
+      ON CONFLICT (id) DO NOTHING
+    `, [colleague1Id, userId, `ut1staging-demo-${colleague1Id}`, colleague2Id, `ut1staging-demo-${colleague2Id}`]);
+
+    // Add members to group 1
+    for (const memberId of [userId, partnerId, colleague1Id, colleague2Id]) {
+      await pool.query(`
+        INSERT INTO group_members (group_id, user_id, role, joined_at)
+        VALUES ($1, $2, $3, NOW())
+        ON CONFLICT (group_id, user_id) DO NOTHING
+      `, [group1Id, memberId, memberId === partnerId ? 'creator' : 'member']);
+    }
+
+    // Seed messages for group 1
+    const group1BaseTime = new Date(Date.now() - 1800000);
+    const group1Messages = [
+      { offset: 0, sender: partnerId, type: 'text', content: { text: '[Demo] Welcome to the engineering team!' } },
+      { offset: 600000, sender: colleague1Id, type: 'text', content: { text: '[Demo] Great to have you on board' } },
+      { offset: 1200000, sender: userId, type: 'image', content: { imageUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mP8z8DwHwMxxGAIwAAADkkBkMTjF4UAAAAASUVORK5CYII=' } },
+      { offset: 1800000, sender: colleague2Id, type: 'token', content: { recipientId: userId, amount: 25, memo: '[Demo] Team bonus', txHash: 'ut1staging-demo-token-' + Date.now(), status: 'confirmed' } },
+    ];
+
+    for (const msg of group1Messages) {
+      const msgTime = new Date(group1BaseTime.getTime() + msg.offset);
+      const result = await pool.query(`
+        INSERT INTO group_messages (group_id, sender_id, type, content, blockchain_recorded, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT DO NOTHING
+        RETURNING id
+      `, [group1Id, msg.sender, msg.type, JSON.stringify(msg.content), msg.type === 'token', msgTime]);
+
+      if (msg.type === 'token' && result.rows.length > 0) {
+        const messageId = result.rows[0].id;
+        const contentHash = computeContentHash(msg.content);
+        const txHash = 'ut1staging-testnet-message-' + messageId + '-' + msgTime.getTime();
+        const transactionPayload = {
+          type: 'token_transfer',
+          messageId: messageId,
+          groupId: group1Id,
+          sender: msg.sender,
+          recipient: msg.content.recipientId,
+          amount: msg.content.amount,
+          memo: msg.content.memo,
+          userPubkey: `ut1staging-demo-${msg.sender}`,
+          contentHash: contentHash,
+          timestamp: msgTime.toISOString()
+        };
+
+        await pool.query(`
+          INSERT INTO blockchain_audit_logs (user_id, message_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, $5, $6, 'confirmed', $7, $8, $9, $10, $11, $11)
+          ON CONFLICT DO NOTHING
+        `, [msg.sender, messageId, group1Id, 'token_transfer', txHash, JSON.stringify(transactionPayload), msgTime, contentHash, `ut1staging-demo-${msg.sender}`, msgTime, msgTime]);
+
+        await pool.query(`
+          UPDATE group_messages SET blockchain_audit_log_id = (SELECT id FROM blockchain_audit_logs WHERE message_id = $1 LIMIT 1) WHERE id = $1
+        `, [messageId]);
+      }
+    }
+
+    // Initialize read receipts for group 1
+    for (const memberId of [userId, partnerId, colleague1Id, colleague2Id]) {
+      await pool.query(`
+        INSERT INTO group_read_receipts (user_id, group_id, last_read_at)
+        VALUES ($1, $2, NOW())
+        ON CONFLICT (user_id, group_id) DO NOTHING
+      `, [memberId, group1Id]);
+    }
+
+    // Group 2: Demo Product Discussion
+    const group2Name = 'Demo Product Discussion';
+    const { rows: group2Rows } = await pool.query(`
+      SELECT id FROM groups WHERE creator_id = $1 AND name = $2
+    `, [colleague1Id, group2Name]);
+
+    let group2Id;
+    if (group2Rows.length === 0) {
+      const result = await pool.query(`
+        INSERT INTO groups (creator_id, name, description, created_at, updated_at)
+        VALUES ($1, $2, '[Demo] Product strategy and roadmap discussions', NOW(), NOW())
+        RETURNING id
+      `, [colleague1Id, group2Name]);
+      group2Id = result.rows[0].id;
+    } else {
+      group2Id = group2Rows[0].id;
+    }
+
+    // Add members to group 2
+    for (const memberId of [userId, partnerId, colleague1Id, colleague2Id]) {
+      await pool.query(`
+        INSERT INTO group_members (group_id, user_id, role, joined_at)
+        VALUES ($1, $2, $3, NOW())
+        ON CONFLICT (group_id, user_id) DO NOTHING
+      `, [group2Id, memberId, memberId === colleague1Id ? 'creator' : 'member']);
+    }
+
+    // Seed messages for group 2
+    const group2BaseTime = new Date(Date.now() - 1500000);
+    const group2Messages = [
+      { offset: 0, sender: colleague1Id, type: 'text', content: { text: '[Demo] Let\'s discuss the new feature roadmap' } },
+      { offset: 600000, sender: colleague2Id, type: 'text', content: { text: '[Demo] I have some ideas to share' } },
+      { offset: 900000, sender: userId, type: 'text', content: { text: '[Demo] Looking forward to this discussion' } },
+    ];
+
+    for (const msg of group2Messages) {
+      const msgTime = new Date(group2BaseTime.getTime() + msg.offset);
+      await pool.query(`
+        INSERT INTO group_messages (group_id, sender_id, type, content, blockchain_recorded, created_at)
+        VALUES ($1, $2, $3, $4, FALSE, $5)
+        ON CONFLICT DO NOTHING
+      `, [group2Id, msg.sender, msg.type, JSON.stringify(msg.content), msgTime]);
+    }
+
+    // Initialize read receipts for group 2
+    for (const memberId of [userId, partnerId, colleague1Id, colleague2Id]) {
+      await pool.query(`
+        INSERT INTO group_read_receipts (user_id, group_id, last_read_at)
+        VALUES ($1, $2, NOW())
+        ON CONFLICT (user_id, group_id) DO NOTHING
+      `, [memberId, group2Id]);
+    }
+
+    console.log(`[DEMO] Successfully seeded demo data for user ${userId}: conv=${convId}, group1=${group1Id}, group2=${group2Id}`);
+
+    res.json({
+      status: 'created',
+      conversationId: convId,
+      groupIds: [group1Id, group2Id]
+    });
+  } catch (err) {
+    console.error('Error seeding demo data:', err);
+    res.status(500).json({ error: 'Failed to seed demo data: ' + err.message });
+  }
+});
+
 // Helper function to check if user has created a group
 async function userHasCreatedGroup(userId) {
   try {

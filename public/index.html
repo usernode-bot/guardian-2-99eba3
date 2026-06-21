@@ -1765,6 +1765,24 @@
       console.log('user.isDemoMode raw value:', user.isDemoMode);
       console.log('USERNODE_ENV at server time:', user.isDemoMode ? 'staging' : 'production');
 
+      // Seed demo data if demo mode is enabled and user ID > 5 (not a pre-seeded test user)
+      if (isDemoMode && user.id > 5) {
+        console.log('[DEMO] Triggering demo data seeding for user', user.id);
+        apiCall('/api/demo/seed-data', { method: 'POST', body: JSON.stringify({}) })
+          .then(result => {
+            if (result && result.status === 'created') {
+              console.log('[DEMO] Demo data seeded successfully:', result);
+            } else if (result && result.status === 'skipped') {
+              console.log('[DEMO] Demo data seeding skipped:', result.reason);
+            } else if (result && result.error) {
+              console.warn('[DEMO] Error seeding demo data:', result.error);
+            }
+          })
+          .catch(err => {
+            console.warn('[DEMO] Failed to seed demo data:', err);
+          });
+      }
+
       // Validate and log wallet address information
       console.log('\n--- User Profile & Wallet Address Validation ---');
       console.log('User loaded:', {
