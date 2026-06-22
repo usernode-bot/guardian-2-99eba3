@@ -817,8 +817,8 @@
 
       <!-- Feed View -->
       <div id="feedView" class="hidden flex flex-col flex-1 overflow-hidden">
-        <!-- Sticky Composer -->
-        <div id="feedComposer" class="sticky top-0 z-30 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
+        <!-- Sticky Composer (positioned outside scrollable area for proper sticky behavior) -->
+        <div id="feedComposer" class="flex-shrink-0 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 sticky top-0 z-30">
           <!-- Full Composer (Mobile) -->
           <div id="feedComposerFull" class="px-4 py-2 bg-white dark:bg-zinc-900 space-y-2">
             <div class="flex gap-2 items-end">
