@@ -915,13 +915,14 @@
         <!-- Tab Navigation -->
         <div class="bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 flex">
           <button id="profileTabIdentity" onclick="switchProfileTab('identity')" class="flex-1 px-4 py-3 text-sm font-medium text-cyan-600 dark:text-cyan-400 border-b-2 border-cyan-600 dark:border-cyan-500">Identity</button>
+          <button id="profileTabGuardians" onclick="switchProfileTab('guardians')" class="flex-1 px-4 py-3 text-sm font-medium text-zinc-700 dark:text-zinc-400 border-b-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100">Guardian's</button>
           <button id="profileTabActivity" onclick="switchProfileTab('activity')" class="flex-1 px-4 py-3 text-sm font-medium text-zinc-700 dark:text-zinc-400 border-b-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100">Activity</button>
         </div>
 
         <!-- Tab Content Area -->
         <div class="flex-1 overflow-y-auto p-4 space-y-4">
           <!-- Identity Tab -->
-          <div id="profileTabContentIdentity" class="space-y-4">
+          <div id="profileTabContentIdentity" class="space-y-4" style="display: block;">
             <!-- Avatar Section -->
             <div class="flex justify-center pt-4 pb-2">
               <div class="relative">
@@ -995,8 +996,45 @@
             </div>
           </div>
 
+          <!-- Guardian's Tab -->
+          <div id="profileTabContentGuardians" class="hidden space-y-4">
+            <!-- Contribution Level Section -->
+            <div class="space-y-2">
+              <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Contribution Level</label>
+              <div class="px-4 py-4 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-center space-y-2">
+                <div id="profileGuardianStars" class="text-3xl tracking-wide">☆☆☆☆☆</div>
+                <div id="profileGuardianStarLevel" class="text-sm text-zinc-600 dark:text-zinc-400">0/5</div>
+              </div>
+            </div>
+
+            <!-- Foreground Hours Section -->
+            <div class="space-y-2">
+              <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Foreground Hours</label>
+              <div class="px-4 py-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
+                <div id="profileGuardianHours" class="text-2xl font-bold text-cyan-600 dark:text-cyan-400">0</div>
+                <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">hours contributed to the network</div>
+              </div>
+            </div>
+
+            <!-- Rank Section -->
+            <div class="space-y-2">
+              <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Rank</label>
+              <div id="profileGuardianRankContainer" class="cursor-pointer group">
+                <div class="px-4 py-3 bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-200 dark:border-cyan-800 rounded-lg flex items-center justify-between group-hover:bg-cyan-100 dark:group-hover:bg-cyan-900/40 transition">
+                  <div>
+                    <div id="profileGuardianRank" class="font-bold text-cyan-900 dark:text-cyan-100">New Guardian</div>
+                    <div id="profileGuardianRankDesc" class="text-xs text-cyan-700 dark:text-cyan-300 mt-0.5">0-10 hours</div>
+                  </div>
+                  <svg class="w-5 h-5 text-cyan-600 dark:text-cyan-400 group-hover:translate-x-0.5 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Activity Tab -->
-          <div id="profileTabContentActivity" class="flex flex-col flex-1 overflow-hidden">
+          <div id="profileTabContentActivity" class="hidden flex flex-col flex-1 overflow-hidden">
             <!-- On-Chain Transaction History -->
             <div id="profileActivityContent" class="flex-1 overflow-y-auto space-y-2 p-3">
               <div id="activityTransactionsList" class="space-y-2">
@@ -4320,10 +4358,11 @@
     function switchProfileTab(tabName) {
       // Hide all tab contents
       document.getElementById('profileTabContentIdentity').classList.add('hidden');
+      document.getElementById('profileTabContentGuardians').classList.add('hidden');
       document.getElementById('profileTabContentActivity').classList.add('hidden');
 
       // Reset all tab buttons to inactive state
-      ['identity', 'activity'].forEach(name => {
+      ['identity', 'guardians', 'activity'].forEach(name => {
         const btn = document.getElementById(`profileTab${name.charAt(0).toUpperCase() + name.slice(1)}`);
         if (btn) {
           btn.classList.remove('text-cyan-600', 'dark:text-cyan-400', 'border-cyan-600', 'dark:border-cyan-500');
@@ -4332,13 +4371,24 @@
       });
 
       // Show selected tab content
-      document.getElementById(`profileTabContent${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`).classList.remove('hidden');
+      const contentId = tabName === 'guardians'
+        ? 'profileTabContentGuardians'
+        : `profileTabContent${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`;
+      document.getElementById(contentId).classList.remove('hidden');
 
       // Activate selected tab button
-      const activeBtn = document.getElementById(`profileTab${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`);
+      const buttonId = tabName === 'guardians'
+        ? 'profileTabGuardians'
+        : `profileTab${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`;
+      const activeBtn = document.getElementById(buttonId);
       if (activeBtn) {
         activeBtn.classList.remove('text-zinc-700', 'dark:text-zinc-400', 'border-transparent');
         activeBtn.classList.add('text-cyan-600', 'dark:text-cyan-400', 'border-cyan-600', 'dark:border-cyan-500');
+      }
+
+      // Load data for guardians tab on first view
+      if (tabName === 'guardians') {
+        loadGuardiansData();
       }
 
       // Save tab preference
@@ -4398,6 +4448,60 @@
 
       // Load activity
       loadProfileActivity();
+    }
+
+    async function loadGuardiansData() {
+      try {
+        const response = await apiCall('/api/user/guardians');
+        if (!response || response.error) {
+          console.error('Error loading guardians data:', response?.error);
+          document.getElementById('profileGuardianHours').textContent = '0';
+          document.getElementById('profileGuardianRank').textContent = 'New Guardian';
+          document.getElementById('profileGuardianRankDesc').textContent = '0-10 hours';
+          document.getElementById('profileGuardianStars').textContent = '☆☆☆☆☆';
+          document.getElementById('profileGuardianStarLevel').textContent = '0/5';
+          return;
+        }
+
+        const hours = response.foregroundHours || 0;
+        const level = response.contributionLevel || 0;
+        const rank = response.rank || 'New Guardian';
+
+        // Update hours
+        document.getElementById('profileGuardianHours').textContent = hours.toString();
+
+        // Update rank
+        document.getElementById('profileGuardianRank').textContent = rank;
+        const rankDesc = hours < 10 ? '0-10 hours'
+          : hours < 50 ? '10-50 hours'
+          : hours < 200 ? '50-200 hours'
+          : '200+ hours';
+        document.getElementById('profileGuardianRankDesc').textContent = rankDesc;
+
+        // Update star rating
+        const fullStars = Math.floor(level);
+        const hasHalfStar = level % 1 !== 0;
+        let starDisplay = '';
+        for (let i = 0; i < fullStars; i++) {
+          starDisplay += '★';
+        }
+        if (hasHalfStar) {
+          starDisplay += '½';
+        }
+        const emptyStars = 5 - Math.ceil(level);
+        for (let i = 0; i < emptyStars; i++) {
+          starDisplay += '☆';
+        }
+        document.getElementById('profileGuardianStars').textContent = starDisplay;
+        document.getElementById('profileGuardianStarLevel').textContent = `${level.toFixed(1)}/5`;
+      } catch (err) {
+        console.error('Error loading guardians data:', err);
+        document.getElementById('profileGuardianHours').textContent = '0';
+        document.getElementById('profileGuardianRank').textContent = 'New Guardian';
+        document.getElementById('profileGuardianRankDesc').textContent = '0-10 hours';
+        document.getElementById('profileGuardianStars').textContent = '☆☆☆☆☆';
+        document.getElementById('profileGuardianStarLevel').textContent = '0/5';
+      }
     }
 
     function openAvatarUpload() {

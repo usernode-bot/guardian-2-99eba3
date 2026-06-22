@@ -2790,6 +2790,67 @@ app.post('/api/groups/:groupId/archive', async (req, res) => {
 
 // ===== ACTIVITY LEDGER ENDPOINTS =====
 
+app.get('/api/user/guardians', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    let foregroundHours = 0;
+
+    if (IS_STAGING) {
+      // In staging, provide mock data based on user ID for consistency
+      const userId = parseInt(req.user.id, 10);
+      if (userId === 1) {
+        foregroundHours = 5;
+      } else if (userId === 2) {
+        foregroundHours = 25;
+      } else if (userId === 3) {
+        foregroundHours = 100;
+      } else if (userId === 4) {
+        foregroundHours = 300;
+      } else {
+        // Default mock value for other users
+        foregroundHours = Math.floor(Math.random() * 250);
+      }
+    } else {
+      // In production, fetch from peers/usernode
+      // For now, default to 0 hours as a placeholder
+      // TODO: Integrate with usernode peer discovery to fetch real foreground hours
+      foregroundHours = 0;
+    }
+
+    // Calculate contribution level: (foregroundHours / 200) * 5, capped at 5
+    const contributionLevel = Math.min((foregroundHours / 200) * 5, 5);
+
+    // Determine rank based on hours
+    let rank = 'New Guardian';
+    if (foregroundHours >= 10 && foregroundHours < 50) {
+      rank = 'Active Guardian';
+    } else if (foregroundHours >= 50 && foregroundHours < 200) {
+      rank = 'Trusted Guardian';
+    } else if (foregroundHours >= 200) {
+      rank = 'Elite Guardian';
+    }
+
+    // Determine hours bracket for display
+    const hoursBracket = foregroundHours < 10 ? '0-10'
+      : foregroundHours < 50 ? '10-50'
+      : foregroundHours < 200 ? '50-200'
+      : '200+';
+
+    res.json({
+      foregroundHours,
+      contributionLevel,
+      rank,
+      hoursBracket
+    });
+  } catch (err) {
+    console.error('Error fetching guardians data:', err);
+    res.status(500).json({ error: 'Failed to fetch guardians data' });
+  }
+});
+
 app.get('/api/activity', async (req, res) => {
   try {
     if (!req.user) {
