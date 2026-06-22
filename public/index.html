@@ -275,62 +275,33 @@
       animation: feedPostEnter 0.4s ease-out;
     }
 
-    /* Desktop: Minimal Composer (hidden full, show minimal) */
-    @media (min-width: 640px) {
-      #feedComposerFull {
-        display: none !important;
-      }
+    /* Compose Modal Styles */
+    #feedComposeModal {
+      backdrop-filter: blur(4px);
+    }
 
-      #feedComposerMinimal {
-        display: flex !important;
-      }
+    #feedComposeModal.hidden {
+      display: none;
+    }
 
-      #feedMinimalInput {
-        height: 2.5rem;
-        padding: 0.5rem 0.75rem;
-      }
+    #feedComposeModal:not(.hidden) {
+      display: flex;
+    }
 
-      #feedComposerMinimal button {
-        padding: 0.375rem 0.75rem;
-        font-size: 0.875rem;
+    @media (max-width: 639px) {
+      #feedComposeContainer {
+        width: 100%;
+        height: 100%;
+        max-width: none;
+        max-height: none;
+        border-radius: 0;
       }
     }
 
-    /* Mobile: Full Composer (show full, hide minimal) */
-    @media (max-width: 639px) {
-      #feedComposerFull {
-        display: block !important;
-      }
-
-      #feedComposerMinimal {
-        display: none !important;
-      }
-
-      #feedComposerFull {
-        padding: 0.75rem;
-      }
-
-      #feedTextInput {
-        padding: 0.5rem;
-        font-size: 0.875rem;
-      }
-
-      #feedComposerFull button {
-        padding: 0.375rem 0.75rem;
-        font-size: 0.75rem;
-      }
-
-      /* Remove hover states on touch devices */
-      @media (hover: none) {
-        #feedList > div {
-          background-color: transparent !important;
-          box-shadow: none !important;
-        }
-
-        #feedList > div:hover {
-          background-color: transparent !important;
-          box-shadow: none !important;
-        }
+    @media (min-width: 640px) {
+      #feedComposeContainer {
+        max-width: 500px;
+        max-height: 600px;
       }
     }
 
@@ -809,24 +780,10 @@
       </div>
 
       <!-- Feed View -->
-      <div id="feedView" class="hidden flex flex-col flex-1 overflow-hidden">
-        <!-- Post Composer (NOT scrollable with feed) -->
-        <div id="feedComposer" class="flex-shrink-0 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 relative z-30">
-          <!-- Full Composer (Mobile) -->
-          <div id="feedComposerFull" class="px-4 py-2 bg-white dark:bg-zinc-900 space-y-2">
-            <div class="flex gap-2 items-end">
-              <textarea id="feedTextInput" placeholder="What's happening?" class="flex-1 px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition resize-none text-sm" rows="2"></textarea>
-              <button onclick="openAttachmentMenu()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition text-lg flex-shrink-0">📷</button>
-              <button onclick="submitFeedPost()" class="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium text-sm flex-shrink-0">Post</button>
-            </div>
-          </div>
-          <!-- Minimal Composer (Desktop) -->
-          <div id="feedComposerMinimal" class="hidden flex px-3 py-2 gap-2 items-center">
-            <input id="feedMinimalInput" type="text" placeholder="What's happening?" class="flex-1 px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition text-sm">
-            <button onclick="submitFeedPost()" class="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium text-sm flex-shrink-0">Post</button>
-          </div>
-        </div>
-        <!-- Feed Posts List (ONLY scrollable area - no content above it) -->
+      <div id="feedView" class="hidden flex flex-col flex-1 overflow-hidden relative">
+        <!-- Floating Action Button for Composing -->
+        <button id="feedFAB" onclick="openFeedComposeModal()" class="fixed bottom-6 right-6 w-14 h-14 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-full shadow-lg flex items-center justify-center font-bold text-2xl transition z-35">+</button>
+        <!-- Feed Posts List (ONLY scrollable area) -->
         <div id="feedList" class="flex-1 overflow-y-auto space-y-3 p-2">
           <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading feed...</div>
         </div>
@@ -1091,6 +1048,28 @@
       <div class="p-6 border-t border-zinc-300 dark:border-zinc-700 flex gap-3">
         <button onclick="closeWalletConfirm()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100 font-medium text-sm">Cancel</button>
         <button id="walletConfirmBtn" onclick="submitWalletConfirm()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg transition font-medium text-sm">Sign & Send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Feed Compose Modal -->
+  <div id="feedComposeModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onclick="if(event.target.id==='feedComposeModal')closeFeedComposeModal()">
+    <div id="feedComposeContainer" class="bg-white dark:bg-zinc-900 rounded-lg shadow-xl flex flex-col max-h-[600px] w-full">
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between px-4 py-4 border-b border-zinc-200 dark:border-zinc-800">
+        <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Compose</h2>
+        <button onclick="closeFeedComposeModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition text-xl">✕</button>
+      </div>
+      <!-- Modal Body -->
+      <div class="flex-1 overflow-y-auto p-4 space-y-4">
+        <textarea id="feedComposeInput" placeholder="What's happening?" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition resize-none text-sm" rows="4"></textarea>
+      </div>
+      <!-- Modal Footer -->
+      <div class="flex items-center gap-2 px-4 py-4 border-t border-zinc-200 dark:border-zinc-800">
+        <button onclick="openAttachmentMenu()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition text-lg">📷</button>
+        <div class="flex-1"></div>
+        <button onclick="closeFeedComposeModal()" class="px-4 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 rounded-lg transition font-medium text-sm">Cancel</button>
+        <button onclick="submitFeedPostFromModal()" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium text-sm">Publish</button>
       </div>
     </div>
   </div>
@@ -2133,6 +2112,7 @@
         if (e.key === 'Escape') {
           closeAttachmentSheet();
           hideDeleteContactModal();
+          closeFeedComposeModal();
         }
       });
 
@@ -4183,6 +4163,61 @@
       showToast('Image attachments coming soon (Phase 2)', 'info');
     }
 
+    function openFeedComposeModal() {
+      document.getElementById('feedComposeModal').classList.remove('hidden');
+      document.getElementById('feedComposeInput').focus();
+    }
+
+    function closeFeedComposeModal() {
+      document.getElementById('feedComposeModal').classList.add('hidden');
+      document.getElementById('feedComposeInput').value = '';
+    }
+
+    async function submitFeedPostFromModal() {
+      const composeInput = document.getElementById('feedComposeInput');
+      let text = composeInput.value.trim();
+      let link = null;
+
+      // Extract URL from text
+      const urlMatch = text.match(/(https?:\/\/[^\s]+)/);
+      if (urlMatch) {
+        link = urlMatch[1];
+        text = text.replace(urlMatch[0], '').trim();
+      }
+
+      if (!text && !link) {
+        showToast('Please enter some text or a link', 'error');
+        return;
+      }
+
+      try {
+        const payload = { text };
+        if (link) {
+          payload.link = link;
+        }
+
+        const data = await apiCall('/api/feed/posts', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+
+        if (!data || data.error) {
+          showToast('Failed to post: ' + (data?.error || 'Unknown error'), 'error');
+          return;
+        }
+
+        composeInput.value = '';
+        closeFeedComposeModal();
+        feedOffset = 0;
+        feedHasMore = true;
+        loadFeedPosts(0);
+        showToast('Post published', 'success');
+      } catch (err) {
+        console.error('Error posting:', err);
+        showToast('Failed to post', 'error');
+      }
+    }
+
     async function submitFeedPost() {
       const textInput = document.getElementById('feedTextInput');
       const minimalInput = document.getElementById('feedMinimalInput');
@@ -4218,7 +4253,7 @@
           return;
         }
 
-        textInput.value = '';
+        if (textInput) textInput.value = '';
         if (minimalInput) minimalInput.value = '';
         feedOffset = 0;
         feedHasMore = true;
