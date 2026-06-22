@@ -658,6 +658,12 @@
           </svg>
           Feed
         </button>
+        <button id="navProfileBtn" onclick="showProfileView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
+          <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+          Profile
+        </button>
       </nav>
 
       <div id="sidebarUser" class="p-4 border-t border-zinc-200 dark:border-zinc-800">
@@ -901,6 +907,107 @@
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Profile View -->
+      <div id="profileView" class="hidden flex flex-col flex-1 overflow-hidden">
+        <!-- Tab Navigation -->
+        <div class="bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 flex">
+          <button id="profileTabIdentity" onclick="switchProfileTab('identity')" class="flex-1 px-4 py-3 text-sm font-medium text-cyan-600 dark:text-cyan-400 border-b-2 border-cyan-600 dark:border-cyan-500">Identity</button>
+          <button id="profileTabActivity" onclick="switchProfileTab('activity')" class="flex-1 px-4 py-3 text-sm font-medium text-zinc-700 dark:text-zinc-400 border-b-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100">Activity</button>
+        </div>
+
+        <!-- Tab Content Area -->
+        <div class="flex-1 overflow-y-auto p-4 space-y-4">
+          <!-- Identity Tab -->
+          <div id="profileTabContentIdentity" class="space-y-4">
+            <!-- Avatar Section -->
+            <div class="flex justify-center pt-4 pb-2">
+              <div class="relative">
+                <img id="profileAvatar" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23d4d4d8' width='100' height='100'/%3E%3Ccircle cx='50' cy='35' r='18' fill='%23a1a1a9'/%3E%3Cpath d='M20 75 Q20 55 50 55 Q80 55 80 75' fill='%23a1a1a9'/%3E%3C/svg%3E" alt="Profile Avatar" class="w-32 h-32 rounded-full bg-zinc-200 dark:bg-zinc-700 border-2 border-cyan-600 dark:border-cyan-500 cursor-pointer hover:opacity-80 transition" onclick="openAvatarUpload()">
+                <div class="absolute bottom-0 right-0 bg-cyan-600 dark:bg-cyan-500 hover:bg-cyan-700 dark:hover:bg-cyan-400 text-white rounded-full p-2 cursor-pointer transition" onclick="openAvatarUpload()" title="Change avatar">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            <!-- Username -->
+            <div class="text-center">
+              <div class="text-xl font-bold text-zinc-900 dark:text-zinc-100" id="profileUsername">Loading...</div>
+            </div>
+
+            <!-- Bio -->
+            <div class="space-y-2">
+              <div class="flex items-center justify-between">
+                <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Bio</label>
+                <button onclick="openBioEdit()" class="text-xs text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition" title="Edit bio">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </button>
+              </div>
+              <div id="profileBio" class="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-zinc-700 dark:text-zinc-300 text-sm min-h-[2.5rem] flex items-center">—</div>
+            </div>
+
+            <!-- Joined Date -->
+            <div class="space-y-2">
+              <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Joined</label>
+              <div id="profileJoined" class="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-zinc-700 dark:text-zinc-300 text-sm">Loading...</div>
+            </div>
+
+            <!-- Separator -->
+            <div class="flex items-center gap-2 py-2">
+              <div class="flex-1 border-t border-zinc-300 dark:border-zinc-700"></div>
+              <span class="text-zinc-400 dark:text-zinc-600 text-xs">────</span>
+              <div class="flex-1 border-t border-zinc-300 dark:border-zinc-700"></div>
+            </div>
+
+            <!-- Statistics Section -->
+            <div class="grid grid-cols-3 gap-3 py-2">
+              <div class="text-center p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
+                <div class="text-2xl font-bold text-cyan-600 dark:text-cyan-400" id="profilePostsCount">—</div>
+                <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">Posts</div>
+              </div>
+              <div class="text-center p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
+                <div class="text-2xl font-bold text-cyan-600 dark:text-cyan-400" id="profileContactsCount">—</div>
+                <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">Contacts</div>
+              </div>
+              <div class="text-center p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
+                <div class="text-2xl font-bold text-cyan-600 dark:text-cyan-400" id="profileMessagesCount">—</div>
+                <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">Messages</div>
+              </div>
+            </div>
+
+            <!-- Separator -->
+            <div class="flex items-center gap-2 py-2">
+              <div class="flex-1 border-t border-zinc-300 dark:border-zinc-700"></div>
+              <span class="text-zinc-400 dark:text-zinc-600 text-xs">────</span>
+              <div class="flex-1 border-t border-zinc-300 dark:border-zinc-700"></div>
+            </div>
+
+            <!-- UserNode Identity Badge -->
+            <div class="text-center py-2">
+              <div id="profileIdentityBadge" class="text-sm text-zinc-600 dark:text-zinc-400">—</div>
+            </div>
+          </div>
+
+          <!-- Activity Tab -->
+          <div id="profileTabContentActivity" class="flex flex-col flex-1 overflow-hidden">
+            <!-- On-Chain Transaction History -->
+            <div id="profileActivityContent" class="flex-1 overflow-y-auto space-y-2 p-3">
+              <div id="activityTransactionsList" class="space-y-2">
+                <div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Loading transactions...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Minimal Footer -->
+        <div class="border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
         </div>
       </div>
     </div>
@@ -1665,7 +1772,8 @@
         'messages': document.getElementById('navMessagesBtn'),
         'feed': document.getElementById('navFeedBtn'),
         'contacts': document.getElementById('navContactsBtn'),
-        'settings': document.getElementById('navSettingsBtn')
+        'settings': document.getElementById('navSettingsBtn'),
+        'profile': document.getElementById('navProfileBtn')
       };
 
       Object.values(buttons).forEach(btn => {
@@ -3605,6 +3713,7 @@
       document.getElementById('chatView').classList.add('hidden');
       document.getElementById('chatView').classList.remove('active-chat');
       document.getElementById('feedView').classList.add('hidden');
+      document.getElementById('profileView').classList.add('hidden');
       document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('footer-in-view');
@@ -4123,6 +4232,7 @@
       document.getElementById('chatView').classList.remove('hidden');
       document.getElementById('chatView').classList.add('active-chat');
       document.getElementById('feedView').classList.add('hidden');
+      document.getElementById('profileView').classList.add('hidden');
       document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('footer-in-view');
@@ -4137,6 +4247,7 @@
       document.getElementById('chatView').classList.add('hidden');
       document.getElementById('chatView').classList.remove('active-chat');
       document.getElementById('feedView').classList.add('hidden');
+      document.getElementById('profileView').classList.add('hidden');
       document.getElementById('contactsView').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('footer-in-view');
@@ -4161,6 +4272,7 @@
       document.getElementById('chatView').classList.add('hidden');
       document.getElementById('chatView').classList.remove('active-chat');
       document.getElementById('contactsView').classList.add('hidden');
+      document.getElementById('profileView').classList.add('hidden');
       document.getElementById('feedView').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('footer-in-view');
@@ -4177,6 +4289,393 @@
       loadUserLikes();
       loadFeedPosts(0);
     }
+
+    function showProfileView() {
+      updateMenuHighlight('profile');
+      document.getElementById('messagesView').classList.add('hidden');
+      document.getElementById('conversationsView').classList.add('hidden');
+      document.getElementById('chatView').classList.add('hidden');
+      document.getElementById('chatView').classList.remove('active-chat');
+      document.getElementById('contactsView').classList.add('hidden');
+      document.getElementById('feedView').classList.add('hidden');
+      document.getElementById('profileView').classList.remove('hidden');
+      document.getElementById('inputFooter').classList.add('hidden');
+      document.getElementById('inputFooter').classList.remove('footer-in-view');
+      document.getElementById('header').classList.remove('header-chat-fixed');
+      document.getElementById('headerTitle').textContent = 'Profile';
+      document.getElementById('backBtnContainer').classList.remove('hidden');
+      document.getElementById('headerContent').classList.remove('hidden');
+      document.getElementById('headerBranding').textContent = 'Guardian';
+      document.getElementById('headerPageLabel').textContent = 'Profile';
+      document.getElementById('menuBtn').classList.add('hidden');
+      document.getElementById('conversationMenuBtn').classList.add('hidden');
+      if (conversationsPollInterval) clearInterval(conversationsPollInterval);
+
+      // Load profile data and switch to identity tab by default
+      const savedTab = localStorage.getItem(`guardian_profile_tab_${currentUser?.id}`) || 'identity';
+      switchProfileTab(savedTab);
+      loadProfileData();
+    }
+
+    function switchProfileTab(tabName) {
+      // Hide all tab contents
+      document.getElementById('profileTabContentIdentity').classList.add('hidden');
+      document.getElementById('profileTabContentActivity').classList.add('hidden');
+
+      // Reset all tab buttons to inactive state
+      ['identity', 'activity'].forEach(name => {
+        const btn = document.getElementById(`profileTab${name.charAt(0).toUpperCase() + name.slice(1)}`);
+        if (btn) {
+          btn.classList.remove('text-cyan-600', 'dark:text-cyan-400', 'border-cyan-600', 'dark:border-cyan-500');
+          btn.classList.add('text-zinc-700', 'dark:text-zinc-400', 'border-transparent');
+        }
+      });
+
+      // Show selected tab content
+      document.getElementById(`profileTabContent${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`).classList.remove('hidden');
+
+      // Activate selected tab button
+      const activeBtn = document.getElementById(`profileTab${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`);
+      if (activeBtn) {
+        activeBtn.classList.remove('text-zinc-700', 'dark:text-zinc-400', 'border-transparent');
+        activeBtn.classList.add('text-cyan-600', 'dark:text-cyan-400', 'border-cyan-600', 'dark:border-cyan-500');
+      }
+
+      // Save tab preference
+      if (currentUser) {
+        localStorage.setItem(`guardian_profile_tab_${currentUser.id}`, tabName);
+      }
+    }
+
+    async function loadProfileData() {
+      if (!currentUser) return;
+
+      // Populate Avatar
+      if (currentUser.avatar_url) {
+        document.getElementById('profileAvatar').src = currentUser.avatar_url;
+      }
+
+      // Populate Username
+      document.getElementById('profileUsername').textContent = currentUser.username || 'Unknown';
+
+      // Populate Bio
+      const bioElement = document.getElementById('profileBio');
+      if (currentUser.bio && currentUser.bio.trim()) {
+        bioElement.textContent = currentUser.bio;
+      } else {
+        bioElement.textContent = '—';
+      }
+
+      // Populate Joined Date
+      if (currentUser.created_at) {
+        const joinedDate = new Date(currentUser.created_at);
+        const formatter = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+        document.getElementById('profileJoined').textContent = 'Joined ' + formatter.format(joinedDate);
+      }
+
+      // Populate UserNode Identity Badge
+      const identityBadge = document.getElementById('profileIdentityBadge');
+      if (currentUser.verified) {
+        identityBadge.innerHTML = '<span class="text-green-600 dark:text-green-400 font-medium">✓ UserNode Identity</span>';
+      } else {
+        identityBadge.textContent = '—';
+      }
+
+      // Load stats
+      try {
+        const statsResponse = await apiCall('/api/user/stats');
+        if (statsResponse) {
+          document.getElementById('profilePostsCount').textContent = statsResponse.postsCount || 0;
+          document.getElementById('profileContactsCount').textContent = statsResponse.contactsCount || 0;
+          document.getElementById('profileMessagesCount').textContent = statsResponse.messagesCount || 0;
+        }
+      } catch (err) {
+        console.error('Error loading profile stats:', err);
+        document.getElementById('profilePostsCount').textContent = '—';
+        document.getElementById('profileContactsCount').textContent = '—';
+        document.getElementById('profileMessagesCount').textContent = '—';
+      }
+
+      // Load activity
+      loadProfileActivity();
+    }
+
+    function openAvatarUpload() {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/png,image/jpeg,image/gif';
+      input.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          await uploadAvatar(file);
+        }
+      };
+      input.click();
+    }
+
+    async function uploadAvatar(file) {
+      try {
+        // Validate file size (max 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+          showToast('Image size must be less than 5MB', 'error');
+          return;
+        }
+
+        // Read file and convert to base64
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          const dataUri = e.target.result;
+
+          const response = await fetch('/api/user/avatar', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-usernode-token': getStoredToken(),
+            },
+            body: JSON.stringify({ dataUri: dataUri }),
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            showToast('Error uploading avatar: ' + (error.error || 'Unknown error'), 'error');
+            return;
+          }
+
+          const data = await response.json();
+          if (data.avatar_url) {
+            document.getElementById('profileAvatar').src = data.avatar_url;
+            currentUser.avatar_url = data.avatar_url;
+            showToast('Avatar updated successfully', 'success');
+          }
+        };
+        reader.onerror = () => {
+          showToast('Error reading file', 'error');
+        };
+        reader.readAsDataURL(file);
+      } catch (err) {
+        console.error('Error uploading avatar:', err);
+        showToast('Error uploading avatar', 'error');
+      }
+    }
+
+    function openBioEdit() {
+      const currentBio = document.getElementById('profileBio').textContent === '—' ? '' : document.getElementById('profileBio').textContent;
+      const modal = document.createElement('div');
+      modal.id = 'bioEditModal';
+      modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+      modal.innerHTML = `
+        <div class="bg-white dark:bg-zinc-900 rounded-lg p-6 max-w-md w-full mx-4 shadow-lg">
+          <h3 class="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-4">Edit Bio</h3>
+          <textarea id="bioTextarea" class="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-700 rounded-lg bg-zinc-50 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500 resize-none" rows="4" maxlength="500" placeholder="Enter your bio...">${escapeHtml(currentBio)}</textarea>
+          <div class="text-xs text-zinc-500 dark:text-zinc-400 mt-1"><span id="bioCharCount">${currentBio.length}</span>/500</div>
+          <div class="flex gap-2 mt-6">
+            <button class="flex-1 px-4 py-2 bg-zinc-200 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 rounded-lg hover:bg-zinc-300 dark:hover:bg-zinc-700 transition" onclick="closeBioEdit()">Cancel</button>
+            <button class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition" onclick="saveBio()">Save</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      modal.onclick = (e) => {
+        if (e.target === modal) closeBioEdit();
+      };
+
+      const textarea = document.getElementById('bioTextarea');
+      textarea.focus();
+      textarea.oninput = () => {
+        document.getElementById('bioCharCount').textContent = textarea.value.length;
+      };
+    }
+
+    function closeBioEdit() {
+      const modal = document.getElementById('bioEditModal');
+      if (modal) modal.remove();
+    }
+
+    async function saveBio() {
+      try {
+        const textarea = document.getElementById('bioTextarea');
+        const newBio = textarea.value.trim();
+
+        const response = await fetch('/api/user/bio', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-usernode-token': getStoredToken(),
+          },
+          body: JSON.stringify({ bio: newBio || null }),
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          showToast('Error updating bio: ' + (error.error || 'Unknown error'), 'error');
+          return;
+        }
+
+        const data = await response.json();
+        closeBioEdit();
+
+        const bioElement = document.getElementById('profileBio');
+        if (newBio) {
+          bioElement.textContent = newBio;
+        } else {
+          bioElement.textContent = '—';
+        }
+
+        currentUser.bio = newBio || null;
+        showToast('Bio updated successfully', 'success');
+      } catch (err) {
+        console.error('Error saving bio:', err);
+        showToast('Error saving bio', 'error');
+      }
+    }
+
+    function escapeHtml(text) {
+      const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      };
+      return text.replace(/[&<>"']/g, m => map[m]);
+    }
+
+    function getStoredToken() {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('token') || sessionStorage.getItem('usernode_token') || '';
+    }
+
+    // Activity transactions offset tracking
+    let activityTransactionsOffset = 0;
+
+    async function loadProfileActivity() {
+      activityTransactionsOffset = 0;
+      await loadActivityTransactions(0);
+    }
+
+    async function loadActivityTransactions(offset) {
+      try {
+        const response = await apiCall(`/api/transactions-by-user?limit=20&offset=${offset}`);
+        if (!response || !response.transactions) {
+          if (offset === 0) {
+            document.getElementById('activityTransactionsList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No transactions yet</div>';
+          }
+          return;
+        }
+
+        if (offset === 0 && response.transactions.length === 0) {
+          document.getElementById('activityTransactionsList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No transactions yet</div>';
+          return;
+        }
+
+        let html = '';
+        for (const tx of response.transactions) {
+          const timestamp = formatRelativeTime(tx.createdAt);
+
+          // Determine status icon and class
+          let statusIcon = '⏳';
+          let statusClass = 'text-gray-500 dark:text-gray-400';
+          if (tx.status === 'confirmed') {
+            statusIcon = '✓';
+            statusClass = 'text-green-600 dark:text-green-400';
+          } else if (tx.status === 'failed') {
+            statusIcon = '✗';
+            statusClass = 'text-red-600 dark:text-red-400';
+          }
+
+          // Determine transaction type icon and description
+          let typeIcon = '🔄';
+          let description = 'Transaction';
+          const payload = typeof tx.transactionPayload === 'string'
+            ? JSON.parse(tx.transactionPayload || '{}')
+            : (tx.transactionPayload || {});
+
+          if (tx.messageType === 'message') {
+            typeIcon = '💬';
+            const recipient = payload.recipientUsername || 'unknown';
+            description = `Sent message to @${escapeHtml(recipient)}`;
+          } else if (tx.messageType === 'token_transfer') {
+            typeIcon = '💰';
+            const recipient = payload.recipientUsername || 'unknown';
+            const amount = payload.amount || '?';
+            description = `Transferred ${amount} tokens to @${escapeHtml(recipient)}`;
+          } else if (tx.messageType === 'group_create') {
+            typeIcon = '👥';
+            const groupName = tx.groupName || 'group';
+            description = `Created group '${escapeHtml(groupName)}'`;
+          } else if (tx.messageType === 'group_add_members') {
+            typeIcon = '👥';
+            const groupName = tx.groupName || 'group';
+            description = `Added members to '${escapeHtml(groupName)}'`;
+          } else if (tx.messageType === 'group_remove_member') {
+            typeIcon = '👥';
+            const groupName = tx.groupName || 'group';
+            description = `Removed member from '${escapeHtml(groupName)}'`;
+          } else if (tx.messageType === 'group_update') {
+            typeIcon = '👥';
+            const groupName = tx.groupName || 'group';
+            description = `Updated '${escapeHtml(groupName)}'`;
+          } else if (tx.messageType === 'group_delete') {
+            typeIcon = '👥';
+            const groupName = tx.groupName || 'group';
+            description = `Deleted group '${escapeHtml(groupName)}'`;
+          } else if (tx.messageType === 'group_leave') {
+            typeIcon = '👥';
+            const groupName = tx.groupName || 'group';
+            description = `Left '${escapeHtml(groupName)}'`;
+          }
+
+          // Render transaction hash link
+          let txHashHtml = '';
+          if (tx.txHash) {
+            const txHashShort = tx.txHash.substring(0, 12);
+            txHashHtml = `<a href="https://explorer.usernodelabs.org/tx/${escapeHtml(tx.txHash)}" target="_blank" class="text-cyan-600 dark:text-cyan-400 hover:underline">Tx: ${txHashShort}...</a>`;
+          } else {
+            txHashHtml = '<span class="text-zinc-500 dark:text-zinc-500">Pending verification</span>';
+          }
+
+          html += `
+            <div class="p-3 bg-zinc-100 dark:bg-zinc-800 rounded border border-zinc-200 dark:border-zinc-700">
+              <div class="flex justify-between items-start mb-2">
+                <div class="flex-1">
+                  <div class="text-sm font-medium text-zinc-900 dark:text-zinc-100">${typeIcon} ${description}</div>
+                </div>
+                <div class="text-lg font-medium ${statusClass} ml-2">${statusIcon}</div>
+              </div>
+              <div class="flex justify-between items-center text-xs">
+                <div>${txHashHtml}</div>
+                <div class="text-zinc-600 dark:text-zinc-400">${timestamp}</div>
+              </div>
+            </div>
+          `;
+        }
+
+        if (offset === 0) {
+          document.getElementById('activityTransactionsList').innerHTML = html;
+        } else {
+          const container = document.getElementById('activityTransactionsList');
+          const loadMoreBtn = container.querySelector('[data-load-more="transactions"]');
+          if (loadMoreBtn) loadMoreBtn.remove();
+          container.innerHTML += html;
+        }
+
+        // Show load more button if there are more items
+        if (response.transactions.length >= 20) {
+          const loadMoreBtn = document.createElement('button');
+          loadMoreBtn.setAttribute('data-load-more', 'transactions');
+          loadMoreBtn.className = 'w-full py-2 px-3 text-xs font-medium text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition border border-cyan-600 dark:border-cyan-500 rounded';
+          loadMoreBtn.textContent = 'Load more transactions';
+          loadMoreBtn.onclick = () => loadActivityTransactions(offset + 20);
+          document.getElementById('activityTransactionsList').appendChild(loadMoreBtn);
+        }
+      } catch (err) {
+        console.error('Error loading activity transactions:', err);
+        if (offset === 0) {
+          document.getElementById('activityTransactionsList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Error loading transactions</div>';
+        }
+      }
+    }
+
 
     // ===== FEED FUNCTIONS =====
 
