@@ -1092,10 +1092,20 @@ app.get('/api/transactions-by-user', async (req, res) => {
 
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
     const offset = parseInt(req.query.offset || 0);
+    const typeFilter = req.query.type || null;
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
+
+    let whereClause = 'bal.user_id = $1';
+    let params = [userId];
+    if (typeFilter) {
+      whereClause += ' AND bal.message_type = $' + (params.length + 1);
+      params.push(typeFilter);
+    }
+    params.push(limit);
+    params.push(offset);
 
     const { rows } = await pool.query(`
       SELECT
@@ -1112,14 +1122,20 @@ app.get('/api/transactions-by-user', async (req, res) => {
         g.name as group_name
       FROM blockchain_audit_logs bal
       LEFT JOIN groups g ON g.id = bal.group_id
-      WHERE bal.user_id = $1
+      WHERE ${whereClause}
       ORDER BY bal.created_at DESC
-      LIMIT $2 OFFSET $3
-    `, [userId, limit, offset]);
+      LIMIT $${params.length - 1} OFFSET $${params.length}
+    `, params);
 
+    let countWhereClause = 'user_id = $1';
+    let countParams = [userId];
+    if (typeFilter) {
+      countWhereClause += ' AND message_type = $2';
+      countParams.push(typeFilter);
+    }
     const { rows: countRows } = await pool.query(`
-      SELECT COUNT(*) as total FROM blockchain_audit_logs WHERE user_id = $1
-    `, [userId]);
+      SELECT COUNT(*) as total FROM blockchain_audit_logs WHERE ${countWhereClause}
+    `, countParams);
 
     const transactions = rows.map(r => {
       let recipientUsername = null;
@@ -1157,6 +1173,141 @@ app.get('/api/transactions-by-user', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/user/feed-posts - Authenticated user's own feed posts
+app.get('/api/user/feed-posts', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const limit = Math.min(parseInt(req.query.limit || 20), 100);
+    const offset = parseInt(req.query.offset || 0);
+    const userId = parseInt(req.user.id, 10);
+
+    const { rows: posts } = await pool.query(`
+      SELECT
+        fp.id,
+        fp.user_id,
+        fp.content,
+        fp.created_at,
+        u.username,
+        u.verified_at,
+        u.avatar_url,
+        (SELECT COUNT(*) FROM feed_likes WHERE post_id = fp.id)::INTEGER as like_count,
+        (SELECT COUNT(*) FROM feed_comments WHERE post_id = fp.id)::INTEGER as comment_count
+      FROM feed_posts fp
+      JOIN users u ON u.id = fp.user_id
+      WHERE fp.user_id = $1
+      ORDER BY fp.created_at DESC
+      LIMIT $2 OFFSET $3
+    `, [userId, limit, offset]);
+
+    const { rows: countResult } = await pool.query(`
+      SELECT COUNT(*) as count FROM feed_posts WHERE user_id = $1
+    `, [userId]);
+
+    const total = parseInt(countResult[0].count);
+    const hasMore = offset + limit < total;
+
+    res.json({
+      posts: posts.map(p => ({
+        id: p.id,
+        userId: p.user_id,
+        username: p.username,
+        verified: !!p.verified_at,
+        avatarUrl: p.avatar_url,
+        content: p.content,
+        createdAt: p.created_at,
+        likeCount: p.like_count || 0,
+        commentCount: p.comment_count || 0
+      })),
+      hasMore
+    });
+  } catch (err) {
+    console.error('Error fetching user feed posts:', err);
+    res.status(500).json({ error: 'Failed to fetch feed posts' });
+  }
+});
+
+// GET /api/user/messages - Authenticated user's sent messages (direct + group)
+app.get('/api/user/messages', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const limit = Math.min(parseInt(req.query.limit || 20), 100);
+    const offset = parseInt(req.query.offset || 0);
+    const userId = parseInt(req.user.id, 10);
+
+    // Get direct messages sent by user
+    const { rows: directMessages } = await pool.query(`
+      SELECT
+        m.id,
+        m.created_at,
+        m.content,
+        'direct' as message_type,
+        u.username as recipient_username,
+        NULL::TEXT as group_name
+      FROM messages m
+      JOIN conversations c ON c.id = m.conversation_id
+      JOIN users u ON u.id = CASE
+        WHEN c.participant_a_id = $1 THEN c.participant_b_id
+        ELSE c.participant_a_id
+      END
+      WHERE m.sender_id = $1
+      UNION ALL
+      SELECT
+        gm.id,
+        gm.created_at,
+        gm.content,
+        'group' as message_type,
+        NULL::TEXT as recipient_username,
+        g.name as group_name
+      FROM group_messages gm
+      JOIN groups g ON g.id = gm.group_id
+      WHERE gm.sender_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2 OFFSET $3
+    `, [userId, limit, offset]);
+
+    const { rows: countResult } = await pool.query(`
+      SELECT COUNT(*) as total FROM (
+        SELECT m.id FROM messages m WHERE m.sender_id = $1
+        UNION ALL
+        SELECT gm.id FROM group_messages gm WHERE gm.sender_id = $1
+      ) combined
+    `, [userId]);
+
+    const total = parseInt(countResult[0].total);
+    const hasMore = offset + limit < total;
+
+    res.json({
+      messages: directMessages.map(m => {
+        let preview = '';
+        if (m.content && typeof m.content === 'object' && m.content.text) {
+          preview = m.content.text.substring(0, 100).replace(/\n/g, ' ');
+        } else if (typeof m.content === 'string') {
+          const parsed = JSON.parse(m.content);
+          preview = (parsed.text || '').substring(0, 100).replace(/\n/g, ' ');
+        }
+        return {
+          id: m.id,
+          messageType: m.message_type,
+          contentPreview: preview,
+          createdAt: m.created_at,
+          recipientUsername: m.recipient_username,
+          groupName: m.group_name
+        };
+      }),
+      hasMore
+    });
+  } catch (err) {
+    console.error('Error fetching user messages:', err);
+    res.status(500).json({ error: 'Failed to fetch messages' });
   }
 });
 

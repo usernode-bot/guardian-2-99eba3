@@ -996,9 +996,36 @@
           </div>
 
           <!-- Activity Tab -->
-          <div id="profileTabContentActivity" class="hidden space-y-2">
-            <div id="profileActivityList" class="space-y-1 text-sm">
-              <div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Loading activity...</div>
+          <div id="profileTabContentActivity" class="flex flex-col flex-1 overflow-hidden">
+            <!-- Activity Category Tabs -->
+            <div id="profileActivityTabs" class="flex gap-0 border-b border-zinc-200 dark:border-zinc-700 px-2 bg-zinc-50 dark:bg-zinc-900">
+              <button id="activityTabPosts" onclick="switchActivityCategory('posts')" class="flex-1 px-2 py-2 text-xs font-medium border-b-2 border-cyan-600 text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition">Posts</button>
+              <button id="activityTabMessages" onclick="switchActivityCategory('messages')" class="flex-1 px-2 py-2 text-xs font-medium border-b-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition">Messages</button>
+              <button id="activityTabContacts" onclick="switchActivityCategory('contacts')" class="flex-1 px-2 py-2 text-xs font-medium border-b-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition">Contacts</button>
+              <button id="activityTabTokens" onclick="switchActivityCategory('tokens')" class="flex-1 px-2 py-2 text-xs font-medium border-b-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition">Tokens</button>
+            </div>
+
+            <!-- Activity Content Area -->
+            <div id="profileActivityContent" class="flex-1 overflow-y-auto space-y-2 p-3">
+              <!-- Posts Section -->
+              <div id="activityPostsList" class="space-y-2">
+                <div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Loading posts...</div>
+              </div>
+
+              <!-- Messages Section -->
+              <div id="activityMessagesList" class="hidden space-y-2">
+                <div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Loading messages...</div>
+              </div>
+
+              <!-- Contacts Section -->
+              <div id="activityContactsList" class="hidden space-y-2">
+                <div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Loading contacts...</div>
+              </div>
+
+              <!-- Tokens Section -->
+              <div id="activityTokensList" class="hidden space-y-2">
+                <div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Loading tokens...</div>
+              </div>
             </div>
           </div>
         </div>
@@ -4542,54 +4569,355 @@
       return params.get('token') || sessionStorage.getItem('usernode_token') || '';
     }
 
+    // Activity category offset tracking
+    let activityPostsOffset = 0;
+    let activityMessagesOffset = 0;
+    let activityContactsOffset = 0;
+    let activityTokensOffset = 0;
+    let activityPostsLoaded = false;
+    let activityMessagesLoaded = false;
+    let activityContactsLoaded = false;
+    let activityTokensLoaded = false;
+
     async function loadProfileActivity() {
+      // Initialize Activity tab with Posts category shown
+      activityPostsOffset = 0;
+      activityMessagesOffset = 0;
+      activityContactsOffset = 0;
+      activityTokensOffset = 0;
+      activityPostsLoaded = false;
+      activityMessagesLoaded = false;
+      activityContactsLoaded = false;
+      activityTokensLoaded = false;
+
+      // Set Posts as active tab and load posts
+      switchActivityCategory('posts');
+      await loadActivityPosts(0);
+    }
+
+    function switchActivityCategory(category) {
+      // Hide all category divs
+      document.getElementById('activityPostsList').classList.add('hidden');
+      document.getElementById('activityMessagesList').classList.add('hidden');
+      document.getElementById('activityContactsList').classList.add('hidden');
+      document.getElementById('activityTokensList').classList.add('hidden');
+
+      // Reset all tab buttons
+      ['Posts', 'Messages', 'Contacts', 'Tokens'].forEach(cat => {
+        const btn = document.getElementById(`activityTab${cat}`);
+        if (btn) {
+          btn.classList.remove('text-cyan-600', 'dark:text-cyan-400', 'border-cyan-600');
+          btn.classList.add('text-zinc-600', 'dark:text-zinc-400', 'border-transparent');
+        }
+      });
+
+      // Show selected category
+      const categoryMap = {
+        'posts': 'activityPostsList',
+        'messages': 'activityMessagesList',
+        'contacts': 'activityContactsList',
+        'tokens': 'activityTokensList'
+      };
+      document.getElementById(categoryMap[category]).classList.remove('hidden');
+
+      // Activate selected tab button
+      const categoryCapital = category.charAt(0).toUpperCase() + category.slice(1);
+      const btn = document.getElementById(`activityTab${categoryCapital}`);
+      if (btn) {
+        btn.classList.remove('text-zinc-600', 'dark:text-zinc-400', 'border-transparent');
+        btn.classList.add('text-cyan-600', 'dark:text-cyan-400', 'border-cyan-600');
+      }
+
+      // Load category data if not already loaded
+      if (category === 'posts' && !activityPostsLoaded) {
+        loadActivityPosts(0);
+      } else if (category === 'messages' && !activityMessagesLoaded) {
+        loadActivityMessages(0);
+      } else if (category === 'contacts' && !activityContactsLoaded) {
+        loadActivityContacts(0);
+      } else if (category === 'tokens' && !activityTokensLoaded) {
+        loadActivityTokens(0);
+      }
+    }
+
+    async function loadActivityPosts(offset) {
       try {
-        const response = await apiCall('/api/transactions-by-user?limit=20&offset=0');
-        if (!response || !response.transactions) {
-          document.getElementById('profileActivityList').innerHTML = '<div class="text-center py-4 text-zinc-500 dark:text-zinc-400">No activity yet</div>';
-          return;
-        }
-
-        if (response.transactions.length === 0) {
-          document.getElementById('profileActivityList').innerHTML = '<div class="text-center py-4 text-zinc-500 dark:text-zinc-400">No activity yet</div>';
-          return;
-        }
-
-        let html = '';
-        for (const tx of response.transactions) {
-          const typeLabel = getTransactionTypeLabel(tx.messageType);
-          const context = getTransactionContext(tx);
-          const timestamp = formatTimestamp(tx.createdAt);
-
-          let statusClass = 'text-gray-500';
-          let statusText = '⏳';
-          if (tx.status === 'confirmed') {
-            statusClass = 'text-green-600 dark:text-green-400';
-            statusText = '✓';
-          } else if (tx.status === 'failed') {
-            statusClass = 'text-red-600 dark:text-red-400';
-            statusText = '✗';
+        const response = await apiCall(`/api/user/feed-posts?limit=20&offset=${offset}`);
+        if (!response || !response.posts) {
+          if (offset === 0) {
+            document.getElementById('activityPostsList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No posts yet</div>';
           }
+          return;
+        }
+
+        if (offset === 0 && response.posts.length === 0) {
+          document.getElementById('activityPostsList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No posts yet</div>';
+          activityPostsLoaded = true;
+          return;
+        }
+
+        activityPostsLoaded = true;
+        let html = '';
+        for (const post of response.posts) {
+          const timestamp = formatRelativeTime(post.createdAt);
+          const avatarInitial = post.username ? post.username.charAt(0).toUpperCase() : '?';
+          const avatarHtml = post.avatarUrl
+            ? `<img src="${escapeHtml(post.avatarUrl)}" alt="${escapeHtml(post.username)}" class="w-6 h-6 rounded-full object-cover flex-shrink-0" onerror="this.style.display='none'">`
+            : `<div class="w-6 h-6 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">${avatarInitial}</div>`;
+
+          const contentPreview = post.content && post.content.text
+            ? escapeHtml(post.content.text.substring(0, 100).replace(/\n/g, ' '))
+            : '(no text)';
 
           html += `
-            <div class="p-2 bg-zinc-100 dark:bg-zinc-800 rounded border border-zinc-200 dark:border-zinc-700">
-              <div class="flex justify-between items-start gap-2">
+            <div class="p-3 bg-zinc-100 dark:bg-zinc-800 rounded border border-zinc-200 dark:border-zinc-700">
+              <div class="flex gap-2">
+                ${avatarHtml}
                 <div class="flex-1 min-w-0">
-                  <div class="text-xs font-medium text-zinc-900 dark:text-zinc-100">${typeLabel}${context ? ' ' + context : ''}</div>
-                </div>
-                <div class="text-right flex-shrink-0">
-                  <div class="text-xs font-medium ${statusClass}">${statusText}</div>
-                  <div class="text-xs text-zinc-600 dark:text-zinc-400">${timestamp}</div>
+                  <div class="flex items-center gap-1 mb-1">
+                    <span class="text-sm font-medium text-zinc-900 dark:text-zinc-100">${escapeHtml(post.username)}</span>
+                    ${post.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs">✓</span>' : ''}
+                    <span class="text-xs text-zinc-500 dark:text-zinc-400">${timestamp}</span>
+                  </div>
+                  <p class="text-sm text-zinc-700 dark:text-zinc-300 mb-2">${contentPreview}</p>
+                  <div class="flex gap-3 text-xs text-zinc-600 dark:text-zinc-400">
+                    <span>❤️ ${post.likeCount}</span>
+                    <span>💬 ${post.commentCount}</span>
+                  </div>
                 </div>
               </div>
             </div>
           `;
         }
 
-        document.getElementById('profileActivityList').innerHTML = html;
+        if (offset === 0) {
+          document.getElementById('activityPostsList').innerHTML = html;
+        } else {
+          // Append for pagination
+          const container = document.getElementById('activityPostsList');
+          // Remove load more button if it exists
+          const loadMoreBtn = container.querySelector('[data-load-more="posts"]');
+          if (loadMoreBtn) loadMoreBtn.remove();
+          container.innerHTML += html;
+        }
+
+        // Show load more button if there are more items
+        if (response.hasMore) {
+          const loadMoreBtn = document.createElement('button');
+          loadMoreBtn.setAttribute('data-load-more', 'posts');
+          loadMoreBtn.className = 'w-full py-2 px-3 text-xs font-medium text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition border border-cyan-600 dark:border-cyan-500 rounded';
+          loadMoreBtn.textContent = 'Load more posts';
+          loadMoreBtn.onclick = () => loadActivityPosts(offset + 20);
+          document.getElementById('activityPostsList').appendChild(loadMoreBtn);
+        }
       } catch (err) {
-        console.error('Error loading profile activity:', err);
-        document.getElementById('profileActivityList').innerHTML = '<div class="text-center py-4 text-zinc-500 dark:text-zinc-400">Error loading activity</div>';
+        console.error('Error loading activity posts:', err);
+        if (offset === 0) {
+          document.getElementById('activityPostsList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Error loading posts</div>';
+        }
+      }
+    }
+
+    async function loadActivityMessages(offset) {
+      try {
+        const response = await apiCall(`/api/user/messages?limit=20&offset=${offset}`);
+        if (!response || !response.messages) {
+          if (offset === 0) {
+            document.getElementById('activityMessagesList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No messages yet</div>';
+          }
+          return;
+        }
+
+        if (offset === 0 && response.messages.length === 0) {
+          document.getElementById('activityMessagesList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No messages yet</div>';
+          activityMessagesLoaded = true;
+          return;
+        }
+
+        activityMessagesLoaded = true;
+        let html = '';
+        for (const msg of response.messages) {
+          const timestamp = formatRelativeTime(msg.createdAt);
+          const recipient = msg.messageType === 'direct' ? msg.recipientUsername : msg.groupName;
+          const typeLabel = msg.messageType === 'direct' ? 'To' : 'In';
+          const icon = msg.messageType === 'direct' ? '💬 DM' : '💬 Group';
+
+          html += `
+            <div class="p-3 bg-zinc-100 dark:bg-zinc-800 rounded border border-zinc-200 dark:border-zinc-700">
+              <div class="text-xs font-medium text-zinc-900 dark:text-zinc-100 mb-1">${icon} ${typeLabel} ${escapeHtml(recipient)}</div>
+              <p class="text-sm text-zinc-700 dark:text-zinc-300 mb-2">${escapeHtml(msg.contentPreview || '(no text)')}</p>
+              <div class="text-xs text-zinc-600 dark:text-zinc-400">${timestamp}</div>
+            </div>
+          `;
+        }
+
+        if (offset === 0) {
+          document.getElementById('activityMessagesList').innerHTML = html;
+        } else {
+          const container = document.getElementById('activityMessagesList');
+          const loadMoreBtn = container.querySelector('[data-load-more="messages"]');
+          if (loadMoreBtn) loadMoreBtn.remove();
+          container.innerHTML += html;
+        }
+
+        if (response.hasMore) {
+          const loadMoreBtn = document.createElement('button');
+          loadMoreBtn.setAttribute('data-load-more', 'messages');
+          loadMoreBtn.className = 'w-full py-2 px-3 text-xs font-medium text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition border border-cyan-600 dark:border-cyan-500 rounded';
+          loadMoreBtn.textContent = 'Load more messages';
+          loadMoreBtn.onclick = () => loadActivityMessages(offset + 20);
+          document.getElementById('activityMessagesList').appendChild(loadMoreBtn);
+        }
+      } catch (err) {
+        console.error('Error loading activity messages:', err);
+        if (offset === 0) {
+          document.getElementById('activityMessagesList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Error loading messages</div>';
+        }
+      }
+    }
+
+    async function loadActivityContacts(offset) {
+      try {
+        const response = await apiCall(`/api/contacts?limit=20&offset=${offset}`);
+        if (!response || !response.contacts) {
+          if (offset === 0) {
+            document.getElementById('activityContactsList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No contacts added yet</div>';
+          }
+          return;
+        }
+
+        if (offset === 0 && response.contacts.length === 0) {
+          document.getElementById('activityContactsList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No contacts added yet</div>';
+          activityContactsLoaded = true;
+          return;
+        }
+
+        activityContactsLoaded = true;
+        let html = '';
+        for (const contact of response.contacts) {
+          const avatarInitial = contact.username ? contact.username.charAt(0).toUpperCase() : '?';
+          const avatarHtml = contact.avatar_url
+            ? `<img src="${escapeHtml(contact.avatar_url)}" alt="${escapeHtml(contact.username)}" class="w-8 h-8 rounded-full object-cover flex-shrink-0" onerror="this.style.display='none'">`
+            : `<div class="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">${avatarInitial}</div>`;
+
+          // Note: contacts endpoint doesn't return created_at in response, need to calculate from id or use a different approach
+          html += `
+            <div class="p-3 bg-zinc-100 dark:bg-zinc-800 rounded border border-zinc-200 dark:border-zinc-700">
+              <div class="flex gap-2 items-center">
+                ${avatarHtml}
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-1">
+                    <span class="text-sm font-medium text-zinc-900 dark:text-zinc-100">${escapeHtml(contact.username)}</span>
+                    ${contact.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs">✓</span>' : ''}
+                  </div>
+                  <div class="text-xs text-zinc-600 dark:text-zinc-400">Added as contact</div>
+                </div>
+              </div>
+            </div>
+          `;
+        }
+
+        if (offset === 0) {
+          document.getElementById('activityContactsList').innerHTML = html;
+        } else {
+          const container = document.getElementById('activityContactsList');
+          const loadMoreBtn = container.querySelector('[data-load-more="contacts"]');
+          if (loadMoreBtn) loadMoreBtn.remove();
+          container.innerHTML += html;
+        }
+
+        if (response.contacts.length >= 20) {
+          const loadMoreBtn = document.createElement('button');
+          loadMoreBtn.setAttribute('data-load-more', 'contacts');
+          loadMoreBtn.className = 'w-full py-2 px-3 text-xs font-medium text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition border border-cyan-600 dark:border-cyan-500 rounded';
+          loadMoreBtn.textContent = 'Load more contacts';
+          loadMoreBtn.onclick = () => loadActivityContacts(offset + 20);
+          document.getElementById('activityContactsList').appendChild(loadMoreBtn);
+        }
+      } catch (err) {
+        console.error('Error loading activity contacts:', err);
+        if (offset === 0) {
+          document.getElementById('activityContactsList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Error loading contacts</div>';
+        }
+      }
+    }
+
+    async function loadActivityTokens(offset) {
+      try {
+        const response = await apiCall(`/api/transactions-by-user?type=token_transfer&limit=20&offset=${offset}`);
+        if (!response || !response.transactions) {
+          if (offset === 0) {
+            document.getElementById('activityTokensList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No tokens sent yet</div>';
+          }
+          return;
+        }
+
+        if (offset === 0 && response.transactions.length === 0) {
+          document.getElementById('activityTokensList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No tokens sent yet</div>';
+          activityTokensLoaded = true;
+          return;
+        }
+
+        activityTokensLoaded = true;
+        let html = '';
+        for (const tx of response.transactions) {
+          const timestamp = formatRelativeTime(tx.createdAt);
+
+          let statusIcon = '⏳';
+          let statusClass = 'text-gray-500 dark:text-gray-400';
+          if (tx.status === 'confirmed') {
+            statusIcon = '✓';
+            statusClass = 'text-green-600 dark:text-green-400';
+          } else if (tx.status === 'failed') {
+            statusIcon = '✗';
+            statusClass = 'text-red-600 dark:text-red-400';
+          }
+
+          let recipient = 'Unknown';
+          let amount = 'Unknown amount';
+          if (tx.transactionPayload) {
+            const payload = typeof tx.transactionPayload === 'string'
+              ? JSON.parse(tx.transactionPayload)
+              : tx.transactionPayload;
+            recipient = payload.recipientUsername || payload.recipientAddress || 'Unknown';
+            amount = payload.amount ? `${payload.amount} tokens` : 'Unknown amount';
+          }
+
+          html += `
+            <div class="p-3 bg-zinc-100 dark:bg-zinc-800 rounded border border-zinc-200 dark:border-zinc-700">
+              <div class="flex justify-between items-start">
+                <div class="flex-1">
+                  <div class="text-sm font-medium text-zinc-900 dark:text-zinc-100 mb-1">💰 Sent ${amount} to ${escapeHtml(recipient)}</div>
+                  <div class="text-xs text-zinc-600 dark:text-zinc-400">${timestamp}</div>
+                </div>
+                <div class="text-lg font-medium ${statusClass}">${statusIcon}</div>
+              </div>
+            </div>
+          `;
+        }
+
+        if (offset === 0) {
+          document.getElementById('activityTokensList').innerHTML = html;
+        } else {
+          const container = document.getElementById('activityTokensList');
+          const loadMoreBtn = container.querySelector('[data-load-more="tokens"]');
+          if (loadMoreBtn) loadMoreBtn.remove();
+          container.innerHTML += html;
+        }
+
+        if (response.transactions.length >= 20) {
+          const loadMoreBtn = document.createElement('button');
+          loadMoreBtn.setAttribute('data-load-more', 'tokens');
+          loadMoreBtn.className = 'w-full py-2 px-3 text-xs font-medium text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition border border-cyan-600 dark:border-cyan-500 rounded';
+          loadMoreBtn.textContent = 'Load more tokens';
+          loadMoreBtn.onclick = () => loadActivityTokens(offset + 20);
+          document.getElementById('activityTokensList').appendChild(loadMoreBtn);
+        }
+      } catch (err) {
+        console.error('Error loading activity tokens:', err);
+        if (offset === 0) {
+          document.getElementById('activityTokensList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Error loading tokens</div>';
+        }
       }
     }
 
