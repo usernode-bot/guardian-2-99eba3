@@ -1282,7 +1282,7 @@
       return currentNetwork;
     }
 
-    function initSettings() {
+    async function initSettings() {
       const settings = loadSettings();
       applyTheme(settings.theme);
       applyLayout(settings.layout);
@@ -1292,7 +1292,7 @@
       document.getElementById('networkSelect').value = settings.network;
       updateLayoutButtons(settings.layout);
       updateViewModeButtons(settings.view_mode);
-      loadConfigState();
+      await loadConfigState();
     }
 
     async function pollNetworkStatus() {
@@ -1461,6 +1461,7 @@
           }
 
           // Update dot color based on demo mode state
+          isDemoMode = config.isDemoMode;
           updateConfigDotColor(config.isDemoMode);
 
           // Show/hide transaction history based on demo mode
@@ -1513,6 +1514,7 @@
         });
 
         if (result && !result.error) {
+          isDemoMode = enabled;
           updateConfigDotColor(enabled);
           showToast('Demo mode ' + (enabled ? 'enabled' : 'disabled'), 'success');
 
@@ -2151,7 +2153,7 @@
       saveSettings(settings);
       document.getElementById('sidebarUsername').textContent = user.username + (user.verified ? ' ✓' : '');
       document.getElementById('sidebarWallet').textContent = user.usernode_pubkey || 'No wallet linked';
-      initSettings();
+      await initSettings();
       startNetworkStatusPolling();
       // Ensure currentUser is set before showing conversations view (which may load groups)
       await showConversationsView();
