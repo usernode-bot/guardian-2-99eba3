@@ -2162,8 +2162,10 @@
       document.getElementById('deleteContactCancel').addEventListener('click', hideDeleteContactModal);
       document.getElementById('deleteContactConfirm').addEventListener('click', confirmDeleteContact);
 
-      document.getElementById('deleteConversationCancel').addEventListener('click', hideDeleteConversationModal);
-      document.getElementById('deleteConversationConfirm').addEventListener('click', confirmDeleteConversation);
+      const deleteConvCancel = document.getElementById('deleteConversationCancel');
+      const deleteConvConfirm = document.getElementById('deleteConversationConfirm');
+      if (deleteConvCancel) deleteConvCancel.addEventListener('click', hideDeleteConversationModal);
+      if (deleteConvConfirm) deleteConvConfirm.addEventListener('click', confirmDeleteConversation);
 
       document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
