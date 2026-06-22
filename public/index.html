@@ -2306,8 +2306,6 @@
       if (pollInterval) clearInterval(pollInterval);
       pollInterval = setInterval(() => loadGroupMessages(groupId), 2000);
 
-      toggleSidebar();
-
       loadGroups();
     }
 
@@ -3074,8 +3072,6 @@
 
       if (pollInterval) clearInterval(pollInterval);
       pollInterval = setInterval(loadMessages, 2000);
-
-      toggleSidebar();
     }
 
     async function loadMessages() {
