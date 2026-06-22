@@ -940,6 +940,104 @@
       </div>
     </div>
 
+    <!-- Message Inspector Overlay & Bottom Sheet -->
+    <div id="messageInspectorOverlay" class="hidden fixed inset-0 z-50 bg-black/50 transition-opacity duration-300" onclick="closeMessageInspector()"></div>
+    <div id="messageInspectorSheet" class="hidden fixed bottom-0 left-0 right-0 z-60 bg-white dark:bg-zinc-900 border-t border-zinc-300 dark:border-zinc-800 rounded-t-2xl max-h-[85vh] overflow-y-auto transition-transform duration-300" style="z-index:60">
+      <!-- Header -->
+      <div class="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 sticky top-0 bg-white dark:bg-zinc-900">
+        <h3 class="text-base font-semibold text-zinc-900 dark:text-white">Message Inspector</h3>
+        <button onclick="closeMessageInspector()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 text-lg transition">✕</button>
+      </div>
+      <!-- Content -->
+      <div class="p-4 space-y-4">
+        <!-- Message preview -->
+        <div id="inspectorMessagePreview" class="bg-zinc-100 dark:bg-zinc-800 rounded-xl p-3 text-sm text-zinc-900 dark:text-zinc-100"></div>
+        <!-- Sender info -->
+        <div class="space-y-1">
+          <div class="flex items-center gap-2 text-sm">
+            <span class="text-zinc-500 dark:text-zinc-400 w-16 shrink-0">From</span>
+            <span id="inspectorSender" class="font-medium text-zinc-900 dark:text-zinc-100"></span>
+          </div>
+          <div class="flex items-center gap-2 text-sm">
+            <span class="text-zinc-500 dark:text-zinc-400 w-16 shrink-0">Sent</span>
+            <span id="inspectorSentAt" class="text-zinc-700 dark:text-zinc-300"></span>
+          </div>
+          <div id="inspectorWalletRow" class="hidden flex items-center gap-2 text-sm">
+            <span class="text-zinc-500 dark:text-zinc-400 w-16 shrink-0">Wallet</span>
+            <span id="inspectorWallet" class="font-mono text-xs text-zinc-600 dark:text-zinc-400 break-all"></span>
+          </div>
+        </div>
+        <!-- Chain status -->
+        <div id="inspectorChainSection" class="hidden space-y-2 border-t border-zinc-200 dark:border-zinc-700 pt-3">
+          <div class="flex items-center gap-2">
+            <span id="inspectorBadge" class="text-lg"></span>
+            <span id="inspectorStatusLabel" class="font-medium text-sm text-zinc-900 dark:text-zinc-100"></span>
+          </div>
+          <div id="inspectorTxRow" class="hidden flex items-center gap-2 text-sm">
+            <span class="text-zinc-500 dark:text-zinc-400 shrink-0">Tx</span>
+            <span id="inspectorTxHash" class="font-mono text-xs text-zinc-600 dark:text-zinc-400 break-all"></span>
+            <button id="inspectorCopyTx" onclick="inspectorCopyTxHash()" class="shrink-0 text-xs px-2 py-0.5 bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 rounded transition text-zinc-700 dark:text-zinc-300">Copy</button>
+          </div>
+        </div>
+        <!-- Read receipt (own messages only) -->
+        <div id="inspectorReadSection" class="hidden border-t border-zinc-200 dark:border-zinc-700 pt-3">
+          <div class="flex items-center gap-2 text-sm">
+            <span class="text-lg">👁</span>
+            <span id="inspectorReadLabel" class="text-zinc-700 dark:text-zinc-300"></span>
+          </div>
+        </div>
+        <!-- Lifecycle timeline -->
+        <div class="border-t border-zinc-200 dark:border-zinc-700 pt-3">
+          <h4 class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-3">Message Lifecycle</h4>
+          <div class="space-y-0">
+            <!-- Step 1: Submitted -->
+            <div class="flex gap-3">
+              <div class="flex flex-col items-center">
+                <div id="tlDot1" class="w-7 h-7 rounded-full flex items-center justify-center text-sm shrink-0 bg-cyan-100 dark:bg-cyan-900 text-cyan-700 dark:text-cyan-300">⏳</div>
+                <div id="tlLine1" class="w-0.5 bg-zinc-200 dark:bg-zinc-700 flex-1 min-h-6 mt-1"></div>
+              </div>
+              <div class="pb-4">
+                <div class="text-sm font-medium text-zinc-900 dark:text-zinc-100">Submitted</div>
+                <div id="tlTime1" class="text-xs text-zinc-500 dark:text-zinc-400"></div>
+              </div>
+            </div>
+            <!-- Step 2: Confirmed -->
+            <div class="flex gap-3">
+              <div class="flex flex-col items-center">
+                <div id="tlDot2" class="w-7 h-7 rounded-full flex items-center justify-center text-sm shrink-0 bg-zinc-100 dark:bg-zinc-800 text-zinc-400">🟢</div>
+                <div id="tlLine2" class="w-0.5 bg-zinc-200 dark:bg-zinc-700 flex-1 min-h-6 mt-1"></div>
+              </div>
+              <div class="pb-4">
+                <div id="tlLabel2" class="text-sm font-medium text-zinc-400 dark:text-zinc-500">Confirmed</div>
+                <div id="tlTime2" class="text-xs text-zinc-500 dark:text-zinc-400">—</div>
+              </div>
+            </div>
+            <!-- Step 3: Immutable -->
+            <div class="flex gap-3">
+              <div class="flex flex-col items-center">
+                <div id="tlDot3" class="w-7 h-7 rounded-full flex items-center justify-center text-sm shrink-0 bg-zinc-100 dark:bg-zinc-800 text-zinc-400">🔒</div>
+                <div id="tlLine3" class="w-0.5 bg-zinc-200 dark:bg-zinc-700 flex-1 min-h-6 mt-1"></div>
+              </div>
+              <div class="pb-4">
+                <div id="tlLabel3" class="text-sm font-medium text-zinc-400 dark:text-zinc-500">Immutable</div>
+                <div id="tlTime3" class="text-xs text-zinc-500 dark:text-zinc-400">—</div>
+              </div>
+            </div>
+            <!-- Step 4: Read -->
+            <div class="flex gap-3">
+              <div class="flex flex-col items-center">
+                <div id="tlDot4" class="w-7 h-7 rounded-full flex items-center justify-center text-sm shrink-0 bg-zinc-100 dark:bg-zinc-800 text-zinc-400">👁</div>
+              </div>
+              <div class="pb-2">
+                <div id="tlLabel4" class="text-sm font-medium text-zinc-400 dark:text-zinc-500">Read</div>
+                <div id="tlTime4" class="text-xs text-zinc-500 dark:text-zinc-400">—</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <!-- Modals -->
@@ -1207,6 +1305,8 @@
     let sidebarOpen = false;
     let pendingDeleteContactId = null;
     let currentActiveView = 'messages';
+    let currentConvOtherPartyLastReadAt = null;
+    let inspectorCurrentTxHash = null;
 
     // Messages tab state
     let activeMessagesTab = 'direct';
@@ -2476,7 +2576,8 @@
       // Check if this is an initial load (empty list) or an update
       const isInitialLoad = list.children.length === 0;
       const wasAtBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 500;
-      list.innerHTML = data.messages.map(msg => renderMessage(msg, 'group')).join('');
+      list.innerHTML = data.messages.map(msg => renderMessage(msg, 'group', null)).join('');
+      attachMessageLongPress(list);
 
       // Auto-scroll to bottom on initial load or if user was already at bottom (within 500px)
       if (isInitialLoad || wasAtBottom) {
@@ -3138,7 +3239,7 @@
       sortedDates.forEach(date => {
         historyHtml += `<div class="text-center py-2 text-xs text-zinc-600 dark:text-zinc-400">${date}</div>`;
         messagesByDate[date].forEach(msg => {
-          const msgHtml = renderMessage(msg, 'group');
+          const msgHtml = renderMessage(msg, 'group', null);
           if (msgHtml) historyHtml += msgHtml;
         });
       });
@@ -3165,6 +3266,7 @@
       currentConvId = convId;
       currentOtherId = otherId;
       currentContactName = username;
+      currentConvOtherPartyLastReadAt = null;
       document.getElementById('headerTitle').innerHTML = username + ' <span class="text-xs text-zinc-500 dark:text-zinc-400">● Online</span>';
       document.getElementById('backBtnContainer').classList.remove('hidden');
       // For direct conversations, use the two-line header with "Direct" label instead of "Guardian"
@@ -3258,8 +3360,12 @@
       const messageIds = new Set(data.messages.map(m => m.id));
       const oldMessageIds = new Set(Array.from(list.querySelectorAll('[data-message-id]')).map(el => parseInt(el.getAttribute('data-message-id'))));
 
+      // Extract and store the other party's last read timestamp
+      currentConvOtherPartyLastReadAt = data.otherPartyLastReadAt || null;
+
       // Re-render message list with IDs for stable DOM references
-      list.innerHTML = data.messages.map(msg => renderMessage(msg, 'dm')).join('');
+      list.innerHTML = data.messages.map(msg => renderMessage(msg, 'dm', currentConvOtherPartyLastReadAt)).join('');
+      attachMessageLongPress(list);
 
       // Auto-scroll to bottom on initial load or if user was already at bottom (within 500px)
       if (isInitialLoad || wasAtBottom) {
@@ -3279,23 +3385,214 @@
       });
     }
 
-    function renderMessage(msg, context) {
+    function blockchainStatusBadge(msg, otherPartyLastReadAt) {
+      if (!msg.blockchainStatus) return '';
+      let chain = '';
+      if (msg.blockchainStatus === 'pending') {
+        chain = '⏳';
+      } else if (msg.blockchainStatus === 'confirmed') {
+        const immutableAt = msg.blockchainImmutableAt ? new Date(msg.blockchainImmutableAt) : null;
+        chain = (immutableAt && immutableAt <= new Date()) ? '🔒' : '🟢';
+      } else if (msg.blockchainStatus === 'failed') {
+        chain = '✗';
+      }
+      const isRead = otherPartyLastReadAt && msg.createdAt && new Date(msg.createdAt) <= new Date(otherPartyLastReadAt);
+      return chain + (isRead ? ' 👁' : '');
+    }
+
+    function setupLongPress(element, callback, duration) {
+      duration = duration || 500;
+      let timer = null;
+      let startX = 0, startY = 0;
+      const start = function(e) {
+        startX = e.touches ? e.touches[0].clientX : e.clientX;
+        startY = e.touches ? e.touches[0].clientY : e.clientY;
+        timer = setTimeout(function() { timer = null; callback(); }, duration);
+      };
+      const cancel = function() { if (timer) { clearTimeout(timer); timer = null; } };
+      const move = function(e) {
+        if (!timer) return;
+        const x = e.touches ? e.touches[0].clientX : e.clientX;
+        const y = e.touches ? e.touches[0].clientY : e.clientY;
+        if (Math.abs(x - startX) > 10 || Math.abs(y - startY) > 10) cancel();
+      };
+      element.addEventListener('touchstart', start, { passive: true });
+      element.addEventListener('touchend', cancel);
+      element.addEventListener('touchcancel', cancel);
+      element.addEventListener('touchmove', move, { passive: true });
+      element.addEventListener('mousedown', start);
+      element.addEventListener('mouseup', cancel);
+      element.addEventListener('mouseleave', cancel);
+      element.addEventListener('mousemove', move);
+      element.addEventListener('contextmenu', function(e) { e.preventDefault(); });
+    }
+
+    function attachMessageLongPress(container) {
+      container.querySelectorAll('[data-message-json]').forEach(function(el) {
+        setupLongPress(el, function() {
+          try {
+            const msgData = JSON.parse(el.getAttribute('data-message-json'));
+            openMessageInspector(msgData);
+          } catch(e) {}
+        });
+      });
+    }
+
+    function openMessageInspector(msgData) {
+      const isOwn = msgData.senderId === (currentUser && currentUser.id);
+      const readAt = isOwn ? currentConvOtherPartyLastReadAt : null;
+
+      // Message preview
+      const previewEl = document.getElementById('inspectorMessagePreview');
+      if (msgData.type === 'text') {
+        previewEl.textContent = msgData.content && msgData.content.text ? msgData.content.text : '';
+      } else if (msgData.type === 'image') {
+        previewEl.innerHTML = '<em class="text-zinc-500 dark:text-zinc-400">Image message</em>';
+      } else if (msgData.type === 'token') {
+        const c = msgData.content || {};
+        previewEl.innerHTML = '<span>💰 ' + (c.amount || 0) + ' tokens' + (c.memo && c.memo !== 'No memo' ? ' — ' + escapeHtml(c.memo) : '') + '</span>';
+      } else {
+        previewEl.textContent = '';
+      }
+
+      // Sender
+      document.getElementById('inspectorSender').textContent = msgData.senderUsername || 'Unknown';
+      document.getElementById('inspectorSentAt').textContent = msgData.createdAt ? new Date(msgData.createdAt).toLocaleString() : '—';
+
+      // Chain section
+      const chainSection = document.getElementById('inspectorChainSection');
+      if (msgData.blockchainStatus) {
+        chainSection.classList.remove('hidden');
+        const badge = blockchainStatusBadge(msgData, null);
+        document.getElementById('inspectorBadge').textContent = badge.split(' ')[0] || '⏳';
+        const labels = { '⏳': 'Submitted — awaiting confirmation', '🟢': 'Confirmed on-chain', '🔒': 'Immutable — record sealed', '✗': 'Failed' };
+        document.getElementById('inspectorStatusLabel').textContent = labels[badge.split(' ')[0]] || msgData.blockchainStatus;
+
+        const txRow = document.getElementById('inspectorTxRow');
+        if (msgData.blockchainTxHash) {
+          txRow.classList.remove('hidden');
+          const shortTx = msgData.blockchainTxHash.length > 20 ? msgData.blockchainTxHash.substring(0, 18) + '…' : msgData.blockchainTxHash;
+          document.getElementById('inspectorTxHash').textContent = shortTx;
+          inspectorCurrentTxHash = msgData.blockchainTxHash;
+        } else {
+          txRow.classList.add('hidden');
+          inspectorCurrentTxHash = null;
+        }
+      } else {
+        chainSection.classList.add('hidden');
+        inspectorCurrentTxHash = null;
+      }
+
+      // Read section
+      const readSection = document.getElementById('inspectorReadSection');
+      if (isOwn) {
+        readSection.classList.remove('hidden');
+        const msgDate = msgData.createdAt ? new Date(msgData.createdAt) : null;
+        const readDate = readAt ? new Date(readAt) : null;
+        if (readDate && msgDate && msgDate <= readDate) {
+          document.getElementById('inspectorReadLabel').textContent = 'Read ' + readDate.toLocaleString();
+        } else {
+          document.getElementById('inspectorReadLabel').textContent = 'Not yet read';
+        }
+      } else {
+        readSection.classList.add('hidden');
+      }
+
+      // Lifecycle timeline
+      const sentAt = msgData.createdAt ? new Date(msgData.createdAt) : null;
+      const confirmedAt = msgData.blockchainConfirmedAt ? new Date(msgData.blockchainConfirmedAt) : null;
+      const immutableAt = msgData.blockchainImmutableAt ? new Date(msgData.blockchainImmutableAt) : (confirmedAt ? new Date(confirmedAt.getTime() + 86400000) : null);
+      const now = new Date();
+
+      document.getElementById('tlTime1').textContent = sentAt ? sentAt.toLocaleString() : '—';
+
+      if (confirmedAt) {
+        document.getElementById('tlDot2').className = 'w-7 h-7 rounded-full flex items-center justify-center text-sm shrink-0 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300';
+        document.getElementById('tlLabel2').className = 'text-sm font-medium text-zinc-900 dark:text-zinc-100';
+        document.getElementById('tlTime2').textContent = confirmedAt.toLocaleString();
+      } else {
+        document.getElementById('tlDot2').className = 'w-7 h-7 rounded-full flex items-center justify-center text-sm shrink-0 bg-zinc-100 dark:bg-zinc-800 text-zinc-400';
+        document.getElementById('tlLabel2').className = 'text-sm font-medium text-zinc-400 dark:text-zinc-500';
+        document.getElementById('tlTime2').textContent = '—';
+      }
+
+      if (immutableAt && immutableAt <= now) {
+        document.getElementById('tlDot3').className = 'w-7 h-7 rounded-full flex items-center justify-center text-sm shrink-0 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300';
+        document.getElementById('tlLabel3').className = 'text-sm font-medium text-zinc-900 dark:text-zinc-100';
+        document.getElementById('tlTime3').textContent = immutableAt.toLocaleString();
+      } else if (immutableAt) {
+        document.getElementById('tlDot3').className = 'w-7 h-7 rounded-full flex items-center justify-center text-sm shrink-0 bg-zinc-100 dark:bg-zinc-800 text-zinc-400';
+        document.getElementById('tlLabel3').className = 'text-sm font-medium text-zinc-400 dark:text-zinc-500';
+        document.getElementById('tlTime3').textContent = 'Expected ' + immutableAt.toLocaleString();
+      } else {
+        document.getElementById('tlDot3').className = 'w-7 h-7 rounded-full flex items-center justify-center text-sm shrink-0 bg-zinc-100 dark:bg-zinc-800 text-zinc-400';
+        document.getElementById('tlLabel3').className = 'text-sm font-medium text-zinc-400 dark:text-zinc-500';
+        document.getElementById('tlTime3').textContent = '—';
+      }
+
+      if (isOwn) {
+        const msgDate = sentAt;
+        const readDate = readAt ? new Date(readAt) : null;
+        if (readDate && msgDate && msgDate <= readDate) {
+          document.getElementById('tlDot4').className = 'w-7 h-7 rounded-full flex items-center justify-center text-sm shrink-0 bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300';
+          document.getElementById('tlLabel4').className = 'text-sm font-medium text-zinc-900 dark:text-zinc-100';
+          document.getElementById('tlTime4').textContent = readDate.toLocaleString();
+        } else {
+          document.getElementById('tlDot4').className = 'w-7 h-7 rounded-full flex items-center justify-center text-sm shrink-0 bg-zinc-100 dark:bg-zinc-800 text-zinc-400';
+          document.getElementById('tlLabel4').className = 'text-sm font-medium text-zinc-400 dark:text-zinc-500';
+          document.getElementById('tlTime4').textContent = '—';
+        }
+      } else {
+        document.getElementById('tlDot4').className = 'w-7 h-7 rounded-full flex items-center justify-center text-sm shrink-0 bg-zinc-100 dark:bg-zinc-800 text-zinc-400';
+        document.getElementById('tlLabel4').className = 'text-sm font-medium text-zinc-400 dark:text-zinc-500';
+        document.getElementById('tlTime4').textContent = 'N/A (incoming)';
+      }
+
+      document.getElementById('messageInspectorOverlay').classList.remove('hidden');
+      document.getElementById('messageInspectorSheet').classList.remove('hidden');
+    }
+
+    function closeMessageInspector() {
+      document.getElementById('messageInspectorOverlay').classList.add('hidden');
+      document.getElementById('messageInspectorSheet').classList.add('hidden');
+      inspectorCurrentTxHash = null;
+    }
+
+    function inspectorCopyTxHash() {
+      if (!inspectorCurrentTxHash) return;
+      navigator.clipboard.writeText(inspectorCurrentTxHash).then(function() {
+        showToast('Transaction hash copied', 'success');
+      }).catch(function() {
+        showToast('Copy failed', 'error');
+      });
+    }
+
+    function renderMessage(msg, context, otherPartyLastReadAt) {
       const isOwn = msg.senderId === currentUser.id;
       const baseClass = isOwn ? 'ml-auto bg-cyan-600 dark:bg-cyan-600 text-white' : 'mr-auto bg-zinc-200 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100';
       const alignClass = isOwn ? 'justify-end' : 'justify-start';
       const shouldShowSenderName = context === 'group';
       const isMobile = document.body.classList.contains('layout-mobile');
       const marginClass = isMobile ? 'mx-1.5' : 'mx-2';
+      const msgDataJson = isOwn ? escapeHtml(JSON.stringify({
+        id: msg.id, type: msg.type, content: msg.content, senderId: msg.senderId,
+        senderUsername: msg.senderUsername, createdAt: msg.createdAt,
+        blockchainStatus: msg.blockchainStatus, blockchainTxHash: msg.blockchainTxHash,
+        blockchainConfirmedAt: msg.blockchainConfirmedAt, blockchainImmutableAt: msg.blockchainImmutableAt
+      })) : null;
+      const dataAttr = msgDataJson ? ` data-message-json="${msgDataJson}"` : '';
+      const badge = isOwn ? blockchainStatusBadge(msg, otherPartyLastReadAt || currentConvOtherPartyLastReadAt) : '';
+      const badgeHtml = badge ? `<span id="blockchain-status-${msg.id}" class="ml-1 text-xs opacity-90">${badge}</span>` : `<span id="blockchain-status-${msg.id}" class="ml-1 text-xs opacity-90 hidden"></span>`;
 
       if (msg.type === 'text') {
         const senderNameLine = shouldShowSenderName ? `<div class="text-xs opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'} mb-1">${msg.senderUsername}</div>` : '';
         const bubbleClasses = isMobile ? 'px-3 py-1.5 rounded-xl text-sm' : 'px-4 py-2 rounded-2xl text-base';
         return `
           <div class="flex ${alignClass} ${marginClass}" data-message-id="${msg.id}">
-            <div class="max-w-xs ${bubbleClasses} ${baseClass} message-bubble">
+            <div class="max-w-xs ${bubbleClasses} ${baseClass} message-bubble"${dataAttr}>
               ${senderNameLine}
-              <div>${msg.content.text}</div>
-              <div class="text-xs mt-1.5 opacity-70">${formatTime(new Date(msg.createdAt))}</div>
+              <div>${escapeHtml(msg.content.text)}</div>
+              <div class="text-xs mt-1.5 opacity-70 flex items-center gap-1">${formatTime(new Date(msg.createdAt))}${badgeHtml}</div>
             </div>
           </div>
         `;
@@ -3306,9 +3603,10 @@
         const borderRadius = isMobile ? 'rounded-lg' : 'rounded-2xl';
         return `
           <div class="flex ${alignClass} ${marginClass}" data-message-id="${msg.id}">
-            <div class="max-w-xs ${borderRadius} overflow-hidden ${baseClass}">
+            <div class="max-w-xs ${borderRadius} overflow-hidden ${baseClass} message-bubble"${dataAttr}>
               <img src="${msg.content.imageUrl}" alt="Message image" class="max-w-xs cursor-pointer hover:opacity-80 transition" onclick="showLightbox('${msg.content.imageUrl}')">
               ${senderNameLine}
+              ${isOwn ? `<div class="px-2 pb-1 text-xs opacity-70 flex items-center gap-1">${formatTime(new Date(msg.createdAt))}${badgeHtml}</div>` : ''}
             </div>
           </div>
         `;
@@ -3316,18 +3614,14 @@
 
       if (msg.type === 'token') {
         const c = msg.content;
-        const memoLine = c.memo && c.memo !== 'No memo' ? `<div class="text-xs mt-1 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'}">${c.memo}</div>` : '';
-        const statusIcon = c.status === 'confirmed' ? '✓' : '⏳';
+        const memoLine = c.memo && c.memo !== 'No memo' ? `<div class="text-xs mt-1 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'}">${escapeHtml(c.memo)}</div>` : '';
         const bubbleClasses = isMobile ? 'px-2.5 py-1.5 rounded-lg text-sm' : 'px-3 py-2 rounded-2xl text-base';
         return `
           <div class="flex ${alignClass} ${marginClass}" data-message-id="${msg.id}">
-            <div class="max-w-xs ${bubbleClasses} ${baseClass} border-2 border-yellow-500/40 message-bubble">
-              <div class="font-bold ${isMobile ? 'text-base' : 'text-lg'} flex items-center justify-between gap-2">
-                <span>💰 ${c.amount} tokens</span>
-                <span class="text-xs">${statusIcon}</span>
-              </div>
+            <div class="max-w-xs ${bubbleClasses} ${baseClass} border-2 border-yellow-500/40 message-bubble"${dataAttr}>
+              <div class="font-bold ${isMobile ? 'text-base' : 'text-lg'}">💰 ${c.amount} tokens</div>
               ${memoLine}
-              <div class="text-xs mt-1.5 opacity-70">${formatTime(new Date(msg.createdAt))}</div>
+              <div class="text-xs mt-1.5 opacity-70 flex items-center gap-1">${formatTime(new Date(msg.createdAt))}${badgeHtml}</div>
             </div>
           </div>
         `;
@@ -3538,18 +3832,23 @@
         if (!statusEl) break;
 
         if (auditData.status === 'confirmed') {
-          statusEl.innerHTML = `✓ Confirmed | <span class="font-mono text-xs" title="${auditData.txHash}">${auditData.txHash.substring(0, 10)}...</span>`;
-          statusEl.classList.remove('text-amber-600', 'dark:text-amber-400');
-          statusEl.classList.add('text-green-600', 'dark:text-green-400');
+          const syntheticMsg = {
+            blockchainStatus: 'confirmed',
+            blockchainTxHash: auditData.txHash,
+            blockchainConfirmedAt: auditData.confirmedAt,
+            blockchainImmutableAt: auditData.confirmedAt ? new Date(new Date(auditData.confirmedAt).getTime() + 86400000).toISOString() : null,
+            createdAt: null
+          };
+          statusEl.textContent = blockchainStatusBadge(syntheticMsg, currentConvOtherPartyLastReadAt);
+          statusEl.classList.remove('hidden');
           isComplete = true;
         } else if (auditData.status === 'failed') {
-          statusEl.innerHTML = `✗ Failed | <button onclick="retryFailedTransaction(${auditLogId}, ${messageId})" class="underline">Retry</button>`;
-          statusEl.classList.remove('text-amber-600', 'dark:text-amber-400');
-          statusEl.classList.add('text-red-600', 'dark:text-red-400');
+          statusEl.textContent = '✗';
+          statusEl.classList.remove('hidden');
           isComplete = true;
         } else {
-          statusEl.innerHTML = `⏳ Pending confirmation...`;
-          statusEl.classList.add('text-amber-600', 'dark:text-amber-400');
+          statusEl.textContent = '⏳';
+          statusEl.classList.remove('hidden');
         }
       }
 

@@ -73,7 +73,7 @@ async function monitorBlockchainStatus(auditLogId, txHash) {
       await new Promise(resolve => setTimeout(resolve, 1000));
       await pool.query(`
         UPDATE blockchain_audit_logs
-        SET status = 'confirmed', confirmed_at = NOW(), updated_at = NOW()
+        SET status = 'confirmed', confirmed_at = NOW(), immutable_at = NOW() + INTERVAL '24 hours', updated_at = NOW()
         WHERE id = $1
       `, [auditLogId]);
       return;
@@ -84,7 +84,7 @@ async function monitorBlockchainStatus(auditLogId, txHash) {
     await new Promise(resolve => setTimeout(resolve, 3000));
     await pool.query(`
       UPDATE blockchain_audit_logs
-      SET status = 'confirmed', confirmed_at = NOW(), updated_at = NOW()
+      SET status = 'confirmed', confirmed_at = NOW(), immutable_at = NOW() + INTERVAL '24 hours', updated_at = NOW()
       WHERE id = $1
     `, [auditLogId]);
   } catch (err) {
@@ -511,15 +511,26 @@ app.get('/api/conversations/:convId', async (req, res) => {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
+    const otherId = conv.participant_a_id === userId ? conv.participant_b_id : conv.participant_a_id;
+    const { rows: readRows } = await pool.query(`
+      SELECT last_read_at FROM read_receipts WHERE user_id = $1 AND conversation_id = $2
+    `, [otherId, convId]);
+    const otherPartyLastReadAt = readRows.length > 0 ? readRows[0].last_read_at : null;
+
     const { rows: messages } = await pool.query(`
-      SELECT id, sender_id,
+      SELECT m.id, m.sender_id,
              (SELECT username FROM users WHERE id = m.sender_id) as sender_username,
-             type, content, created_at, blockchain_recorded, blockchain_audit_log_id
+             m.type, m.content, m.created_at, m.blockchain_recorded, m.blockchain_audit_log_id,
+             bal.status as blockchain_status,
+             bal.tx_hash as blockchain_tx_hash,
+             bal.confirmed_at as blockchain_confirmed_at,
+             COALESCE(bal.immutable_at, bal.confirmed_at + INTERVAL '24 hours') as blockchain_immutable_at
       FROM messages m
-      WHERE conversation_id = $1
-        AND created_at < $2
-        AND (deleted_by IS NULL OR NOT (deleted_by @> ARRAY[$3]::integer[]))
-      ORDER BY created_at DESC
+      LEFT JOIN blockchain_audit_logs bal ON bal.id = m.blockchain_audit_log_id
+      WHERE m.conversation_id = $1
+        AND m.created_at < $2
+        AND (m.deleted_by IS NULL OR NOT (m.deleted_by @> ARRAY[$3]::integer[]))
+      ORDER BY m.created_at DESC
       LIMIT $4
     `, [convId, before, userId, limit]);
 
@@ -533,9 +544,13 @@ app.get('/api/conversations/:convId', async (req, res) => {
       createdAt: m.created_at,
       blockchainRecorded: m.blockchain_recorded,
       blockchainAuditLogId: m.blockchain_audit_log_id,
+      blockchainStatus: m.blockchain_status || null,
+      blockchainTxHash: m.blockchain_tx_hash || null,
+      blockchainConfirmedAt: m.blockchain_confirmed_at || null,
+      blockchainImmutableAt: m.blockchain_immutable_at || null,
     }));
 
-    res.json({ messages: msgList, hasMore: messages.length === limit });
+    res.json({ messages: msgList, hasMore: messages.length === limit, otherPartyLastReadAt });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -615,11 +630,12 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
     const placeholderTxHash = ENABLE_DEMO_MODE ? 'ut1staging-' + networkPrefix + 'message-' + messageId + '-' + Date.now() : 'ut1-' + networkPrefix + 'tx-msg-' + Math.random().toString(36).substr(2, 9);
     const auditStatus = ENABLE_DEMO_MODE ? 'confirmed' : 'pending';
     const confirmedAt = ENABLE_DEMO_MODE ? now : null;
+    const immutableAt = ENABLE_DEMO_MODE ? new Date(now.getTime() + 24 * 3600 * 1000) : null;
     const auditRes = await pool.query(`
-      INSERT INTO blockchain_audit_logs (user_id, message_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
+      INSERT INTO blockchain_audit_logs (user_id, message_id, message_type, tx_hash, transaction_payload, status, confirmed_at, immutable_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
       RETURNING id
-    `, [userId, messageId, 'message', placeholderTxHash, JSON.stringify(transactionPayload), auditStatus, confirmedAt, contentHash, userPubkey, now, now]);
+    `, [userId, messageId, 'message', placeholderTxHash, JSON.stringify(transactionPayload), auditStatus, confirmedAt, immutableAt, contentHash, userPubkey, now, now]);
     const blockchainRecordingId = auditRes.rows[0].id;
 
     // Update message with audit log reference
@@ -1933,14 +1949,19 @@ app.get('/api/groups/:groupId/messages', async (req, res) => {
 
     // Get messages
     const { rows: messages } = await pool.query(`
-      SELECT id, sender_id,
+      SELECT gm.id, gm.sender_id,
              (SELECT username FROM users WHERE id = gm.sender_id) as sender_username,
-             type, content, created_at, blockchain_recorded, blockchain_audit_log_id, deleted_by
+             gm.type, gm.content, gm.created_at, gm.blockchain_recorded, gm.blockchain_audit_log_id, gm.deleted_by,
+             bal.status as blockchain_status,
+             bal.tx_hash as blockchain_tx_hash,
+             bal.confirmed_at as blockchain_confirmed_at,
+             COALESCE(bal.immutable_at, bal.confirmed_at + INTERVAL '24 hours') as blockchain_immutable_at
       FROM group_messages gm
-      WHERE group_id = $1
-        AND created_at < $2
-        AND (deleted_by IS NULL OR NOT (deleted_by @> ARRAY[$3]::integer[]))
-      ORDER BY created_at DESC
+      LEFT JOIN blockchain_audit_logs bal ON bal.id = gm.blockchain_audit_log_id
+      WHERE gm.group_id = $1
+        AND gm.created_at < $2
+        AND (gm.deleted_by IS NULL OR NOT (gm.deleted_by @> ARRAY[$3]::integer[]))
+      ORDER BY gm.created_at DESC
       LIMIT $4
     `, [groupId, before, userId, limit]);
 
@@ -1954,6 +1975,10 @@ app.get('/api/groups/:groupId/messages', async (req, res) => {
       createdAt: m.created_at,
       blockchainRecorded: m.blockchain_recorded,
       blockchainAuditLogId: m.blockchain_audit_log_id,
+      blockchainStatus: m.blockchain_status || null,
+      blockchainTxHash: m.blockchain_tx_hash || null,
+      blockchainConfirmedAt: m.blockchain_confirmed_at || null,
+      blockchainImmutableAt: m.blockchain_immutable_at || null,
     }));
 
     res.json({ messages: msgList, hasMore: messages.length === limit });
@@ -2025,11 +2050,12 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
     const placeholderTxHash = ENABLE_DEMO_MODE ? 'ut1staging-' + networkPrefix + 'message-' + messageId + '-' + Date.now() : 'ut1-' + networkPrefix + 'tx-msg-' + Math.random().toString(36).substr(2, 9);
     const auditStatus = ENABLE_DEMO_MODE ? 'confirmed' : 'pending';
     const confirmedAt = ENABLE_DEMO_MODE ? now : null;
+    const immutableAt = ENABLE_DEMO_MODE ? new Date(now.getTime() + 24 * 3600 * 1000) : null;
     const auditRes = await pool.query(`
-      INSERT INTO blockchain_audit_logs (user_id, message_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
+      INSERT INTO blockchain_audit_logs (user_id, message_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, immutable_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)
       RETURNING id
-    `, [userId, messageId, groupId, 'message', placeholderTxHash, JSON.stringify(transactionPayload), auditStatus, confirmedAt, contentHash, userPubkey, now, now]);
+    `, [userId, messageId, groupId, 'message', placeholderTxHash, JSON.stringify(transactionPayload), auditStatus, confirmedAt, immutableAt, contentHash, userPubkey, now, now]);
     const blockchainRecordingId = auditRes.rows[0].id;
 
     // Update message with audit log reference
@@ -3248,6 +3274,10 @@ async function start() {
     `);
 
     await pool.query(`
+      ALTER TABLE blockchain_audit_logs ADD COLUMN IF NOT EXISTS immutable_at TIMESTAMPTZ
+    `);
+
+    await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_blockchain_audit_logs_message_id
         ON blockchain_audit_logs(message_id)
     `);
@@ -3440,16 +3470,18 @@ async function start() {
 
       // Seed messages
       const baseTime = new Date(Date.now() - 3600000);
+      const immutableConfirmedAt = new Date(Date.now() - 48 * 3600000); // 48h ago → 🔒
+      const recentConfirmedAt = new Date(Date.now() - 5 * 60000);       // 5min ago → 🟢
       const messages = [
-        { offset: 0, sender: alice, type: 'text', content: { text: '[Staging] Hey Bob!' }, blockchain: true },
+        { offset: 0, sender: alice, type: 'text', content: { text: '[Staging] Hey Bob! (immutable 🔒)' }, blockchain: true, auditStatus: 'confirmed', auditConfirmedAt: immutableConfirmedAt },
         { offset: 60000, sender: bob, type: 'text', content: { text: '[Staging] Hi Alice! How are you?' }, blockchain: false },
-        { offset: 120000, sender: alice, type: 'text', content: { text: '[Staging] Doing great, thanks!' }, blockchain: false },
+        { offset: 120000, sender: alice, type: 'text', content: { text: '[Staging] Doing great, thanks! (no badge)' }, blockchain: false },
         { offset: 180000, sender: alice, type: 'image', content: { imageUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mP8z8DwHwMxxGAIwAAADkkBkMTjF4UAAAAASUVORK5CYII=' }, blockchain: false },
         { offset: 240000, sender: bob, type: 'text', content: { text: '[Staging] Nice photo!' }, blockchain: false },
-        { offset: 300000, sender: alice, type: 'token', content: { recipientId: bob, amount: 100, memo: '[Staging] Here is a gift', txHash: 'staging-tx-001', status: 'confirmed' }, blockchain: true },
+        { offset: 300000, sender: alice, type: 'token', content: { recipientId: bob, amount: 100, memo: '[Staging] Here is a gift', txHash: 'staging-tx-001', status: 'confirmed' }, blockchain: true, auditStatus: 'confirmed', auditConfirmedAt: recentConfirmedAt },
         { offset: 360000, sender: bob, type: 'text', content: { text: '[Staging] Thanks for the tokens!' }, blockchain: false },
-        { offset: 420000, sender: bob, type: 'image', content: { imageUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mNkYPhfwcDAwMjIyMjIyAgAEq4DBaIjqKQAAAAASUVORK5CYII=' }, blockchain: false },
-        { offset: 480000, sender: alice, type: 'token', content: { recipientId: bob, amount: 50, memo: '[Staging] bonus', txHash: 'staging-tx-002', status: 'confirmed' }, blockchain: false },
+        { offset: 420000, sender: alice, type: 'text', content: { text: '[Staging] Just confirmed ✓' }, blockchain: true, auditStatus: 'confirmed', auditConfirmedAt: recentConfirmedAt },
+        { offset: 480000, sender: alice, type: 'text', content: { text: '[Staging] Still pending...' }, blockchain: true, auditStatus: 'pending', auditConfirmedAt: null },
         { offset: 540000, sender: bob, type: 'text', content: { text: '[Staging] This is awesome!' }, blockchain: false },
       ];
 
@@ -3489,12 +3521,17 @@ async function start() {
                 timestamp: msgTime.toISOString()
               };
 
+          const seedAuditStatus = msg.auditStatus || 'confirmed';
+          const seedConfirmedAt = msg.auditConfirmedAt !== undefined ? msg.auditConfirmedAt : msgTime;
+          const seedImmutableAt = (seedAuditStatus === 'confirmed' && seedConfirmedAt)
+            ? new Date(seedConfirmedAt.getTime() + 24 * 3600000) : null;
+
           const auditResult = await pool.query(`
-            INSERT INTO blockchain_audit_logs (user_id, message_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, 'confirmed', $6, $7, $8, $9, $10, $10)
+            INSERT INTO blockchain_audit_logs (user_id, message_id, message_type, tx_hash, transaction_payload, status, confirmed_at, immutable_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
             ON CONFLICT DO NOTHING
             RETURNING id
-          `, [msg.sender, messageId, messageType, txHash, JSON.stringify(transactionPayload), msgTime, contentHash, dmUserPubkeyMap[msg.sender], msgTime, msgTime]);
+          `, [msg.sender, messageId, messageType, txHash, JSON.stringify(transactionPayload), seedAuditStatus, seedConfirmedAt, seedImmutableAt, contentHash, dmUserPubkeyMap[msg.sender], msgTime, msgTime]);
 
           // Update message with audit log reference
           if (auditResult.rows.length > 0) {
@@ -3505,11 +3542,11 @@ async function start() {
         }
       }
 
-      // Initialize read receipts
+      // Initialize read receipts — update Bob's last_read_at on each boot so the 👁 badge shows
       await pool.query(`
         INSERT INTO read_receipts (user_id, conversation_id, last_read_at)
         VALUES ($1, $2, NOW()), ($3, $2, NOW())
-        ON CONFLICT DO NOTHING
+        ON CONFLICT (user_id, conversation_id) DO UPDATE SET last_read_at = NOW()
       `, [alice, convId, bob]);
 
 
