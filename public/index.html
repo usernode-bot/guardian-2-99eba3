@@ -3625,7 +3625,7 @@
 
     async function toggleAddContactButton() {
       if (!currentOtherId) {
-        alert('User not found');
+        showToast('User not found', 'error');
         return;
       }
 
@@ -3640,12 +3640,13 @@
         });
 
         if (data && data.ok) {
+          showToast('Contact removed', 'success');
           currentContactId = null;
           await updateContactMenuLabel();
           // Refresh conversation list to move conversation from Your Active Chats to Pending Requests
           await loadConversations();
         } else {
-          alert('Failed to remove contact');
+          showToast('Failed to remove contact', 'error');
         }
       } else {
         // Add contact
@@ -3655,12 +3656,13 @@
         });
 
         if (data && !data.error) {
+          showToast('Contact added', 'success');
           currentContactId = data.id;
           await updateContactMenuLabel();
           // Refresh conversation list to move conversation from Pending Requests to Your Active Chats
           await loadConversations();
         } else {
-          alert('Failed to add contact: ' + (data?.error || 'Unknown error'));
+          showToast('Failed to add contact: ' + (data?.error || 'Unknown error'), 'error');
         }
       }
     }
@@ -3693,7 +3695,7 @@
 
     async function confirmDeleteConversation() {
       if (!currentConvId) {
-        alert('Conversation not found.');
+        showToast('Conversation not found', 'error');
         return;
       }
 
@@ -3703,11 +3705,12 @@
       });
 
       if (data && data.ok) {
+        showToast('Conversation deleted', 'success');
         hideDeleteConversationModal();
         showConversationsView();
         loadConversations();
       } else {
-        alert('Failed to delete conversation');
+        showToast('Failed to delete conversation', 'error');
       }
     }
 
