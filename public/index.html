@@ -817,8 +817,8 @@
 
       <!-- Feed View -->
       <div id="feedView" class="hidden flex flex-col flex-1 overflow-hidden">
-        <!-- Sticky Composer (positioned outside scrollable area for proper sticky behavior) -->
-        <div id="feedComposer" class="flex-shrink-0 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
+        <!-- Post Composer (NOT scrollable with feed) -->
+        <div id="feedComposer" class="flex-shrink-0 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 z-30">
           <!-- Full Composer (Mobile) -->
           <div id="feedComposerFull" class="px-4 py-2 bg-white dark:bg-zinc-900 space-y-2">
             <div class="flex gap-2 items-end">
@@ -833,7 +833,7 @@
             <button onclick="submitFeedPost()" class="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium text-sm flex-shrink-0">Post</button>
           </div>
         </div>
-        <!-- Feed Posts List (Only Scrollable Area) -->
+        <!-- Feed Posts List (ONLY scrollable area - no content above it) -->
         <div id="feedList" class="flex-1 overflow-y-auto space-y-3 p-2">
           <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading feed...</div>
         </div>
