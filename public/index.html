@@ -524,8 +524,6 @@
         </div>
         <div id="headerPageLabel" class="text-sm text-zinc-600 dark:text-zinc-500 leading-tight truncate">Messages</div>
       </div>
-      <!-- Single-line title for conversations (used only when in a direct conversation) -->
-      <h1 id="headerTitle" class="hidden text-lg font-semibold flex-1">Guardian</h1>
       <div id="headerRight" class="text-sm text-zinc-600 dark:text-zinc-500 relative flex flex-1 justify-end items-center gap-2">
         <button id="messageHistoryBtn" class="hidden text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare mr-3" title="Message history" onclick="openMessageHistory()">📜</button>
         <button id="conversationMenuBtn" class="hidden text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare" title="Conversation options" onclick="toggleConversationMenu(event)">⋯</button>
@@ -1712,7 +1710,7 @@
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('header').classList.remove('header-chat-fixed');
       document.getElementById('headerContent').classList.remove('hidden');
-      document.getElementById('headerTitle').classList.add('hidden');
+      document.getElementById('headerBranding').textContent = 'Guardian';
       document.getElementById('headerPageLabel').textContent = 'Settings';
       document.getElementById('backBtn').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
@@ -2290,9 +2288,9 @@
       currentConvId = null;
       currentOtherId = null;
 
-      // Fetch group name for header (groups use the branding system)
+      // Fetch group name for header (groups use two-line layout with "Group" label)
       document.getElementById('headerContent').classList.remove('hidden');
-      document.getElementById('headerTitle').classList.add('hidden');
+      document.getElementById('headerBranding').textContent = 'Group';
       const groupData = await apiCall(`/api/groups/${groupId}`);
       if (groupData) {
         document.getElementById('headerPageLabel').textContent = groupData.name + ' ✓';
@@ -3059,10 +3057,10 @@
       currentConvId = convId;
       currentOtherId = otherId;
       currentContactName = username;
-      // For conversations, use the single-title headerTitle system (bypass the Guardian branding system)
-      document.getElementById('headerContent').classList.add('hidden');
-      document.getElementById('headerTitle').classList.remove('hidden');
-      document.getElementById('headerTitle').innerHTML = username + ' <span class="text-xs text-zinc-500 dark:text-zinc-400">● Online</span>';
+      // For direct conversations, use the two-line header with "Direct" label instead of "Guardian"
+      document.getElementById('headerContent').classList.remove('hidden');
+      document.getElementById('headerBranding').textContent = 'Direct';
+      document.getElementById('headerPageLabel').innerHTML = username + ' <span class="text-xs text-zinc-500 dark:text-zinc-400">● Online</span>';
       document.getElementById('backBtn').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
       document.getElementById('messageHistoryBtn').classList.add('hidden');
@@ -3480,7 +3478,7 @@
       document.getElementById('inputFooter').classList.remove('footer-in-view');
       document.getElementById('header').classList.remove('header-chat-fixed');
       document.getElementById('headerContent').classList.remove('hidden');
-      document.getElementById('headerTitle').classList.add('hidden');
+      document.getElementById('headerBranding').textContent = 'Guardian';
       document.getElementById('headerPageLabel').textContent = 'Messages';
       document.getElementById('backBtn').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
@@ -3915,7 +3913,7 @@
       document.getElementById('inputFooter').classList.remove('footer-in-view');
       document.getElementById('header').classList.remove('header-chat-fixed');
       document.getElementById('headerContent').classList.remove('hidden');
-      document.getElementById('headerTitle').classList.add('hidden');
+      document.getElementById('headerBranding').textContent = 'Guardian';
       document.getElementById('headerPageLabel').textContent = 'Contacts';
       document.getElementById('backBtn').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
@@ -3937,7 +3935,7 @@
       document.getElementById('inputFooter').classList.remove('footer-in-view');
       document.getElementById('header').classList.remove('header-chat-fixed');
       document.getElementById('headerContent').classList.remove('hidden');
-      document.getElementById('headerTitle').classList.add('hidden');
+      document.getElementById('headerBranding').textContent = 'Guardian';
       document.getElementById('headerPageLabel').textContent = 'Feed';
       document.getElementById('backBtn').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
