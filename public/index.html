@@ -2306,10 +2306,6 @@
       if (pollInterval) clearInterval(pollInterval);
       pollInterval = setInterval(() => loadGroupMessages(groupId), 2000);
 
-      if (window.matchMedia('(max-width: 768px)').matches) {
-        toggleSidebar();
-      }
-
       loadGroups();
     }
 
