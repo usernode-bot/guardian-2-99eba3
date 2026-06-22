@@ -3287,17 +3287,19 @@
       const shouldShowSenderName = context === 'group';
       const isMobile = document.body.classList.contains('layout-mobile');
       const marginClass = isMobile ? 'mx-1.5' : 'mx-2';
+      const deleteBtn = isOwn ? `<button class="message-delete-btn opacity-30 hover:opacity-100 transition text-red-500 dark:text-red-400 ml-1" onclick="deleteMessage(${msg.id}, '${context === 'group' ? 'group' : 'direct'}')">🗑</button>` : '';
 
       if (msg.type === 'text') {
         const senderNameLine = shouldShowSenderName ? `<div class="text-xs opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'} mb-1">${msg.senderUsername}</div>` : '';
         const bubbleClasses = isMobile ? 'px-3 py-1.5 rounded-xl text-sm' : 'px-4 py-2 rounded-2xl text-base';
         return `
-          <div class="flex ${alignClass} ${marginClass}" data-message-id="${msg.id}">
+          <div class="flex ${alignClass} ${marginClass} group message-wrapper" data-message-id="${msg.id}">
             <div class="max-w-xs ${bubbleClasses} ${baseClass} message-bubble">
               ${senderNameLine}
               <div>${msg.content.text}</div>
               <div class="text-xs mt-1.5 opacity-70">${formatTime(new Date(msg.createdAt))}</div>
             </div>
+            ${deleteBtn}
           </div>
         `;
       }
@@ -3306,11 +3308,12 @@
         const senderNameLine = shouldShowSenderName ? `<div class="text-xs px-4 py-2 opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'}">${msg.senderUsername}</div>` : '';
         const borderRadius = isMobile ? 'rounded-lg' : 'rounded-2xl';
         return `
-          <div class="flex ${alignClass} ${marginClass}" data-message-id="${msg.id}">
+          <div class="flex ${alignClass} ${marginClass} group message-wrapper" data-message-id="${msg.id}">
             <div class="max-w-xs ${borderRadius} overflow-hidden ${baseClass}">
               <img src="${msg.content.imageUrl}" alt="Message image" class="max-w-xs cursor-pointer hover:opacity-80 transition" onclick="showLightbox('${msg.content.imageUrl}')">
               ${senderNameLine}
             </div>
+            ${deleteBtn}
           </div>
         `;
       }
@@ -3321,7 +3324,7 @@
         const statusIcon = c.status === 'confirmed' ? '✓' : '⏳';
         const bubbleClasses = isMobile ? 'px-2.5 py-1.5 rounded-lg text-sm' : 'px-3 py-2 rounded-2xl text-base';
         return `
-          <div class="flex ${alignClass} ${marginClass}" data-message-id="${msg.id}">
+          <div class="flex ${alignClass} ${marginClass} group message-wrapper" data-message-id="${msg.id}">
             <div class="max-w-xs ${bubbleClasses} ${baseClass} border-2 border-yellow-500/40 message-bubble">
               <div class="font-bold ${isMobile ? 'text-base' : 'text-lg'} flex items-center justify-between gap-2">
                 <span>💰 ${c.amount} tokens</span>
@@ -3330,6 +3333,7 @@
               ${memoLine}
               <div class="text-xs mt-1.5 opacity-70">${formatTime(new Date(msg.createdAt))}</div>
             </div>
+            ${deleteBtn}
           </div>
         `;
       }
@@ -3447,6 +3451,33 @@
         }
       };
       reader.readAsDataURL(file);
+    }
+
+    async function deleteMessage(messageId, context) {
+      try {
+        const endpoint = context === 'group'
+          ? `/api/groups/${currentGroupId}/messages/${messageId}/delete`
+          : `/api/conversations/${currentConvId}/messages/${messageId}/delete`;
+
+        const data = await apiCall(endpoint, {
+          method: 'POST',
+          body: JSON.stringify({})
+        });
+
+        if (data && data.ok) {
+          showToast('Message deleted', 'success');
+          if (context === 'group') {
+            loadGroupMessages(currentGroupId);
+          } else {
+            loadMessages();
+          }
+        } else {
+          showToast('Failed to delete message', 'error');
+        }
+      } catch (err) {
+        console.error('Delete message error:', err);
+        showToast('Failed to delete message', 'error');
+      }
     }
 
     function showTokenModal() {
