@@ -915,9 +915,7 @@
         <!-- Tab Navigation -->
         <div class="bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 flex">
           <button id="profileTabIdentity" onclick="switchProfileTab('identity')" class="flex-1 px-4 py-3 text-sm font-medium text-cyan-600 dark:text-cyan-400 border-b-2 border-cyan-600 dark:border-cyan-500">Identity</button>
-          <button id="profileTabWallet" onclick="switchProfileTab('wallet')" class="flex-1 px-4 py-3 text-sm font-medium text-zinc-700 dark:text-zinc-400 border-b-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100">Wallet</button>
           <button id="profileTabActivity" onclick="switchProfileTab('activity')" class="flex-1 px-4 py-3 text-sm font-medium text-zinc-700 dark:text-zinc-400 border-b-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100">Activity</button>
-          <button id="profileTabSettings" onclick="switchProfileTab('settings')" class="flex-1 px-4 py-3 text-sm font-medium text-zinc-700 dark:text-zinc-400 border-b-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100">Settings</button>
         </div>
 
         <!-- Tab Content Area -->
@@ -929,30 +927,8 @@
               <div id="profileUsername" class="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-zinc-900 dark:text-zinc-100 font-medium">Loading...</div>
             </div>
             <div class="space-y-2">
-              <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Wallet Address</label>
-              <div id="profileWalletAddr" class="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-zinc-700 dark:text-zinc-300 font-mono text-xs break-all">Loading...</div>
-            </div>
-            <div class="space-y-2">
               <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Account Status</label>
               <div id="profileVerified" class="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-zinc-700 dark:text-zinc-300">—</div>
-            </div>
-          </div>
-
-          <!-- Wallet Tab -->
-          <div id="profileTabContentWallet" class="hidden space-y-4">
-            <div class="space-y-2">
-              <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Wallet Address</label>
-              <div id="profileWalletDisplay" class="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-zinc-700 dark:text-zinc-300 font-mono text-xs break-all">Loading...</div>
-            </div>
-            <div class="space-y-2">
-              <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Network</label>
-              <div id="profileNetwork" class="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-zinc-700 dark:text-zinc-300 capitalize">Loading...</div>
-            </div>
-            <div class="space-y-2">
-              <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Connection Status</label>
-              <div id="profileConnectionStatus" class="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-zinc-700 dark:text-zinc-300">
-                <span id="profileStatusDot" class="inline-block w-2 h-2 rounded-full bg-gray-400 mr-2"></span><span id="profileStatusText">—</span>
-              </div>
             </div>
           </div>
 
@@ -960,41 +936,6 @@
           <div id="profileTabContentActivity" class="hidden space-y-2">
             <div id="profileActivityList" class="space-y-1 text-sm">
               <div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Loading activity...</div>
-            </div>
-          </div>
-
-          <!-- Settings Tab -->
-          <div id="profileTabContentSettings" class="hidden space-y-1.5">
-            <div class="space-y-1">
-              <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Mode</label>
-              <select id="profileThemeSelect" onchange="applyTheme(this.value)" class="w-full px-2 py-2 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500">
-                <option value="dark">Dark</option>
-                <option value="light">Light</option>
-              </select>
-            </div>
-            <div class="space-y-2">
-              <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Display</label>
-              <div class="space-y-1">
-                <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400">Layout</label>
-                <div class="flex gap-2">
-                  <button id="profileLayoutComfort" onclick="applyLayout('comfortable')" class="flex-1 px-2 py-2 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-cyan-600 dark:border-cyan-500 hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Comfortable</button>
-                  <button id="profileLayoutCompact" onclick="applyLayout('compact')" class="flex-1 px-2 py-2 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-transparent hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Compact</button>
-                </div>
-              </div>
-              <div class="space-y-1">
-                <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400">Mode</label>
-                <div class="flex gap-2">
-                  <button id="profileViewModeWeb" onclick="applyViewMode('web')" class="flex-1 px-2 py-2 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-cyan-600 dark:border-cyan-500 hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Web/Desktop</button>
-                  <button id="profileViewModeMobile" onclick="applyViewMode('mobile')" class="flex-1 px-2 py-2 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-transparent hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Mobile</button>
-                </div>
-              </div>
-            </div>
-            <div class="space-y-1">
-              <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Network</label>
-              <select id="profileNetworkSelect" onchange="applyNetwork(this.value)" class="w-full px-2 py-2 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500">
-                <option value="testnet">Testnet</option>
-                <option value="mainnet">Mainnet</option>
-              </select>
             </div>
           </div>
         </div>
@@ -4316,12 +4257,10 @@
     function switchProfileTab(tabName) {
       // Hide all tab contents
       document.getElementById('profileTabContentIdentity').classList.add('hidden');
-      document.getElementById('profileTabContentWallet').classList.add('hidden');
       document.getElementById('profileTabContentActivity').classList.add('hidden');
-      document.getElementById('profileTabContentSettings').classList.add('hidden');
 
       // Reset all tab buttons to inactive state
-      ['identity', 'wallet', 'activity', 'settings'].forEach(name => {
+      ['identity', 'activity'].forEach(name => {
         const btn = document.getElementById(`profileTab${name.charAt(0).toUpperCase() + name.slice(1)}`);
         if (btn) {
           btn.classList.remove('text-cyan-600', 'dark:text-cyan-400', 'border-cyan-600', 'dark:border-cyan-500');
@@ -4350,47 +4289,12 @@
 
       // Populate Identity tab
       document.getElementById('profileUsername').textContent = currentUser.username || 'Unknown';
-      const walletAddr = currentUser.usernode_pubkey || 'Not linked';
-      document.getElementById('profileWalletAddr').textContent = walletAddr;
       document.getElementById('profileVerified').textContent = currentUser.verified ? '✓ Verified' : '○ Unverified';
-
-      // Populate Wallet tab
-      document.getElementById('profileWalletDisplay').textContent = walletAddr;
-      document.getElementById('profileNetwork').textContent = currentUser.network || currentNetwork || 'testnet';
-
-      // Update connection status
-      updateProfileConnectionStatus();
 
       // Load activity
       loadProfileActivity();
-
-      // Sync settings to Settings tab
-      syncProfileSettings();
     }
 
-    function updateProfileConnectionStatus() {
-      const statusDot = document.getElementById('profileStatusDot');
-      const statusText = document.getElementById('profileStatusText');
-
-      if (!statusDot || !statusText) return;
-
-      let dotColor = 'bg-gray-400';
-      let statusDisplay = '—';
-
-      if (networkStatus.status === 'connected') {
-        dotColor = 'bg-green-500';
-        statusDisplay = 'Connected';
-      } else if (networkStatus.status === 'connecting') {
-        dotColor = 'bg-yellow-500 animate-pulse';
-        statusDisplay = 'Connecting...';
-      } else if (networkStatus.status === 'disconnected') {
-        dotColor = 'bg-red-500';
-        statusDisplay = 'Disconnected';
-      }
-
-      statusDot.className = `inline-block w-2 h-2 rounded-full transition-colors mr-2 ${dotColor}`;
-      statusText.textContent = statusDisplay;
-    }
 
     async function loadProfileActivity() {
       try {
@@ -4443,43 +4347,6 @@
       }
     }
 
-    function syncProfileSettings() {
-      const settings = loadSettings();
-
-      document.getElementById('profileThemeSelect').value = settings.theme;
-
-      // Update layout buttons
-      ['profileLayoutComfort', 'profileLayoutCompact'].forEach(id => {
-        const btn = document.getElementById(id);
-        if (btn) {
-          const isLayout = id.includes('Comfort') ? 'comfortable' : 'compact';
-          if (settings.layout === isLayout) {
-            btn.classList.add('border-cyan-600', 'dark:border-cyan-500');
-            btn.classList.remove('border-transparent');
-          } else {
-            btn.classList.remove('border-cyan-600', 'dark:border-cyan-500');
-            btn.classList.add('border-transparent');
-          }
-        }
-      });
-
-      // Update view mode buttons
-      ['profileViewModeWeb', 'profileViewModeMobile'].forEach(id => {
-        const btn = document.getElementById(id);
-        if (btn) {
-          const isMode = id.includes('Web') ? 'web' : 'mobile';
-          if (settings.view_mode === isMode) {
-            btn.classList.add('border-cyan-600', 'dark:border-cyan-500');
-            btn.classList.remove('border-transparent');
-          } else {
-            btn.classList.remove('border-cyan-600', 'dark:border-cyan-500');
-            btn.classList.add('border-transparent');
-          }
-        }
-      });
-
-      document.getElementById('profileNetworkSelect').value = settings.network;
-    }
 
     // ===== FEED FUNCTIONS =====
 
