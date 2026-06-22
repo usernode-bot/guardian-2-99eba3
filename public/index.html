@@ -8,26 +8,22 @@
   (function () {
     function restoreThemeEarly() {
       const allKeys = Object.keys(localStorage);
-      let theme = 'system';
+      let theme = 'light';
       for (const key of allKeys) {
         if (key.startsWith('guardian_settings_')) {
           try {
             const settings = JSON.parse(localStorage.getItem(key));
-            theme = settings.theme || 'system';
+            theme = settings.theme || 'light';
+            if (theme === 'system') {
+              theme = 'light';
+            }
             break;
           } catch (_) {}
         }
       }
 
       const html = document.documentElement;
-      if (theme === 'system') {
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        if (prefersDark) {
-          html.classList.add('dark');
-        } else {
-          html.classList.remove('dark');
-        }
-      } else if (theme === 'dark') {
+      if (theme === 'dark') {
         html.classList.add('dark');
       } else if (theme === 'light') {
         html.classList.remove('dark');
@@ -191,16 +187,30 @@
     }
 
     .sidebar-enter {
-      animation: slideInLeft 0.3s ease-out;
+      animation: slideInLeft 0.25s ease-out forwards;
+      will-change: transform;
     }
 
     .sidebar-exit {
-      animation: slideOutLeft 0.3s ease-out;
+      animation: slideOutLeft 0.25s ease-out forwards;
+      will-change: transform;
+    }
+
+    .sidebar-overlay-visible {
+      opacity: 1;
+      transition: opacity 0.25s ease-out;
+    }
+
+    .sidebar-overlay-hidden {
+      opacity: 0;
+      transition: opacity 0.25s ease-out;
+      pointer-events: none;
     }
 
     .message-bubble {
       word-wrap: break-word;
       overflow-wrap: break-word;
+      min-width: 150px;
     }
 
     /* Compact layout mode */
@@ -209,7 +219,7 @@
     .layout-compact #sidebarUser { padding: 0.75rem; }
     .layout-compact #sidebarUser > div { gap: 0.5rem; }
     .layout-compact #convList > div { padding: 0.75rem; }
-    .layout-compact #messageList { gap: 0.5rem; }
+    .layout-compact #messageList { gap: 0.375rem; }
     .layout-compact #header { padding: 0.5rem 0.75rem; }
     .layout-compact #inputFooter { padding: 0.75rem; gap: 0.25rem; }
     .layout-compact nav.flex-1 { gap: 0.25rem; }
@@ -222,7 +232,6 @@
       width: 16rem;
       height: 100%;
       z-index: 40;
-      animation: slideInLeft 0.3s ease-out;
     }
 
     .layout-mobile #sidebarOverlay {
@@ -231,7 +240,6 @@
       inset: 0;
       background: rgba(0, 0, 0, 0.5);
       z-index: 30;
-      animation: fadeIn 0.3s ease-out;
     }
 
     .layout-mobile #content {
@@ -268,88 +276,118 @@
       animation: feedPostEnter 0.4s ease-out;
     }
 
-    /* Feed mobile responsiveness */
+    /* Compose Modal Styles */
+    #feedComposeModal {
+      backdrop-filter: blur(4px);
+      opacity: 0;
+      transition: opacity 0.3s ease-out;
+      pointer-events: none;
+    }
+
+    #feedComposeModal.hidden {
+      display: none;
+    }
+
+    #feedComposeModal:not(.hidden) {
+      display: flex;
+      pointer-events: auto;
+    }
+
+    #feedComposeContainer {
+      animation: slideUpModal 0.3s ease-out forwards;
+    }
+
+    @keyframes slideUpModal {
+      from {
+        opacity: 0;
+        transform: scale(0.95) translateY(16px);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+    }
+
+    /* FAB entrance animation */
+    #feedFAB {
+      animation: fabFadeIn 0.4s ease-out 0.1s backwards;
+    }
+
+    @keyframes fabFadeIn {
+      from {
+        opacity: 0;
+        transform: scale(0.8);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    /* FAB hover and active states */
+    #feedFAB {
+      transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+                  box-shadow 0.2s ease-out,
+                  background-color 0.2s ease-out;
+    }
+
+    #feedFAB:hover {
+      transform: scale(1.1);
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15);
+    }
+
+    #feedFAB:active {
+      transform: scale(0.95);
+    }
+
+    /* Modal close button animation */
+    #feedComposeModal button {
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    #feedComposeModal .text-lg:hover {
+      transform: rotate(90deg);
+    }
+
+    /* Textarea smooth focus animation */
+    #feedComposeInput {
+      transition: border-color 0.2s ease-out,
+                  box-shadow 0.2s ease-out,
+                  background-color 0.2s ease-out;
+    }
+
+    #feedComposeInput:focus {
+      background-color: transparent;
+      border-color: rgba(6, 182, 212, 0.5);
+    }
+
+    /* Button color smooth transitions */
+    button.transition {
+      transition: background-color 0.2s ease-out,
+                  color 0.2s ease-out,
+                  transform 0.2s ease-out;
+    }
+
+    #feedComposeContainer {
+      width: 92vw;
+      max-width: calc(100vw - 32px);
+      height: 55vh;
+      max-height: 60vh;
+    }
+
     @media (max-width: 639px) {
-      /* Feed header responsive */
-      #feedView .px-4.py-3 {
-        padding-left: 0.75rem;
-        padding-right: 0.75rem;
+      #feedComposeContainer {
+        width: 95vw;
+        max-width: calc(100vw - 16px);
+        height: 57vh;
       }
+    }
 
-      #feedView .px-4.py-3 h2 {
-        font-size: 0.8125rem;
-      }
-
-      /* Post composer responsive */
-      #feedView > div > div > .px-4.py-3 {
-        padding: 0.75rem;
-        gap: 0.375rem;
-      }
-
-      #feedView textarea {
-        padding: 0.5rem;
-        font-size: 0.875rem;
-      }
-
-      #feedView button[onclick="submitFeedPost()"] {
-        padding: 0.5rem 1rem;
-        font-size: 0.875rem;
-      }
-
-      /* Feed post cards responsive */
-      #feedList > div {
-        padding: 0.75rem;
-        margin: 0.5rem;
-        border-radius: 0.5rem;
-      }
-
-      /* Avatar sizing on mobile */
-      #feedList .flex.gap-3 > div:first-child {
-        width: 1.75rem;
-        height: 1.75rem;
-        min-width: 1.75rem;
-      }
-
-      /* Post author/timestamp gap */
-      #feedList .flex.items-center.gap-2 {
-        gap: 0.25rem;
-      }
-
-      #feedList .flex.items-center.gap-2 > span:nth-child(3) {
-        font-size: 0.7rem;
-      }
-
-      /* Post content spacing */
-      #feedList p {
-        margin-bottom: 0.5rem;
-      }
-
-      /* Link preview card responsive */
-      #feedList a[target="_blank"] {
-        padding: 0.5rem !important;
-      }
-
-      #feedList a[target="_blank"] > div {
-        gap: 0.5rem !important;
-      }
-
-      /* Link preview image on mobile */
-      #feedList img[alt="preview"] {
-        width: 3rem;
-        height: 3rem;
-      }
-
-      /* Remove hover states on touch devices */
-      @media (hover: none) {
-        #feedList > div {
-          background-color: transparent !important;
-          box-shadow: none !important;
-        }
-
-        #feedList > div:hover {
-          background-color: transparent !important;
-          box-shadow: none !important;
-        }
+    @media (min-width: 640px) {
+      #feedComposeContainer {
+        width: 92vw;
+        max-width: calc(100vw - 32px);
+        height: 55vh;
       }
     }
 
@@ -449,42 +487,147 @@
     .duration-300 {
       animation-duration: 0.3s;
     }
+
+    /* Fixed header for chat view */
+    #header.header-chat-fixed {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      width: 100%;
+      z-index: 40;
+    }
+
+    /* Fixed footer for chat view */
+    #inputFooter.footer-in-view {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      width: 100%;
+      z-index: 40;
+    }
+
+    /* Adjust message list for fixed header and footer */
+    #chatView.active-chat #messageList {
+      margin-top: 0;
+      margin-bottom: 0;
+    }
+
+    @keyframes splashFadeOut {
+      from {
+        opacity: 1;
+      }
+      to {
+        opacity: 0;
+      }
+    }
+
+    #splashScreen {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: white;
+    }
+
+    #splashScreen.dark {
+      background: rgb(3, 7, 18);
+    }
+
+    #splashScreen.fade-out {
+      animation: splashFadeOut 1s ease-out forwards;
+    }
+
+    #splashScreen .splash-heading {
+      font-size: 3.5rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      color: rgb(31, 41, 55);
+      margin: 0;
+      text-align: center;
+    }
+
+    #splashScreen.dark .splash-heading {
+      color: rgb(244, 244, 245);
+    }
+
+    #splashScreen .splash-subtitle {
+      font-size: 1.125rem;
+      color: rgb(107, 114, 128);
+      margin-top: 1rem;
+      text-align: center;
+    }
+
+    #splashScreen.dark .splash-subtitle {
+      color: rgb(161, 161, 170);
+    }
+
+    #splashScreen .splash-tagline {
+      font-size: 0.875rem;
+      color: rgb(107, 114, 128);
+      margin-top: 0.5rem;
+      text-align: center;
+    }
+
+    #splashScreen.dark .splash-tagline {
+      color: rgb(161, 161, 170);
+    }
   </style>
 </head>
 <body class="bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100 min-h-screen flex flex-col">
+  <!-- Splash Screen -->
+  <div id="splashScreen">
+    <div class="splash-heading">GUARDIAN</div>
+    <div class="splash-subtitle">Decentralized Social Communication</div>
+    <div class="splash-tagline">Built on UserNode</div>
+  </div>
+
   <div id="app" class="flex flex-col flex-1 relative h-screen overflow-hidden">
     <!-- Header -->
-    <div id="header" class="bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-300 dark:border-zinc-800 px-4 py-3 flex items-center gap-3 sticky top-0 z-40">
+    <div id="header" class="bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-300 dark:border-zinc-800 px-4 py-3 flex items-start gap-3 fixed top-0 left-0 right-0 z-40 w-full header-in-view">
       <button id="menuBtn" class="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition" title="Toggle sidebar">
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
         </svg>
       </button>
-      <button id="backBtn" class="text-sm text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 hidden transition">← Back</button>
-      <div class="flex items-center gap-2">
-        <h1 id="headerTitle" class="text-lg font-semibold">Guardian</h1>
-        <div id="headerNetworkStatusContainer" class="relative group">
-          <span id="headerStatusDot" class="inline-block w-2 h-2 rounded-full bg-gray-400 transition-colors"></span>
-          <div class="absolute -bottom-6 left-0 px-2 py-1 bg-zinc-900 dark:bg-zinc-700 text-white dark:text-zinc-100 text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
-            <span id="headerStatusTooltip">Network Status</span>
+      <div id="backBtnContainer" class="relative group hidden">
+        <button id="backBtn" class="text-lg text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition">←</button>
+        <div class="absolute -bottom-6 left-0 px-2 py-1 bg-zinc-900 dark:bg-zinc-700 text-white dark:text-zinc-100 text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">Back</div>
+      </div>
+      <!-- Guardian branding + page label system (used for Feed, Messages, Contacts, Settings, Groups) -->
+      <div id="headerContent" class="flex flex-col items-start flex-1 gap-0">
+        <div class="flex items-center gap-2">
+          <span id="headerTitle" class="hidden"></span>
+          <div id="headerBranding" class="text-lg font-semibold text-zinc-900 dark:text-zinc-100 leading-tight">Guardian</div>
+          <div id="headerNetworkStatusContainer" class="relative group">
+            <span id="headerStatusDot" class="inline-block w-2 h-2 rounded-full bg-gray-400 transition-colors"></span>
+            <div class="absolute -bottom-6 left-0 px-2 py-1 bg-zinc-900 dark:bg-zinc-700 text-white dark:text-zinc-100 text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
+              <span id="headerStatusTooltip">Network Status</span>
+            </div>
           </div>
         </div>
+        <div id="headerPageLabel" class="text-sm text-zinc-600 dark:text-zinc-500 leading-tight truncate">Messages</div>
       </div>
       <div id="headerRight" class="text-sm text-zinc-600 dark:text-zinc-500 relative flex flex-1 justify-end items-center gap-2">
         <button id="messageHistoryBtn" class="hidden text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare mr-3" title="Message history" onclick="openMessageHistory()">📜</button>
         <button id="conversationMenuBtn" class="hidden text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare" title="Conversation options" onclick="toggleConversationMenu(event)">⋯</button>
         <div id="conversationMenuDropdown" class="hidden absolute right-0 mt-2 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg shadow-lg z-50 min-w-40">
+          <button onclick="openContactProfile()" class="menu-item text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 w-full text-left">Profile</button>
           <button id="addContactMenuBtn" onclick="toggleAddContactButton()" class="menu-item text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 w-full text-left">Add Contact</button>
-          <button onclick="openDeleteConversationModal()" class="menu-item text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 w-full text-left">Delete conversation</button>
+          <button onclick="openDeleteConversationModal()" class="menu-item text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 w-full text-left">Delete conversation</button>
         </div>
       </div>
     </div>
 
     <!-- Sidebar Overlay -->
-    <div id="sidebarOverlay" class="hidden fixed inset-0 bg-black/50 z-30 transition-opacity duration-300" onclick="toggleSidebar()"></div>
+    <div id="sidebarOverlay" class="hidden fixed inset-0 bg-black/50 z-40 sidebar-overlay-hidden" onclick="if (event.target === this) toggleSidebar()"></div>
 
     <!-- Sidebar -->
-    <div id="sidebar" class="hidden fixed left-0 top-0 w-64 h-full bg-zinc-50 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 z-40 flex flex-col overflow-y-auto">
+    <div id="sidebar" class="hidden fixed left-0 top-0 w-64 h-full bg-zinc-50 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 z-50 flex flex-col overflow-y-auto">
       <div class="p-4 border-b border-zinc-200 dark:border-zinc-800">
         <div class="flex items-center justify-between">
           <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Guardian</h2>
@@ -503,17 +646,17 @@
           </svg>
           Messages
         </button>
-        <button id="navFeedBtn" onclick="showFeedView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
-          <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v.756a3.5 3.5 0 015.618 1.401M12 8v8m-4-4h8" />
-          </svg>
-          Feed
-        </button>
         <button id="navContactsBtn" onclick="showContactsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
           <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
           Contacts
+        </button>
+        <button id="navFeedBtn" onclick="showFeedView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
+          <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v.756a3.5 3.5 0 015.618 1.401M12 8v8m-4-4h8" />
+          </svg>
+          Feed
         </button>
       </nav>
 
@@ -552,9 +695,8 @@
       <div class="flex-1 px-3 py-2 space-y-1.5">
         <!-- Theme -->
         <div class="space-y-1">
-          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Dark Mode</label>
+          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Mode</label>
           <select id="themeSelect" onchange="applyTheme(this.value)" class="w-full px-2 py-2 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500">
-            <option value="system">System</option>
             <option value="dark">Dark</option>
             <option value="light">Light</option>
           </select>
@@ -692,7 +834,7 @@
     </div>
 
     <!-- Main content -->
-    <div id="content" class="flex-1 overflow-hidden flex flex-col">
+    <div id="content" class="flex-1 overflow-hidden flex flex-col pt-16">
       <!-- Messages View with Tabs -->
       <div id="messagesView" class="hidden flex flex-col flex-1 overflow-hidden">
         <!-- Tab Navigation -->
@@ -721,21 +863,16 @@
 
       <!-- Chat View -->
       <div id="chatView" class="hidden flex flex-col flex-1 overflow-hidden">
-        <div id="messageList" class="flex-1 overflow-y-auto space-y-3 p-4"></div>
+        <div id="messageList" class="flex-1 overflow-y-auto space-y-1 p-4 pb-28 pt-20"></div>
       </div>
 
       <!-- Feed View -->
-      <div id="feedView" class="hidden flex flex-col flex-1 overflow-hidden">
-        <div class="flex-1 flex flex-col overflow-hidden">
-          <!-- Post Composer -->
-          <div class="px-4 py-3 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 space-y-2">
-            <textarea id="feedTextInput" placeholder="Share something..." class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition resize-none" rows="6"></textarea>
-            <button onclick="submitFeedPost()" class="w-full px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium min-h-10">Post</button>
-          </div>
-          <!-- Feed Posts List -->
-          <div id="feedList" class="flex-1 overflow-y-auto divide-y divide-zinc-200 dark:divide-zinc-800">
-            <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading feed...</div>
-          </div>
+      <div id="feedView" class="hidden flex flex-col flex-1 overflow-hidden relative">
+        <!-- Floating Action Button for Composing -->
+        <button id="feedFAB" onclick="openFeedComposeModal()" class="fixed bottom-6 right-6 w-12 h-12 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-full shadow-lg flex items-center justify-center font-bold text-xl transition duration-300 ease-out z-35 active:scale-95">+</button>
+        <!-- Feed Posts List (ONLY scrollable area) -->
+        <div id="feedList" class="flex-1 overflow-y-auto space-y-3 p-2">
+          <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading feed...</div>
         </div>
       </div>
 
@@ -769,7 +906,7 @@
     </div>
 
     <!-- Chat Input (shown only in chat view) -->
-    <div id="inputFooter" class="hidden bg-white dark:bg-zinc-900 border-t border-zinc-300 dark:border-zinc-800 p-3 space-y-1 relative">
+    <div id="inputFooter" class="hidden bg-white dark:bg-zinc-900 border-t border-zinc-300 dark:border-zinc-800 p-3 space-y-1 fixed bottom-0 z-40 w-full footer-in-view">
       <div class="flex gap-2 items-center">
         <input id="msgInput" type="text" placeholder="Type a message..." class="flex-1 px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
         <button id="attachmentMenuBtn" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition" title="Attachment menu">
@@ -890,7 +1027,7 @@
   <div id="deleteConversationModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
       <h2 class="text-xl font-semibold text-zinc-900 dark:text-white" id="deleteConversationTitle">Delete conversation?</h2>
-      <p class="text-sm text-zinc-600 dark:text-zinc-400">This will remove the conversation from your list. Messages will no longer be visible.</p>
+      <p class="text-sm text-zinc-600 dark:text-zinc-400">This action cannot be undone.</p>
       <div class="flex gap-2">
         <button id="deleteConversationCancel" class="flex-1 px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
         <button id="deleteConversationConfirm" class="flex-1 px-3 py-2 bg-red-600 hover:bg-red-700 dark:hover:bg-red-500 text-white rounded-lg transition font-medium">Delete</button>
@@ -901,11 +1038,11 @@
 
   <!-- Group Context Menu -->
   <div id="groupContextMenu" class="hidden fixed z-50 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg shadow-lg min-w-40">
-    <button onclick="viewGroupInfo()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">View Group Info</button>
-    <button onclick="manageGroupMembers()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">Manage Members</button>
-    <button id="renameGroupBtn" onclick="renameGroup()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">Rename Group</button>
-    <button onclick="leaveGroup()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">Leave Group</button>
-    <button id="deleteGroupBtn" onclick="deleteGroup()" class="menu-item w-full text-left px-4 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">Delete Group</button>
+    <button onclick="event.stopPropagation(); viewGroupInfo()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">View Group Info</button>
+    <button onclick="event.stopPropagation(); manageGroupMembers()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">Manage Members</button>
+    <button id="renameGroupBtn" onclick="event.stopPropagation(); renameGroup()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">Rename Group</button>
+    <button onclick="event.stopPropagation(); leaveGroup()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">Leave Group</button>
+    <button id="deleteGroupBtn" onclick="event.stopPropagation(); deleteGroup()" class="menu-item w-full text-left px-4 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">Delete Group</button>
   </div>
 
   <!-- Create Group Modal -->
@@ -922,32 +1059,6 @@
   </div>
 
   <!-- Welcome Screen Modal -->
-  <div id="welcomeModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-8 w-full max-w-md space-y-6">
-      <div>
-        <h1 class="text-3xl font-bold text-zinc-900 dark:text-white mb-2">Welcome to Guardian</h1>
-        <p class="text-zinc-600 dark:text-zinc-400">A secure messenger for direct communication with verified contacts on the blockchain.</p>
-      </div>
-      <div class="space-y-3 text-sm text-zinc-700 dark:text-zinc-300">
-        <div class="flex items-start gap-3">
-          <span class="text-lg">💬</span>
-          <span>Send encrypted messages with your contacts</span>
-        </div>
-        <div class="flex items-start gap-3">
-          <span class="text-lg">📤</span>
-          <span>Share your contact via QR code or link</span>
-        </div>
-        <div class="flex items-start gap-3">
-          <span class="text-lg">💰</span>
-          <span>Transfer tokens directly in conversations</span>
-        </div>
-      </div>
-      <button onclick="dismissWelcome()" class="w-full px-4 py-3 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">
-        Get Started
-      </button>
-    </div>
-  </div>
-
   <!-- Manage Group Members Modal -->
   <div id="manageGroupMembersModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-2xl max-h-[90vh] flex flex-col">
@@ -1028,6 +1139,28 @@
     </div>
   </div>
 
+  <!-- Feed Compose Modal -->
+  <div id="feedComposeModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 transition-opacity duration-300 ease-out opacity-0" onclick="if(event.target.id==='feedComposeModal')closeFeedComposeModal()">
+    <div id="feedComposeContainer" class="bg-white dark:bg-zinc-900 rounded-lg shadow-xl flex flex-col transform transition-all duration-300 ease-out scale-95 translate-y-4">
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-800">
+        <h2 class="text-base font-semibold text-zinc-900 dark:text-zinc-100">Compose</h2>
+        <button onclick="closeFeedComposeModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition duration-200 ease-out text-lg active:scale-90">✕</button>
+      </div>
+      <!-- Modal Body -->
+      <div class="p-4">
+        <textarea id="feedComposeInput" placeholder="What's happening?" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition duration-200 ease-out resize-none text-sm" rows="5"></textarea>
+      </div>
+      <!-- Modal Footer -->
+      <div class="flex items-center gap-2 px-4 py-3 border-t border-zinc-200 dark:border-zinc-800">
+        <button onclick="openAttachmentMenu()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition duration-200 ease-out text-lg active:scale-90">📷</button>
+        <div class="flex-1"></div>
+        <button onclick="closeFeedComposeModal()" class="px-3 py-1.5 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 rounded text-sm font-medium transition duration-200 ease-out active:scale-95">Cancel</button>
+        <button onclick="submitFeedPostFromModal()" class="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition duration-200 ease-out active:scale-95">Publish</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notification Container -->
   <div id="toastContainer" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
@@ -1038,6 +1171,11 @@
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token') || '';
     const headers = token ? { 'x-usernode-token': token } : {};
+
+    function escapeHtml(text) {
+      const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+      return String(text).replace(/[&<>"']/g, m => map[m]);
+    }
 
     function showToast(message, type = 'success') {
       const container = document.getElementById('toastContainer');
@@ -1091,11 +1229,44 @@
     let pendingWalletAction = null;
     let walletConfirmResolver = null;
 
+    // Splash screen initialization
+    function initSplashScreen() {
+      const splashScreen = document.getElementById('splashScreen');
+      if (!splashScreen) return;
+
+      // Apply dark mode class if needed
+      const isDarkMode = document.documentElement.classList.contains('dark');
+      if (isDarkMode) {
+        splashScreen.classList.add('dark');
+      }
+
+      // Set timeout to fade out splash after 1.5 seconds
+      setTimeout(() => {
+        splashScreen.classList.add('fade-out');
+        // Hide splash after fade animation completes (1 second)
+        setTimeout(() => {
+          splashScreen.style.display = 'none';
+          splashScreen.style.pointerEvents = 'none';
+        }, 1000);
+      }, 1500);
+    }
+
+    // Initialize splash screen when DOM is ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initSplashScreen);
+    } else {
+      initSplashScreen();
+    }
+
     function loadSettings() {
       if (!currentUser) return {};
       const stored = JSON.parse(localStorage.getItem(`guardian_settings_${currentUser.id}`) || '{}');
+      let theme = stored.theme || 'light';
+      if (theme === 'system') {
+        theme = 'light';
+      }
       return {
-        theme: stored.theme || 'system',
+        theme: theme,
         layout: stored.layout || 'comfortable',
         network: stored.network || 'testnet',
         view_mode: stored.view_mode || 'web',
@@ -1122,11 +1293,6 @@
       updateLayoutButtons(settings.layout);
       updateViewModeButtons(settings.view_mode);
       loadConfigState();
-      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-        if (loadSettings().theme === 'system') {
-          applyTheme('system');
-        }
-      });
     }
 
     async function pollNetworkStatus() {
@@ -1521,14 +1687,7 @@
       settings.theme = theme;
       const html = document.documentElement;
 
-      if (theme === 'system') {
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        if (prefersDark) {
-          html.classList.add('dark');
-        } else {
-          html.classList.remove('dark');
-        }
-      } else if (theme === 'dark') {
+      if (theme === 'dark') {
         html.classList.add('dark');
       } else if (theme === 'light') {
         html.classList.remove('dark');
@@ -1647,12 +1806,18 @@
       document.getElementById('messagesView').classList.add('hidden');
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.add('hidden');
+      document.getElementById('chatView').classList.remove('active-chat');
       document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('sidebar').classList.add('hidden');
       document.getElementById('settingsPanel').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
+      document.getElementById('header').classList.remove('header-chat-fixed');
       document.getElementById('headerTitle').textContent = 'Settings';
-      document.getElementById('backBtn').classList.remove('hidden');
+      document.getElementById('backBtnContainer').classList.remove('hidden');
+      document.getElementById('headerContent').classList.remove('hidden');
+      document.getElementById('headerBranding').textContent = 'Guardian';
+      document.getElementById('headerPageLabel').textContent = 'Settings';
+      document.getElementById('backBtnContainer').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
       sidebarOpen = false;
@@ -1726,18 +1891,19 @@
       if (sidebarOpen) {
         sidebar.classList.remove('hidden');
         overlay.classList.remove('hidden');
-        setTimeout(() => {
-          sidebar.classList.add('sidebar-enter');
-          overlay.style.opacity = '1';
-        }, 0);
+        void sidebar.offsetWidth;
+        sidebar.classList.add('sidebar-enter');
+        overlay.classList.add('sidebar-overlay-visible');
+        overlay.classList.remove('sidebar-overlay-hidden');
       } else {
         sidebar.classList.add('sidebar-exit');
-        overlay.style.opacity = '0';
+        overlay.classList.add('sidebar-overlay-hidden');
+        overlay.classList.remove('sidebar-overlay-visible');
         setTimeout(() => {
           sidebar.classList.add('hidden');
           overlay.classList.add('hidden');
           sidebar.classList.remove('sidebar-enter', 'sidebar-exit');
-        }, 300);
+        }, 250);
       }
     }
 
@@ -1987,7 +2153,6 @@
       document.getElementById('sidebarWallet').textContent = user.usernode_pubkey || 'No wallet linked';
       initSettings();
       startNetworkStatusPolling();
-      showWelcome();
       // Ensure currentUser is set before showing conversations view (which may load groups)
       await showConversationsView();
       setupEventListeners();
@@ -2030,12 +2195,11 @@
       document.getElementById('deleteConversationCancel').addEventListener('click', hideDeleteConversationModal);
       document.getElementById('deleteConversationConfirm').addEventListener('click', confirmDeleteConversation);
 
-      document.getElementById('sidebarOverlay').addEventListener('click', toggleSidebar);
-
       document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
           closeAttachmentSheet();
           hideDeleteContactModal();
+          closeFeedComposeModal();
         }
       });
 
@@ -2230,13 +2394,15 @@
       currentConvId = null;
       currentOtherId = null;
 
-      // Fetch group name for header
+      // Fetch group name for header (groups use two-line layout with "Group" label)
+      document.getElementById('headerContent').classList.remove('hidden');
+      document.getElementById('headerBranding').textContent = 'Group';
       const groupData = await apiCall(`/api/groups/${groupId}`);
       if (groupData) {
-        document.getElementById('headerTitle').textContent = groupData.name + ' ✓';
+        document.getElementById('headerPageLabel').textContent = groupData.name + ' ✓';
       }
 
-      document.getElementById('backBtn').classList.remove('hidden');
+      document.getElementById('backBtnContainer').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
 
@@ -2246,25 +2412,59 @@
       if (pollInterval) clearInterval(pollInterval);
       pollInterval = setInterval(() => loadGroupMessages(groupId), 2000);
 
-      if (window.matchMedia('(max-width: 768px)').matches) {
-        toggleSidebar();
-      }
-
       loadGroups();
     }
 
     // Load group messages
     async function loadGroupMessages(groupId) {
       if (!currentGroupId) return;
-
-      const data = await apiCall(`/api/groups/${groupId}/messages?limit=50`);
-      if (!data) return;
+      if (!groupId || isNaN(groupId)) {
+        console.error('[loadGroupMessages] Invalid groupId:', groupId);
+        return;
+      }
 
       const list = document.getElementById('messageList');
+      const endpoint = `/api/groups/${groupId}/messages?limit=50`;
+
+      console.log('[loadGroupMessages] Fetching:', {
+        groupId,
+        currentUserId: currentUser?.id,
+        currentUsername: currentUser?.username,
+        userWallet: currentUser?.usernode_pubkey,
+        timestamp: new Date().toISOString(),
+        endpoint
+      });
+
+      const data = await apiCall(endpoint);
+      if (!data) {
+        console.error('[loadGroupMessages] No response from API');
+        return;
+      }
+
+      console.log('[loadGroupMessages] API response:', {
+        hasError: !!data.error,
+        messageCount: data.messages?.length || 0,
+        responseBody: data
+      });
 
       if (data.error) {
-        console.error('[loadGroupMessages] error:', data.error, 'status:', data.status);
-        list.innerHTML = '<div class="text-center text-red-600 dark:text-red-400 py-8"><div class="text-sm">Failed to load group messages</div></div>';
+        console.error('[loadGroupMessages] API error:', {
+          error: data.error,
+          status: data.status,
+          groupId,
+          endpoint
+        });
+        list.innerHTML = `
+          <div class="text-center py-8 flex flex-col items-center justify-center h-full">
+            <div class="text-red-600 dark:text-red-400">
+              <div class="text-sm font-medium mb-2">Failed to load messages</div>
+              <div class="text-xs text-zinc-600 dark:text-zinc-400 mb-4">${escapeHtml(data.error)}</div>
+            </div>
+            <button onclick="loadGroupMessages(${groupId})" class="px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-xs font-medium transition">
+              Retry
+            </button>
+          </div>
+        `;
         return;
       }
 
@@ -2273,12 +2473,22 @@
         return;
       }
 
-      const wasAtBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 50;
-      list.innerHTML = data.messages.map(msg => renderMessage(msg)).join('');
+      // Check if this is an initial load (empty list) or an update
+      const isInitialLoad = list.children.length === 0;
+      const wasAtBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 500;
+      list.innerHTML = data.messages.map(msg => renderMessage(msg, 'group')).join('');
 
-      if (wasAtBottom) {
-        list.scrollTop = list.scrollHeight;
+      // Auto-scroll to bottom on initial load or if user was already at bottom (within 500px)
+      if (isInitialLoad || wasAtBottom) {
+        setTimeout(() => {
+          list.scrollTop = list.scrollHeight - list.clientHeight;
+        }, 15);
       }
+
+      console.log('[loadGroupMessages] Rendered messages:', {
+        count: data.messages.length,
+        groupId
+      });
 
       // Mark as read
       await apiCall(`/api/groups/${groupId}/read`, {
@@ -2607,8 +2817,8 @@
           const memberList = groupData.members.map(m => `${m.username} ${m.role === 'creator' ? '(Creator)' : ''}`).join(', ');
           alert(`${groupData.name}\n\nMembers: ${memberList}`);
         }
+        document.getElementById('groupContextMenu').classList.add('hidden');
       });
-      document.getElementById('groupContextMenu').classList.add('hidden');
     }
 
     // Manage group members
@@ -2647,7 +2857,7 @@
         const resultsContainer = document.getElementById('memberSearchResultsContainer');
         let searchTimeout;
 
-        searchInput.addEventListener('input', async (e) => {
+        const handleSearchInput = async (e) => {
           clearTimeout(searchTimeout);
           const query = e.target.value.trim();
           resultsContainer.innerHTML = '';
@@ -2682,7 +2892,13 @@
 
             resultsContainer.innerHTML = resultHtml;
           }, 500);
-        });
+        };
+
+        if (searchInput._cachedSearchHandler) {
+          searchInput.removeEventListener('input', searchInput._cachedSearchHandler);
+        }
+        searchInput._cachedSearchHandler = handleSearchInput;
+        searchInput.addEventListener('input', handleSearchInput);
       } else {
         document.getElementById('memberSearchInput').disabled = true;
         document.getElementById('memberSearchInput').placeholder = 'Only group creator can add members';
@@ -2922,7 +3138,7 @@
       sortedDates.forEach(date => {
         historyHtml += `<div class="text-center py-2 text-xs text-zinc-600 dark:text-zinc-400">${date}</div>`;
         messagesByDate[date].forEach(msg => {
-          const msgHtml = renderMessage(msg);
+          const msgHtml = renderMessage(msg, 'group');
           if (msgHtml) historyHtml += msgHtml;
         });
       });
@@ -2949,8 +3165,13 @@
       currentConvId = convId;
       currentOtherId = otherId;
       currentContactName = username;
-      document.getElementById('headerTitle').textContent = username + ' ✓';
-      document.getElementById('backBtn').classList.remove('hidden');
+      document.getElementById('headerTitle').innerHTML = username + ' <span class="text-xs text-zinc-500 dark:text-zinc-400">● Online</span>';
+      document.getElementById('backBtnContainer').classList.remove('hidden');
+      // For direct conversations, use the two-line header with "Direct" label instead of "Guardian"
+      document.getElementById('headerContent').classList.remove('hidden');
+      document.getElementById('headerBranding').textContent = 'Direct';
+      document.getElementById('headerPageLabel').innerHTML = username + ' <span class="text-xs text-zinc-500 dark:text-zinc-400">● Online</span>';
+      document.getElementById('backBtnContainer').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
       document.getElementById('messageHistoryBtn').classList.add('hidden');
 
@@ -2969,17 +3190,59 @@
 
     async function loadMessages() {
       if (!currentConvId) return;
-      const data = await apiCall(`/api/conversations/${currentConvId}?limit=50`);
-      if (!data) return;
+      if (!currentConvId || isNaN(currentConvId)) {
+        console.error('[loadMessages] Invalid conversationId:', currentConvId);
+        return;
+      }
 
       const list = document.getElementById('messageList');
+      const endpoint = `/api/conversations/${currentConvId}?limit=50`;
+
+      console.log('[loadMessages] Fetching:', {
+        conversationId: currentConvId,
+        currentUserId: currentUser?.id,
+        currentUsername: currentUser?.username,
+        userWallet: currentUser?.usernode_pubkey,
+        recipientId: currentOtherId,
+        recipientUsername: currentContactName,
+        recipientWallet: currentContactAddress,
+        timestamp: new Date().toISOString(),
+        endpoint
+      });
+
+      const data = await apiCall(endpoint);
+      if (!data) {
+        console.error('[loadMessages] No response from API');
+        return;
+      }
+
+      console.log('[loadMessages] API response:', {
+        hasError: !!data.error,
+        messageCount: data.messages?.length || 0,
+        responseBody: data
+      });
 
       if (data.error) {
-        console.error('[loadMessages] error:', data.error, 'status:', data.status);
+        console.error('[loadMessages] API error:', {
+          error: data.error,
+          status: data.status,
+          conversationId: currentConvId,
+          endpoint
+        });
         if (data.status === 403) {
           list.innerHTML = '<div class="text-center text-red-600 dark:text-red-400 py-8"><div class="text-sm">This conversation is no longer available</div></div>';
         } else {
-          list.innerHTML = '<div class="text-center text-red-600 dark:text-red-400 py-8"><div class="text-sm">Failed to load messages</div><button onclick="loadMessages()" class="mt-2 px-3 py-1 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded text-xs text-zinc-900 dark:text-zinc-100">Retry</button></div>';
+          list.innerHTML = `
+            <div class="text-center py-8 flex flex-col items-center justify-center h-full">
+              <div class="text-red-600 dark:text-red-400">
+                <div class="text-sm font-medium mb-2">Failed to load messages</div>
+                <div class="text-xs text-zinc-600 dark:text-zinc-400 mb-4">${escapeHtml(data.error)}</div>
+              </div>
+              <button onclick="loadMessages()" class="px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-xs font-medium transition">
+                Retry
+              </button>
+            </div>
+          `;
         }
         return;
       }
@@ -2989,18 +3252,26 @@
         return;
       }
 
-      // Preserve scroll position if we're just updating existing messages
-      const wasAtBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 50;
+      // Check if this is an initial load (empty list) or an update
+      const isInitialLoad = list.children.length === 0;
+      const wasAtBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 500;
       const messageIds = new Set(data.messages.map(m => m.id));
       const oldMessageIds = new Set(Array.from(list.querySelectorAll('[data-message-id]')).map(el => parseInt(el.getAttribute('data-message-id'))));
 
       // Re-render message list with IDs for stable DOM references
-      list.innerHTML = data.messages.map(msg => renderMessage(msg)).join('');
+      list.innerHTML = data.messages.map(msg => renderMessage(msg, 'dm')).join('');
 
-      // Restore scroll position
-      if (wasAtBottom) {
-        list.scrollTop = list.scrollHeight;
+      // Auto-scroll to bottom on initial load or if user was already at bottom (within 500px)
+      if (isInitialLoad || wasAtBottom) {
+        setTimeout(() => {
+          list.scrollTop = list.scrollHeight - list.clientHeight;
+        }, 15);
       }
+
+      console.log('[loadMessages] Rendered messages:', {
+        count: data.messages.length,
+        conversationId: currentConvId
+      });
 
       await apiCall(`/api/conversations/${currentConvId}/read`, {
         method: 'PUT',
@@ -3008,29 +3279,36 @@
       });
     }
 
-    function renderMessage(msg) {
+    function renderMessage(msg, context) {
       const isOwn = msg.senderId === currentUser.id;
       const baseClass = isOwn ? 'ml-auto bg-cyan-600 dark:bg-cyan-600 text-white' : 'mr-auto bg-zinc-200 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100';
       const alignClass = isOwn ? 'justify-end' : 'justify-start';
+      const shouldShowSenderName = context === 'group';
+      const isMobile = document.body.classList.contains('layout-mobile');
+      const marginClass = isMobile ? 'mx-1.5' : 'mx-2';
 
       if (msg.type === 'text') {
+        const senderNameLine = shouldShowSenderName ? `<div class="text-xs opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'} mb-1">${msg.senderUsername}</div>` : '';
+        const bubbleClasses = isMobile ? 'px-3 py-1.5 rounded-xl text-sm' : 'px-4 py-2 rounded-2xl text-base';
         return `
-          <div class="flex ${alignClass}" data-message-id="${msg.id}">
-            <div class="max-w-xs px-4 py-2 rounded-2xl ${baseClass} message-bubble">
-              <div class="text-xs opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'} mb-1">${msg.senderUsername}</div>
+          <div class="flex ${alignClass} ${marginClass}" data-message-id="${msg.id}">
+            <div class="max-w-xs ${bubbleClasses} ${baseClass} message-bubble">
+              ${senderNameLine}
               <div>${msg.content.text}</div>
-              <div class="text-xs mt-2 opacity-70">${formatTime(new Date(msg.createdAt))}</div>
+              <div class="text-xs mt-1.5 opacity-70">${formatTime(new Date(msg.createdAt))}</div>
             </div>
           </div>
         `;
       }
 
       if (msg.type === 'image') {
+        const senderNameLine = shouldShowSenderName ? `<div class="text-xs px-4 py-2 opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'}">${msg.senderUsername}</div>` : '';
+        const borderRadius = isMobile ? 'rounded-lg' : 'rounded-2xl';
         return `
-          <div class="flex ${alignClass}" data-message-id="${msg.id}">
-            <div class="max-w-xs rounded-2xl overflow-hidden ${baseClass}">
+          <div class="flex ${alignClass} ${marginClass}" data-message-id="${msg.id}">
+            <div class="max-w-xs ${borderRadius} overflow-hidden ${baseClass}">
               <img src="${msg.content.imageUrl}" alt="Message image" class="max-w-xs cursor-pointer hover:opacity-80 transition" onclick="showLightbox('${msg.content.imageUrl}')">
-              <div class="text-xs px-4 py-2 opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'}">${msg.senderUsername}</div>
+              ${senderNameLine}
             </div>
           </div>
         `;
@@ -3038,14 +3316,18 @@
 
       if (msg.type === 'token') {
         const c = msg.content;
+        const memoLine = c.memo && c.memo !== 'No memo' ? `<div class="text-xs mt-1 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'}">${c.memo}</div>` : '';
+        const statusIcon = c.status === 'confirmed' ? '✓' : '⏳';
+        const bubbleClasses = isMobile ? 'px-2.5 py-1.5 rounded-lg text-sm' : 'px-3 py-2 rounded-2xl text-base';
         return `
-          <div class="flex ${alignClass}" data-message-id="${msg.id}">
-            <div class="max-w-xs px-4 py-2 rounded-2xl ${baseClass} border-2 border-yellow-500/40 message-bubble">
-              <div class="text-xs mb-1 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'}">💰 Token Transfer</div>
-              <div class="font-bold text-lg">${c.amount} tokens</div>
-              <div class="text-xs mt-1 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'}">${c.memo || 'No memo'}</div>
-              <div class="text-xs mt-2 font-medium">${c.status === 'confirmed' ? '✓ Confirmed' : '⏳ Pending'}</div>
-              <div class="text-xs mt-1 opacity-70">${formatTime(new Date(msg.createdAt))}</div>
+          <div class="flex ${alignClass} ${marginClass}" data-message-id="${msg.id}">
+            <div class="max-w-xs ${bubbleClasses} ${baseClass} border-2 border-yellow-500/40 message-bubble">
+              <div class="font-bold ${isMobile ? 'text-base' : 'text-lg'} flex items-center justify-between gap-2">
+                <span>💰 ${c.amount} tokens</span>
+                <span class="text-xs">${statusIcon}</span>
+              </div>
+              ${memoLine}
+              <div class="text-xs mt-1.5 opacity-70">${formatTime(new Date(msg.createdAt))}</div>
             </div>
           </div>
         `;
@@ -3299,11 +3581,18 @@
       document.getElementById('messagesView').classList.remove('hidden');
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.add('hidden');
+      document.getElementById('chatView').classList.remove('active-chat');
       document.getElementById('feedView').classList.add('hidden');
       document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
+      document.getElementById('inputFooter').classList.remove('footer-in-view');
+      document.getElementById('header').classList.remove('header-chat-fixed');
       document.getElementById('headerTitle').textContent = 'Guardian';
-      document.getElementById('backBtn').classList.add('hidden');
+      document.getElementById('backBtnContainer').classList.add('hidden');
+      document.getElementById('headerContent').classList.remove('hidden');
+      document.getElementById('headerBranding').textContent = 'Guardian';
+      document.getElementById('headerPageLabel').textContent = 'Messages';
+      document.getElementById('backBtnContainer').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
 
@@ -3359,7 +3648,6 @@
               <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${contact.nickname || contact.username} ${contact.verified ? '<span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
               <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${contact.usernode_pubkey || 'No wallet'}</div>
             </div>
-            <button onclick="event.stopPropagation(); showDeleteContactModal(${contact.id}, '${(contact.nickname || contact.username).replace(/'/g, "\\'")}')" class="text-zinc-600 dark:text-zinc-500 hover:text-red-600 dark:hover:text-red-400 text-sm transition">🗑️</button>
           </div>
         </div>
       `).join('');
@@ -3392,7 +3680,6 @@
               <div class="font-medium truncate text-sm text-zinc-900 dark:text-zinc-100">${contact.nickname || contact.username} ${contact.verified ? '<span class="text-xs text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
               <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${contact.usernode_pubkey || 'No wallet'}</div>
             </div>
-            <button onclick="event.stopPropagation(); showDeleteContactModal(${contact.id}, '${(contact.nickname || contact.username).replace(/'/g, "\\'")}')" class="text-zinc-500 dark:text-zinc-500 hover:text-red-600 dark:hover:text-red-400 text-xs transition flex-shrink-0">🗑️</button>
           </div>
         </div>
       `).join('');
@@ -3480,7 +3767,6 @@
                   <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${displayName} ${item.verified ? '<span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
                   <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${wallet}</div>
                 </div>
-                <button onclick="event.stopPropagation(); showDeleteContactModal(${item.id}, '${displayName.replace(/'/g, "\\'")}')" class="text-zinc-600 dark:text-zinc-500 hover:text-red-600 dark:hover:text-red-400 text-sm transition">🗑️</button>
               </div>
             </div>
           `;
@@ -3605,8 +3891,11 @@
         const contact = contactRes.contacts.find(c => c.userId === otherId);
         if (contact) {
           currentContactId = contact.id;
+          console.log('Contact found:', contact.id, 'for user:', otherId);
         }
       }
+
+      console.log('Contact ID after fetch:', currentContactId, '(otherId:', otherId, ')');
 
       // Update menu button label based on contact status
       await updateContactMenuLabel();
@@ -3616,6 +3905,23 @@
     }
 
     // ===== CONVERSATION MENU FUNCTIONS =====
+
+    let isContactActionInProgress = false;
+    let isDeleteConvInProgress = false;
+
+    function openContactProfile() {
+      // Close the dropdown menu
+      document.getElementById('conversationMenuDropdown').classList.add('hidden');
+
+      if (!currentOtherId) {
+        alert('User not found');
+        return;
+      }
+
+      // TODO: Implement profile view navigation
+      // For now, show a placeholder - can be replaced with actual profile view
+      alert(`View profile for ${currentContactName || 'this user'}`);
+    }
 
     function toggleConversationMenu(event) {
       event.stopPropagation();
@@ -3629,41 +3935,63 @@
         return;
       }
 
+      // Prevent duplicate API calls
+      if (isContactActionInProgress) {
+        console.warn('Contact action already in progress');
+        return;
+      }
+
+      isContactActionInProgress = true;
+
       // Close the dropdown menu
       document.getElementById('conversationMenuDropdown').classList.add('hidden');
+      const btn = document.getElementById('addContactMenuBtn');
+      if (btn) btn.disabled = true;
 
-      if (currentContactId) {
-        // Remove contact
-        const data = await apiCall(`/api/contacts/${currentContactId}`, {
-          method: 'DELETE',
-          body: JSON.stringify({})
-        });
+      try {
+        if (currentContactId) {
+          // Remove contact
+          console.log('Removing contact:', currentContactId, 'for user:', currentOtherId);
+          const data = await apiCall(`/api/contacts/${currentContactId}`, {
+            method: 'DELETE',
+            body: JSON.stringify({})
+          });
 
-        if (data && data.ok) {
-          showToast('Contact removed', 'success');
-          currentContactId = null;
-          await updateContactMenuLabel();
-          // Refresh conversation list to move conversation from Your Active Chats to Pending Requests
-          await loadConversations();
+          if (data && data.ok) {
+            currentContactId = null;
+            await updateContactMenuLabel();
+            showToast('Contact removed', 'success');
+            // Refresh conversation list to move conversation from Your Active Chats to Pending Requests
+            await loadConversations();
+          } else {
+            const errorMsg = 'Failed to remove contact' + (data?.status ? ' (HTTP ' + data.status + ')' : '') + ': ' + (data?.error || 'Unknown error');
+            showToast(errorMsg, 'error');
+            console.error(errorMsg, data);
+          }
         } else {
-          showToast('Failed to remove contact', 'error');
-        }
-      } else {
-        // Add contact
-        const data = await apiCall('/api/contacts/by-id', {
-          method: 'POST',
-          body: JSON.stringify({ user_id: currentOtherId, nickname: null })
-        });
+          // Add contact
+          console.log('Adding contact for user:', currentOtherId);
+          const data = await apiCall('/api/contacts/by-id', {
+            method: 'POST',
+            body: JSON.stringify({ user_id: currentOtherId, nickname: null })
+          });
 
-        if (data && !data.error) {
-          showToast('Contact added', 'success');
-          currentContactId = data.id;
-          await updateContactMenuLabel();
-          // Refresh conversation list to move conversation from Pending Requests to Your Active Chats
-          await loadConversations();
-        } else {
-          showToast('Failed to add contact: ' + (data?.error || 'Unknown error'), 'error');
+          if (data && !data.error) {
+            currentContactId = data.id;
+            console.log('Contact added with ID:', currentContactId);
+            await updateContactMenuLabel();
+            showToast('Contact added', 'success');
+            // Refresh conversation list to move conversation from Pending Requests to Your Active Chats
+            await loadConversations();
+          } else {
+            const errorMsg = 'Failed to add contact (HTTP ' + (data?.status || '?') + '): ' + (data?.error || 'Unknown error');
+            showToast(errorMsg, 'error');
+            console.error(errorMsg, data);
+          }
         }
+      } finally {
+        isContactActionInProgress = false;
+        if (btn) btn.disabled = false;
       }
     }
 
@@ -3699,18 +4027,37 @@
         return;
       }
 
-      const data = await apiCall(`/api/conversations/${currentConvId}/archive`, {
-        method: 'POST',
-        body: JSON.stringify({})
-      });
+      // Prevent duplicate API calls
+      if (isDeleteConvInProgress) {
+        console.warn('Delete conversation already in progress');
+        return;
+      }
 
-      if (data && data.ok) {
-        showToast('Conversation deleted', 'success');
-        hideDeleteConversationModal();
-        showConversationsView();
-        loadConversations();
-      } else {
-        showToast('Failed to delete conversation', 'error');
+      isDeleteConvInProgress = true;
+
+      const btn = document.getElementById('deleteConversationConfirm');
+      if (btn) btn.disabled = true;
+
+      try {
+        console.log('Deleting conversation:', currentConvId);
+        const data = await apiCall(`/api/conversations/${currentConvId}/archive`, {
+          method: 'POST',
+          body: JSON.stringify({})
+        });
+
+        if (data && data.ok) {
+          hideDeleteConversationModal();
+          showConversationsView();
+          showToast('Conversation deleted', 'success');
+          loadConversations();
+        } else {
+          const errorMsg = 'Failed to delete conversation' + (data?.status ? ' (HTTP ' + data.status + ')' : '') + ': ' + (data?.error || 'Unknown error');
+          showToast(errorMsg, 'error');
+          console.error(errorMsg, data);
+        }
+      } finally {
+        isDeleteConvInProgress = false;
+        if (btn) btn.disabled = false;
       }
     }
 
@@ -3718,9 +4065,12 @@
       document.getElementById('messagesView').classList.add('hidden');
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.remove('hidden');
+      document.getElementById('chatView').classList.add('active-chat');
       document.getElementById('feedView').classList.add('hidden');
       document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('hidden');
+      document.getElementById('inputFooter').classList.add('footer-in-view');
+      document.getElementById('header').classList.add('header-chat-fixed');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
     }
 
@@ -3729,11 +4079,18 @@
       document.getElementById('messagesView').classList.add('hidden');
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.add('hidden');
+      document.getElementById('chatView').classList.remove('active-chat');
       document.getElementById('feedView').classList.add('hidden');
       document.getElementById('contactsView').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
+      document.getElementById('inputFooter').classList.remove('footer-in-view');
+      document.getElementById('header').classList.remove('header-chat-fixed');
       document.getElementById('headerTitle').textContent = 'Contacts';
-      document.getElementById('backBtn').classList.add('hidden');
+      document.getElementById('backBtnContainer').classList.add('hidden');
+      document.getElementById('headerContent').classList.remove('hidden');
+      document.getElementById('headerBranding').textContent = 'Guardian';
+      document.getElementById('headerPageLabel').textContent = 'Contacts';
+      document.getElementById('backBtnContainer').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
@@ -3746,14 +4103,22 @@
       document.getElementById('messagesView').classList.add('hidden');
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.add('hidden');
+      document.getElementById('chatView').classList.remove('active-chat');
       document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('feedView').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
+      document.getElementById('inputFooter').classList.remove('footer-in-view');
+      document.getElementById('header').classList.remove('header-chat-fixed');
       document.getElementById('headerTitle').textContent = 'Feed';
-      document.getElementById('backBtn').classList.add('hidden');
+      document.getElementById('backBtnContainer').classList.add('hidden');
+      document.getElementById('headerContent').classList.remove('hidden');
+      document.getElementById('headerBranding').textContent = 'Guardian';
+      document.getElementById('headerPageLabel').textContent = 'Feed';
+      document.getElementById('backBtnContainer').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
+      loadUserLikes();
       loadFeedPosts(0);
     }
 
@@ -3761,6 +4126,69 @@
 
     let feedOffset = 0;
     let feedHasMore = true;
+    let userLikedPostIds = new Set();
+
+    async function loadUserLikes() {
+      try {
+        const data = await apiCall('/api/feed/posts/likes');
+        if (data && data.likedPostIds) {
+          userLikedPostIds = new Set(data.likedPostIds);
+          updateLikeButtons();
+        }
+      } catch (err) {
+        console.error('Error loading user likes:', err);
+      }
+    }
+
+    function updateLikeButtons() {
+      userLikedPostIds.forEach(postId => {
+        const btn = document.getElementById(`likeBtn-${postId}`);
+        if (btn) {
+          btn.classList.add('text-red-600', 'dark:text-red-400');
+          btn.classList.remove('text-zinc-600', 'dark:text-zinc-400');
+        }
+      });
+    }
+
+    async function toggleLike(postId, event) {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const isLiked = userLikedPostIds.has(postId);
+      const endpoint = `/api/feed/posts/${postId}/like`;
+      const method = isLiked ? 'DELETE' : 'POST';
+
+      try {
+        const data = await apiCall(endpoint, { method });
+        if (data && data.ok) {
+          if (data.liked) {
+            userLikedPostIds.add(postId);
+          } else {
+            userLikedPostIds.delete(postId);
+          }
+
+          const countEl = document.getElementById(`likeCount-${postId}`);
+          const btnEl = document.getElementById(`likeBtn-${postId}`);
+
+          if (countEl) {
+            countEl.textContent = data.likeCount || 0;
+          }
+
+          if (btnEl) {
+            if (data.liked) {
+              btnEl.classList.add('text-red-600', 'dark:text-red-400');
+              btnEl.classList.remove('text-zinc-600', 'dark:text-zinc-400');
+            } else {
+              btnEl.classList.remove('text-red-600', 'dark:text-red-400');
+              btnEl.classList.add('text-zinc-600', 'dark:text-zinc-400');
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error toggling like:', err);
+        showToast('Failed to update like', 'error');
+      }
+    }
 
     async function loadFeedPosts(offset) {
       try {
@@ -3827,20 +4255,20 @@
 
     function renderFeedPost(post) {
       const postEl = document.createElement('div');
-      postEl.className = 'border border-zinc-300 dark:border-zinc-700 rounded-lg p-4 bg-white dark:bg-zinc-800 hover:shadow-sm dark:hover:shadow-lg transition feed-post-enter';
+      postEl.className = 'p-3 bg-white dark:bg-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-lg transition feed-post-enter';
 
       const timestamp = formatRelativeTime(post.createdAt);
 
       let content = '';
       if (post.content.text) {
-        content += `<p class="text-zinc-900 dark:text-zinc-100 mb-3">${escapeHtml(post.content.text)}</p>`;
+        content += `<p class="text-zinc-900 dark:text-zinc-100 mb-2 text-sm">${escapeHtml(post.content.text)}</p>`;
       }
 
       if (post.content.link) {
         content += `
-          <a href="${escapeHtml(post.content.link)}" target="_blank" rel="noopener noreferrer" class="block p-2 border border-zinc-200 dark:border-zinc-700 rounded hover:bg-zinc-100 dark:hover:bg-zinc-700 transition mb-3">
+          <a href="${escapeHtml(post.content.link)}" target="_blank" rel="noopener noreferrer" class="block p-2 bg-zinc-50 dark:bg-zinc-700/30 rounded hover:bg-zinc-100 dark:hover:bg-zinc-700/50 transition mb-2">
             <div class="flex gap-2 items-start">
-              ${post.content.linkImage ? `<img src="${escapeHtml(post.content.linkImage)}" alt="preview" class="w-12 h-12 object-cover rounded flex-shrink-0" onerror="this.style.display='none'">` : ''}
+              ${post.content.linkImage ? `<img src="${escapeHtml(post.content.linkImage)}" alt="preview" class="w-10 h-10 object-cover rounded flex-shrink-0" onerror="this.style.display='none'">` : ''}
               <div class="flex-1 min-w-0">
                 ${post.content.linkTitle ? `<div class="font-medium text-cyan-600 dark:text-cyan-400 truncate text-xs">${escapeHtml(post.content.linkTitle)}</div>` : ''}
               </div>
@@ -3854,22 +4282,24 @@
         ? `<img src="${escapeHtml(post.avatarUrl)}" alt="${escapeHtml(post.username)}" class="w-8 h-8 rounded-full object-cover flex-shrink-0" onerror="this.style.display='none'">`
         : `<div class="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">${avatarInitial}</div>`;
 
+      const onChainBadge = post.onChain ? '<span class="inline-block ml-1 px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-xs rounded font-medium">✓ On-Chain</span>' : '';
+
       postEl.innerHTML = `
-        <div class="flex gap-3">
+        <div class="flex gap-2">
           ${avatarHtml}
-          <div class="flex-1">
-            <div class="flex items-center gap-2 mb-2">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-1 flex-wrap mb-1">
               <span class="font-medium text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username)}</span>
               ${post.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs">✓</span>' : ''}
-              <span class="text-xs text-zinc-600 dark:text-zinc-500">${timestamp}</span>
+              <span class="text-xs text-zinc-500 dark:text-zinc-400">${timestamp}</span>
+              ${onChainBadge}
             </div>
             ${content}
-            <div class="mt-3 pt-3 border-t border-zinc-200 dark:border-zinc-700">
-              <button onclick="toggleComments(${post.id})" class="px-3 py-1 bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300 rounded text-xs font-medium hover:bg-cyan-200 dark:hover:bg-cyan-800/50 transition">
-                <span id="commentCount-${post.id}">0</span> comments
-              </button>
-              <div id="commentsSection-${post.id}" class="hidden mt-3 space-y-3 max-h-96 overflow-y-auto"></div>
+            <div class="flex gap-3 mt-2 text-xs text-zinc-600 dark:text-zinc-400">
+              <button onclick="toggleLike(${post.id}, event)" class="hover:text-red-600 dark:hover:text-red-400 transition cursor-pointer" id="likeBtn-${post.id}">❤️ <span id="likeCount-${post.id}">${post.likeCount || 0}</span></button>
+              <button onclick="toggleComments(${post.id})" class="hover:text-cyan-600 dark:hover:text-cyan-400 transition">💬 <span id="commentCount-${post.id}">${post.commentCount || 0}</span></button>
             </div>
+            <div id="commentsSection-${post.id}" class="hidden mt-2 space-y-2 max-h-48 overflow-y-auto"></div>
           </div>
         </div>
       `;
@@ -3877,9 +4307,36 @@
       return postEl;
     }
 
-    async function submitFeedPost() {
-      const textInput = document.getElementById('feedTextInput');
-      let text = textInput.value.trim();
+    function openAttachmentMenu() {
+      showToast('Image attachments coming soon (Phase 2)', 'info');
+    }
+
+    function openFeedComposeModal() {
+      const modal = document.getElementById('feedComposeModal');
+      const input = document.getElementById('feedComposeInput');
+      modal.classList.remove('hidden');
+      // Trigger animation by removing initial opacity-0 state
+      requestAnimationFrame(() => {
+        modal.style.opacity = '1';
+      });
+      input.focus();
+    }
+
+    function closeFeedComposeModal() {
+      const modal = document.getElementById('feedComposeModal');
+      const input = document.getElementById('feedComposeInput');
+      // Animate out
+      modal.style.opacity = '0';
+      // Wait for animation to complete before hiding
+      setTimeout(() => {
+        modal.classList.add('hidden');
+        input.value = '';
+      }, 300);
+    }
+
+    async function submitFeedPostFromModal() {
+      const composeInput = document.getElementById('feedComposeInput');
+      let text = composeInput.value.trim();
       let link = null;
 
       // Extract URL from text
@@ -3890,7 +4347,7 @@
       }
 
       if (!text && !link) {
-        alert('Please enter some text or a link');
+        showToast('Please enter some text or a link', 'error');
         return;
       }
 
@@ -3906,17 +4363,66 @@
         });
 
         if (!data || data.error) {
-          alert('Failed to post: ' + (data?.error || 'Unknown error'));
+          showToast('Failed to post: ' + (data?.error || 'Unknown error'), 'error');
           return;
         }
 
-        textInput.value = '';
+        composeInput.value = '';
+        closeFeedComposeModal();
         feedOffset = 0;
         feedHasMore = true;
         loadFeedPosts(0);
+        showToast('Post published', 'success');
       } catch (err) {
         console.error('Error posting:', err);
-        alert('Failed to post');
+        showToast('Failed to post', 'error');
+      }
+    }
+
+    async function submitFeedPost() {
+      const textInput = document.getElementById('feedTextInput');
+      const minimalInput = document.getElementById('feedMinimalInput');
+      const activeInput = minimalInput && minimalInput.offsetParent !== null ? minimalInput : textInput;
+      let text = activeInput.value.trim();
+      let link = null;
+
+      // Extract URL from text
+      const urlMatch = text.match(/(https?:\/\/[^\s]+)/);
+      if (urlMatch) {
+        link = urlMatch[1];
+        text = text.replace(urlMatch[0], '').trim();
+      }
+
+      if (!text && !link) {
+        showToast('Please enter some text or a link', 'error');
+        return;
+      }
+
+      try {
+        const payload = { text };
+        if (link) {
+          payload.link = link;
+        }
+
+        const data = await apiCall('/api/feed/posts', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+
+        if (!data || data.error) {
+          showToast('Failed to post: ' + (data?.error || 'Unknown error'), 'error');
+          return;
+        }
+
+        if (textInput) textInput.value = '';
+        if (minimalInput) minimalInput.value = '';
+        feedOffset = 0;
+        feedHasMore = true;
+        loadFeedPosts(0);
+        showToast('Post published', 'success');
+      } catch (err) {
+        console.error('Error posting:', err);
+        showToast('Failed to post', 'error');
       }
     }
 
@@ -4115,15 +4621,6 @@
 
 
     // ===== WELCOME SCREEN FUNCTIONS =====
-
-    function showWelcome() {
-      document.getElementById('welcomeModal').classList.remove('hidden');
-    }
-
-    function dismissWelcome() {
-      document.getElementById('welcomeModal').classList.add('hidden');
-      showConversationsView();
-    }
 
     init();
   </script>

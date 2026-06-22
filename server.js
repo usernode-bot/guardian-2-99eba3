@@ -513,12 +513,12 @@ app.get('/api/conversations/:convId', async (req, res) => {
 
     const { rows: messages } = await pool.query(`
       SELECT id, sender_id,
-             (SELECT username FROM users WHERE id = sender_id) as sender_username,
+             (SELECT username FROM users WHERE id = m.sender_id) as sender_username,
              type, content, created_at, blockchain_recorded, blockchain_audit_log_id
-      FROM messages
+      FROM messages m
       WHERE conversation_id = $1
         AND created_at < $2
-        AND (deleted_by IS NULL OR NOT (deleted_by @> ARRAY[$3]))
+        AND (deleted_by IS NULL OR NOT (deleted_by @> ARRAY[$3]::integer[]))
       ORDER BY created_at DESC
       LIMIT $4
     `, [convId, before, userId, limit]);
@@ -735,7 +735,7 @@ app.put('/api/conversations/:convId/mute', async (req, res) => {
     await pool.query(`
       UPDATE conversations
       SET muted_by = CASE
-        WHEN muted_by @> ARRAY[$1] THEN array_remove(muted_by, $1)
+        WHEN muted_by @> ARRAY[$1]::integer[] THEN array_remove(muted_by, $1)
         ELSE CASE WHEN muted_by IS NULL THEN ARRAY[$1] ELSE array_append(muted_by, $1) END
       END
       WHERE id = $2
@@ -763,7 +763,7 @@ app.post('/api/conversations/:convId/archive', async (req, res) => {
     await pool.query(`
       UPDATE conversations
       SET archived_by = CASE
-        WHEN archived_by @> ARRAY[$1] THEN array_remove(archived_by, $1)
+        WHEN archived_by @> ARRAY[$1]::integer[] THEN array_remove(archived_by, $1)
         ELSE CASE WHEN archived_by IS NULL THEN ARRAY[$1] ELSE array_append(archived_by, $1) END
       END
       WHERE id = $2
@@ -1934,12 +1934,12 @@ app.get('/api/groups/:groupId/messages', async (req, res) => {
     // Get messages
     const { rows: messages } = await pool.query(`
       SELECT id, sender_id,
-             (SELECT username FROM users WHERE id = sender_id) as sender_username,
+             (SELECT username FROM users WHERE id = gm.sender_id) as sender_username,
              type, content, created_at, blockchain_recorded, blockchain_audit_log_id, deleted_by
-      FROM group_messages
+      FROM group_messages gm
       WHERE group_id = $1
         AND created_at < $2
-        AND (deleted_by IS NULL OR NOT (deleted_by @> ARRAY[$3]))
+        AND (deleted_by IS NULL OR NOT (deleted_by @> ARRAY[$3]::integer[]))
       ORDER BY created_at DESC
       LIMIT $4
     `, [groupId, before, userId, limit]);
@@ -2643,9 +2643,12 @@ app.get('/api/feed/posts', async (req, res) => {
         fp.user_id,
         fp.content,
         fp.created_at,
+        fp.on_chain,
         u.username,
         u.verified_at,
-        u.avatar_url
+        u.avatar_url,
+        (SELECT COUNT(*) FROM feed_likes WHERE post_id = fp.id)::INTEGER as like_count,
+        (SELECT COUNT(*) FROM feed_comments WHERE post_id = fp.id)::INTEGER as comment_count
       FROM feed_posts fp
       JOIN users u ON u.id = fp.user_id
       ORDER BY fp.created_at DESC
@@ -2667,7 +2670,10 @@ app.get('/api/feed/posts', async (req, res) => {
         verified: !!p.verified_at,
         avatarUrl: p.avatar_url,
         content: p.content,
-        createdAt: p.created_at
+        createdAt: p.created_at,
+        onChain: p.on_chain,
+        likeCount: p.like_count || 0,
+        commentCount: p.comment_count || 0
       })),
       hasMore
     });
@@ -2926,6 +2932,110 @@ app.delete('/api/feed/posts/:postId/comments/:commentId', async (req, res) => {
   } catch (err) {
     console.error('Error deleting comment:', err);
     res.status(500).json({ error: 'Failed to delete comment' });
+  }
+});
+
+// GET /api/feed/posts/likes - Get current user's liked post IDs
+app.get('/api/feed/posts/likes', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = req.user.id;
+
+    const { rows } = await pool.query(`
+      SELECT post_id FROM feed_likes WHERE user_id = $1
+    `, [userId]);
+
+    const likedPostIds = rows.map(r => r.post_id);
+    res.json({ likedPostIds });
+  } catch (err) {
+    console.error('Error fetching likes:', err);
+    res.status(500).json({ error: 'Failed to fetch likes' });
+  }
+});
+
+// POST /api/feed/posts/:postId/like - Like a post
+app.post('/api/feed/posts/:postId/like', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { postId } = req.params;
+    const userId = req.user.id;
+
+    // Verify post exists
+    const { rows: postRows } = await pool.query(`
+      SELECT id FROM feed_posts WHERE id = $1
+    `, [postId]);
+
+    if (postRows.length === 0) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    // Check if already liked
+    const { rows: likeRows } = await pool.query(`
+      SELECT id FROM feed_likes WHERE post_id = $1 AND user_id = $2
+    `, [postId, userId]);
+
+    if (likeRows.length > 0) {
+      return res.json({ ok: true, liked: true, message: 'Already liked' });
+    }
+
+    // Insert like
+    await pool.query(`
+      INSERT INTO feed_likes (post_id, user_id, created_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (post_id, user_id) DO NOTHING
+    `, [postId, userId]);
+
+    // Get updated count
+    const { rows: countRows } = await pool.query(`
+      SELECT COUNT(*)::INTEGER as like_count FROM feed_likes WHERE post_id = $1
+    `, [postId]);
+
+    res.json({ ok: true, liked: true, likeCount: countRows[0].like_count });
+  } catch (err) {
+    console.error('Error liking post:', err);
+    res.status(500).json({ error: 'Failed to like post' });
+  }
+});
+
+// DELETE /api/feed/posts/:postId/like - Unlike a post
+app.delete('/api/feed/posts/:postId/like', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { postId } = req.params;
+    const userId = req.user.id;
+
+    // Verify post exists
+    const { rows: postRows } = await pool.query(`
+      SELECT id FROM feed_posts WHERE id = $1
+    `, [postId]);
+
+    if (postRows.length === 0) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    // Delete like
+    await pool.query(`
+      DELETE FROM feed_likes WHERE post_id = $1 AND user_id = $2
+    `, [postId, userId]);
+
+    // Get updated count
+    const { rows: countRows } = await pool.query(`
+      SELECT COUNT(*)::INTEGER as like_count FROM feed_likes WHERE post_id = $1
+    `, [postId]);
+
+    res.json({ ok: true, liked: false, likeCount: countRows[0].like_count });
+  } catch (err) {
+    console.error('Error unliking post:', err);
+    res.status(500).json({ error: 'Failed to unlike post' });
   }
 });
 
@@ -3250,6 +3360,27 @@ async function start() {
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_feed_comments_user_id
         ON feed_comments(user_id)
+    `);
+
+    // Create feed_likes table (public - likes on feed posts)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS feed_likes (
+        id BIGSERIAL PRIMARY KEY,
+        post_id BIGINT NOT NULL REFERENCES feed_posts(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(post_id, user_id)
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_feed_likes_post_id
+        ON feed_likes(post_id)
+    `);
+
+    // Add on_chain column to feed_posts if it doesn't exist
+    await pool.query(`
+      ALTER TABLE feed_posts
+      ADD COLUMN IF NOT EXISTS on_chain BOOLEAN DEFAULT FALSE
     `);
 
     // Mark tables as private
@@ -3746,11 +3877,32 @@ async function start() {
 
       for (const post of feedPosts) {
         const createdAt = new Date(feedBaseTime.getTime() - post.offset);
+        const isOnChain = Math.random() > 0.5;
         await pool.query(`
-          INSERT INTO feed_posts (user_id, content, created_at, updated_at)
-          VALUES ($1, $2, $3, $3)
+          INSERT INTO feed_posts (user_id, content, on_chain, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, $4)
           ON CONFLICT DO NOTHING
-        `, [post.userId, JSON.stringify(post.content), createdAt]);
+        `, [post.userId, JSON.stringify(post.content), isOnChain, createdAt]);
+      }
+
+      // Seed feed likes on posts
+      const { rows: allPosts } = await pool.query(`
+        SELECT id, user_id FROM feed_posts LIMIT 10
+      `);
+
+      for (const post of allPosts) {
+        const likers = [alice, bob, charlie, david, emma].filter(id => id !== post.user_id);
+        const likeCount = Math.floor(Math.random() * likers.length) + 1;
+        const selectedLikers = likers.sort(() => Math.random() - 0.5).slice(0, likeCount);
+
+        for (const likerId of selectedLikers) {
+          const likeTime = new Date(feedBaseTime.getTime() - Math.random() * 3600000);
+          await pool.query(`
+            INSERT INTO feed_likes (post_id, user_id, created_at)
+            VALUES ($1, $2, $3)
+            ON CONFLICT DO NOTHING
+          `, [post.id, likerId, likeTime]);
+        }
       }
 
       // Seed feed comments
