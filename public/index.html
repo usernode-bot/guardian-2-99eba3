@@ -510,10 +510,14 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
         </svg>
       </button>
-      <button id="backBtn" class="text-sm text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 hidden transition">← Back</button>
+      <div id="backBtnContainer" class="relative group hidden">
+        <button id="backBtn" class="text-lg text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition">←</button>
+        <div class="absolute -bottom-6 left-0 px-2 py-1 bg-zinc-900 dark:bg-zinc-700 text-white dark:text-zinc-100 text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">Back</div>
+      </div>
       <!-- Guardian branding + page label system (used for Feed, Messages, Contacts, Settings, Groups) -->
       <div id="headerContent" class="flex flex-col items-start flex-1 gap-0">
         <div class="flex items-center gap-2">
+          <span id="headerTitle" class="hidden"></span>
           <div id="headerBranding" class="text-lg font-semibold text-zinc-900 dark:text-zinc-100 leading-tight">Guardian</div>
           <div id="headerNetworkStatusContainer" class="relative group">
             <span id="headerStatusDot" class="inline-block w-2 h-2 rounded-full bg-gray-400 transition-colors"></span>
@@ -1709,10 +1713,12 @@
       document.getElementById('settingsPanel').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('header').classList.remove('header-chat-fixed');
+      document.getElementById('headerTitle').textContent = 'Settings';
+      document.getElementById('backBtnContainer').classList.remove('hidden');
       document.getElementById('headerContent').classList.remove('hidden');
       document.getElementById('headerBranding').textContent = 'Guardian';
       document.getElementById('headerPageLabel').textContent = 'Settings';
-      document.getElementById('backBtn').classList.remove('hidden');
+      document.getElementById('backBtnContainer').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
       sidebarOpen = false;
@@ -2296,7 +2302,7 @@
         document.getElementById('headerPageLabel').textContent = groupData.name + ' ✓';
       }
 
-      document.getElementById('backBtn').classList.remove('hidden');
+      document.getElementById('backBtnContainer').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
 
@@ -3059,11 +3065,13 @@
       currentConvId = convId;
       currentOtherId = otherId;
       currentContactName = username;
+      document.getElementById('headerTitle').innerHTML = username + ' <span class="text-xs text-zinc-500 dark:text-zinc-400">● Online</span>';
+      document.getElementById('backBtnContainer').classList.remove('hidden');
       // For direct conversations, use the two-line header with "Direct" label instead of "Guardian"
       document.getElementById('headerContent').classList.remove('hidden');
       document.getElementById('headerBranding').textContent = 'Direct';
       document.getElementById('headerPageLabel').innerHTML = username + ' <span class="text-xs text-zinc-500 dark:text-zinc-400">● Online</span>';
-      document.getElementById('backBtn').classList.remove('hidden');
+      document.getElementById('backBtnContainer').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
       document.getElementById('messageHistoryBtn').classList.add('hidden');
 
@@ -3479,10 +3487,12 @@
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('footer-in-view');
       document.getElementById('header').classList.remove('header-chat-fixed');
+      document.getElementById('headerTitle').textContent = 'Guardian';
+      document.getElementById('backBtnContainer').classList.add('hidden');
       document.getElementById('headerContent').classList.remove('hidden');
       document.getElementById('headerBranding').textContent = 'Guardian';
       document.getElementById('headerPageLabel').textContent = 'Messages';
-      document.getElementById('backBtn').classList.add('hidden');
+      document.getElementById('backBtnContainer').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
 
@@ -3914,10 +3924,12 @@
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('footer-in-view');
       document.getElementById('header').classList.remove('header-chat-fixed');
+      document.getElementById('headerTitle').textContent = 'Contacts';
+      document.getElementById('backBtnContainer').classList.add('hidden');
       document.getElementById('headerContent').classList.remove('hidden');
       document.getElementById('headerBranding').textContent = 'Guardian';
       document.getElementById('headerPageLabel').textContent = 'Contacts';
-      document.getElementById('backBtn').classList.add('hidden');
+      document.getElementById('backBtnContainer').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
@@ -3936,10 +3948,12 @@
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('footer-in-view');
       document.getElementById('header').classList.remove('header-chat-fixed');
+      document.getElementById('headerTitle').textContent = 'Feed';
+      document.getElementById('backBtnContainer').classList.add('hidden');
       document.getElementById('headerContent').classList.remove('hidden');
       document.getElementById('headerBranding').textContent = 'Guardian';
       document.getElementById('headerPageLabel').textContent = 'Feed';
-      document.getElementById('backBtn').classList.add('hidden');
+      document.getElementById('backBtnContainer').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
