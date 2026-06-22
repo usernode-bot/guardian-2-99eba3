@@ -775,7 +775,7 @@
 
       <!-- Feed View -->
       <div id="feedView" class="hidden flex flex-col flex-1 overflow-hidden">
-        <div class="flex-1 flex flex-col overflow-hidden">
+        <div class="flex-1 flex flex-col overflow-y-auto">
           <!-- Post Composer -->
           <div class="sticky top-0 z-30 px-4 py-2 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 space-y-2">
             <div class="flex gap-2 items-end">
@@ -785,7 +785,7 @@
             </div>
           </div>
           <!-- Feed Posts List -->
-          <div id="feedList" class="flex-1 overflow-y-auto space-y-3 p-2">
+          <div id="feedList" class="flex-1 space-y-3 p-2">
             <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading feed...</div>
           </div>
         </div>
@@ -4028,8 +4028,9 @@
         // Setup infinite scroll
         if (feedHasMore) {
           const feedListEl = document.getElementById('feedList');
-          feedListEl.onscroll = () => {
-            if (feedListEl.scrollTop + feedListEl.clientHeight >= feedListEl.scrollHeight - 100) {
+          const feedWrapperEl = feedListEl.parentElement;
+          feedWrapperEl.onscroll = () => {
+            if (feedWrapperEl.scrollTop + feedWrapperEl.clientHeight >= feedWrapperEl.scrollHeight - 100) {
               if (feedHasMore) {
                 feedHasMore = false;
                 loadFeedPosts(feedOffset);
