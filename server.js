@@ -151,9 +151,12 @@ app.get('/api/user', async (req, res) => {
     return res.status(401).json({ error: 'Not authenticated' });
   }
   try {
-    const userRes = await pool.query(`SELECT network, view_mode FROM users WHERE id = $1`, [req.user.id]);
+    const userRes = await pool.query(`SELECT network, view_mode, avatar_url, created_at, bio FROM users WHERE id = $1`, [req.user.id]);
     const network = userRes.rows[0]?.network || 'testnet';
     const view_mode = userRes.rows[0]?.view_mode || 'web';
+    const avatar_url = userRes.rows[0]?.avatar_url || null;
+    const created_at = userRes.rows[0]?.created_at || null;
+    const bio = userRes.rows[0]?.bio || null;
     res.json({
       id: req.user.id,
       username: req.user.username,
@@ -161,6 +164,9 @@ app.get('/api/user', async (req, res) => {
       verified: !!req.user.verified_at,
       network: network,
       view_mode: view_mode,
+      avatar_url: avatar_url,
+      created_at: created_at,
+      bio: bio,
       isDemoMode: ENABLE_DEMO_MODE,
     });
   } catch (err) {
@@ -204,6 +210,100 @@ app.put('/api/user/view-mode', async (req, res) => {
   } catch (err) {
     console.error('Error updating view mode:', err);
     res.status(500).json({ error: 'Failed to update view mode' });
+  }
+});
+
+app.get('/api/user/stats', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
+
+    // Query posts count
+    const postsRes = await pool.query(`SELECT COUNT(*) as count FROM feed_posts WHERE user_id = $1`, [userId]);
+    const postsCount = parseInt(postsRes.rows[0]?.count || 0, 10);
+
+    // Query contacts count (contacts added BY this user)
+    const contactsRes = await pool.query(`SELECT COUNT(*) as count FROM user_contacts WHERE user_id = $1`, [userId]);
+    const contactsCount = parseInt(contactsRes.rows[0]?.count || 0, 10);
+
+    // Query messages count (direct + group messages sent by this user)
+    const directMessagesRes = await pool.query(`SELECT COUNT(*) as count FROM messages WHERE sender_id = $1`, [userId]);
+    const directCount = parseInt(directMessagesRes.rows[0]?.count || 0, 10);
+
+    const groupMessagesRes = await pool.query(`SELECT COUNT(*) as count FROM group_messages WHERE sender_id = $1`, [userId]);
+    const groupCount = parseInt(groupMessagesRes.rows[0]?.count || 0, 10);
+
+    const messagesCount = directCount + groupCount;
+
+    res.json({
+      postsCount: postsCount,
+      contactsCount: contactsCount,
+      messagesCount: messagesCount,
+    });
+  } catch (err) {
+    console.error('Error fetching user stats:', err);
+    res.status(500).json({ error: 'Failed to fetch user stats' });
+  }
+});
+
+app.put('/api/user/bio', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { bio } = req.body;
+    if (bio !== null && bio !== undefined && typeof bio !== 'string') {
+      return res.status(400).json({ error: 'Bio must be a string' });
+    }
+
+    const bioText = bio && typeof bio === 'string' ? bio.substring(0, 500) : null;
+
+    await pool.query(`UPDATE users SET bio = $1 WHERE id = $2`, [bioText, req.user.id]);
+    res.json({
+      status: 'updated',
+      bio: bioText,
+    });
+  } catch (err) {
+    console.error('Error updating bio:', err);
+    res.status(500).json({ error: 'Failed to update bio' });
+  }
+});
+
+app.post('/api/user/avatar', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    // For now, accept a data URI from the client (file converted to base64)
+    // In production, this would integrate with S3/Cloudinary/etc
+    const { dataUri } = req.body;
+    if (!dataUri) {
+      return res.status(400).json({ error: 'No image data provided' });
+    }
+
+    // Validate data URI format
+    if (!dataUri.startsWith('data:image/')) {
+      return res.status(400).json({ error: 'Invalid image format' });
+    }
+
+    // Store the data URI as avatar_url
+    await pool.query(`UPDATE users SET avatar_url = $1 WHERE id = $2`, [dataUri, req.user.id]);
+
+    res.json({
+      avatar_url: dataUri,
+      status: 'updated',
+    });
+  } catch (err) {
+    console.error('Error updating avatar:', err);
+    res.status(500).json({ error: 'Failed to update avatar' });
   }
 });
 
@@ -3110,6 +3210,11 @@ async function start() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS last_usernode_ping_at TIMESTAMPTZ
     `);
 
+    // Add bio column if it doesn't exist (idempotent migration)
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS bio VARCHAR(500)
+    `);
+
     // Create conversations table (marked private)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS conversations (
@@ -3405,16 +3510,18 @@ async function start() {
 
       // Create test users with wallet addresses
       await pool.query(`
-        INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at) VALUES
-          ($1, 'staging-demo-alice', 'ut1staging-alice-001', NOW(), NOW()),
-          ($2, 'staging-demo-bob', 'ut1staging-bob-001', NOW(), NOW()),
-          ($3, 'staging-demo-charlie', 'ut1staging-charlie-001', null, NOW()),
-          ($4, 'staging-demo-david', 'ut1staging-david-001', NOW(), NOW()),
-          ($5, 'staging-demo-emma', 'ut1staging-emma-001', NOW(), NOW())
+        INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at, bio, avatar_url) VALUES
+          ($1, 'staging-demo-alice', 'ut1staging-alice-001', NOW(), NOW() - INTERVAL '6 months', 'Staging demo user - Cloud architect | Web3 enthusiast', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EA%3C/text%3E%3C/svg%3E'),
+          ($2, 'staging-demo-bob', 'ut1staging-bob-001', NOW(), NOW() - INTERVAL '4 months', 'Staging demo user - Blockchain developer', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EB%3C/text%3E%3C/svg%3E'),
+          ($3, 'staging-demo-charlie', 'ut1staging-charlie-001', null, NOW() - INTERVAL '3 months', 'Staging demo user - Designer', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EC%3C/text%3E%3C/svg%3E'),
+          ($4, 'staging-demo-david', 'ut1staging-david-001', NOW(), NOW() - INTERVAL '2 months', 'Staging demo user - Product Manager', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3ED%3C/text%3E%3C/svg%3E'),
+          ($5, 'staging-demo-emma', 'ut1staging-emma-001', NOW(), NOW() - INTERVAL '1 month', 'Staging demo user - Security researcher', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EE%3C/text%3E%3C/svg%3E')
         ON CONFLICT (id) DO UPDATE SET
           username = EXCLUDED.username,
           usernode_pubkey = EXCLUDED.usernode_pubkey,
-          verified_at = EXCLUDED.verified_at
+          verified_at = EXCLUDED.verified_at,
+          bio = EXCLUDED.bio,
+          avatar_url = EXCLUDED.avatar_url
       `, [alice, bob, charlie, david, emma]);
 
       // Create conversation
@@ -3623,6 +3730,35 @@ async function start() {
         VALUES ($1, $2, NULL, NOW())
         ON CONFLICT (user_id, contact_user_id) DO NOTHING
       `, [alice, charlie]);
+
+      // Alice has David and Emma as additional contacts
+      await pool.query(`
+        INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
+        VALUES ($1, $2, NULL, NOW()), ($1, $3, NULL, NOW())
+        ON CONFLICT (user_id, contact_user_id) DO NOTHING
+      `, [alice, david, emma]);
+
+      // Seed feed posts for Alice (min 8-12 posts)
+      const postTimes = [
+        Date.now() - 7*24*60*60*1000,
+        Date.now() - 6*24*60*60*1000,
+        Date.now() - 5*24*60*60*1000,
+        Date.now() - 4*24*60*60*1000,
+        Date.now() - 3*24*60*60*1000,
+        Date.now() - 2*24*60*60*1000,
+        Date.now() - 24*60*60*1000,
+        Date.now() - 12*60*60*1000,
+        Date.now() - 6*60*60*1000,
+        Date.now() - 2*60*60*1000,
+      ];
+
+      for (let i = 0; i < postTimes.length; i++) {
+        await pool.query(`
+          INSERT INTO feed_posts (user_id, content, created_at)
+          VALUES ($1, $2, to_timestamp($3/1000.0))
+          ON CONFLICT DO NOTHING
+        `, [alice, JSON.stringify({ text: `[Staging] Demo feed post #${i+1}` }), postTimes[i]]);
+      }
 
       // Create sample groups
       const { rows: designGroupRows } = await pool.query(`

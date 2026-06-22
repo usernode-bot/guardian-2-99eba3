@@ -922,13 +922,76 @@
         <div class="flex-1 overflow-y-auto p-4 space-y-4">
           <!-- Identity Tab -->
           <div id="profileTabContentIdentity" class="space-y-4">
-            <div class="space-y-2">
-              <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Username</label>
-              <div id="profileUsername" class="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-zinc-900 dark:text-zinc-100 font-medium">Loading...</div>
+            <!-- Avatar Section -->
+            <div class="flex justify-center pt-4 pb-2">
+              <div class="relative">
+                <img id="profileAvatar" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23d4d4d8' width='100' height='100'/%3E%3Ccircle cx='50' cy='35' r='18' fill='%23a1a1a9'/%3E%3Cpath d='M20 75 Q20 55 50 55 Q80 55 80 75' fill='%23a1a1a9'/%3E%3C/svg%3E" alt="Profile Avatar" class="w-32 h-32 rounded-full bg-zinc-200 dark:bg-zinc-700 border-2 border-cyan-600 dark:border-cyan-500 cursor-pointer hover:opacity-80 transition" onclick="openAvatarUpload()">
+                <div class="absolute bottom-0 right-0 bg-cyan-600 dark:bg-cyan-500 hover:bg-cyan-700 dark:hover:bg-cyan-400 text-white rounded-full p-2 cursor-pointer transition" onclick="openAvatarUpload()" title="Change avatar">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </div>
+              </div>
             </div>
+
+            <!-- Username -->
+            <div class="text-center">
+              <div class="text-xl font-bold text-zinc-900 dark:text-zinc-100" id="profileUsername">Loading...</div>
+            </div>
+
+            <!-- Bio -->
             <div class="space-y-2">
-              <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Account Status</label>
-              <div id="profileVerified" class="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-zinc-700 dark:text-zinc-300">—</div>
+              <div class="flex items-center justify-between">
+                <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Bio</label>
+                <button onclick="openBioEdit()" class="text-xs text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition" title="Edit bio">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </button>
+              </div>
+              <div id="profileBio" class="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-zinc-700 dark:text-zinc-300 text-sm min-h-[2.5rem] flex items-center">—</div>
+            </div>
+
+            <!-- Joined Date -->
+            <div class="space-y-2">
+              <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Joined</label>
+              <div id="profileJoined" class="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-zinc-700 dark:text-zinc-300 text-sm">Loading...</div>
+            </div>
+
+            <!-- Separator -->
+            <div class="flex items-center gap-2 py-2">
+              <div class="flex-1 border-t border-zinc-300 dark:border-zinc-700"></div>
+              <span class="text-zinc-400 dark:text-zinc-600 text-xs">────</span>
+              <div class="flex-1 border-t border-zinc-300 dark:border-zinc-700"></div>
+            </div>
+
+            <!-- Statistics Section -->
+            <div class="grid grid-cols-3 gap-3 py-2">
+              <div class="text-center p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
+                <div class="text-2xl font-bold text-cyan-600 dark:text-cyan-400" id="profilePostsCount">—</div>
+                <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">Posts</div>
+              </div>
+              <div class="text-center p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
+                <div class="text-2xl font-bold text-cyan-600 dark:text-cyan-400" id="profileContactsCount">—</div>
+                <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">Contacts</div>
+              </div>
+              <div class="text-center p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
+                <div class="text-2xl font-bold text-cyan-600 dark:text-cyan-400" id="profileMessagesCount">—</div>
+                <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">Messages</div>
+              </div>
+            </div>
+
+            <!-- Separator -->
+            <div class="flex items-center gap-2 py-2">
+              <div class="flex-1 border-t border-zinc-300 dark:border-zinc-700"></div>
+              <span class="text-zinc-400 dark:text-zinc-600 text-xs">────</span>
+              <div class="flex-1 border-t border-zinc-300 dark:border-zinc-700"></div>
+            </div>
+
+            <!-- UserNode Identity Badge -->
+            <div class="text-center py-2">
+              <div id="profileIdentityBadge" class="text-sm text-zinc-600 dark:text-zinc-400">—</div>
             </div>
           </div>
 
@@ -940,11 +1003,8 @@
           </div>
         </div>
 
-        <!-- Share Contact Footer -->
-        <div class="border-t border-zinc-200 dark:border-zinc-800 p-4 bg-white dark:bg-zinc-900">
-          <button onclick="showShareContactModal()" class="w-full px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-sm text-zinc-900 dark:text-zinc-100">
-            📤 Share Contact
-          </button>
+        <!-- Minimal Footer -->
+        <div class="border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
         </div>
       </div>
     </div>
@@ -4287,14 +4347,200 @@
     async function loadProfileData() {
       if (!currentUser) return;
 
-      // Populate Identity tab
+      // Populate Avatar
+      if (currentUser.avatar_url) {
+        document.getElementById('profileAvatar').src = currentUser.avatar_url;
+      }
+
+      // Populate Username
       document.getElementById('profileUsername').textContent = currentUser.username || 'Unknown';
-      document.getElementById('profileVerified').textContent = currentUser.verified ? '✓ Verified' : '○ Unverified';
+
+      // Populate Bio
+      const bioElement = document.getElementById('profileBio');
+      if (currentUser.bio && currentUser.bio.trim()) {
+        bioElement.textContent = currentUser.bio;
+      } else {
+        bioElement.textContent = '—';
+      }
+
+      // Populate Joined Date
+      if (currentUser.created_at) {
+        const joinedDate = new Date(currentUser.created_at);
+        const formatter = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+        document.getElementById('profileJoined').textContent = 'Joined ' + formatter.format(joinedDate);
+      }
+
+      // Populate UserNode Identity Badge
+      const identityBadge = document.getElementById('profileIdentityBadge');
+      if (currentUser.verified) {
+        identityBadge.innerHTML = '<span class="text-green-600 dark:text-green-400 font-medium">✓ UserNode Identity</span>';
+      } else {
+        identityBadge.textContent = '—';
+      }
+
+      // Load stats
+      try {
+        const statsResponse = await apiCall('/api/user/stats');
+        if (statsResponse) {
+          document.getElementById('profilePostsCount').textContent = statsResponse.postsCount || 0;
+          document.getElementById('profileContactsCount').textContent = statsResponse.contactsCount || 0;
+          document.getElementById('profileMessagesCount').textContent = statsResponse.messagesCount || 0;
+        }
+      } catch (err) {
+        console.error('Error loading profile stats:', err);
+        document.getElementById('profilePostsCount').textContent = '—';
+        document.getElementById('profileContactsCount').textContent = '—';
+        document.getElementById('profileMessagesCount').textContent = '—';
+      }
 
       // Load activity
       loadProfileActivity();
     }
 
+    function openAvatarUpload() {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/png,image/jpeg,image/gif';
+      input.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          await uploadAvatar(file);
+        }
+      };
+      input.click();
+    }
+
+    async function uploadAvatar(file) {
+      try {
+        // Validate file size (max 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+          showToast('Image size must be less than 5MB', 'error');
+          return;
+        }
+
+        // Read file and convert to base64
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          const dataUri = e.target.result;
+
+          const response = await fetch('/api/user/avatar', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-usernode-token': getStoredToken(),
+            },
+            body: JSON.stringify({ dataUri: dataUri }),
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            showToast('Error uploading avatar: ' + (error.error || 'Unknown error'), 'error');
+            return;
+          }
+
+          const data = await response.json();
+          if (data.avatar_url) {
+            document.getElementById('profileAvatar').src = data.avatar_url;
+            currentUser.avatar_url = data.avatar_url;
+            showToast('Avatar updated successfully', 'success');
+          }
+        };
+        reader.onerror = () => {
+          showToast('Error reading file', 'error');
+        };
+        reader.readAsDataURL(file);
+      } catch (err) {
+        console.error('Error uploading avatar:', err);
+        showToast('Error uploading avatar', 'error');
+      }
+    }
+
+    function openBioEdit() {
+      const currentBio = document.getElementById('profileBio').textContent === '—' ? '' : document.getElementById('profileBio').textContent;
+      const modal = document.createElement('div');
+      modal.id = 'bioEditModal';
+      modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+      modal.innerHTML = `
+        <div class="bg-white dark:bg-zinc-900 rounded-lg p-6 max-w-md w-full mx-4 shadow-lg">
+          <h3 class="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-4">Edit Bio</h3>
+          <textarea id="bioTextarea" class="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-700 rounded-lg bg-zinc-50 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500 resize-none" rows="4" maxlength="500" placeholder="Enter your bio...">${escapeHtml(currentBio)}</textarea>
+          <div class="text-xs text-zinc-500 dark:text-zinc-400 mt-1"><span id="bioCharCount">${currentBio.length}</span>/500</div>
+          <div class="flex gap-2 mt-6">
+            <button class="flex-1 px-4 py-2 bg-zinc-200 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 rounded-lg hover:bg-zinc-300 dark:hover:bg-zinc-700 transition" onclick="closeBioEdit()">Cancel</button>
+            <button class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition" onclick="saveBio()">Save</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      modal.onclick = (e) => {
+        if (e.target === modal) closeBioEdit();
+      };
+
+      const textarea = document.getElementById('bioTextarea');
+      textarea.focus();
+      textarea.oninput = () => {
+        document.getElementById('bioCharCount').textContent = textarea.value.length;
+      };
+    }
+
+    function closeBioEdit() {
+      const modal = document.getElementById('bioEditModal');
+      if (modal) modal.remove();
+    }
+
+    async function saveBio() {
+      try {
+        const textarea = document.getElementById('bioTextarea');
+        const newBio = textarea.value.trim();
+
+        const response = await fetch('/api/user/bio', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-usernode-token': getStoredToken(),
+          },
+          body: JSON.stringify({ bio: newBio || null }),
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          showToast('Error updating bio: ' + (error.error || 'Unknown error'), 'error');
+          return;
+        }
+
+        const data = await response.json();
+        closeBioEdit();
+
+        const bioElement = document.getElementById('profileBio');
+        if (newBio) {
+          bioElement.textContent = newBio;
+        } else {
+          bioElement.textContent = '—';
+        }
+
+        currentUser.bio = newBio || null;
+        showToast('Bio updated successfully', 'success');
+      } catch (err) {
+        console.error('Error saving bio:', err);
+        showToast('Error saving bio', 'error');
+      }
+    }
+
+    function escapeHtml(text) {
+      const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      };
+      return text.replace(/[&<>"']/g, m => map[m]);
+    }
+
+    function getStoredToken() {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('token') || sessionStorage.getItem('usernode_token') || '';
+    }
 
     async function loadProfileActivity() {
       try {
