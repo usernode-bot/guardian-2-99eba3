@@ -504,21 +504,25 @@
 
   <div id="app" class="flex flex-col flex-1 relative h-screen overflow-hidden">
     <!-- Header -->
-    <div id="header" class="bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-300 dark:border-zinc-800 px-4 py-3 flex items-center gap-3 sticky top-0 z-40 w-full header-in-view">
+    <div id="header" class="bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-300 dark:border-zinc-800 px-4 py-3 flex items-start gap-3 sticky top-0 z-40 w-full header-in-view">
       <button id="menuBtn" class="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition" title="Toggle sidebar">
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
         </svg>
       </button>
       <button id="backBtn" class="text-sm text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 hidden transition">← Back</button>
-      <div class="flex items-center gap-2">
-        <h1 id="headerTitle" class="text-lg font-semibold">Guardian</h1>
-        <div id="headerNetworkStatusContainer" class="relative group">
-          <span id="headerStatusDot" class="inline-block w-2 h-2 rounded-full bg-gray-400 transition-colors"></span>
-          <div class="absolute -bottom-6 left-0 px-2 py-1 bg-zinc-900 dark:bg-zinc-700 text-white dark:text-zinc-100 text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
-            <span id="headerStatusTooltip">Network Status</span>
+      <!-- Guardian branding + page label system (used for Feed, Messages, Contacts, Settings, Groups) -->
+      <div id="headerContent" class="flex flex-col items-start flex-1 gap-0">
+        <div class="flex items-center gap-2">
+          <div id="headerBranding" class="text-lg font-semibold text-zinc-900 dark:text-zinc-100 leading-tight">Guardian</div>
+          <div id="headerNetworkStatusContainer" class="relative group">
+            <span id="headerStatusDot" class="inline-block w-2 h-2 rounded-full bg-gray-400 transition-colors"></span>
+            <div class="absolute -bottom-6 left-0 px-2 py-1 bg-zinc-900 dark:bg-zinc-700 text-white dark:text-zinc-100 text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
+              <span id="headerStatusTooltip">Network Status</span>
+            </div>
           </div>
         </div>
+        <div id="headerPageLabel" class="text-sm text-zinc-600 dark:text-zinc-500 leading-tight truncate">Messages</div>
       </div>
       <div id="headerRight" class="text-sm text-zinc-600 dark:text-zinc-500 relative flex flex-1 justify-end items-center gap-2">
         <button id="messageHistoryBtn" class="hidden text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare mr-3" title="Message history" onclick="openMessageHistory()">📜</button>
@@ -1763,7 +1767,9 @@
       document.getElementById('settingsPanel').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('header').classList.remove('header-chat-fixed');
-      document.getElementById('headerTitle').textContent = 'Settings';
+      document.getElementById('headerContent').classList.remove('hidden');
+      document.getElementById('headerBranding').textContent = 'Guardian';
+      document.getElementById('headerPageLabel').textContent = 'Settings';
       document.getElementById('backBtn').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
@@ -2340,10 +2346,12 @@
       currentConvId = null;
       currentOtherId = null;
 
-      // Fetch group name for header
+      // Fetch group name for header (groups use two-line layout with "Group" label)
+      document.getElementById('headerContent').classList.remove('hidden');
+      document.getElementById('headerBranding').textContent = 'Group';
       const groupData = await apiCall(`/api/groups/${groupId}`);
       if (groupData) {
-        document.getElementById('headerTitle').textContent = groupData.name + ' ✓';
+        document.getElementById('headerPageLabel').textContent = groupData.name + ' ✓';
       }
 
       document.getElementById('backBtn').classList.remove('hidden');
@@ -3107,7 +3115,10 @@
       currentConvId = convId;
       currentOtherId = otherId;
       currentContactName = username;
-      document.getElementById('headerTitle').innerHTML = username + ' <span class="text-xs text-zinc-500 dark:text-zinc-400">● Online</span>';
+      // For direct conversations, use the two-line header with "Direct" label instead of "Guardian"
+      document.getElementById('headerContent').classList.remove('hidden');
+      document.getElementById('headerBranding').textContent = 'Direct';
+      document.getElementById('headerPageLabel').innerHTML = username + ' <span class="text-xs text-zinc-500 dark:text-zinc-400">● Online</span>';
       document.getElementById('backBtn').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
       document.getElementById('messageHistoryBtn').classList.add('hidden');
@@ -3524,7 +3535,9 @@
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('footer-in-view');
       document.getElementById('header').classList.remove('header-chat-fixed');
-      document.getElementById('headerTitle').textContent = 'Guardian';
+      document.getElementById('headerContent').classList.remove('hidden');
+      document.getElementById('headerBranding').textContent = 'Guardian';
+      document.getElementById('headerPageLabel').textContent = 'Messages';
       document.getElementById('backBtn').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
@@ -3957,7 +3970,9 @@
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('footer-in-view');
       document.getElementById('header').classList.remove('header-chat-fixed');
-      document.getElementById('headerTitle').textContent = 'Contacts';
+      document.getElementById('headerContent').classList.remove('hidden');
+      document.getElementById('headerBranding').textContent = 'Guardian';
+      document.getElementById('headerPageLabel').textContent = 'Contacts';
       document.getElementById('backBtn').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
@@ -3977,7 +3992,9 @@
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('footer-in-view');
       document.getElementById('header').classList.remove('header-chat-fixed');
-      document.getElementById('headerTitle').textContent = 'Feed';
+      document.getElementById('headerContent').classList.remove('hidden');
+      document.getElementById('headerBranding').textContent = 'Guardian';
+      document.getElementById('headerPageLabel').textContent = 'Feed';
       document.getElementById('backBtn').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
