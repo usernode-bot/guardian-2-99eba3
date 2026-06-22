@@ -632,6 +632,11 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       UPDATE conversations SET updated_at = NOW() WHERE id = $1
     `, [convId]);
 
+    // Auto-unarchive for the recipient when a new message arrives
+    await pool.query(`
+      UPDATE conversations SET archived_by = array_remove(archived_by, $1) WHERE id = $2 AND archived_by @> ARRAY[$1]::integer[]
+    `, [otherId, convId]);
+
     // Async: submit to blockchain in the background (production only)
     if (!ENABLE_DEMO_MODE) {
       (async () => {
@@ -3563,6 +3568,39 @@ async function start() {
         VALUES ($1, $2, 'text', '{"text": "[Staging] Hi Bob! Check this out"}', NOW())
         ON CONFLICT DO NOTHING
       `, [convDavidBobId, david]);
+
+      // Seed archived alice-charlie conversation (archived by alice) for testing archive/unarchive UI
+      const { rows: convAliceCharlieRows } = await pool.query(`
+        SELECT id FROM conversations
+        WHERE (participant_a_id = $1 AND participant_b_id = $2)
+           OR (participant_a_id = $2 AND participant_b_id = $1)
+      `, [alice, charlie]);
+
+      let convAliceCharlieId;
+      if (convAliceCharlieRows.length === 0) {
+        const result = await pool.query(`
+          INSERT INTO conversations (participant_a_id, participant_b_id, status_a, status_b, archived_by, created_at, updated_at)
+          VALUES ($1, $2, 'accepted', 'accepted', ARRAY[$1]::integer[], NOW(), NOW())
+          RETURNING id
+        `, [alice, charlie]);
+        convAliceCharlieId = result.rows[0].id;
+      } else {
+        convAliceCharlieId = convAliceCharlieRows[0].id;
+        // Ensure alice is in archived_by
+        await pool.query(`
+          UPDATE conversations SET archived_by = array_append(archived_by, $1)
+          WHERE id = $2 AND NOT (archived_by @> ARRAY[$1]::integer[])
+        `, [alice, convAliceCharlieId]);
+      }
+
+      await pool.query(`
+        INSERT INTO messages (conversation_id, sender_id, type, content, created_at)
+        VALUES
+          ($1, $2, 'text', '{"text": "[Staging] Hey Alice, long time no chat!"}', NOW() - INTERVAL '3 days'),
+          ($1, $3, 'text', '{"text": "[Staging] Hi Charlie! Yeah it has been a while."}', NOW() - INTERVAL '3 days' + INTERVAL '5 minutes'),
+          ($1, $2, 'text', '{"text": "[Staging] Let me know if you want to catch up sometime."}', NOW() - INTERVAL '3 days' + INTERVAL '10 minutes')
+        ON CONFLICT DO NOTHING
+      `, [convAliceCharlieId, charlie, alice]);
 
       // Seed sample contact relationships for testing "Add Contact" feature
       // Alice has Bob as a saved contact
