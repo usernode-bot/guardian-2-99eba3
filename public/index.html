@@ -503,13 +503,8 @@
   </div>
 
   <div id="app" class="flex flex-col flex-1 relative h-screen overflow-hidden">
-    <!-- Header -->
-    <div id="header" class="bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-300 dark:border-zinc-800 px-4 py-3 flex items-center gap-3 sticky top-0 z-40 w-full header-in-view">
-      <button id="menuBtn" class="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition" title="Toggle sidebar">
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-        </svg>
-      </button>
+    <!-- Header Row 1: Brand and Controls -->
+    <div id="headerRow1" class="bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-300 dark:border-zinc-800 px-4 py-3 flex items-center gap-3 sticky top-0 z-40 w-full header-in-view">
       <button id="backBtn" class="text-sm text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 hidden transition">← Back</button>
       <div class="flex items-center gap-2">
         <h1 id="headerTitle" class="text-lg font-semibold">Guardian</h1>
@@ -530,63 +525,35 @@
       </div>
     </div>
 
-    <!-- Sidebar Overlay -->
-    <div id="sidebarOverlay" class="hidden fixed inset-0 bg-black/50 z-40 sidebar-overlay-hidden" onclick="if (event.target === this) toggleSidebar()"></div>
-
-    <!-- Sidebar -->
-    <div id="sidebar" class="hidden fixed left-0 top-0 w-64 h-full bg-zinc-50 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 z-50 flex flex-col overflow-y-auto">
-      <div class="p-4 border-b border-zinc-200 dark:border-zinc-800">
-        <div class="flex items-center justify-between">
-          <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Guardian</h2>
-          <button onclick="toggleSidebar()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      <nav class="flex-1 px-2 py-4 space-y-2">
-        <button id="navFeedBtn" onclick="showFeedView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
-          <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v.756a3.5 3.5 0 015.618 1.401M12 8v8m-4-4h8" />
-          </svg>
-          Feed
-        </button>
-        <button id="navMessagesBtn" onclick="showConversationsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300">
-          <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-          </svg>
-          Messages
-        </button>
-        <button id="navContactsBtn" onclick="showContactsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
-          <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          Contacts
-        </button>
-      </nav>
-
-      <div id="sidebarUser" class="p-4 border-t border-zinc-200 dark:border-zinc-800">
-        <div class="flex items-start justify-between gap-2 mb-3">
-          <div class="flex-1 min-w-0">
-            <div class="text-sm text-zinc-600 dark:text-zinc-400">Logged in as</div>
-            <div id="sidebarUsername" class="font-medium text-cyan-600 dark:text-cyan-400 mt-1">Loading...</div>
-            <div id="sidebarWallet" class="text-xs text-zinc-600 dark:text-zinc-500 mt-1 break-all">Loading...</div>
-          </div>
-          <button id="navSettingsBtn" onclick="openSettingsPanel()" class="flex-shrink-0 text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300 transition relative group" title="Settings">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            <span class="absolute bottom-full right-0 mb-1 px-2 py-1 bg-zinc-900 dark:bg-zinc-700 text-white dark:text-zinc-100 text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">Settings</span>
-          </button>
-        </div>
-        <button onclick="showShareContactModal()" class="w-full px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-sm text-zinc-900 dark:text-zinc-100">
-          📤 Share Contact
-        </button>
-      </div>
-    </div>
+    <!-- Header Row 2: Horizontal Menu Bar -->
+    <nav id="headerMenuBar" class="bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-300 dark:border-zinc-800 flex items-center gap-1 px-2 py-1 sticky top-[53px] z-40 w-full overflow-x-auto">
+      <button id="navFeedBtn" onclick="showFeedView()" class="flex items-center gap-2 px-4 py-2 rounded-lg transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300 hover:bg-zinc-200 dark:hover:bg-zinc-800 flex-shrink-0">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v.756a3.5 3.5 0 015.618 1.401M12 8v8m-4-4h8" />
+        </svg>
+        <span class="text-sm font-medium">Feed</span>
+      </button>
+      <button id="navMessagesBtn" onclick="showConversationsView()" class="flex items-center gap-2 px-4 py-2 rounded-lg transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300 hover:bg-zinc-200 dark:hover:bg-zinc-800 flex-shrink-0">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+        </svg>
+        <span class="text-sm font-medium">Messages</span>
+      </button>
+      <button id="navContactsBtn" onclick="showContactsView()" class="flex items-center gap-2 px-4 py-2 rounded-lg transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300 hover:bg-zinc-200 dark:hover:bg-zinc-800 flex-shrink-0">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+        <span class="text-sm font-medium">Contacts</span>
+      </button>
+      <div class="flex-1"></div>
+      <button id="navSettingsBtn" onclick="openSettingsPanel()" class="text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300 transition relative group flex-shrink-0 p-2" title="Settings">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+        <span class="absolute bottom-full right-0 mb-1 px-2 py-1 bg-zinc-900 dark:bg-zinc-700 text-white dark:text-zinc-100 text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">Settings</span>
+      </button>
+    </nav>
 
     <!-- Settings Panel -->
     <div id="settingsPanel" class="hidden fixed left-0 top-0 w-64 h-full bg-zinc-50 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 z-40 flex flex-col overflow-y-auto">
