@@ -210,6 +210,7 @@
     .message-bubble {
       word-wrap: break-word;
       overflow-wrap: break-word;
+      min-width: 150px;
     }
 
     /* Compact layout mode */
@@ -532,8 +533,9 @@
         <button id="messageHistoryBtn" class="hidden text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare mr-3" title="Message history" onclick="openMessageHistory()">📜</button>
         <button id="conversationMenuBtn" class="hidden text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare" title="Conversation options" onclick="toggleConversationMenu(event)">⋯</button>
         <div id="conversationMenuDropdown" class="hidden absolute right-0 mt-2 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg shadow-lg z-50 min-w-40">
+          <button onclick="openContactProfile()" class="menu-item text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 w-full text-left">Profile</button>
           <button id="addContactMenuBtn" onclick="toggleAddContactButton()" class="menu-item text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 w-full text-left">Add Contact</button>
-          <button onclick="openDeleteConversationModal()" class="menu-item text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 w-full text-left">Delete conversation</button>
+          <button onclick="openDeleteConversationModal()" class="menu-item text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 w-full text-left">Delete conversation</button>
         </div>
       </div>
     </div>
@@ -950,7 +952,7 @@
   <div id="deleteConversationModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
       <h2 class="text-xl font-semibold text-zinc-900 dark:text-white" id="deleteConversationTitle">Delete conversation?</h2>
-      <p class="text-sm text-zinc-600 dark:text-zinc-400">This will remove the conversation from your list. Messages will no longer be visible.</p>
+      <p class="text-sm text-zinc-600 dark:text-zinc-400">This action cannot be undone.</p>
       <div class="flex gap-2">
         <button id="deleteConversationCancel" class="flex-1 px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
         <button id="deleteConversationConfirm" class="flex-1 px-3 py-2 bg-red-600 hover:bg-red-700 dark:hover:bg-red-500 text-white rounded-lg transition font-medium">Delete</button>
@@ -3548,7 +3550,6 @@
               <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${contact.nickname || contact.username} ${contact.verified ? '<span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
               <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${contact.usernode_pubkey || 'No wallet'}</div>
             </div>
-            <button onclick="event.stopPropagation(); showDeleteContactModal(${contact.id}, '${(contact.nickname || contact.username).replace(/'/g, "\\'")}')" class="text-zinc-600 dark:text-zinc-500 hover:text-red-600 dark:hover:text-red-400 text-sm transition">🗑️</button>
           </div>
         </div>
       `).join('');
@@ -3581,7 +3582,6 @@
               <div class="font-medium truncate text-sm text-zinc-900 dark:text-zinc-100">${contact.nickname || contact.username} ${contact.verified ? '<span class="text-xs text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
               <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${contact.usernode_pubkey || 'No wallet'}</div>
             </div>
-            <button onclick="event.stopPropagation(); showDeleteContactModal(${contact.id}, '${(contact.nickname || contact.username).replace(/'/g, "\\'")}')" class="text-zinc-500 dark:text-zinc-500 hover:text-red-600 dark:hover:text-red-400 text-xs transition flex-shrink-0">🗑️</button>
           </div>
         </div>
       `).join('');
@@ -3669,7 +3669,6 @@
                   <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${displayName} ${item.verified ? '<span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
                   <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${wallet}</div>
                 </div>
-                <button onclick="event.stopPropagation(); showDeleteContactModal(${item.id}, '${displayName.replace(/'/g, "\\'")}')" class="text-zinc-600 dark:text-zinc-500 hover:text-red-600 dark:hover:text-red-400 text-sm transition">🗑️</button>
               </div>
             </div>
           `;
@@ -3794,8 +3793,11 @@
         const contact = contactRes.contacts.find(c => c.userId === otherId);
         if (contact) {
           currentContactId = contact.id;
+          console.log('Contact found:', contact.id, 'for user:', otherId);
         }
       }
+
+      console.log('Contact ID after fetch:', currentContactId, '(otherId:', otherId, ')');
 
       // Update menu button label based on contact status
       await updateContactMenuLabel();
@@ -3805,6 +3807,23 @@
     }
 
     // ===== CONVERSATION MENU FUNCTIONS =====
+
+    let isContactActionInProgress = false;
+    let isDeleteConvInProgress = false;
+
+    function openContactProfile() {
+      // Close the dropdown menu
+      document.getElementById('conversationMenuDropdown').classList.add('hidden');
+
+      if (!currentOtherId) {
+        alert('User not found');
+        return;
+      }
+
+      // TODO: Implement profile view navigation
+      // For now, show a placeholder - can be replaced with actual profile view
+      alert(`View profile for ${currentContactName || 'this user'}`);
+    }
 
     function toggleConversationMenu(event) {
       event.stopPropagation();
@@ -3818,39 +3837,63 @@
         return;
       }
 
+      // Prevent duplicate API calls
+      if (isContactActionInProgress) {
+        console.warn('Contact action already in progress');
+        return;
+      }
+
+      isContactActionInProgress = true;
+
       // Close the dropdown menu
       document.getElementById('conversationMenuDropdown').classList.add('hidden');
+      const btn = document.getElementById('addContactMenuBtn');
+      if (btn) btn.disabled = true;
 
-      if (currentContactId) {
-        // Remove contact
-        const data = await apiCall(`/api/contacts/${currentContactId}`, {
-          method: 'DELETE',
-          body: JSON.stringify({})
-        });
+      try {
+        if (currentContactId) {
+          // Remove contact
+          console.log('Removing contact:', currentContactId, 'for user:', currentOtherId);
+          const data = await apiCall(`/api/contacts/${currentContactId}`, {
+            method: 'DELETE',
+            body: JSON.stringify({})
+          });
 
-        if (data && data.ok) {
-          currentContactId = null;
-          await updateContactMenuLabel();
-          // Refresh conversation list to move conversation from Your Active Chats to Pending Requests
-          await loadConversations();
+          if (data && data.ok) {
+            currentContactId = null;
+            await updateContactMenuLabel();
+            showToast('Contact removed', 'success');
+            // Refresh conversation list to move conversation from Your Active Chats to Pending Requests
+            await loadConversations();
+          } else {
+            const errorMsg = 'Failed to remove contact' + (data?.status ? ' (HTTP ' + data.status + ')' : '') + ': ' + (data?.error || 'Unknown error');
+            alert(errorMsg);
+            console.error(errorMsg, data);
+          }
         } else {
-          alert('Failed to remove contact');
-        }
-      } else {
-        // Add contact
-        const data = await apiCall('/api/contacts/by-id', {
-          method: 'POST',
-          body: JSON.stringify({ user_id: currentOtherId, nickname: null })
-        });
+          // Add contact
+          console.log('Adding contact for user:', currentOtherId);
+          const data = await apiCall('/api/contacts/by-id', {
+            method: 'POST',
+            body: JSON.stringify({ user_id: currentOtherId, nickname: null })
+          });
 
-        if (data && !data.error) {
-          currentContactId = data.id;
-          await updateContactMenuLabel();
-          // Refresh conversation list to move conversation from Pending Requests to Your Active Chats
-          await loadConversations();
-        } else {
-          alert('Failed to add contact: ' + (data?.error || 'Unknown error'));
+          if (data && !data.error) {
+            currentContactId = data.id;
+            console.log('Contact added with ID:', currentContactId);
+            await updateContactMenuLabel();
+            showToast('Contact added', 'success');
+            // Refresh conversation list to move conversation from Pending Requests to Your Active Chats
+            await loadConversations();
+          } else {
+            const errorMsg = 'Failed to add contact (HTTP ' + (data?.status || '?') + '): ' + (data?.error || 'Unknown error');
+            alert(errorMsg);
+            console.error(errorMsg, data);
+          }
         }
+      } finally {
+        isContactActionInProgress = false;
+        if (btn) btn.disabled = false;
       }
     }
 
@@ -3886,17 +3929,37 @@
         return;
       }
 
-      const data = await apiCall(`/api/conversations/${currentConvId}/archive`, {
-        method: 'POST',
-        body: JSON.stringify({})
-      });
+      // Prevent duplicate API calls
+      if (isDeleteConvInProgress) {
+        console.warn('Delete conversation already in progress');
+        return;
+      }
 
-      if (data && data.ok) {
-        hideDeleteConversationModal();
-        showConversationsView();
-        loadConversations();
-      } else {
-        alert('Failed to delete conversation');
+      isDeleteConvInProgress = true;
+
+      const btn = document.getElementById('deleteConversationConfirm');
+      if (btn) btn.disabled = true;
+
+      try {
+        console.log('Deleting conversation:', currentConvId);
+        const data = await apiCall(`/api/conversations/${currentConvId}/archive`, {
+          method: 'POST',
+          body: JSON.stringify({})
+        });
+
+        if (data && data.ok) {
+          hideDeleteConversationModal();
+          showConversationsView();
+          showToast('Conversation deleted', 'success');
+          loadConversations();
+        } else {
+          const errorMsg = 'Failed to delete conversation' + (data?.status ? ' (HTTP ' + data.status + ')' : '') + ': ' + (data?.error || 'Unknown error');
+          alert(errorMsg);
+          console.error(errorMsg, data);
+        }
+      } finally {
+        isDeleteConvInProgress = false;
+        if (btn) btn.disabled = false;
       }
     }
 
