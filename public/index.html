@@ -512,14 +512,16 @@
       </button>
       <button id="backBtn" class="text-sm text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 hidden transition">← Back</button>
       <div id="headerContent" class="flex flex-col items-start flex-1 gap-0">
-        <div id="headerBranding" class="text-lg font-semibold text-zinc-900 dark:text-zinc-100 leading-tight">Guardian</div>
-        <div id="headerPageLabel" class="text-sm text-zinc-600 dark:text-zinc-500 leading-tight truncate">Messages</div>
-      </div>
-      <div id="headerNetworkStatusContainer" class="relative group flex-shrink-0">
-        <span id="headerStatusDot" class="inline-block w-2 h-2 rounded-full bg-gray-400 transition-colors"></span>
-        <div class="absolute -bottom-6 left-0 px-2 py-1 bg-zinc-900 dark:bg-zinc-700 text-white dark:text-zinc-100 text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
-          <span id="headerStatusTooltip">Network Status</span>
+        <div class="flex items-center gap-2">
+          <div id="headerBranding" class="text-lg font-semibold text-zinc-900 dark:text-zinc-100 leading-tight">Guardian</div>
+          <div id="headerNetworkStatusContainer" class="relative group">
+            <span id="headerStatusDot" class="inline-block w-2 h-2 rounded-full bg-gray-400 transition-colors"></span>
+            <div class="absolute -bottom-6 left-0 px-2 py-1 bg-zinc-900 dark:bg-zinc-700 text-white dark:text-zinc-100 text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">
+              <span id="headerStatusTooltip">Network Status</span>
+            </div>
+          </div>
         </div>
+        <div id="headerPageLabel" class="text-sm text-zinc-600 dark:text-zinc-500 leading-tight truncate">Messages</div>
       </div>
       <div id="headerRight" class="text-sm text-zinc-600 dark:text-zinc-500 relative flex flex-1 justify-end items-center gap-2">
         <button id="messageHistoryBtn" class="hidden text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare mr-3" title="Message history" onclick="openMessageHistory()">📜</button>
