@@ -275,20 +275,54 @@
       animation: feedPostEnter 0.4s ease-out;
     }
 
-    /* Feed mobile responsiveness */
+    /* Feed Composer Sticky Positioning */
+    #feedComposer {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+    }
+
+    /* Desktop: Minimal Composer (hidden full, show minimal) */
+    @media (min-width: 640px) {
+      #feedComposerFull {
+        display: none !important;
+      }
+
+      #feedComposerMinimal {
+        display: flex !important;
+      }
+
+      #feedMinimalInput {
+        height: 2.5rem;
+        padding: 0.5rem 0.75rem;
+      }
+
+      #feedComposerMinimal button {
+        padding: 0.375rem 0.75rem;
+        font-size: 0.875rem;
+      }
+    }
+
+    /* Mobile: Full Composer (show full, hide minimal) */
     @media (max-width: 639px) {
-      /* Post composer responsive */
-      #feedView > div > div > .px-4.py-2 {
-        padding: 0.5rem;
-        gap: 0.25rem;
+      #feedComposerFull {
+        display: block !important;
       }
 
-      #feedView textarea {
-        padding: 0.5rem;
-        font-size: 0.75rem;
+      #feedComposerMinimal {
+        display: none !important;
       }
 
-      #feedView button[onclick="submitFeedPost()"] {
+      #feedComposerFull {
+        padding: 0.75rem;
+      }
+
+      #feedTextInput {
+        padding: 0.5rem;
+        font-size: 0.875rem;
+      }
+
+      #feedComposerFull button {
         padding: 0.375rem 0.75rem;
         font-size: 0.75rem;
       }
@@ -779,19 +813,25 @@
 
       <!-- Feed View -->
       <div id="feedView" class="hidden flex flex-col flex-1 overflow-hidden">
-        <div class="flex-1 flex flex-col overflow-hidden">
-          <!-- Post Composer -->
-          <div class="px-4 py-2 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 space-y-2">
+        <!-- Sticky Composer -->
+        <div id="feedComposer" class="sticky top-0 z-30 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
+          <!-- Full Composer (Mobile) -->
+          <div id="feedComposerFull" class="px-4 py-2 bg-white dark:bg-zinc-900 space-y-2">
             <div class="flex gap-2 items-end">
               <textarea id="feedTextInput" placeholder="What's happening?" class="flex-1 px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition resize-none text-sm" rows="2"></textarea>
               <button onclick="openAttachmentMenu()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition text-lg flex-shrink-0">📷</button>
               <button onclick="submitFeedPost()" class="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium text-sm flex-shrink-0">Post</button>
             </div>
           </div>
-          <!-- Feed Posts List -->
-          <div id="feedList" class="flex-1 overflow-y-auto space-y-3 p-2">
-            <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading feed...</div>
+          <!-- Minimal Composer (Desktop) -->
+          <div id="feedComposerMinimal" class="hidden px-3 py-2 gap-2 items-center">
+            <input id="feedMinimalInput" type="text" placeholder="What's happening?" class="flex-1 px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition text-sm">
+            <button onclick="submitFeedPost()" class="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium text-sm flex-shrink-0">Post</button>
           </div>
+        </div>
+        <!-- Feed Posts List (Only Scrollable Area) -->
+        <div id="feedList" class="flex-1 overflow-y-auto space-y-3 p-2">
+          <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading feed...</div>
         </div>
       </div>
 
@@ -4132,7 +4172,9 @@
 
     async function submitFeedPost() {
       const textInput = document.getElementById('feedTextInput');
-      let text = textInput.value.trim();
+      const minimalInput = document.getElementById('feedMinimalInput');
+      const activeInput = minimalInput && minimalInput.offsetParent !== null ? minimalInput : textInput;
+      let text = activeInput.value.trim();
       let link = null;
 
       // Extract URL from text
@@ -4164,6 +4206,7 @@
         }
 
         textInput.value = '';
+        if (minimalInput) minimalInput.value = '';
         feedOffset = 0;
         feedHasMore = true;
         loadFeedPosts(0);
