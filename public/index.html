@@ -619,7 +619,6 @@
         <div id="conversationMenuDropdown" class="hidden absolute right-0 mt-2 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg shadow-lg z-50 min-w-40">
           <button onclick="openContactProfile()" class="menu-item text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 w-full text-left">Profile</button>
           <button id="addContactMenuBtn" onclick="toggleAddContactButton()" class="menu-item text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 w-full text-left">Add Contact</button>
-          <button onclick="openDeleteConversationModal()" class="menu-item text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 w-full text-left">Delete conversation</button>
         </div>
       </div>
     </div>
@@ -1020,18 +1019,6 @@
       <div class="flex gap-2">
         <button id="deleteContactCancel" class="flex-1 px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
         <button id="deleteContactConfirm" class="flex-1 px-3 py-2 bg-red-600 hover:bg-red-700 dark:hover:bg-red-500 text-white rounded-lg transition font-medium">Delete</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Delete Conversation Modal -->
-  <div id="deleteConversationModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
-      <h2 class="text-xl font-semibold text-zinc-900 dark:text-white" id="deleteConversationTitle">Delete conversation?</h2>
-      <p class="text-sm text-zinc-600 dark:text-zinc-400">This action cannot be undone.</p>
-      <div class="flex gap-2">
-        <button id="deleteConversationCancel" class="flex-1 px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
-        <button id="deleteConversationConfirm" class="flex-1 px-3 py-2 bg-red-600 hover:bg-red-700 dark:hover:bg-red-500 text-white rounded-lg transition font-medium">Delete</button>
       </div>
     </div>
   </div>
@@ -3269,7 +3256,7 @@
       const shouldShowSenderName = context === 'group';
       const isMobile = document.body.classList.contains('layout-mobile');
       const marginClass = isMobile ? 'mx-1.5' : 'mx-2';
-      const deleteBtn = isOwn ? `<button class="message-delete-btn opacity-30 hover:opacity-100 transition text-red-500 dark:text-red-400 ml-1" onclick="deleteMessage(${msg.id}, '${context === 'group' ? 'group' : 'direct'}')">🗑</button>` : '';
+      const deleteBtn = '';
 
       if (msg.type === 'text') {
         const senderNameLine = shouldShowSenderName ? `<div class="text-xs opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'} mb-1">${msg.senderUsername}</div>` : '';
