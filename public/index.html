@@ -629,6 +629,14 @@
                 <button id="viewModeMobile" onclick="applyViewMode('mobile')" class="flex-1 px-2 py-2 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-transparent hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Mobile</button>
               </div>
             </div>
+            <!-- Feed Subsection -->
+            <div class="space-y-1">
+              <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400">Feed</label>
+              <div class="flex gap-2">
+                <button id="feedComposerSticky" onclick="applyFeedComposerMode('sticky')" class="flex-1 px-2 py-2 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-cyan-600 dark:border-cyan-500 hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Sticky</button>
+                <button id="feedComposerScroll" onclick="applyFeedComposerMode('scroll')" class="flex-1 px-2 py-2 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-transparent hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Scroll</button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -777,7 +785,7 @@
       <div id="feedView" class="hidden flex flex-col flex-1 overflow-hidden">
         <div class="flex-1 flex flex-col overflow-hidden">
           <!-- Post Composer -->
-          <div class="px-4 py-2 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 space-y-2">
+          <div id="feedComposer" class="px-4 py-2 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 space-y-2 sticky top-0 z-30">
             <div class="flex gap-2 items-end">
               <textarea id="feedTextInput" placeholder="What's happening?" class="flex-1 px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition resize-none text-sm" rows="2"></textarea>
               <button onclick="openAttachmentMenu()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition text-lg flex-shrink-0">📷</button>
@@ -1163,6 +1171,7 @@
         layout: stored.layout || 'comfortable',
         network: stored.network || 'testnet',
         view_mode: stored.view_mode || 'web',
+        feed_composer_mode: stored.feed_composer_mode || 'sticky',
       };
     }
 
@@ -1180,11 +1189,13 @@
       applyTheme(settings.theme);
       applyLayout(settings.layout);
       applyViewMode(settings.view_mode);
+      updateFeedComposerMode(settings.feed_composer_mode);
       currentNetwork = settings.network;
       document.getElementById('themeSelect').value = settings.theme;
       document.getElementById('networkSelect').value = settings.network;
       updateLayoutButtons(settings.layout);
       updateViewModeButtons(settings.view_mode);
+      updateFeedComposerModeButtons(settings.feed_composer_mode);
       loadConfigState();
     }
 
@@ -1611,6 +1622,53 @@
         compact.classList.remove('border-transparent');
         comfortable.classList.remove('border-cyan-600', 'dark:border-cyan-500');
         comfortable.classList.add('border-transparent');
+      }
+    }
+
+    function applyFeedComposerMode(mode) {
+      const settings = loadSettings();
+      settings.feed_composer_mode = mode;
+      updateFeedComposerMode(mode);
+      saveSettings(settings);
+    }
+
+    function updateFeedComposerMode(mode) {
+      const composer = document.getElementById('feedComposer');
+      const stickyBtn = document.getElementById('feedComposerSticky');
+      const scrollBtn = document.getElementById('feedComposerScroll');
+
+      if (!composer || !stickyBtn || !scrollBtn) return;
+
+      if (mode === 'sticky') {
+        composer.classList.add('sticky', 'top-0', 'z-30');
+        stickyBtn.classList.add('border-cyan-600', 'dark:border-cyan-500');
+        stickyBtn.classList.remove('border-transparent');
+        scrollBtn.classList.remove('border-cyan-600', 'dark:border-cyan-500');
+        scrollBtn.classList.add('border-transparent');
+      } else {
+        composer.classList.remove('sticky', 'top-0', 'z-30');
+        scrollBtn.classList.add('border-cyan-600', 'dark:border-cyan-500');
+        scrollBtn.classList.remove('border-transparent');
+        stickyBtn.classList.remove('border-cyan-600', 'dark:border-cyan-500');
+        stickyBtn.classList.add('border-transparent');
+      }
+    }
+
+    function updateFeedComposerModeButtons(mode) {
+      const stickyBtn = document.getElementById('feedComposerSticky');
+      const scrollBtn = document.getElementById('feedComposerScroll');
+      if (!stickyBtn || !scrollBtn) return;
+
+      if (mode === 'sticky') {
+        stickyBtn.classList.add('border-cyan-600', 'dark:border-cyan-500');
+        stickyBtn.classList.remove('border-transparent');
+        scrollBtn.classList.remove('border-cyan-600', 'dark:border-cyan-500');
+        scrollBtn.classList.add('border-transparent');
+      } else {
+        scrollBtn.classList.add('border-cyan-600', 'dark:border-cyan-500');
+        scrollBtn.classList.remove('border-transparent');
+        stickyBtn.classList.remove('border-cyan-600', 'dark:border-cyan-500');
+        stickyBtn.classList.add('border-transparent');
       }
     }
 
