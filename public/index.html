@@ -538,7 +538,7 @@
 
   <div id="app" class="flex flex-col flex-1 relative h-screen overflow-hidden">
     <!-- Header -->
-    <div id="header" class="bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-300 dark:border-zinc-800 px-4 py-3 flex items-start gap-3 sticky top-0 z-40 w-full header-in-view">
+    <div id="header" class="bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-300 dark:border-zinc-800 px-4 py-3 flex items-start gap-3 fixed top-0 left-0 right-0 z-40 w-full header-in-view">
       <button id="menuBtn" class="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition" title="Toggle sidebar">
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
@@ -783,7 +783,7 @@
     </div>
 
     <!-- Main content -->
-    <div id="content" class="flex-1 overflow-hidden flex flex-col">
+    <div id="content" class="flex-1 overflow-hidden flex flex-col pt-16">
       <!-- Messages View with Tabs -->
       <div id="messagesView" class="hidden flex flex-col flex-1 overflow-hidden">
         <!-- Tab Navigation -->
@@ -818,7 +818,7 @@
       <!-- Feed View -->
       <div id="feedView" class="hidden flex flex-col flex-1 overflow-hidden">
         <!-- Sticky Composer (positioned outside scrollable area for proper sticky behavior) -->
-        <div id="feedComposer" class="flex-shrink-0 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 sticky top-0 z-30">
+        <div id="feedComposer" class="flex-shrink-0 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
           <!-- Full Composer (Mobile) -->
           <div id="feedComposerFull" class="px-4 py-2 bg-white dark:bg-zinc-900 space-y-2">
             <div class="flex gap-2 items-end">
