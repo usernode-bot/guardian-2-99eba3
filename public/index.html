@@ -3780,8 +3780,11 @@
         const contact = contactRes.contacts.find(c => c.userId === otherId);
         if (contact) {
           currentContactId = contact.id;
+          console.log('Contact found:', contact.id, 'for user:', otherId);
         }
       }
+
+      console.log('Contact ID after fetch:', currentContactId, '(otherId:', otherId, ')');
 
       // Update menu button label based on contact status
       await updateContactMenuLabel();
@@ -3791,6 +3794,9 @@
     }
 
     // ===== CONVERSATION MENU FUNCTIONS =====
+
+    let isContactActionInProgress = false;
+    let isDeleteConvInProgress = false;
 
     function openContactProfile() {
       // Close the dropdown menu
@@ -3818,39 +3824,63 @@
         return;
       }
 
+      // Prevent duplicate API calls
+      if (isContactActionInProgress) {
+        console.warn('Contact action already in progress');
+        return;
+      }
+
+      isContactActionInProgress = true;
+
       // Close the dropdown menu
       document.getElementById('conversationMenuDropdown').classList.add('hidden');
+      const btn = document.getElementById('addContactMenuBtn');
+      if (btn) btn.disabled = true;
 
-      if (currentContactId) {
-        // Remove contact
-        const data = await apiCall(`/api/contacts/${currentContactId}`, {
-          method: 'DELETE',
-          body: JSON.stringify({})
-        });
+      try {
+        if (currentContactId) {
+          // Remove contact
+          console.log('Removing contact:', currentContactId, 'for user:', currentOtherId);
+          const data = await apiCall(`/api/contacts/${currentContactId}`, {
+            method: 'DELETE',
+            body: JSON.stringify({})
+          });
 
-        if (data && data.ok) {
-          currentContactId = null;
-          await updateContactMenuLabel();
-          // Refresh conversation list to move conversation from Your Active Chats to Pending Requests
-          await loadConversations();
+          if (data && data.ok) {
+            currentContactId = null;
+            await updateContactMenuLabel();
+            showToast('Contact removed', 'success');
+            // Refresh conversation list to move conversation from Your Active Chats to Pending Requests
+            await loadConversations();
+          } else {
+            const errorMsg = 'Failed to remove contact' + (data?.status ? ' (HTTP ' + data.status + ')' : '') + ': ' + (data?.error || 'Unknown error');
+            alert(errorMsg);
+            console.error(errorMsg, data);
+          }
         } else {
-          alert('Failed to remove contact');
-        }
-      } else {
-        // Add contact
-        const data = await apiCall('/api/contacts/by-id', {
-          method: 'POST',
-          body: JSON.stringify({ user_id: currentOtherId, nickname: null })
-        });
+          // Add contact
+          console.log('Adding contact for user:', currentOtherId);
+          const data = await apiCall('/api/contacts/by-id', {
+            method: 'POST',
+            body: JSON.stringify({ user_id: currentOtherId, nickname: null })
+          });
 
-        if (data && !data.error) {
-          currentContactId = data.id;
-          await updateContactMenuLabel();
-          // Refresh conversation list to move conversation from Pending Requests to Your Active Chats
-          await loadConversations();
-        } else {
-          alert('Failed to add contact: ' + (data?.error || 'Unknown error'));
+          if (data && !data.error) {
+            currentContactId = data.id;
+            console.log('Contact added with ID:', currentContactId);
+            await updateContactMenuLabel();
+            showToast('Contact added', 'success');
+            // Refresh conversation list to move conversation from Pending Requests to Your Active Chats
+            await loadConversations();
+          } else {
+            const errorMsg = 'Failed to add contact (HTTP ' + (data?.status || '?') + '): ' + (data?.error || 'Unknown error');
+            alert(errorMsg);
+            console.error(errorMsg, data);
+          }
         }
+      } finally {
+        isContactActionInProgress = false;
+        if (btn) btn.disabled = false;
       }
     }
 
@@ -3886,17 +3916,37 @@
         return;
       }
 
-      const data = await apiCall(`/api/conversations/${currentConvId}/archive`, {
-        method: 'POST',
-        body: JSON.stringify({})
-      });
+      // Prevent duplicate API calls
+      if (isDeleteConvInProgress) {
+        console.warn('Delete conversation already in progress');
+        return;
+      }
 
-      if (data && data.ok) {
-        hideDeleteConversationModal();
-        showConversationsView();
-        loadConversations();
-      } else {
-        alert('Failed to delete conversation');
+      isDeleteConvInProgress = true;
+
+      const btn = document.getElementById('deleteConversationConfirm');
+      if (btn) btn.disabled = true;
+
+      try {
+        console.log('Deleting conversation:', currentConvId);
+        const data = await apiCall(`/api/conversations/${currentConvId}/archive`, {
+          method: 'POST',
+          body: JSON.stringify({})
+        });
+
+        if (data && data.ok) {
+          hideDeleteConversationModal();
+          showConversationsView();
+          showToast('Conversation deleted', 'success');
+          loadConversations();
+        } else {
+          const errorMsg = 'Failed to delete conversation' + (data?.status ? ' (HTTP ' + data.status + ')' : '') + ': ' + (data?.error || 'Unknown error');
+          alert(errorMsg);
+          console.error(errorMsg, data);
+        }
+      } finally {
+        isDeleteConvInProgress = false;
+        if (btn) btn.disabled = false;
       }
     }
 
