@@ -3055,14 +3055,16 @@
         const handleSearchInput = async (e) => {
           clearTimeout(searchTimeout);
           const query = e.target.value.trim();
+          if (!resultsContainer) return;
           resultsContainer.innerHTML = '';
           if (!query) return;
 
           resultsContainer.innerHTML = '<div class="text-sm text-zinc-600 dark:text-zinc-400">Searching...</div>';
           searchTimeout = setTimeout(async () => {
+            if (!resultsContainer) return;
             const results = await apiCall(`/api/search/users?q=${encodeURIComponent(query)}`);
             if (!results || results.error) {
-              resultsContainer.innerHTML = '<div class="text-sm text-red-600 dark:text-red-400">Search failed</div>';
+              if (resultsContainer) resultsContainer.innerHTML = '<div class="text-sm text-red-600 dark:text-red-400">Search failed</div>';
               return;
             }
 
@@ -3071,7 +3073,7 @@
             const filtered = users.filter(u => !existingIds.has(u.id));
 
             if (filtered.length === 0) {
-              resultsContainer.innerHTML = '<div class="text-sm text-zinc-600 dark:text-zinc-400">No users found or already members</div>';
+              if (resultsContainer) resultsContainer.innerHTML = '<div class="text-sm text-zinc-600 dark:text-zinc-400">No users found or already members</div>';
               return;
             }
 
@@ -3085,7 +3087,7 @@
               </div>
             `).join('');
 
-            resultsContainer.innerHTML = resultHtml;
+            if (resultsContainer) resultsContainer.innerHTML = resultHtml;
           }, 500);
         };
 
@@ -3124,11 +3126,18 @@
             // Reopen manage members modal to show updated list
             setTimeout(() => manageGroupMembers(), 100);
             return result;
+          } else {
+            // Handle null/undefined response
+            console.warn('Add member returned null/undefined response');
+            showToast('Member added (confirmation pending)', 'success');
+            await refreshGroupsUI();
+            setTimeout(() => manageGroupMembers(), 100);
           }
         });
       } catch (err) {
         if (err.message !== 'User cancelled wallet confirmation') {
           console.error('Add member error:', err);
+          showToast(`Error: ${err.message}`, 'error');
         }
       }
     }
@@ -3156,11 +3165,18 @@
             // Reopen manage members modal to show updated list
             setTimeout(() => manageGroupMembers(), 100);
             return result;
+          } else {
+            // Handle null/undefined response
+            console.warn('Remove member returned null/undefined response');
+            showToast('Member removed (confirmation pending)', 'success');
+            await refreshGroupsUI();
+            setTimeout(() => manageGroupMembers(), 100);
           }
         });
       } catch (err) {
         if (err.message !== 'User cancelled wallet confirmation') {
           console.error('Remove member error:', err);
+          showToast(`Error: ${err.message}`, 'error');
         }
       }
     }
@@ -3200,11 +3216,17 @@
               showToast('Group renamed successfully', 'success');
               await refreshGroupsUI();
               return data;
+            } else {
+              // Handle null/undefined response
+              console.warn('Rename group returned null/undefined response');
+              showToast('Group renamed (confirmation pending)', 'success');
+              await refreshGroupsUI();
             }
           });
         } catch (err) {
           if (err.message !== 'User cancelled wallet confirmation') {
             console.error('Rename group error:', err);
+            showToast(`Error: ${err.message}`, 'error');
           }
         }
       }
@@ -3242,11 +3264,20 @@
               showConversationsView();
             }
             return data;
+          } else {
+            // Handle null/undefined response
+            console.warn('Leave group returned null/undefined response');
+            showToast('Left group (confirmation pending)', 'success');
+            await refreshGroupsUI();
+            if (currentGroupId === currentGroupContextMenuId) {
+              showConversationsView();
+            }
           }
         });
       } catch (err) {
         if (err.message !== 'User cancelled wallet confirmation') {
           console.error('Leave group error:', err);
+          showToast(`Error: ${err.message}`, 'error');
         }
       }
     }
@@ -3276,11 +3307,20 @@
                 showConversationsView();
               }
               return data;
+            } else {
+              // Handle null/undefined response
+              console.warn('Delete group returned null/undefined response');
+              showToast('Group deleted (confirmation pending)', 'success');
+              await refreshGroupsUI();
+              if (currentGroupId === currentGroupContextMenuId) {
+                showConversationsView();
+              }
             }
           });
         } catch (err) {
           if (err.message !== 'User cancelled wallet confirmation') {
             console.error('Delete group error:', err);
+            showToast(`Error: ${err.message}`, 'error');
           }
         }
       }
@@ -3812,7 +3852,9 @@
       document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
 
+      // Clear all polling intervals when returning to messages view
       if (pollInterval) clearInterval(pollInterval);
+      if (conversationsPollInterval) clearInterval(conversationsPollInterval);
 
       // Clear modals/menus when returning to messages view
       closeManageGroupMembersModal();
