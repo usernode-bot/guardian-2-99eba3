@@ -2234,6 +2234,7 @@
           currentContactId = null;
           await loadContactsList();
           showToast('Contact deleted', 'success');
+          return;
         } else {
           const errorMsg = data?.error || 'Failed to delete contact';
           showToast(errorMsg, 'error');
