@@ -1407,6 +1407,26 @@
   <!-- Toast Notification Container -->
   <div id="toastContainer" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
+  <!-- Persistent Notification Container -->
+  <div id="persistentNotificationContainer" class="fixed top-4 right-4 z-40 flex flex-col gap-3 pointer-events-none max-w-sm"></div>
+
+  <!-- Transaction Details Modal -->
+  <div id="transactionDetailsModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 rounded-lg shadow-xl max-w-md w-full max-h-[80vh] overflow-y-auto">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
+        <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Transaction Details</h2>
+        <button onclick="closeTransactionDetailsModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition text-xl">✕</button>
+      </div>
+      <div id="transactionDetailsContent" class="p-6 space-y-4">
+        <div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Loading transaction details...</div>
+      </div>
+      <div class="flex items-center gap-2 px-6 py-4 border-t border-zinc-200 dark:border-zinc-800">
+        <button onclick="closeTransactionDetailsModal()" class="flex-1 px-4 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 rounded-lg transition font-medium">Close</button>
+        <a id="txExplorerLink" href="#" target="_blank" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium text-center">View on Explorer</a>
+      </div>
+    </div>
+  </div>
+
   <!-- UserNode Bridge for wallet signing -->
   <script src="https://social-vibecoding.usernodelabs.org/usernode-bridge/v1/bridge.js"></script>
 
@@ -1436,6 +1456,150 @@
         toast.classList.add('animate-out', 'fade-out', 'slide-out-to-right-4', 'duration-300');
         setTimeout(() => toast.remove(), 300);
       }, 3000);
+    }
+
+    function showPersistentNotification(type, data) {
+      const container = document.getElementById('persistentNotificationContainer');
+      const notification = document.createElement('div');
+      const notificationId = 'notification-' + Math.random().toString(36).substr(2, 9);
+
+      let icon = '🔄';
+      let description = 'Action completed';
+
+      if (type === 'message') {
+        icon = '💬';
+        description = `Message sent to @${escapeHtml(data.recipient || 'user')}`;
+      } else if (type === 'image') {
+        icon = '🖼️';
+        description = `Image sent to @${escapeHtml(data.recipient || 'user')}`;
+      } else if (type === 'token_transfer') {
+        icon = '💰';
+        description = `Transferred ${escapeHtml(String(data.amount))} tokens to @${escapeHtml(data.recipient || 'user')}`;
+      } else if (type === 'group_create') {
+        icon = '👥';
+        description = `Created group '${escapeHtml(data.groupName || 'group')}'`;
+      }
+
+      const statusClass = 'text-gray-600 dark:text-gray-400';
+      const statusIcon = '⏳';
+
+      notification.id = notificationId;
+      notification.className = 'bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg p-4 shadow-lg pointer-events-auto max-w-sm animate-slideIn';
+      notification.innerHTML = `
+        <div class="flex items-start justify-between gap-2">
+          <div class="flex-1">
+            <div class="text-sm font-medium text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+              <span class="text-lg">${icon}</span>
+              <span>${description}</span>
+            </div>
+            <div class="mt-2 text-xs text-zinc-600 dark:text-zinc-400">
+              <a href="#" class="text-cyan-600 dark:text-cyan-400 hover:underline" onclick="event.preventDefault(); openTransactionDetailsModal(${escapeHtml(String(data.blockchainRecordingId))})">View transaction</a>
+            </div>
+          </div>
+          <button onclick="document.getElementById('${notificationId}').remove()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition text-lg leading-none flex-shrink-0">✕</button>
+        </div>
+      `;
+
+      container.appendChild(notification);
+    }
+
+    function closeTransactionDetailsModal() {
+      document.getElementById('transactionDetailsModal').classList.add('hidden');
+    }
+
+    async function openTransactionDetailsModal(auditLogId) {
+      const modal = document.getElementById('transactionDetailsModal');
+      const content = document.getElementById('transactionDetailsContent');
+
+      modal.classList.remove('hidden');
+      content.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Loading transaction details...</div>';
+
+      try {
+        const data = await apiCall(`/api/blockchain-audit/${auditLogId}`);
+        if (!data) {
+          content.innerHTML = '<div class="text-center py-8 text-red-600 dark:text-red-400">Failed to load transaction details</div>';
+          return;
+        }
+
+        const timestamp = new Date(data.createdAt).toLocaleString();
+        const payload = typeof data.transactionPayload === 'string' ? JSON.parse(data.transactionPayload || '{}') : (data.transactionPayload || {});
+
+        let typeIcon = '🔄';
+        let typeLabel = 'Transaction';
+        let details = '';
+
+        if (data.messageType === 'message') {
+          typeIcon = '💬';
+          typeLabel = 'Message Sent';
+          details = `<div class="text-sm text-zinc-600 dark:text-zinc-400">Message transaction recorded</div>`;
+        } else if (data.messageType === 'token_transfer') {
+          typeIcon = '💰';
+          typeLabel = 'Token Transfer';
+          details = `<div class="text-sm text-zinc-600 dark:text-zinc-400">
+            <div>Amount: <span class="font-medium text-zinc-900 dark:text-zinc-100">${escapeHtml(String(payload.amount || '?'))} tokens</span></div>
+          </div>`;
+        } else if (data.messageType === 'group_create') {
+          typeIcon = '👥';
+          typeLabel = 'Group Created';
+          details = `<div class="text-sm text-zinc-600 dark:text-zinc-400">
+            <div>Group: <span class="font-medium text-zinc-900 dark:text-zinc-100">${escapeHtml(data.groupName || 'Unknown')}</span></div>
+          </div>`;
+        }
+
+        let statusClass = 'text-gray-600 dark:text-gray-400';
+        let statusIcon = '⏳';
+        if (data.status === 'confirmed') {
+          statusClass = 'text-green-600 dark:text-green-400';
+          statusIcon = '✓';
+        } else if (data.status === 'failed') {
+          statusClass = 'text-red-600 dark:text-red-400';
+          statusIcon = '✗';
+        }
+
+        const txHashShort = data.txHash ? data.txHash.substring(0, 12) : 'N/A';
+        const txHashFull = data.txHash || '';
+
+        let txHashHtml = '';
+        if (data.txHash && !data.txHash.includes('staging')) {
+          txHashHtml = `<div class="text-sm"><span class="text-zinc-600 dark:text-zinc-400">Hash:</span> <span class="font-mono text-xs text-cyan-600 dark:text-cyan-400 break-all">${escapeHtml(data.txHash)}</span></div>`;
+        } else if (data.txHash) {
+          txHashHtml = `<div class="text-sm"><span class="text-zinc-600 dark:text-zinc-400">Hash:</span> <span class="font-mono text-xs text-zinc-500">${escapeHtml(txHashShort)}...</span></div>`;
+        }
+
+        content.innerHTML = `
+          <div class="space-y-4">
+            <div>
+              <div class="text-lg font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                <span class="text-2xl">${typeIcon}</span>
+                ${typeLabel}
+              </div>
+            </div>
+            ${details}
+            <div class="pt-4 border-t border-zinc-200 dark:border-zinc-700 space-y-2">
+              <div class="text-sm flex items-center justify-between">
+                <span class="text-zinc-600 dark:text-zinc-400">Status:</span>
+                <span class="flex items-center gap-1 ${statusClass}">
+                  <span class="text-lg">${statusIcon}</span>
+                  <span class="capitalize font-medium">${data.status}</span>
+                </span>
+              </div>
+              ${txHashHtml}
+              <div class="text-sm"><span class="text-zinc-600 dark:text-zinc-400">Timestamp:</span> <span class="text-zinc-900 dark:text-zinc-100">${timestamp}</span></div>
+            </div>
+          </div>
+        `;
+
+        const explorerLink = document.getElementById('txExplorerLink');
+        if (data.txHash && !data.txHash.includes('staging')) {
+          explorerLink.href = `https://explorer.usernodelabs.org/tx/${escapeHtml(data.txHash)}`;
+          explorerLink.classList.remove('hidden');
+        } else {
+          explorerLink.classList.add('hidden');
+        }
+      } catch (err) {
+        console.error('Error loading transaction details:', err);
+        content.innerHTML = '<div class="text-center py-8 text-red-600 dark:text-red-400">Error loading transaction details</div>';
+      }
     }
 
     let currentUser = null;
@@ -2887,6 +3051,13 @@
 
           if (data && !data.error) {
             showToast('Group created successfully', 'success');
+            if (data.blockchainRecordingId) {
+              showPersistentNotification('group_create', {
+                blockchainRecordingId: data.blockchainRecordingId,
+                groupName: data.name,
+                memberCount: data.members ? data.members.length : 0
+              });
+            }
             closeCreateGroupModal();
             loadGroups();
             return data;
@@ -3919,6 +4090,12 @@
             });
 
             if (data && !data.error) {
+              if (data.blockchainRecordingId) {
+                showPersistentNotification('message', {
+                  blockchainRecordingId: data.blockchainRecordingId,
+                  recipient: currentGroupId ? 'group' : currentContactName
+                });
+              }
               if (currentGroupId) {
                 loadGroupMessages(currentGroupId);
               } else {
@@ -3937,6 +4114,12 @@
           });
 
           if (data) {
+            if (data.blockchainRecordingId) {
+              showPersistentNotification('message', {
+                blockchainRecordingId: data.blockchainRecordingId,
+                recipient: currentGroupId ? 'group' : currentContactName
+              });
+            }
             if (currentGroupId) {
               loadGroupMessages(currentGroupId);
             } else {
@@ -3975,6 +4158,12 @@
               });
 
               if (data && !data.error) {
+                if (data.blockchainRecordingId) {
+                  showPersistentNotification('image', {
+                    blockchainRecordingId: data.blockchainRecordingId,
+                    recipient: currentGroupId ? 'group' : currentContactName
+                  });
+                }
                 if (currentGroupId) {
                   loadGroupMessages(currentGroupId);
                 } else {
@@ -3992,6 +4181,12 @@
               body: JSON.stringify({ type: 'image', content: { imageUrl: dataUri } })
             });
             if (data) {
+              if (data.blockchainRecordingId) {
+                showPersistentNotification('image', {
+                  blockchainRecordingId: data.blockchainRecordingId,
+                  recipient: currentGroupId ? 'group' : currentContactName
+                });
+              }
               if (currentGroupId) {
                 loadGroupMessages(currentGroupId);
               } else {
@@ -4046,6 +4241,13 @@
             });
 
             if (data && !data.error) {
+              if (data.blockchainRecordingId) {
+                showPersistentNotification('token_transfer', {
+                  blockchainRecordingId: data.blockchainRecordingId,
+                  amount: parseInt(amount),
+                  recipient: currentContactName
+                });
+              }
               const msgData = await apiCall(`/api/conversations/${currentConvId}/messages`, {
                 method: 'POST',
                 body: JSON.stringify({
@@ -5355,7 +5557,7 @@
           }
 
           html += `
-            <div class="p-3 bg-zinc-100 dark:bg-zinc-800 rounded border border-zinc-200 dark:border-zinc-700">
+            <div class="p-3 bg-zinc-100 dark:bg-zinc-800 rounded border border-zinc-200 dark:border-zinc-700 cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-700 transition" onclick="openTransactionDetailsModal(${tx.id})">
               <div class="flex justify-between items-start mb-2">
                 <div class="flex-1">
                   <div class="text-sm font-medium text-zinc-900 dark:text-zinc-100">${typeIcon} ${description}</div>
