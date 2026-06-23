@@ -918,9 +918,10 @@
 
       <!-- Profile View -->
       <div id="profileView" class="hidden flex flex-col flex-1 overflow-hidden">
-        <!-- Core Profile Content (Shown on Identity Tab Only) -->
-        <div id="profileCoreContent" class="overflow-y-auto flex-1 pb-20">
-          <div class="p-4 space-y-4">
+        <!-- Scrollable Content Area -->
+        <div class="overflow-y-auto flex-1 pb-20">
+          <!-- Core Profile Content (Shown on Identity Tab Only) -->
+          <div id="profileCoreContent" class="p-4 space-y-4">
             <!-- Avatar Section -->
             <div class="flex justify-center pt-4 pb-2">
               <div class="relative">
@@ -992,13 +993,14 @@
             <div class="text-center py-2">
               <div id="profileIdentityBadge" class="text-sm text-zinc-600 dark:text-zinc-400">—</div>
             </div>
+          </div>
 
-            <!-- Identity Tab (Empty - content moved to persistent header) -->
-            <div id="profileTabContentIdentity" class="hidden space-y-4">
-            </div>
+          <!-- Identity Tab (Empty - content moved to persistent header) -->
+          <div id="profileTabContentIdentity" class="hidden space-y-4 p-4">
+          </div>
 
-            <!-- Guardian's Tab -->
-            <div id="profileTabContentGuardians" class="hidden space-y-4">
+          <!-- Guardian's Tab -->
+          <div id="profileTabContentGuardians" class="hidden space-y-4 p-4">
               <!-- Contribution Level Section -->
               <div class="space-y-2">
                 <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Contribution Level</label>
@@ -1036,12 +1038,11 @@
               </div>
             </div>
 
-            <!-- Activity Tab -->
-            <div id="profileTabContentActivity" class="hidden space-y-2">
-              <!-- On-Chain Transaction History -->
-              <div id="activityTransactionsList" class="space-y-2">
-                <div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Loading transactions...</div>
-              </div>
+          <!-- Activity Tab -->
+          <div id="profileTabContentActivity" class="hidden space-y-2 p-4">
+            <!-- On-Chain Transaction History -->
+            <div id="activityTransactionsList" class="space-y-2">
+              <div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Loading transactions...</div>
             </div>
           </div>
         </div>
