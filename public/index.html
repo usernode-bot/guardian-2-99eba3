@@ -2487,6 +2487,10 @@
       activeMessagesTab = tab;
       localStorage.setItem(`guardian_messages_tab_${currentUser.id}`, tab);
 
+      // Clear any open modals/menus when switching tabs
+      closeManageGroupMembersModal();
+      document.getElementById('groupContextMenu').classList.add('hidden');
+
       const directTab = document.getElementById('directTab');
       const groupsTab = document.getElementById('groupsTab');
       const directList = document.getElementById('directList');
@@ -2684,43 +2688,46 @@
     }
 
     // Open group context menu
-    function openGroupContextMenu(event, groupId) {
+    async function openGroupContextMenu(event, groupId) {
       event.preventDefault();
       currentGroupContextMenuId = groupId;
 
-      // Fetch group to check if user is creator
-      apiCall(`/api/groups/${groupId}`).then(groupData => {
-        const menu = document.getElementById('groupContextMenu');
+      // Fetch group to check if user is creator BEFORE showing menu
+      const groupData = await apiCall(`/api/groups/${groupId}`);
+      if (!groupData || groupData.error) {
+        console.error('Failed to fetch group data:', groupData?.error);
+        return;
+      }
 
-        // Show/hide creator-only buttons
-        const renameBtn = document.getElementById('renameGroupBtn');
-        const deleteBtn = document.getElementById('deleteGroupBtn');
-        const manageBtn = document.getElementById('manageGroupMembersBtn');
-        const isCreator = groupData && groupData.creatorId === currentUser.id;
+      const menu = document.getElementById('groupContextMenu');
+      const renameBtn = document.getElementById('renameGroupBtn');
+      const deleteBtn = document.getElementById('deleteGroupBtn');
+      const manageBtn = document.getElementById('manageGroupMembersBtn');
+      const isCreator = groupData && groupData.creatorId === currentUser.id;
 
-        manageBtn.style.display = isCreator ? 'block' : 'none';
-        renameBtn.style.display = isCreator ? 'block' : 'none';
-        deleteBtn.style.display = isCreator ? 'block' : 'none';
+      // Pre-configure button visibility before showing menu
+      manageBtn.style.display = isCreator ? 'block' : 'none';
+      renameBtn.style.display = isCreator ? 'block' : 'none';
+      deleteBtn.style.display = isCreator ? 'block' : 'none';
 
-        // Position menu, accounting for viewport
-        let x = event.clientX;
-        let y = event.clientY;
+      // Position menu, accounting for viewport
+      let x = event.clientX;
+      let y = event.clientY;
 
-        menu.classList.remove('hidden');
-        menu.style.left = x + 'px';
-        menu.style.top = y + 'px';
+      menu.classList.remove('hidden');
+      menu.style.left = x + 'px';
+      menu.style.top = y + 'px';
 
-        // Check if menu goes off-screen and adjust
-        setTimeout(() => {
-          const rect = menu.getBoundingClientRect();
-          if (rect.right > window.innerWidth) {
-            menu.style.left = (x - rect.width) + 'px';
-          }
-          if (rect.bottom > window.innerHeight) {
-            menu.style.top = (y - rect.height) + 'px';
-          }
-        }, 0);
-      });
+      // Check if menu goes off-screen and adjust
+      setTimeout(() => {
+        const rect = menu.getBoundingClientRect();
+        if (rect.right > window.innerWidth) {
+          menu.style.left = (x - rect.width) + 'px';
+        }
+        if (rect.bottom > window.innerHeight) {
+          menu.style.top = (y - rect.height) + 'px';
+        }
+      }, 0);
     }
 
     // Create group
@@ -3113,7 +3120,9 @@
             throw new Error(result.error);
           } else if (result) {
             showToast('Member added successfully', 'success');
-            await manageGroupMembers();
+            await refreshGroupsUI();
+            // Reopen manage members modal to show updated list
+            setTimeout(() => manageGroupMembers(), 100);
             return result;
           }
         });
@@ -3143,7 +3152,9 @@
             throw new Error(result.error);
           } else if (result) {
             showToast('Member removed successfully', 'success');
-            await manageGroupMembers();
+            await refreshGroupsUI();
+            // Reopen manage members modal to show updated list
+            setTimeout(() => manageGroupMembers(), 100);
             return result;
           }
         });
@@ -3158,9 +3169,20 @@
       document.getElementById('manageGroupMembersModal').classList.add('hidden');
     }
 
+    // Centralized helper to refresh groups UI after mutations
+    async function refreshGroupsUI() {
+      await loadGroups();
+      closeManageGroupMembersModal();
+      document.getElementById('groupContextMenu').classList.add('hidden');
+    }
+
     // Rename group
     async function renameGroup() {
-      if (!currentGroupContextMenuId) return;
+      if (!currentGroupContextMenuId || isNaN(currentGroupContextMenuId)) {
+        console.error('Invalid group context menu ID');
+        showToast('Error: No group selected', 'error');
+        return;
+      }
       const newName = prompt('Enter new group name:');
       if (newName && newName.trim()) {
         try {
@@ -3176,8 +3198,7 @@
               throw new Error(data.error);
             } else if (data) {
               showToast('Group renamed successfully', 'success');
-              loadGroups();
-              document.getElementById('groupContextMenu').classList.add('hidden');
+              await refreshGroupsUI();
               return data;
             }
           });
@@ -3191,7 +3212,11 @@
 
     // Leave group
     async function leaveGroup() {
-      if (!currentGroupContextMenuId) return;
+      if (!currentGroupContextMenuId || isNaN(currentGroupContextMenuId)) {
+        console.error('Invalid group context menu ID');
+        showToast('Error: No group selected', 'error');
+        return;
+      }
 
       // Fetch group data to show group name in confirmation
       const groupData = await apiCall(`/api/groups/${currentGroupContextMenuId}`);
@@ -3212,8 +3237,7 @@
             throw new Error(data.error);
           } else if (data) {
             showToast('Left group successfully', 'success');
-            loadGroups();
-            document.getElementById('groupContextMenu').classList.add('hidden');
+            await refreshGroupsUI();
             if (currentGroupId === currentGroupContextMenuId) {
               showConversationsView();
             }
@@ -3229,7 +3253,11 @@
 
     // Delete group
     async function deleteGroup() {
-      if (!currentGroupContextMenuId) return;
+      if (!currentGroupContextMenuId || isNaN(currentGroupContextMenuId)) {
+        console.error('Invalid group context menu ID');
+        showToast('Error: No group selected', 'error');
+        return;
+      }
       if (confirm('Are you sure you want to delete this group? This cannot be undone.')) {
         try {
           // Show wallet confirmation modal
@@ -3243,8 +3271,7 @@
               throw new Error(data.error);
             } else if (data) {
               showToast('Group deleted successfully', 'success');
-              loadGroups();
-              document.getElementById('groupContextMenu').classList.add('hidden');
+              await refreshGroupsUI();
               if (currentGroupId === currentGroupContextMenuId) {
                 showConversationsView();
               }
@@ -3787,12 +3814,19 @@
 
       if (pollInterval) clearInterval(pollInterval);
 
+      // Clear modals/menus when returning to messages view
+      closeManageGroupMembersModal();
+      document.getElementById('groupContextMenu').classList.add('hidden');
+
       // Initialize tabs
       await switchMessagesTab(activeMessagesTab);
 
-      // Start polling for both tabs
+      // Start polling for both tabs, but only if messages view is visible
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
       conversationsPollInterval = setInterval(() => {
+        const messagesView = document.getElementById('messagesView');
+        if (messagesView.classList.contains('hidden')) return;
+
         if (activeMessagesTab === 'direct') {
           loadConversations();
         } else {
