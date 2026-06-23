@@ -151,9 +151,12 @@ app.get('/api/user', async (req, res) => {
     return res.status(401).json({ error: 'Not authenticated' });
   }
   try {
-    const userRes = await pool.query(`SELECT network, view_mode FROM users WHERE id = $1`, [req.user.id]);
+    const userRes = await pool.query(`SELECT network, view_mode, avatar_url, created_at, bio FROM users WHERE id = $1`, [req.user.id]);
     const network = userRes.rows[0]?.network || 'testnet';
     const view_mode = userRes.rows[0]?.view_mode || 'web';
+    const avatar_url = userRes.rows[0]?.avatar_url || null;
+    const created_at = userRes.rows[0]?.created_at || null;
+    const bio = userRes.rows[0]?.bio || null;
     res.json({
       id: req.user.id,
       username: req.user.username,
@@ -161,6 +164,9 @@ app.get('/api/user', async (req, res) => {
       verified: !!req.user.verified_at,
       network: network,
       view_mode: view_mode,
+      avatar_url: avatar_url,
+      created_at: created_at,
+      bio: bio,
       isDemoMode: ENABLE_DEMO_MODE,
     });
   } catch (err) {
@@ -204,6 +210,100 @@ app.put('/api/user/view-mode', async (req, res) => {
   } catch (err) {
     console.error('Error updating view mode:', err);
     res.status(500).json({ error: 'Failed to update view mode' });
+  }
+});
+
+app.get('/api/user/stats', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
+
+    // Query posts count
+    const postsRes = await pool.query(`SELECT COUNT(*) as count FROM feed_posts WHERE user_id = $1`, [userId]);
+    const postsCount = parseInt(postsRes.rows[0]?.count || 0, 10);
+
+    // Query contacts count (contacts added BY this user)
+    const contactsRes = await pool.query(`SELECT COUNT(*) as count FROM user_contacts WHERE user_id = $1`, [userId]);
+    const contactsCount = parseInt(contactsRes.rows[0]?.count || 0, 10);
+
+    // Query messages count (direct + group messages sent by this user)
+    const directMessagesRes = await pool.query(`SELECT COUNT(*) as count FROM messages WHERE sender_id = $1`, [userId]);
+    const directCount = parseInt(directMessagesRes.rows[0]?.count || 0, 10);
+
+    const groupMessagesRes = await pool.query(`SELECT COUNT(*) as count FROM group_messages WHERE sender_id = $1`, [userId]);
+    const groupCount = parseInt(groupMessagesRes.rows[0]?.count || 0, 10);
+
+    const messagesCount = directCount + groupCount;
+
+    res.json({
+      postsCount: postsCount,
+      contactsCount: contactsCount,
+      messagesCount: messagesCount,
+    });
+  } catch (err) {
+    console.error('Error fetching user stats:', err);
+    res.status(500).json({ error: 'Failed to fetch user stats' });
+  }
+});
+
+app.put('/api/user/bio', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { bio } = req.body;
+    if (bio !== null && bio !== undefined && typeof bio !== 'string') {
+      return res.status(400).json({ error: 'Bio must be a string' });
+    }
+
+    const bioText = bio && typeof bio === 'string' ? bio.substring(0, 500) : null;
+
+    await pool.query(`UPDATE users SET bio = $1 WHERE id = $2`, [bioText, req.user.id]);
+    res.json({
+      status: 'updated',
+      bio: bioText,
+    });
+  } catch (err) {
+    console.error('Error updating bio:', err);
+    res.status(500).json({ error: 'Failed to update bio' });
+  }
+});
+
+app.post('/api/user/avatar', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    // For now, accept a data URI from the client (file converted to base64)
+    // In production, this would integrate with S3/Cloudinary/etc
+    const { dataUri } = req.body;
+    if (!dataUri) {
+      return res.status(400).json({ error: 'No image data provided' });
+    }
+
+    // Validate data URI format
+    if (!dataUri.startsWith('data:image/')) {
+      return res.status(400).json({ error: 'Invalid image format' });
+    }
+
+    // Store the data URI as avatar_url
+    await pool.query(`UPDATE users SET avatar_url = $1 WHERE id = $2`, [dataUri, req.user.id]);
+
+    res.json({
+      avatar_url: dataUri,
+      status: 'updated',
+    });
+  } catch (err) {
+    console.error('Error updating avatar:', err);
+    res.status(500).json({ error: 'Failed to update avatar' });
   }
 });
 
@@ -1002,10 +1102,20 @@ app.get('/api/transactions-by-user', async (req, res) => {
 
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
     const offset = parseInt(req.query.offset || 0);
+    const typeFilter = req.query.type || null;
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
+
+    let whereClause = 'bal.user_id = $1';
+    let params = [userId];
+    if (typeFilter) {
+      whereClause += ' AND bal.message_type = $' + (params.length + 1);
+      params.push(typeFilter);
+    }
+    params.push(limit);
+    params.push(offset);
 
     const { rows } = await pool.query(`
       SELECT
@@ -1022,14 +1132,20 @@ app.get('/api/transactions-by-user', async (req, res) => {
         g.name as group_name
       FROM blockchain_audit_logs bal
       LEFT JOIN groups g ON g.id = bal.group_id
-      WHERE bal.user_id = $1
+      WHERE ${whereClause}
       ORDER BY bal.created_at DESC
-      LIMIT $2 OFFSET $3
-    `, [userId, limit, offset]);
+      LIMIT $${params.length - 1} OFFSET $${params.length}
+    `, params);
 
+    let countWhereClause = 'user_id = $1';
+    let countParams = [userId];
+    if (typeFilter) {
+      countWhereClause += ' AND message_type = $2';
+      countParams.push(typeFilter);
+    }
     const { rows: countRows } = await pool.query(`
-      SELECT COUNT(*) as total FROM blockchain_audit_logs WHERE user_id = $1
-    `, [userId]);
+      SELECT COUNT(*) as total FROM blockchain_audit_logs WHERE ${countWhereClause}
+    `, countParams);
 
     const transactions = rows.map(r => {
       let recipientUsername = null;
@@ -1067,6 +1183,141 @@ app.get('/api/transactions-by-user', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/user/feed-posts - Authenticated user's own feed posts
+app.get('/api/user/feed-posts', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const limit = Math.min(parseInt(req.query.limit || 20), 100);
+    const offset = parseInt(req.query.offset || 0);
+    const userId = parseInt(req.user.id, 10);
+
+    const { rows: posts } = await pool.query(`
+      SELECT
+        fp.id,
+        fp.user_id,
+        fp.content,
+        fp.created_at,
+        u.username,
+        u.verified_at,
+        u.avatar_url,
+        (SELECT COUNT(*) FROM feed_likes WHERE post_id = fp.id)::INTEGER as like_count,
+        (SELECT COUNT(*) FROM feed_comments WHERE post_id = fp.id)::INTEGER as comment_count
+      FROM feed_posts fp
+      JOIN users u ON u.id = fp.user_id
+      WHERE fp.user_id = $1
+      ORDER BY fp.created_at DESC
+      LIMIT $2 OFFSET $3
+    `, [userId, limit, offset]);
+
+    const { rows: countResult } = await pool.query(`
+      SELECT COUNT(*) as count FROM feed_posts WHERE user_id = $1
+    `, [userId]);
+
+    const total = parseInt(countResult[0].count);
+    const hasMore = offset + limit < total;
+
+    res.json({
+      posts: posts.map(p => ({
+        id: p.id,
+        userId: p.user_id,
+        username: p.username,
+        verified: !!p.verified_at,
+        avatarUrl: p.avatar_url,
+        content: p.content,
+        createdAt: p.created_at,
+        likeCount: p.like_count || 0,
+        commentCount: p.comment_count || 0
+      })),
+      hasMore
+    });
+  } catch (err) {
+    console.error('Error fetching user feed posts:', err);
+    res.status(500).json({ error: 'Failed to fetch feed posts' });
+  }
+});
+
+// GET /api/user/messages - Authenticated user's sent messages (direct + group)
+app.get('/api/user/messages', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const limit = Math.min(parseInt(req.query.limit || 20), 100);
+    const offset = parseInt(req.query.offset || 0);
+    const userId = parseInt(req.user.id, 10);
+
+    // Get direct messages sent by user
+    const { rows: directMessages } = await pool.query(`
+      SELECT
+        m.id,
+        m.created_at,
+        m.content,
+        'direct' as message_type,
+        u.username as recipient_username,
+        NULL::TEXT as group_name
+      FROM messages m
+      JOIN conversations c ON c.id = m.conversation_id
+      JOIN users u ON u.id = CASE
+        WHEN c.participant_a_id = $1 THEN c.participant_b_id
+        ELSE c.participant_a_id
+      END
+      WHERE m.sender_id = $1
+      UNION ALL
+      SELECT
+        gm.id,
+        gm.created_at,
+        gm.content,
+        'group' as message_type,
+        NULL::TEXT as recipient_username,
+        g.name as group_name
+      FROM group_messages gm
+      JOIN groups g ON g.id = gm.group_id
+      WHERE gm.sender_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2 OFFSET $3
+    `, [userId, limit, offset]);
+
+    const { rows: countResult } = await pool.query(`
+      SELECT COUNT(*) as total FROM (
+        SELECT m.id FROM messages m WHERE m.sender_id = $1
+        UNION ALL
+        SELECT gm.id FROM group_messages gm WHERE gm.sender_id = $1
+      ) combined
+    `, [userId]);
+
+    const total = parseInt(countResult[0].total);
+    const hasMore = offset + limit < total;
+
+    res.json({
+      messages: directMessages.map(m => {
+        let preview = '';
+        if (m.content && typeof m.content === 'object' && m.content.text) {
+          preview = m.content.text.substring(0, 100).replace(/\n/g, ' ');
+        } else if (typeof m.content === 'string') {
+          const parsed = JSON.parse(m.content);
+          preview = (parsed.text || '').substring(0, 100).replace(/\n/g, ' ');
+        }
+        return {
+          id: m.id,
+          messageType: m.message_type,
+          contentPreview: preview,
+          createdAt: m.created_at,
+          recipientUsername: m.recipient_username,
+          groupName: m.group_name
+        };
+      }),
+      hasMore
+    });
+  } catch (err) {
+    console.error('Error fetching user messages:', err);
+    res.status(500).json({ error: 'Failed to fetch messages' });
   }
 });
 
@@ -2557,6 +2808,124 @@ app.post('/api/groups/:groupId/archive', async (req, res) => {
 
 // ===== ACTIVITY LEDGER ENDPOINTS =====
 
+app.get('/api/user/guardians', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    let foregroundHours = 0;
+
+    if (IS_STAGING) {
+      // In staging, provide mock data based on user ID for consistency
+      const userId = parseInt(req.user.id, 10);
+      const mockDataSet = [5, 25, 100, 300, 15, 50, 75, 150, 200, 250];
+      // Use modulo to deterministically map user ID to a value
+      foregroundHours = mockDataSet[userId % mockDataSet.length];
+    } else {
+      // In production, fetch from peers/usernode
+      // For now, default to 0 hours as a placeholder
+      // TODO: Integrate with usernode peer discovery to fetch real foreground hours
+      foregroundHours = 0;
+    }
+
+    // Calculate contribution level: (foregroundHours / 200) * 5, capped at 5
+    const contributionLevel = Math.min((foregroundHours / 200) * 5, 5);
+
+    // Determine rank based on hours
+    let rank = 'New Guardian';
+    if (foregroundHours >= 10 && foregroundHours < 50) {
+      rank = 'Active Guardian';
+    } else if (foregroundHours >= 50 && foregroundHours < 200) {
+      rank = 'Trusted Guardian';
+    } else if (foregroundHours >= 200) {
+      rank = 'Elite Guardian';
+    }
+
+    // Determine hours bracket for display
+    const hoursBracket = foregroundHours < 10 ? '0-10'
+      : foregroundHours < 50 ? '10-50'
+      : foregroundHours < 200 ? '50-200'
+      : '200+';
+
+    res.json({
+      foregroundHours,
+      contributionLevel,
+      rank,
+      hoursBracket,
+      usernode_pubkey: req.user.usernode_pubkey || null
+    });
+  } catch (err) {
+    console.error('Error fetching guardians data:', err);
+    res.status(500).json({ error: 'Failed to fetch guardians data' });
+  }
+});
+
+app.get('/api/peers/:peer_id', async (req, res) => {
+  try {
+    const { peer_id } = req.params;
+
+    // Validate peer_id format (should start with ut1)
+    if (!peer_id || !peer_id.startsWith('ut1')) {
+      return res.status(400).json({ error: 'Invalid peer ID format' });
+    }
+
+    const { rows } = await pool.query(`
+      SELECT id, peer_id, foreground_hours, created_at
+      FROM peers
+      WHERE peer_id = $1
+    `, [peer_id]);
+
+    if (rows.length === 0) {
+      // Return default values if peer not found
+      return res.json({
+        peer_id,
+        foreground_hours: 0,
+        created_at: null
+      });
+    }
+
+    const peer = rows[0];
+    res.json({
+      peer_id: peer.peer_id,
+      foreground_hours: peer.foreground_hours,
+      created_at: peer.created_at
+    });
+  } catch (err) {
+    console.error('Error fetching peer data:', err);
+    res.status(500).json({ error: 'Failed to fetch peer data' });
+  }
+});
+
+app.get('/api/network/peer-count', async (req, res) => {
+  try {
+    let peerCount = 0;
+    let status = 'offline';
+
+    if (IS_STAGING) {
+      // In staging, provide mock data with deterministic peer count cycling
+      const mockPeerCounts = [5, 12, 8, 15, 10];
+      const timeWindow = Math.floor(Date.now() / 30000); // 30-second windows
+      peerCount = mockPeerCounts[timeWindow % mockPeerCounts.length];
+      status = peerCount > 0 ? 'online' : 'offline';
+    } else {
+      // In production, default to 0 as placeholder
+      // TODO: Integrate with Usernode peer discovery API to fetch real peer count
+      peerCount = 0;
+      status = 'offline';
+    }
+
+    res.json({
+      peerCount,
+      status,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('Error fetching peer count:', err);
+    res.status(500).json({ error: 'Failed to fetch peer count' });
+  }
+});
+
 app.get('/api/activity', async (req, res) => {
   try {
     if (!req.user) {
@@ -3128,6 +3497,11 @@ async function start() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS last_usernode_ping_at TIMESTAMPTZ
     `);
 
+    // Add bio column if it doesn't exist (idempotent migration)
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS bio VARCHAR(500)
+    `);
+
     // Create conversations table (marked private)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS conversations (
@@ -3406,6 +3780,20 @@ async function start() {
       ADD COLUMN IF NOT EXISTS on_chain BOOLEAN DEFAULT FALSE
     `);
 
+    // Create peers table (public - peer foreground hours data)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS peers (
+        id SERIAL PRIMARY KEY,
+        peer_id VARCHAR(100) UNIQUE NOT NULL,
+        foreground_hours INTEGER DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_peers_peer_id
+        ON peers(peer_id)
+    `);
+
     // Mark tables as private
     await pool.query(`COMMENT ON TABLE conversations IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE messages IS 'staging:private'`);
@@ -3423,16 +3811,18 @@ async function start() {
 
       // Create test users with wallet addresses
       await pool.query(`
-        INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at) VALUES
-          ($1, 'staging-demo-alice', 'ut1staging-alice-001', NOW(), NOW()),
-          ($2, 'staging-demo-bob', 'ut1staging-bob-001', NOW(), NOW()),
-          ($3, 'staging-demo-charlie', 'ut1staging-charlie-001', null, NOW()),
-          ($4, 'staging-demo-david', 'ut1staging-david-001', NOW(), NOW()),
-          ($5, 'staging-demo-emma', 'ut1staging-emma-001', NOW(), NOW())
+        INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at, bio, avatar_url) VALUES
+          ($1, 'staging-demo-alice', 'ut1staging-alice-001', NOW(), NOW() - INTERVAL '6 months', 'Staging demo user - Cloud architect | Web3 enthusiast', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EA%3C/text%3E%3C/svg%3E'),
+          ($2, 'staging-demo-bob', 'ut1staging-bob-001', NOW(), NOW() - INTERVAL '4 months', 'Staging demo user - Blockchain developer', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EB%3C/text%3E%3C/svg%3E'),
+          ($3, 'staging-demo-charlie', 'ut1staging-charlie-001', null, NOW() - INTERVAL '3 months', 'Staging demo user - Designer', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EC%3C/text%3E%3C/svg%3E'),
+          ($4, 'staging-demo-david', 'ut1staging-david-001', NOW(), NOW() - INTERVAL '2 months', 'Staging demo user - Product Manager', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3ED%3C/text%3E%3C/svg%3E'),
+          ($5, 'staging-demo-emma', 'ut1staging-emma-001', NOW(), NOW() - INTERVAL '1 month', 'Staging demo user - Security researcher', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EE%3C/text%3E%3C/svg%3E')
         ON CONFLICT (id) DO UPDATE SET
           username = EXCLUDED.username,
           usernode_pubkey = EXCLUDED.usernode_pubkey,
-          verified_at = EXCLUDED.verified_at
+          verified_at = EXCLUDED.verified_at,
+          bio = EXCLUDED.bio,
+          avatar_url = EXCLUDED.avatar_url
       `, [alice, bob, charlie, david, emma]);
 
       // Create conversation
@@ -3641,6 +4031,35 @@ async function start() {
         VALUES ($1, $2, NULL, NOW())
         ON CONFLICT (user_id, contact_user_id) DO NOTHING
       `, [alice, charlie]);
+
+      // Alice has David and Emma as additional contacts
+      await pool.query(`
+        INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
+        VALUES ($1, $2, NULL, NOW()), ($1, $3, NULL, NOW())
+        ON CONFLICT (user_id, contact_user_id) DO NOTHING
+      `, [alice, david, emma]);
+
+      // Seed feed posts for Alice (min 8-12 posts)
+      const postTimes = [
+        Date.now() - 7*24*60*60*1000,
+        Date.now() - 6*24*60*60*1000,
+        Date.now() - 5*24*60*60*1000,
+        Date.now() - 4*24*60*60*1000,
+        Date.now() - 3*24*60*60*1000,
+        Date.now() - 2*24*60*60*1000,
+        Date.now() - 24*60*60*1000,
+        Date.now() - 12*60*60*1000,
+        Date.now() - 6*60*60*1000,
+        Date.now() - 2*60*60*1000,
+      ];
+
+      for (let i = 0; i < postTimes.length; i++) {
+        await pool.query(`
+          INSERT INTO feed_posts (user_id, content, created_at)
+          VALUES ($1, $2, to_timestamp($3/1000.0))
+          ON CONFLICT DO NOTHING
+        `, [alice, JSON.stringify({ text: `[Staging] Demo feed post #${i+1}` }), postTimes[i]]);
+      }
 
       // Create sample groups
       const { rows: designGroupRows } = await pool.query(`
@@ -4011,6 +4430,29 @@ async function start() {
           VALUES ($1, $2, $3, $4, $4), ($1, $5, $6, $7, $7)
           ON CONFLICT DO NOTHING
         `, [davidPostId, alice, '[Staging demo] Count me in! We should organize a discussion thread.', commentTime1, emma, '[Staging demo] This is an important topic for the ecosystem!', commentTime2]);
+      }
+
+      // Seed peer data with realistic peer IDs and foreground hours
+      const peerData = [
+        { peer_id: 'ut1staging-peer-001', foreground_hours: 5 },
+        { peer_id: 'ut1staging-peer-002', foreground_hours: 25 },
+        { peer_id: 'ut1staging-peer-003', foreground_hours: 100 },
+        { peer_id: 'ut1staging-peer-004', foreground_hours: 300 },
+        { peer_id: 'ut1staging-peer-005', foreground_hours: 15 },
+        { peer_id: 'ut1staging-peer-006', foreground_hours: 50 },
+        { peer_id: 'ut1staging-peer-007', foreground_hours: 75 },
+        { peer_id: 'ut1staging-peer-008', foreground_hours: 150 },
+        { peer_id: 'ut1staging-peer-009', foreground_hours: 200 },
+        { peer_id: 'ut1staging-peer-010', foreground_hours: 250 }
+      ];
+
+      for (const peer of peerData) {
+        await pool.query(`
+          INSERT INTO peers (peer_id, foreground_hours, created_at)
+          VALUES ($1, $2, NOW())
+          ON CONFLICT (peer_id) DO UPDATE SET
+            foreground_hours = EXCLUDED.foreground_hours
+        `, [peer.peer_id, peer.foreground_hours]);
       }
     }
 
