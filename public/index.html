@@ -2232,7 +2232,7 @@
           localStorage.setItem(`guardian_contacts_${currentUser.id}`, JSON.stringify(filtered));
           hideContactHeaderMenu();
           currentContactId = null;
-          loadContactsList();
+          await loadContactsList();
           showToast('Contact deleted', 'success');
         } else {
           const errorMsg = data?.error || 'Failed to delete contact';
