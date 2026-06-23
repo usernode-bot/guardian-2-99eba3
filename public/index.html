@@ -843,20 +843,22 @@
     <div id="content" class="flex-1 overflow-hidden flex flex-col pt-16">
       <!-- Messages View with Tabs -->
       <div id="messagesView" class="hidden flex flex-col flex-1 overflow-hidden">
-        <!-- Tab Navigation -->
-        <div class="bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 flex">
-          <button id="directTab" onclick="switchMessagesTab('direct')" class="flex-1 px-4 py-3 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 border-b-2 border-transparent transition border-b-2 border-cyan-600 text-zinc-900 dark:text-zinc-100">Direct</button>
-          <button id="groupsTab" onclick="switchMessagesTab('groups')" class="flex-1 px-4 py-3 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 border-b-2 border-transparent transition">Groups</button>
-        </div>
+        <div class="flex-1 overflow-y-auto">
+          <!-- Tab Navigation -->
+          <div class="bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 flex sticky top-0 z-10">
+            <button id="directTab" onclick="switchMessagesTab('direct')" class="flex-1 px-4 py-3 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 border-b-2 border-transparent transition border-b-2 border-cyan-600 text-zinc-900 dark:text-zinc-100">Direct</button>
+            <button id="groupsTab" onclick="switchMessagesTab('groups')" class="flex-1 px-4 py-3 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 border-b-2 border-transparent transition">Groups</button>
+          </div>
 
-        <!-- Direct Messages List -->
-        <div id="directList" class="flex-1 overflow-y-auto">
-          <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading conversations...</div>
-        </div>
+          <!-- Direct Messages List -->
+          <div id="directList">
+            <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading conversations...</div>
+          </div>
 
-        <!-- Groups List -->
-        <div id="groupsList" class="hidden flex-1 overflow-y-auto relative">
-          <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading groups...</div>
+          <!-- Groups List -->
+          <div id="groupsList" class="hidden relative">
+            <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading groups...</div>
+          </div>
         </div>
       </div>
 
@@ -912,15 +914,16 @@
 
       <!-- Profile View -->
       <div id="profileView" class="hidden flex flex-col flex-1 overflow-hidden">
-        <!-- Tab Navigation -->
-        <div class="bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 flex">
-          <button id="profileTabIdentity" onclick="switchProfileTab('identity')" class="flex-1 px-4 py-3 text-sm font-medium text-cyan-600 dark:text-cyan-400 border-b-2 border-cyan-600 dark:border-cyan-500">Identity</button>
-          <button id="profileTabGuardians" onclick="switchProfileTab('guardians')" class="flex-1 px-4 py-3 text-sm font-medium text-zinc-700 dark:text-zinc-400 border-b-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100">Guardian's</button>
-          <button id="profileTabActivity" onclick="switchProfileTab('activity')" class="flex-1 px-4 py-3 text-sm font-medium text-zinc-700 dark:text-zinc-400 border-b-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100">Activity</button>
-        </div>
+        <div class="flex-1 overflow-y-auto">
+          <!-- Tab Navigation -->
+          <div class="bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 flex sticky top-0 z-10">
+            <button id="profileTabIdentity" onclick="switchProfileTab('identity')" class="flex-1 px-4 py-3 text-sm font-medium text-cyan-600 dark:text-cyan-400 border-b-2 border-cyan-600 dark:border-cyan-500">Identity</button>
+            <button id="profileTabGuardians" onclick="switchProfileTab('guardians')" class="flex-1 px-4 py-3 text-sm font-medium text-zinc-700 dark:text-zinc-400 border-b-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100">Guardian's</button>
+            <button id="profileTabActivity" onclick="switchProfileTab('activity')" class="flex-1 px-4 py-3 text-sm font-medium text-zinc-700 dark:text-zinc-400 border-b-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100">Activity</button>
+          </div>
 
-        <!-- Tab Content Area -->
-        <div class="flex-1 overflow-y-auto p-4 space-y-4">
+          <!-- Tab Content Area -->
+          <div class="p-4 space-y-4">
           <!-- Identity Tab -->
           <div id="profileTabContentIdentity" class="hidden space-y-4">
             <!-- Avatar Section -->
@@ -1042,10 +1045,11 @@
               <div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Loading transactions...</div>
             </div>
           </div>
-        </div>
+          </div>
 
-        <!-- Minimal Footer -->
-        <div class="border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
+          <!-- Minimal Footer -->
+          <div class="border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
+          </div>
         </div>
       </div>
     </div>
@@ -2476,6 +2480,15 @@
       const groupsTab = document.getElementById('groupsTab');
       const directList = document.getElementById('directList');
       const groupsList = document.getElementById('groupsList');
+
+      // Reset scroll position to top of scrollable container
+      const messagesView = document.getElementById('messagesView');
+      if (messagesView) {
+        const scrollContainer = messagesView.querySelector('.flex-1.overflow-y-auto');
+        if (scrollContainer) {
+          scrollContainer.scrollTop = 0;
+        }
+      }
 
       if (tab === 'direct') {
         directTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
@@ -4389,6 +4402,15 @@
       if (activeBtn) {
         activeBtn.classList.remove('text-zinc-700', 'dark:text-zinc-400', 'border-transparent');
         activeBtn.classList.add('text-cyan-600', 'dark:text-cyan-400', 'border-cyan-600', 'dark:border-cyan-500');
+      }
+
+      // Reset scroll position to top of scrollable container
+      const profileView = document.getElementById('profileView');
+      if (profileView) {
+        const scrollContainer = profileView.querySelector('.flex-1.overflow-y-auto');
+        if (scrollContainer) {
+          scrollContainer.scrollTop = 0;
+        }
       }
 
       // Load data for guardians tab on first view (cached after that)
