@@ -1265,6 +1265,87 @@
     </div>
   </div>
 
+  <!-- View Group Info Modal -->
+  <div id="viewGroupInfoModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-md max-h-[90vh] flex flex-col">
+      <div class="p-6 border-b border-zinc-300 dark:border-zinc-700 flex justify-between items-center">
+        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Group Info</h2>
+        <button onclick="closeViewGroupInfoModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
+      </div>
+      <div class="flex-1 overflow-y-auto p-6 space-y-4">
+        <div>
+          <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400">Name</label>
+          <div id="viewGroupInfoName" class="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mt-1">—</div>
+        </div>
+        <div>
+          <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400">Description</label>
+          <div id="viewGroupInfoDesc" class="text-sm text-zinc-700 dark:text-zinc-300 mt-1 whitespace-pre-wrap">—</div>
+        </div>
+        <div>
+          <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400">Members</label>
+          <div id="viewGroupInfoMembers" class="space-y-2 mt-2">
+            <div class="text-sm text-zinc-600 dark:text-zinc-400">Loading...</div>
+          </div>
+        </div>
+      </div>
+      <div class="p-6 border-t border-zinc-300 dark:border-zinc-700">
+        <button onclick="closeViewGroupInfoModal()" class="w-full px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rename Group Modal -->
+  <div id="renameGroupModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-sm">
+      <div class="p-6 border-b border-zinc-300 dark:border-zinc-700">
+        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Rename Group</h2>
+      </div>
+      <div class="p-6 space-y-4">
+        <input id="renameGroupInput" type="text" placeholder="New group name" maxlength="255" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+        <div id="renameGroupError" class="hidden text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg"></div>
+        <div id="renameGroupSuccess" class="hidden text-sm text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 p-3 rounded-lg"></div>
+      </div>
+      <div class="p-6 border-t border-zinc-300 dark:border-zinc-700 flex gap-2">
+        <button id="renameGroupCancelBtn" onclick="closeRenameGroupModal()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
+        <button id="renameGroupSubmitBtn" onclick="submitRenameGroup()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Rename</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leave Group Modal -->
+  <div id="leaveGroupModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-sm">
+      <div class="p-6 border-b border-zinc-300 dark:border-zinc-700">
+        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Leave Group</h2>
+      </div>
+      <div class="p-6 space-y-4">
+        <p class="text-sm text-zinc-700 dark:text-zinc-300">Are you sure you want to leave <span id="leaveGroupName" class="font-semibold">this group</span>? You will no longer receive messages.</p>
+        <div id="leaveGroupError" class="hidden text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg"></div>
+      </div>
+      <div class="p-6 border-t border-zinc-300 dark:border-zinc-700 flex gap-2">
+        <button id="leaveGroupCancelBtn" onclick="closeLeaveGroupModal()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
+        <button id="leaveGroupSubmitBtn" onclick="submitLeaveGroup()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Leave</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Group Modal -->
+  <div id="deleteGroupModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-sm">
+      <div class="p-6 border-b border-zinc-300 dark:border-zinc-700">
+        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Delete Group</h2>
+      </div>
+      <div class="p-6 space-y-4">
+        <p class="text-sm text-zinc-700 dark:text-zinc-300">Are you sure you want to delete <span id="deleteGroupName" class="font-semibold">this group</span>? This cannot be undone.</p>
+        <div id="deleteGroupError" class="hidden text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg"></div>
+      </div>
+      <div class="p-6 border-t border-zinc-300 dark:border-zinc-700 flex gap-2">
+        <button id="deleteGroupCancelBtn" onclick="closeDeleteGroupModal()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
+        <button id="deleteGroupSubmitBtn" onclick="submitDeleteGroup()" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 dark:hover:bg-red-500 text-white rounded-lg transition font-medium">Delete</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Wallet Confirmation Modal -->
   <div id="walletConfirmModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-md shadow-lg">
@@ -3004,16 +3085,50 @@
     }
 
     // View group info
-    function viewGroupInfo() {
-      apiCall(`/api/groups/${currentGroupContextMenuId}`).then(groupData => {
+    async function viewGroupInfo() {
+      if (!currentGroupContextMenuId) return;
+      document.getElementById('groupContextMenu').classList.add('hidden');
+
+      try {
+        const groupData = await apiCall(`/api/groups/${currentGroupContextMenuId}`);
         if (groupData && groupData.error) {
-          alert(`Failed to load group info: ${groupData.error}`);
-        } else if (groupData) {
-          const memberList = groupData.members.map(m => `${m.username} ${m.role === 'creator' ? '(Creator)' : ''}`).join(', ');
-          alert(`${groupData.name}\n\nMembers: ${memberList}`);
+          showToast(`Failed to load group info: ${groupData.error}`, 'error');
+          return;
         }
-        document.getElementById('groupContextMenu').classList.add('hidden');
-      });
+
+        if (!groupData) {
+          showToast('Failed to load group info', 'error');
+          return;
+        }
+
+        // Populate modal
+        document.getElementById('viewGroupInfoName').textContent = groupData.name || '—';
+        document.getElementById('viewGroupInfoDesc').textContent = groupData.description || '—';
+
+        const memberHtml = (groupData.members || []).map(member => {
+          const roleLabel = member.role === 'creator' ? 'Creator' : 'Member';
+          return `
+            <div class="flex justify-between items-center p-2 bg-zinc-100 dark:bg-zinc-800 rounded text-sm">
+              <div>
+                <div class="text-zinc-900 dark:text-zinc-100 font-medium">${member.username}</div>
+                <div class="text-xs text-zinc-600 dark:text-zinc-400">${roleLabel}</div>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        document.getElementById('viewGroupInfoMembers').innerHTML = memberHtml || '<div class="text-sm text-zinc-600 dark:text-zinc-400">No members</div>';
+
+        // Open modal
+        document.getElementById('viewGroupInfoModal').classList.remove('hidden');
+      } catch (err) {
+        console.error('View group info error:', err);
+        showToast(`Error: ${err.message}`, 'error');
+      }
+    }
+
+    function closeViewGroupInfoModal() {
+      document.getElementById('viewGroupInfoModal').classList.add('hidden');
     }
 
     // Manage group members
@@ -3164,44 +3279,123 @@
     // Rename group
     async function renameGroup() {
       if (!currentGroupContextMenuId || isNaN(currentGroupContextMenuId)) {
-        console.error('Invalid group context menu ID');
         showToast('Error: No group selected', 'error');
         return;
       }
-      const newName = prompt('Enter new group name:');
-      if (newName && newName.trim()) {
-        try {
-          const data = await apiCall(`/api/groups/${currentGroupContextMenuId}`, {
-            method: 'PUT',
-            body: JSON.stringify({ name: newName.trim() })
-          });
+      document.getElementById('groupContextMenu').classList.add('hidden');
 
-          if (data && data.error) {
-            showToast(`Failed to rename group: ${data.error}`, 'error');
-          } else if (data) {
-            showToast('Group renamed successfully', 'success');
-            await refreshGroupsUI();
-          }
-        } catch (err) {
-          console.error('Rename group error:', err);
-          showToast(`Error: ${err.message}`, 'error');
-        }
+      // Clear modal state
+      document.getElementById('renameGroupInput').value = '';
+      document.getElementById('renameGroupError').classList.add('hidden');
+      document.getElementById('renameGroupSuccess').classList.add('hidden');
+      document.getElementById('renameGroupSubmitBtn').disabled = false;
+      document.getElementById('renameGroupCancelBtn').disabled = false;
+
+      // Open modal
+      document.getElementById('renameGroupModal').classList.remove('hidden');
+      document.getElementById('renameGroupInput').focus();
+    }
+
+    async function submitRenameGroup() {
+      if (!currentGroupContextMenuId || isNaN(currentGroupContextMenuId)) {
+        showToast('Error: No group selected', 'error');
+        return;
       }
+
+      const newName = document.getElementById('renameGroupInput').value.trim();
+      if (!newName) {
+        document.getElementById('renameGroupError').textContent = 'Group name cannot be empty';
+        document.getElementById('renameGroupError').classList.remove('hidden');
+        return;
+      }
+
+      const submitBtn = document.getElementById('renameGroupSubmitBtn');
+      const cancelBtn = document.getElementById('renameGroupCancelBtn');
+      const errorDiv = document.getElementById('renameGroupError');
+      const successDiv = document.getElementById('renameGroupSuccess');
+
+      submitBtn.disabled = true;
+      cancelBtn.disabled = true;
+      submitBtn.textContent = 'Renaming...';
+      errorDiv.classList.add('hidden');
+      successDiv.classList.add('hidden');
+
+      try {
+        const data = await apiCall(`/api/groups/${currentGroupContextMenuId}`, {
+          method: 'PUT',
+          body: JSON.stringify({ name: newName })
+        });
+
+        if (data && data.error) {
+          errorDiv.textContent = data.error;
+          errorDiv.classList.remove('hidden');
+          submitBtn.disabled = false;
+          cancelBtn.disabled = false;
+          submitBtn.textContent = 'Rename';
+        } else if (data) {
+          successDiv.textContent = 'Group renamed successfully';
+          successDiv.classList.remove('hidden');
+          submitBtn.textContent = 'Rename';
+          setTimeout(() => {
+            closeRenameGroupModal();
+            showToast('Group renamed successfully', 'success');
+            refreshGroupsUI();
+          }, 800);
+        }
+      } catch (err) {
+        console.error('Rename group error:', err);
+        errorDiv.textContent = err.message;
+        errorDiv.classList.remove('hidden');
+        submitBtn.disabled = false;
+        cancelBtn.disabled = false;
+        submitBtn.textContent = 'Rename';
+      }
+    }
+
+    function closeRenameGroupModal() {
+      document.getElementById('renameGroupModal').classList.add('hidden');
     }
 
     // Leave group
     async function leaveGroup() {
       if (!currentGroupContextMenuId || isNaN(currentGroupContextMenuId)) {
-        console.error('Invalid group context menu ID');
+        showToast('Error: No group selected', 'error');
+        return;
+      }
+      document.getElementById('groupContextMenu').classList.add('hidden');
+
+      // Fetch group data to show group name in modal
+      try {
+        const groupData = await apiCall(`/api/groups/${currentGroupContextMenuId}`);
+        const groupName = groupData && !groupData.error ? groupData.name : 'this group';
+        document.getElementById('leaveGroupName').textContent = `"${groupName}"`;
+      } catch (err) {
+        document.getElementById('leaveGroupName').textContent = 'this group';
+      }
+
+      // Clear modal state
+      document.getElementById('leaveGroupError').classList.add('hidden');
+      document.getElementById('leaveGroupSubmitBtn').disabled = false;
+      document.getElementById('leaveGroupCancelBtn').disabled = false;
+
+      // Open modal
+      document.getElementById('leaveGroupModal').classList.remove('hidden');
+    }
+
+    async function submitLeaveGroup() {
+      if (!currentGroupContextMenuId || isNaN(currentGroupContextMenuId)) {
         showToast('Error: No group selected', 'error');
         return;
       }
 
-      // Fetch group data to show group name in confirmation
-      const groupData = await apiCall(`/api/groups/${currentGroupContextMenuId}`);
-      const groupName = groupData && !groupData.error ? groupData.name : 'this group';
+      const submitBtn = document.getElementById('leaveGroupSubmitBtn');
+      const cancelBtn = document.getElementById('leaveGroupCancelBtn');
+      const errorDiv = document.getElementById('leaveGroupError');
 
-      if (!confirm(`Leave "${groupName}"? You will no longer receive messages.`)) return;
+      submitBtn.disabled = true;
+      cancelBtn.disabled = true;
+      submitBtn.textContent = 'Leaving...';
+      errorDiv.classList.add('hidden');
 
       try {
         const data = await apiCall(`/api/groups/${currentGroupContextMenuId}/leave`, {
@@ -3210,8 +3404,13 @@
         });
 
         if (data && data.error) {
-          showToast(`Failed to leave group: ${data.error}`, 'error');
+          errorDiv.textContent = data.error;
+          errorDiv.classList.remove('hidden');
+          submitBtn.disabled = false;
+          cancelBtn.disabled = false;
+          submitBtn.textContent = 'Leave';
         } else if (data) {
+          closeLeaveGroupModal();
           showToast('Left group successfully', 'success');
           await refreshGroupsUI();
           if (currentGroupId === currentGroupContextMenuId) {
@@ -3220,37 +3419,90 @@
         }
       } catch (err) {
         console.error('Leave group error:', err);
-        showToast(`Error: ${err.message}`, 'error');
+        errorDiv.textContent = err.message;
+        errorDiv.classList.remove('hidden');
+        submitBtn.disabled = false;
+        cancelBtn.disabled = false;
+        submitBtn.textContent = 'Leave';
       }
+    }
+
+    function closeLeaveGroupModal() {
+      document.getElementById('leaveGroupModal').classList.add('hidden');
     }
 
     // Delete group
     async function deleteGroup() {
       if (!currentGroupContextMenuId || isNaN(currentGroupContextMenuId)) {
-        console.error('Invalid group context menu ID');
         showToast('Error: No group selected', 'error');
         return;
       }
-      if (confirm('Are you sure you want to delete this group? This cannot be undone.')) {
-        try {
-          const data = await apiCall(`/api/groups/${currentGroupContextMenuId}`, {
-            method: 'DELETE'
-          });
+      document.getElementById('groupContextMenu').classList.add('hidden');
 
-          if (data && data.error) {
-            showToast(`Failed to delete group: ${data.error}`, 'error');
-          } else if (data) {
-            showToast('Group deleted successfully', 'success');
-            await refreshGroupsUI();
-            if (currentGroupId === currentGroupContextMenuId) {
-              showConversationsView();
-            }
-          }
-        } catch (err) {
-          console.error('Delete group error:', err);
-          showToast(`Error: ${err.message}`, 'error');
-        }
+      // Fetch group data to show group name in modal
+      try {
+        const groupData = await apiCall(`/api/groups/${currentGroupContextMenuId}`);
+        const groupName = groupData && !groupData.error ? groupData.name : 'this group';
+        document.getElementById('deleteGroupName').textContent = `"${groupName}"`;
+      } catch (err) {
+        document.getElementById('deleteGroupName').textContent = 'this group';
       }
+
+      // Clear modal state
+      document.getElementById('deleteGroupError').classList.add('hidden');
+      document.getElementById('deleteGroupSubmitBtn').disabled = false;
+      document.getElementById('deleteGroupCancelBtn').disabled = false;
+
+      // Open modal
+      document.getElementById('deleteGroupModal').classList.remove('hidden');
+    }
+
+    async function submitDeleteGroup() {
+      if (!currentGroupContextMenuId || isNaN(currentGroupContextMenuId)) {
+        showToast('Error: No group selected', 'error');
+        return;
+      }
+
+      const submitBtn = document.getElementById('deleteGroupSubmitBtn');
+      const cancelBtn = document.getElementById('deleteGroupCancelBtn');
+      const errorDiv = document.getElementById('deleteGroupError');
+
+      submitBtn.disabled = true;
+      cancelBtn.disabled = true;
+      submitBtn.textContent = 'Deleting...';
+      errorDiv.classList.add('hidden');
+
+      try {
+        const data = await apiCall(`/api/groups/${currentGroupContextMenuId}`, {
+          method: 'DELETE'
+        });
+
+        if (data && data.error) {
+          errorDiv.textContent = data.error;
+          errorDiv.classList.remove('hidden');
+          submitBtn.disabled = false;
+          cancelBtn.disabled = false;
+          submitBtn.textContent = 'Delete';
+        } else if (data) {
+          closeDeleteGroupModal();
+          showToast('Group deleted successfully', 'success');
+          await refreshGroupsUI();
+          if (currentGroupId === currentGroupContextMenuId) {
+            showConversationsView();
+          }
+        }
+      } catch (err) {
+        console.error('Delete group error:', err);
+        errorDiv.textContent = err.message;
+        errorDiv.classList.remove('hidden');
+        submitBtn.disabled = false;
+        cancelBtn.disabled = false;
+        submitBtn.textContent = 'Delete';
+      }
+    }
+
+    function closeDeleteGroupModal() {
+      document.getElementById('deleteGroupModal').classList.add('hidden');
     }
 
     // Close context menu when clicking outside
