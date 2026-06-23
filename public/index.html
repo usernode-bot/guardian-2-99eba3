@@ -1010,9 +1010,11 @@
             <!-- Foreground Hours Section -->
             <div class="space-y-2">
               <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Foreground Hours</label>
-              <div class="px-4 py-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
-                <div id="profileGuardianHours" class="text-2xl font-bold text-cyan-600 dark:text-cyan-400">0</div>
-                <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">hours contributed to the network</div>
+              <div id="profileGuardianForegroundHoursContainer" class="cursor-pointer group" onclick="if (cachedGuardiansData) showPeerModal(cachedGuardiansData)">
+                <div class="px-4 py-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg hover:bg-zinc-150 dark:hover:bg-zinc-750 transition">
+                  <div id="profileGuardianHours" class="text-2xl font-bold text-cyan-600 dark:text-cyan-400">0</div>
+                  <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">click to view peer details</div>
+                </div>
               </div>
             </div>
 
@@ -4463,6 +4465,18 @@
           return;
         }
 
+        // Fetch peer data using usernode_pubkey if available
+        if (response.usernode_pubkey) {
+          try {
+            const peerResponse = await apiCall(`/api/peers/${response.usernode_pubkey}`);
+            if (peerResponse) {
+              response.peerData = peerResponse;
+            }
+          } catch (err) {
+            console.error('Error loading peer data:', err);
+          }
+        }
+
         // Cache the data
         cachedGuardiansData = response;
         displayGuardiansData(response);
@@ -4596,6 +4610,50 @@
 
     function closeGuardianRankModal() {
       const modal = document.getElementById('guardianRankModal');
+      if (modal) modal.remove();
+    }
+
+    function showPeerModal(data) {
+      const peerId = data.usernode_pubkey || 'Unknown';
+      const foregroundHours = (data.peerData && data.peerData.foreground_hours) || data.foregroundHours || 0;
+      const rank = data.rank || 'New Guardian';
+
+      // Create modal
+      const modal = document.createElement('div');
+      modal.id = 'peerModal';
+      modal.className = 'fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4';
+      modal.onclick = (e) => {
+        if (e.target === modal) closePeerModal();
+      };
+
+      modal.innerHTML = `
+        <div class="bg-white dark:bg-zinc-900 rounded-lg p-6 w-full max-w-md shadow-lg space-y-4">
+          <div class="flex justify-between items-start">
+            <h2 class="text-xl font-bold text-zinc-900 dark:text-white">Peer Details</h2>
+            <button onclick="closePeerModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
+          </div>
+          <div class="space-y-4">
+            <div>
+              <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Peer ID</div>
+              <div class="bg-zinc-100 dark:bg-zinc-800 rounded-lg p-3 font-mono text-sm text-zinc-900 dark:text-zinc-100 break-all">${peerId}</div>
+            </div>
+            <div class="bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-200 dark:border-cyan-800 rounded-lg p-4">
+              <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Foreground Hours</div>
+              <div class="text-3xl font-bold text-cyan-600 dark:text-cyan-400">${foregroundHours}</div>
+            </div>
+            <div>
+              <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Rank Tier</div>
+              <div class="text-lg font-semibold text-cyan-600 dark:text-cyan-400">${rank}</div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(modal);
+    }
+
+    function closePeerModal() {
+      const modal = document.getElementById('peerModal');
       if (modal) modal.remove();
     }
 

@@ -2834,11 +2834,48 @@ app.get('/api/user/guardians', async (req, res) => {
       foregroundHours,
       contributionLevel,
       rank,
-      hoursBracket
+      hoursBracket,
+      usernode_pubkey: req.user.usernode_pubkey || null
     });
   } catch (err) {
     console.error('Error fetching guardians data:', err);
     res.status(500).json({ error: 'Failed to fetch guardians data' });
+  }
+});
+
+app.get('/api/peers/:peer_id', async (req, res) => {
+  try {
+    const { peer_id } = req.params;
+
+    // Validate peer_id format (should start with ut1)
+    if (!peer_id || !peer_id.startsWith('ut1')) {
+      return res.status(400).json({ error: 'Invalid peer ID format' });
+    }
+
+    const { rows } = await pool.query(`
+      SELECT id, peer_id, foreground_hours, created_at
+      FROM peers
+      WHERE peer_id = $1
+    `, [peer_id]);
+
+    if (rows.length === 0) {
+      // Return default values if peer not found
+      return res.json({
+        peer_id,
+        foreground_hours: 0,
+        created_at: null
+      });
+    }
+
+    const peer = rows[0];
+    res.json({
+      peer_id: peer.peer_id,
+      foreground_hours: peer.foreground_hours,
+      created_at: peer.created_at
+    });
+  } catch (err) {
+    console.error('Error fetching peer data:', err);
+    res.status(500).json({ error: 'Failed to fetch peer data' });
   }
 });
 
@@ -3696,6 +3733,20 @@ async function start() {
       ADD COLUMN IF NOT EXISTS on_chain BOOLEAN DEFAULT FALSE
     `);
 
+    // Create peers table (public - peer foreground hours data)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS peers (
+        id SERIAL PRIMARY KEY,
+        peer_id VARCHAR(100) UNIQUE NOT NULL,
+        foreground_hours INTEGER DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_peers_peer_id
+        ON peers(peer_id)
+    `);
+
     // Mark tables as private
     await pool.query(`COMMENT ON TABLE conversations IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE messages IS 'staging:private'`);
@@ -4332,6 +4383,29 @@ async function start() {
           VALUES ($1, $2, $3, $4, $4), ($1, $5, $6, $7, $7)
           ON CONFLICT DO NOTHING
         `, [davidPostId, alice, '[Staging demo] Count me in! We should organize a discussion thread.', commentTime1, emma, '[Staging demo] This is an important topic for the ecosystem!', commentTime2]);
+      }
+
+      // Seed peer data with realistic peer IDs and foreground hours
+      const peerData = [
+        { peer_id: 'ut1staging-peer-001', foreground_hours: 5 },
+        { peer_id: 'ut1staging-peer-002', foreground_hours: 25 },
+        { peer_id: 'ut1staging-peer-003', foreground_hours: 100 },
+        { peer_id: 'ut1staging-peer-004', foreground_hours: 300 },
+        { peer_id: 'ut1staging-peer-005', foreground_hours: 15 },
+        { peer_id: 'ut1staging-peer-006', foreground_hours: 50 },
+        { peer_id: 'ut1staging-peer-007', foreground_hours: 75 },
+        { peer_id: 'ut1staging-peer-008', foreground_hours: 150 },
+        { peer_id: 'ut1staging-peer-009', foreground_hours: 200 },
+        { peer_id: 'ut1staging-peer-010', foreground_hours: 250 }
+      ];
+
+      for (const peer of peerData) {
+        await pool.query(`
+          INSERT INTO peers (peer_id, foreground_hours, created_at)
+          VALUES ($1, $2, NOW())
+          ON CONFLICT (peer_id) DO UPDATE SET
+            foreground_hours = EXCLUDED.foreground_hours
+        `, [peer.peer_id, peer.foreground_hours]);
       }
     }
 
