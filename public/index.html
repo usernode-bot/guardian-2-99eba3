@@ -2702,7 +2702,7 @@
       const renameBtn = document.getElementById('renameGroupBtn');
       const deleteBtn = document.getElementById('deleteGroupBtn');
       const manageBtn = document.getElementById('manageGroupMembersBtn');
-      const isCreator = groupData && groupData.creatorId === currentUser.id;
+      const isCreator = groupData && parseInt(groupData.creatorId, 10) === parseInt(currentUser.id, 10);
 
       // Pre-configure button visibility before showing menu
       manageBtn.style.display = isCreator ? 'block' : 'none';
@@ -3023,7 +3023,7 @@
       const groupData = await apiCall(`/api/groups/${currentGroupContextMenuId}`);
       if (!groupData || groupData.error) return;
 
-      const isCreator = groupData.creatorId === currentUser.id;
+      const isCreator = parseInt(groupData.creatorId, 10) === parseInt(currentUser.id, 10);
       const modal = document.getElementById('manageGroupMembersModal');
       const membersContainer = document.getElementById('groupMembersListContainer');
 
