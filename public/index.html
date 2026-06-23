@@ -2691,33 +2691,40 @@
       event.preventDefault();
       currentGroupContextMenuId = groupId;
 
-      // Fetch group to check if user is creator BEFORE showing menu
-      const groupData = await apiCall(`/api/groups/${groupId}`);
-      if (!groupData || groupData.error) {
-        console.error('Failed to fetch group data:', groupData?.error);
-        return;
-      }
-
+      // Show menu immediately at cursor position
       const menu = document.getElementById('groupContextMenu');
       const renameBtn = document.getElementById('renameGroupBtn');
       const deleteBtn = document.getElementById('deleteGroupBtn');
       const manageBtn = document.getElementById('manageGroupMembersBtn');
-      const isCreator = groupData && parseInt(groupData.creatorId, 10) === parseInt(currentUser.id, 10);
 
-      // Pre-configure button visibility before showing menu
-      manageBtn.style.display = isCreator ? 'block' : 'none';
-      renameBtn.style.display = isCreator ? 'block' : 'none';
-      deleteBtn.style.display = isCreator ? 'block' : 'none';
-
-      // Position menu, accounting for viewport
+      // Position menu at cursor
       let x = event.clientX;
       let y = event.clientY;
-
       menu.classList.remove('hidden');
       menu.style.left = x + 'px';
       menu.style.top = y + 'px';
 
-      // Check if menu goes off-screen and adjust
+      // Fetch group data to determine creator status; hide creator buttons if fetch fails
+      const groupData = await apiCall(`/api/groups/${groupId}`);
+
+      let isCreator = false;
+      if (groupData && !groupData.error) {
+        isCreator = parseInt(groupData.creatorId, 10) === parseInt(currentUser.id, 10);
+      } else {
+        // API failed or returned error - show toast and hide creator buttons
+        if (groupData && groupData.error) {
+          showToast(`Failed to load group options: ${groupData.error}`, 'error');
+        } else {
+          showToast('Failed to load group options: Network error', 'error');
+        }
+      }
+
+      // Configure button visibility based on creator status
+      manageBtn.style.display = isCreator ? 'block' : 'none';
+      renameBtn.style.display = isCreator ? 'block' : 'none';
+      deleteBtn.style.display = isCreator ? 'block' : 'none';
+
+      // Check if menu goes off-screen and adjust positioning
       setTimeout(() => {
         const rect = menu.getBoundingClientRect();
         if (rect.right > window.innerWidth) {
