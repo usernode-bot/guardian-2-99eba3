@@ -4739,7 +4739,6 @@
     function showPeerModal(data) {
       const peerCount = data.peerCount?.peerCount || 0;
       const foregroundHours = (data.peerData && data.peerData.foreground_hours) || data.foregroundHours || 0;
-      const rank = data.rank || 'New Guardian';
 
       // Create modal
       const modal = document.createElement('div');
@@ -4764,10 +4763,6 @@
             <div class="bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-200 dark:border-cyan-800 rounded-lg p-4">
               <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Your Foreground Hours</div>
               <div class="text-3xl font-bold text-cyan-600 dark:text-cyan-400">${foregroundHours}</div>
-            </div>
-            <div>
-              <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Rank Tier</div>
-              <div class="text-lg font-semibold text-cyan-600 dark:text-cyan-400">${rank}</div>
             </div>
           </div>
         </div>
