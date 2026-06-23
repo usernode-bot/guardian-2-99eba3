@@ -44,6 +44,46 @@ async function queryWithTimeout(pool, query, params, timeoutMs = 2000) {
   ]);
 }
 
+// Helper function to calculate rank and related data based on foreground hours
+function calculateRankData(foregroundHours) {
+  // Calculate contribution level: (foregroundHours / 200) * 5, capped at 5
+  const contributionLevel = Math.min((foregroundHours / 200) * 5, 5);
+
+  // Determine rank based on hours
+  let rank = 'New Guardian';
+  if (foregroundHours >= 10 && foregroundHours < 50) {
+    rank = 'Active Guardian';
+  } else if (foregroundHours >= 50 && foregroundHours < 200) {
+    rank = 'Trusted Guardian';
+  } else if (foregroundHours >= 200) {
+    rank = 'Elite Guardian';
+  }
+
+  // Determine hours bracket for display
+  const hoursBracket = foregroundHours < 10 ? '0-10'
+    : foregroundHours < 50 ? '10-50'
+    : foregroundHours < 200 ? '50-200'
+    : '200+';
+
+  return { rank, hoursBracket, contributionLevel };
+}
+
+// Helper function to get foreground hours for a user (staging: mock data, prod: placeholder)
+function getForegroundHours(userId) {
+  if (IS_STAGING) {
+    // In staging, provide mock data based on user ID for consistency
+    const numUserId = parseInt(userId, 10);
+    const mockDataSet = [5, 25, 100, 300, 15, 50, 75, 150, 200, 250];
+    // Use modulo to deterministically map user ID to a value
+    return mockDataSet[numUserId % mockDataSet.length];
+  } else {
+    // In production, fetch from peers/usernode
+    // For now, default to 0 hours as a placeholder
+    // TODO: Integrate with usernode peer discovery to fetch real foreground hours
+    return 0;
+  }
+}
+
 // Send transaction to blockchain via bridge
 async function sendTransactionToBridge(payload, network = 'testnet') {
   try {
@@ -1796,7 +1836,7 @@ app.get('/api/users/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
     const { rows } = await pool.query(`
-      SELECT id, username, verified_at, usernode_pubkey FROM users WHERE id = $1
+      SELECT id, username, verified_at, usernode_pubkey, avatar_url, bio FROM users WHERE id = $1
     `, [userId]);
 
     if (!rows.length) {
@@ -1804,11 +1844,20 @@ app.get('/api/users/:userId', async (req, res) => {
     }
 
     const user = rows[0];
+    const foregroundHours = getForegroundHours(userId);
+    const { rank, hoursBracket, contributionLevel } = calculateRankData(foregroundHours);
+
     res.json({
       id: user.id,
       username: user.username,
       usernode_pubkey: user.usernode_pubkey || null,
       verified: !!user.verified_at,
+      avatar_url: user.avatar_url || null,
+      bio: user.bio || null,
+      foregroundHours,
+      rank,
+      hoursBracket,
+      contributionLevel,
       mutualCount: 0,
     });
   } catch (err) {
@@ -2872,39 +2921,8 @@ app.get('/api/user/guardians', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    let foregroundHours = 0;
-
-    if (IS_STAGING) {
-      // In staging, provide mock data based on user ID for consistency
-      const userId = parseInt(req.user.id, 10);
-      const mockDataSet = [5, 25, 100, 300, 15, 50, 75, 150, 200, 250];
-      // Use modulo to deterministically map user ID to a value
-      foregroundHours = mockDataSet[userId % mockDataSet.length];
-    } else {
-      // In production, fetch from peers/usernode
-      // For now, default to 0 hours as a placeholder
-      // TODO: Integrate with usernode peer discovery to fetch real foreground hours
-      foregroundHours = 0;
-    }
-
-    // Calculate contribution level: (foregroundHours / 200) * 5, capped at 5
-    const contributionLevel = Math.min((foregroundHours / 200) * 5, 5);
-
-    // Determine rank based on hours
-    let rank = 'New Guardian';
-    if (foregroundHours >= 10 && foregroundHours < 50) {
-      rank = 'Active Guardian';
-    } else if (foregroundHours >= 50 && foregroundHours < 200) {
-      rank = 'Trusted Guardian';
-    } else if (foregroundHours >= 200) {
-      rank = 'Elite Guardian';
-    }
-
-    // Determine hours bracket for display
-    const hoursBracket = foregroundHours < 10 ? '0-10'
-      : foregroundHours < 50 ? '10-50'
-      : foregroundHours < 200 ? '50-200'
-      : '200+';
+    const foregroundHours = getForegroundHours(req.user.id);
+    const { rank, hoursBracket, contributionLevel } = calculateRankData(foregroundHours);
 
     res.json({
       foregroundHours,
@@ -3865,7 +3883,13 @@ async function start() {
 
     // Seed staging data
     if (IS_STAGING) {
-      const alice = 1, bob = 2, charlie = 3, david = 4, emma = 5;
+      const alice = 1, bob = 2, charlie = 3, david = 4, emma = 5, frank = 10;
+      // Note: User 10 will map to 10 % 10 = 0 -> 5 hours (New Guardian)
+      // User 1 -> 25 hours (Active Guardian)
+      // User 2 -> 100 hours (Trusted Guardian)
+      // User 3 -> 300 hours (Elite Guardian)
+      // User 4 -> 15 hours (Active Guardian)
+      // User 5 -> 50 hours (Trusted Guardian)
 
       // Create test users with wallet addresses
       await pool.query(`
@@ -3874,14 +3898,15 @@ async function start() {
           ($2, 'staging-demo-bob', 'ut1staging-bob-001', NOW(), NOW() - INTERVAL '4 months', 'Staging demo user - Blockchain developer', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EB%3C/text%3E%3C/svg%3E'),
           ($3, 'staging-demo-charlie', 'ut1staging-charlie-001', null, NOW() - INTERVAL '3 months', 'Staging demo user - Designer', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EC%3C/text%3E%3C/svg%3E'),
           ($4, 'staging-demo-david', 'ut1staging-david-001', NOW(), NOW() - INTERVAL '2 months', 'Staging demo user - Product Manager', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3ED%3C/text%3E%3C/svg%3E'),
-          ($5, 'staging-demo-emma', 'ut1staging-emma-001', NOW(), NOW() - INTERVAL '1 month', 'Staging demo user - Security researcher', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EE%3C/text%3E%3C/svg%3E')
+          ($5, 'staging-demo-emma', 'ut1staging-emma-001', NOW(), NOW() - INTERVAL '1 month', 'Staging demo user - Security researcher', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EE%3C/text%3E%3C/svg%3E'),
+          ($6, 'staging-demo-frank', 'ut1staging-frank-001', NOW(), NOW() - INTERVAL '7 days', 'Staging demo user - Just joined!', null)
         ON CONFLICT (id) DO UPDATE SET
           username = EXCLUDED.username,
           usernode_pubkey = EXCLUDED.usernode_pubkey,
           verified_at = EXCLUDED.verified_at,
           bio = EXCLUDED.bio,
           avatar_url = EXCLUDED.avatar_url
-      `, [alice, bob, charlie, david, emma]);
+      `, [alice, bob, charlie, david, emma, frank]);
 
       // Create conversation
       const { rows: convRows } = await pool.query(`
