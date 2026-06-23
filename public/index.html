@@ -1028,7 +1028,6 @@
                   <div class="px-4 py-3 bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-200 dark:border-cyan-800 rounded-lg flex items-center justify-between group-hover:bg-cyan-100 dark:group-hover:bg-cyan-900/40 transition">
                     <div>
                       <div id="profileGuardianRank" class="font-bold text-cyan-900 dark:text-cyan-100">New Guardian</div>
-                      <div id="profileGuardianRankDesc" class="text-xs text-cyan-700 dark:text-cyan-300 mt-0.5">0-10 hours</div>
                     </div>
                     <svg class="w-5 h-5 text-cyan-600 dark:text-cyan-400 group-hover:translate-x-0.5 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
@@ -4573,7 +4572,6 @@
     function displayGuardiansError() {
       document.getElementById('profileGuardianHours').textContent = '0';
       document.getElementById('profileGuardianRank').textContent = 'New Guardian';
-      document.getElementById('profileGuardianRankDesc').textContent = '0-10 hours';
       document.getElementById('profileGuardianStars').textContent = '☆☆☆☆☆';
       document.getElementById('profileGuardianStarLevel').textContent = '0/5';
     }
@@ -4592,11 +4590,6 @@
 
       // Update rank
       document.getElementById('profileGuardianRank').textContent = rank;
-      const rankDesc = hours < 10 ? '0-10 hours'
-        : hours < 50 ? '10-50 hours'
-        : hours < 200 ? '50-200 hours'
-        : '200+ hours';
-      document.getElementById('profileGuardianRankDesc').textContent = rankDesc;
 
       // Update star rating
       const fullStars = Math.floor(level);
