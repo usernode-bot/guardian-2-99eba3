@@ -915,13 +915,14 @@
         <!-- Tab Navigation -->
         <div class="bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 flex">
           <button id="profileTabIdentity" onclick="switchProfileTab('identity')" class="flex-1 px-4 py-3 text-sm font-medium text-cyan-600 dark:text-cyan-400 border-b-2 border-cyan-600 dark:border-cyan-500">Identity</button>
+          <button id="profileTabGuardians" onclick="switchProfileTab('guardians')" class="flex-1 px-4 py-3 text-sm font-medium text-zinc-700 dark:text-zinc-400 border-b-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100">Guardian's</button>
           <button id="profileTabActivity" onclick="switchProfileTab('activity')" class="flex-1 px-4 py-3 text-sm font-medium text-zinc-700 dark:text-zinc-400 border-b-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100">Activity</button>
         </div>
 
         <!-- Tab Content Area -->
         <div class="flex-1 overflow-y-auto p-4 space-y-4">
           <!-- Identity Tab -->
-          <div id="profileTabContentIdentity" class="space-y-4">
+          <div id="profileTabContentIdentity" class="hidden space-y-4">
             <!-- Avatar Section -->
             <div class="flex justify-center pt-4 pb-2">
               <div class="relative">
@@ -995,13 +996,50 @@
             </div>
           </div>
 
-          <!-- Activity Tab -->
-          <div id="profileTabContentActivity" class="flex flex-col flex-1 overflow-hidden">
-            <!-- On-Chain Transaction History -->
-            <div id="profileActivityContent" class="flex-1 overflow-y-auto space-y-2 p-3">
-              <div id="activityTransactionsList" class="space-y-2">
-                <div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Loading transactions...</div>
+          <!-- Guardian's Tab -->
+          <div id="profileTabContentGuardians" class="hidden space-y-4">
+            <!-- Contribution Level Section -->
+            <div class="space-y-2">
+              <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Contribution Level</label>
+              <div class="px-4 py-4 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-center space-y-2">
+                <div id="profileGuardianStars" class="text-3xl tracking-wide">☆☆☆☆☆</div>
+                <div id="profileGuardianStarLevel" class="text-sm text-zinc-600 dark:text-zinc-400">0/5</div>
               </div>
+            </div>
+
+            <!-- Foreground Hours Section -->
+            <div class="space-y-2">
+              <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Foreground Hours</label>
+              <div id="profileGuardianForegroundHoursContainer" class="cursor-pointer group" onclick="if (cachedGuardiansData) showPeerModal(cachedGuardiansData)">
+                <div class="px-4 py-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg hover:bg-zinc-150 dark:hover:bg-zinc-750 transition">
+                  <div id="profileGuardianHours" class="text-2xl font-bold text-cyan-600 dark:text-cyan-400">0</div>
+                  <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">click to view peer details</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Rank Section -->
+            <div class="space-y-2">
+              <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Rank</label>
+              <div id="profileGuardianRankContainer" class="cursor-pointer group" onclick="if (cachedGuardiansData) showGuardianRankModal(cachedGuardiansData)">
+                <div class="px-4 py-3 bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-200 dark:border-cyan-800 rounded-lg flex items-center justify-between group-hover:bg-cyan-100 dark:group-hover:bg-cyan-900/40 transition">
+                  <div>
+                    <div id="profileGuardianRank" class="font-bold text-cyan-900 dark:text-cyan-100">New Guardian</div>
+                    <div id="profileGuardianRankDesc" class="text-xs text-cyan-700 dark:text-cyan-300 mt-0.5">0-10 hours</div>
+                  </div>
+                  <svg class="w-5 h-5 text-cyan-600 dark:text-cyan-400 group-hover:translate-x-0.5 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Activity Tab -->
+          <div id="profileTabContentActivity" class="hidden space-y-2">
+            <!-- On-Chain Transaction History -->
+            <div id="activityTransactionsList" class="space-y-2">
+              <div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Loading transactions...</div>
             </div>
           </div>
         </div>
@@ -1314,6 +1352,9 @@
     let sidebarOpen = false;
     let pendingDeleteContactId = null;
     let currentActiveView = 'messages';
+
+    // Guardian's tab caching
+    let cachedGuardiansData = null;
 
     // Messages tab state
     let activeMessagesTab = 'direct';
@@ -4320,10 +4361,11 @@
     function switchProfileTab(tabName) {
       // Hide all tab contents
       document.getElementById('profileTabContentIdentity').classList.add('hidden');
+      document.getElementById('profileTabContentGuardians').classList.add('hidden');
       document.getElementById('profileTabContentActivity').classList.add('hidden');
 
       // Reset all tab buttons to inactive state
-      ['identity', 'activity'].forEach(name => {
+      ['identity', 'guardians', 'activity'].forEach(name => {
         const btn = document.getElementById(`profileTab${name.charAt(0).toUpperCase() + name.slice(1)}`);
         if (btn) {
           btn.classList.remove('text-cyan-600', 'dark:text-cyan-400', 'border-cyan-600', 'dark:border-cyan-500');
@@ -4332,13 +4374,27 @@
       });
 
       // Show selected tab content
-      document.getElementById(`profileTabContent${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`).classList.remove('hidden');
+      const contentId = tabName === 'guardians'
+        ? 'profileTabContentGuardians'
+        : `profileTabContent${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`;
+      document.getElementById(contentId).classList.remove('hidden');
 
       // Activate selected tab button
-      const activeBtn = document.getElementById(`profileTab${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`);
+      const buttonId = tabName === 'guardians'
+        ? 'profileTabGuardians'
+        : `profileTab${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`;
+      const activeBtn = document.getElementById(buttonId);
       if (activeBtn) {
         activeBtn.classList.remove('text-zinc-700', 'dark:text-zinc-400', 'border-transparent');
         activeBtn.classList.add('text-cyan-600', 'dark:text-cyan-400', 'border-cyan-600', 'dark:border-cyan-500');
+      }
+
+      // Load data for guardians tab on first view (cached after that)
+      if (tabName === 'guardians' && !cachedGuardiansData) {
+        loadGuardiansData();
+      } else if (tabName === 'guardians' && cachedGuardiansData) {
+        // Display cached data
+        displayGuardiansData(cachedGuardiansData);
       }
 
       // Save tab preference
@@ -4398,6 +4454,232 @@
 
       // Load activity
       loadProfileActivity();
+    }
+
+    async function fetchPeerCount() {
+      try {
+        const response = await apiCall('/api/network/peer-count');
+        return response;
+      } catch (err) {
+        console.error('Error fetching peer count:', err);
+        return { peerCount: 0, status: 'offline' };
+      }
+    }
+
+    async function loadGuardiansData() {
+      try {
+        const response = await apiCall('/api/user/guardians');
+        if (!response || response.error) {
+          console.error('Error loading guardians data:', response?.error);
+          displayGuardiansError();
+          return;
+        }
+
+        // Fetch peer data using usernode_pubkey if available
+        if (response.usernode_pubkey) {
+          try {
+            const peerResponse = await apiCall(`/api/peers/${response.usernode_pubkey}`);
+            if (peerResponse) {
+              response.peerData = peerResponse;
+            }
+          } catch (err) {
+            console.error('Error loading peer data:', err);
+          }
+        }
+
+        // Fetch peer count (network connectivity)
+        try {
+          const peerCountResponse = await fetchPeerCount();
+          if (peerCountResponse) {
+            response.peerCount = peerCountResponse;
+          }
+        } catch (err) {
+          console.error('Error loading peer count:', err);
+        }
+
+        // Cache the data
+        cachedGuardiansData = response;
+        displayGuardiansData(response);
+      } catch (err) {
+        console.error('Error loading guardians data:', err);
+        displayGuardiansError();
+      }
+    }
+
+    function displayGuardiansError() {
+      document.getElementById('profileGuardianHours').textContent = '0';
+      document.getElementById('profileGuardianRank').textContent = 'New Guardian';
+      document.getElementById('profileGuardianRankDesc').textContent = '0-10 hours';
+      document.getElementById('profileGuardianStars').textContent = '☆☆☆☆☆';
+      document.getElementById('profileGuardianStarLevel').textContent = '0/5';
+    }
+
+    function displayGuardiansData(data) {
+      const hours = data.foregroundHours || 0;
+      const level = data.contributionLevel || 0;
+      const rank = data.rank || 'New Guardian';
+      const peerCount = data.peerCount?.peerCount || 0;
+
+      // Update hours with peer count info
+      const hoursDisplay = document.getElementById('profileGuardianHours');
+      if (hoursDisplay) {
+        hoursDisplay.innerHTML = `<div>${hours}</div><div class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Connected Peers: ${peerCount}</div>`;
+      }
+
+      // Update rank
+      document.getElementById('profileGuardianRank').textContent = rank;
+      const rankDesc = hours < 10 ? '0-10 hours'
+        : hours < 50 ? '10-50 hours'
+        : hours < 200 ? '50-200 hours'
+        : '200+ hours';
+      document.getElementById('profileGuardianRankDesc').textContent = rankDesc;
+
+      // Update star rating
+      const fullStars = Math.floor(level);
+      const hasHalfStar = level % 1 !== 0;
+      let starDisplay = '';
+      for (let i = 0; i < fullStars; i++) {
+        starDisplay += '★';
+      }
+      if (hasHalfStar) {
+        starDisplay += '½';
+      }
+      const emptyStars = 5 - Math.ceil(level);
+      for (let i = 0; i < emptyStars; i++) {
+        starDisplay += '☆';
+      }
+      document.getElementById('profileGuardianStars').textContent = starDisplay;
+      document.getElementById('profileGuardianStarLevel').textContent = `${level.toFixed(1)}/5`;
+
+      // Re-register click handler for rank expansion
+      registerRankClickHandler(data);
+    }
+
+    function registerRankClickHandler(data) {
+      const rankContainer = document.getElementById('profileGuardianRankContainer');
+      if (rankContainer) {
+        rankContainer.onclick = (e) => {
+          e.stopPropagation();
+          showGuardianRankModal(data);
+        };
+      }
+    }
+
+    function showGuardianRankModal(data) {
+      const hours = data.foregroundHours || 0;
+      const rank = data.rank || 'New Guardian';
+
+      // Determine progress to next tier
+      let nextTierHours = 10;
+      let progressPercentage = 0;
+      let tierDescription = '';
+
+      if (hours < 10) {
+        nextTierHours = 10;
+        progressPercentage = (hours / 10) * 100;
+        tierDescription = 'A new contributor to the network. Keep building your presence!';
+      } else if (hours < 50) {
+        nextTierHours = 50;
+        progressPercentage = ((hours - 10) / 40) * 100;
+        tierDescription = 'An active contributor showing consistent engagement with the network.';
+      } else if (hours < 200) {
+        nextTierHours = 200;
+        progressPercentage = ((hours - 50) / 150) * 100;
+        tierDescription = 'A trusted member of the community with significant contributions.';
+      } else {
+        nextTierHours = null;
+        progressPercentage = 100;
+        tierDescription = 'An elite contributor and valued leader in the Guardian network.';
+      }
+
+      // Create modal
+      const modal = document.createElement('div');
+      modal.id = 'guardianRankModal';
+      modal.className = 'fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4';
+      modal.onclick = (e) => {
+        if (e.target === modal) closeGuardianRankModal();
+      };
+
+      const progressHTML = nextTierHours
+        ? `<div class="mt-6 space-y-2">
+             <div class="flex justify-between text-sm text-zinc-700 dark:text-zinc-400">
+               <span>Progress to next tier</span>
+               <span>${hours}/${nextTierHours}h</span>
+             </div>
+             <div class="w-full bg-zinc-300 dark:bg-zinc-700 rounded-full h-2">
+               <div class="bg-cyan-600 dark:bg-cyan-500 h-2 rounded-full transition-all" style="width: ${Math.min(progressPercentage, 100)}%"></div>
+             </div>
+           </div>`
+        : `<div class="mt-6 text-center text-cyan-600 dark:text-cyan-400 font-semibold">Maximum Tier Achieved</div>`;
+
+      modal.innerHTML = `
+        <div class="bg-white dark:bg-zinc-900 rounded-lg p-6 w-full max-w-md shadow-lg space-y-4">
+          <div class="flex justify-between items-start">
+            <h2 class="text-xl font-bold text-zinc-900 dark:text-white">${rank}</h2>
+            <button onclick="closeGuardianRankModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
+          </div>
+          <div class="space-y-4">
+            <p class="text-sm text-zinc-700 dark:text-zinc-400">${tierDescription}</p>
+            <div class="bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-200 dark:border-cyan-800 rounded-lg p-4">
+              <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Foreground Hours</div>
+              <div class="text-3xl font-bold text-cyan-600 dark:text-cyan-400">${hours}</div>
+            </div>
+            ${progressHTML}
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(modal);
+    }
+
+    function closeGuardianRankModal() {
+      const modal = document.getElementById('guardianRankModal');
+      if (modal) modal.remove();
+    }
+
+    function showPeerModal(data) {
+      const peerCount = data.peerCount?.peerCount || 0;
+      const foregroundHours = (data.peerData && data.peerData.foreground_hours) || data.foregroundHours || 0;
+      const rank = data.rank || 'New Guardian';
+
+      // Create modal
+      const modal = document.createElement('div');
+      modal.id = 'peerModal';
+      modal.className = 'fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4';
+      modal.onclick = (e) => {
+        if (e.target === modal) closePeerModal();
+      };
+
+      modal.innerHTML = `
+        <div class="bg-white dark:bg-zinc-900 rounded-lg p-6 w-full max-w-md shadow-lg space-y-4">
+          <div class="flex justify-between items-start">
+            <h2 class="text-xl font-bold text-zinc-900 dark:text-white">Peer Details</h2>
+            <button onclick="closePeerModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
+          </div>
+          <div class="space-y-4">
+            <div class="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+              <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Connected Peers</div>
+              <div class="text-3xl font-bold text-blue-600 dark:text-blue-400">${peerCount}</div>
+              <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">peers in Usernode network</div>
+            </div>
+            <div class="bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-200 dark:border-cyan-800 rounded-lg p-4">
+              <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Your Foreground Hours</div>
+              <div class="text-3xl font-bold text-cyan-600 dark:text-cyan-400">${foregroundHours}</div>
+            </div>
+            <div>
+              <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Rank Tier</div>
+              <div class="text-lg font-semibold text-cyan-600 dark:text-cyan-400">${rank}</div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(modal);
+    }
+
+    function closePeerModal() {
+      const modal = document.getElementById('peerModal');
+      if (modal) modal.remove();
     }
 
     function openAvatarUpload() {
