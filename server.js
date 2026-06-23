@@ -1637,6 +1637,45 @@ app.post('/api/contacts/by-id', async (req, res) => {
   }
 });
 
+app.get('/api/contacts/:contactId/conversation-count', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { contactId } = req.params;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    // Get contact_user_id
+    const contactResult = await pool.query(`
+      SELECT contact_user_id FROM user_contacts
+      WHERE id = $1 AND user_id = $2
+    `, [contactId, userId]);
+
+    if (contactResult.rowCount === 0) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    const contactUserId = contactResult.rows[0].contact_user_id;
+
+    // Count conversations with this contact
+    const countResult = await pool.query(`
+      SELECT COUNT(*) as count FROM conversations
+      WHERE (participant_a_id = $1 AND participant_b_id = $2)
+         OR (participant_a_id = $2 AND participant_b_id = $1)
+    `, [userId, contactUserId]);
+
+    const count = parseInt(countResult.rows[0].count, 10);
+    res.json({ conversationCount: count });
+  } catch (err) {
+    console.error('Error counting conversations:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.delete('/api/contacts/:contactId', async (req, res) => {
   try {
     if (!req.user) {
@@ -1649,16 +1688,34 @@ app.delete('/api/contacts/:contactId', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
-    const result = await pool.query(`
+    // Get contact_user_id before deletion
+    const contactResult = await pool.query(`
+      SELECT contact_user_id FROM user_contacts
+      WHERE id = $1 AND user_id = $2
+    `, [contactId, userId]);
+
+    if (contactResult.rowCount === 0) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    const contactUserId = contactResult.rows[0].contact_user_id;
+
+    // Delete all conversations with this contact (cascade deletes messages)
+    const convResult = await pool.query(`
+      DELETE FROM conversations
+      WHERE (participant_a_id = $1 AND participant_b_id = $2)
+         OR (participant_a_id = $2 AND participant_b_id = $1)
+    `, [userId, contactUserId]);
+
+    const deletedConversations = convResult.rowCount;
+
+    // Delete the contact record
+    await pool.query(`
       DELETE FROM user_contacts
       WHERE id = $1 AND user_id = $2
     `, [contactId, userId]);
 
-    if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Contact not found' });
-    }
-
-    res.json({ ok: true });
+    res.json({ ok: true, deletedConversations });
   } catch (err) {
     console.error('Error deleting contact:', err);
     res.status(500).json({ error: err.message });
