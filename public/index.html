@@ -1370,6 +1370,7 @@
 
     // Guardian's tab caching
     let cachedGuardiansData = null;
+    let guardianPollInterval = null;
 
     // Messages tab state
     let activeMessagesTab = 'direct';
@@ -3920,6 +3921,7 @@
       // Clear all polling intervals when returning to messages view
       if (pollInterval) clearInterval(pollInterval);
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
+      if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
 
       // Clear modals/menus when returning to messages view
       closeManageGroupMembersModal();
@@ -4460,6 +4462,7 @@
       document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
+      if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
       document.getElementById('contactsSearchInput').value = '';
       loadContactsList();
     }
@@ -4485,6 +4488,7 @@
       document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
+      if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
       loadUserLikes();
       loadFeedPosts(0);
     }
@@ -4560,12 +4564,16 @@
         activeBtn.classList.add('text-cyan-600', 'dark:text-cyan-400', 'border-t-2', 'border-cyan-600', 'dark:border-cyan-500');
       }
 
-      // Load data for guardians tab on first view (cached after that)
-      if (tabName === 'guardians' && !cachedGuardiansData) {
+      // Clear any existing guardian polling when switching tabs
+      if (guardianPollInterval) {
+        clearInterval(guardianPollInterval);
+        guardianPollInterval = null;
+      }
+
+      // Load guardian data and start polling when on guardians tab
+      if (tabName === 'guardians') {
         loadGuardiansData();
-      } else if (tabName === 'guardians' && cachedGuardiansData) {
-        // Display cached data
-        displayGuardiansData(cachedGuardiansData);
+        guardianPollInterval = setInterval(refreshPeerCount, 30000);
       }
 
       // Save tab preference
@@ -4634,6 +4642,34 @@
       } catch (err) {
         console.error('Error fetching peer count:', err);
         return { peerCount: 0, status: 'offline' };
+      }
+    }
+
+    async function refreshPeerCount() {
+      try {
+        const peerCountResponse = await fetchPeerCount();
+        if (!peerCountResponse) return;
+
+        if (cachedGuardiansData) {
+          cachedGuardiansData.peerCount = peerCountResponse;
+        }
+
+        const peerCount = peerCountResponse.peerCount || 0;
+        const hours = cachedGuardiansData?.foregroundHours || 0;
+
+        const hoursDisplay = document.getElementById('profileGuardianHours');
+        if (hoursDisplay) {
+          hoursDisplay.innerHTML = `<div>${hours}</div><div class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Connected Peers: ${peerCount}</div>`;
+        }
+
+        // Update count in Peer Details modal if it is currently open
+        const peerModal = document.getElementById('peerModal');
+        if (peerModal) {
+          const countEl = peerModal.querySelector('.text-blue-600');
+          if (countEl) countEl.textContent = peerCount;
+        }
+      } catch (err) {
+        console.error('Error refreshing peer count:', err);
       }
     }
 
