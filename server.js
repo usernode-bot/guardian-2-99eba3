@@ -462,6 +462,8 @@ app.get('/api/conversations', async (req, res) => {
         c.participant_b_id,
         c.archived_by,
         c.muted_by,
+        c.status_a,
+        c.status_b,
         c.updated_at,
         c.created_at,
         u.username,
@@ -507,6 +509,13 @@ app.get('/api/conversations', async (req, res) => {
       const isArchived = conv.archived_by && conv.archived_by.includes(userId);
       const isMuted = conv.muted_by && conv.muted_by.includes(userId);
       const isSavedContact = !!conv.contact_id;
+      const myStatus = conv.participant_a_id === userId ? conv.status_a : conv.status_b;
+      const isIgnored = myStatus === 'ignored';
+
+      // Skip conversations the user has chosen to ignore — treat as hidden
+      if (isIgnored) continue;
+
+      const isPending = !isArchived && !isSavedContact;
 
       const convData = {
         id: conv.id,
@@ -520,6 +529,7 @@ app.get('/api/conversations', async (req, res) => {
         lastMessageAt: conv.msg_created_at || null,
         unreadCount: parseInt(conv.unread_count || 0),
         isMuted,
+        isPending,
       };
 
       if (isArchived) {
@@ -1342,12 +1352,20 @@ app.post('/api/conversations/:convId/accept', async (req, res) => {
     // Update conversation status for this participant
     const isParticipantA = conv.participant_a_id === userId;
     const statusCol = isParticipantA ? 'status_a' : 'status_b';
+    const otherUserId = isParticipantA ? conv.participant_b_id : conv.participant_a_id;
 
     await pool.query(`
       UPDATE conversations
       SET ${statusCol} = 'accepted'
       WHERE id = $1
     `, [convId]);
+
+    // Auto-save the other person as a contact so the conversation moves to active
+    await pool.query(`
+      INSERT INTO user_contacts (user_id, contact_user_id, created_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (user_id, contact_user_id) DO NOTHING
+    `, [userId, otherUserId]);
 
     res.json({ ok: true });
   } catch (err) {
