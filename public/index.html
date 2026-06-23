@@ -842,7 +842,7 @@
     <!-- Main content -->
     <div id="content" class="flex-1 overflow-hidden flex flex-col pt-16">
       <!-- Messages View with Tabs -->
-      <div id="messagesView" class="hidden flex flex-col flex-1 overflow-hidden">
+      <div id="messagesView" class="hidden flex flex-col flex-1 overflow-y-auto">
         <!-- Tab Navigation -->
         <div class="bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 flex sticky top-0 z-20">
           <button id="directTab" onclick="switchMessagesTab('direct')" class="flex-1 px-4 py-3 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 border-b-2 border-transparent transition border-b-2 border-cyan-600 text-zinc-900 dark:text-zinc-100">Direct</button>
@@ -850,12 +850,12 @@
         </div>
 
         <!-- Direct Messages List -->
-        <div id="directList" class="flex-1 overflow-y-auto">
+        <div id="directList" class="flex-1">
           <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading conversations...</div>
         </div>
 
         <!-- Groups List -->
-        <div id="groupsList" class="hidden flex-1 overflow-y-auto relative">
+        <div id="groupsList" class="hidden flex-1 relative">
           <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading groups...</div>
         </div>
       </div>
