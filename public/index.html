@@ -2691,20 +2691,12 @@
       event.preventDefault();
       currentGroupContextMenuId = groupId;
 
-      // Show menu immediately at cursor position
       const menu = document.getElementById('groupContextMenu');
       const renameBtn = document.getElementById('renameGroupBtn');
       const deleteBtn = document.getElementById('deleteGroupBtn');
       const manageBtn = document.getElementById('manageGroupMembersBtn');
 
-      // Position menu at cursor
-      let x = event.clientX;
-      let y = event.clientY;
-      menu.classList.remove('hidden');
-      menu.style.left = x + 'px';
-      menu.style.top = y + 'px';
-
-      // Fetch group data to determine creator status; hide creator buttons if fetch fails
+      // Fetch group data first to determine creator status
       const groupData = await apiCall(`/api/groups/${groupId}`);
 
       let isCreator = false;
@@ -2719,21 +2711,43 @@
         }
       }
 
-      // Configure button visibility based on creator status
+      // Configure button visibility based on creator status BEFORE showing menu
       manageBtn.style.display = isCreator ? 'block' : 'none';
       renameBtn.style.display = isCreator ? 'block' : 'none';
       deleteBtn.style.display = isCreator ? 'block' : 'none';
 
-      // Check if menu goes off-screen and adjust positioning
-      setTimeout(() => {
-        const rect = menu.getBoundingClientRect();
-        if (rect.right > window.innerWidth) {
-          menu.style.left = (x - rect.width) + 'px';
-        }
-        if (rect.bottom > window.innerHeight) {
-          menu.style.top = (y - rect.height) + 'px';
-        }
-      }, 0);
+      // Calculate optimal menu position accounting for viewport bounds
+      let x = event.clientX;
+      let y = event.clientY;
+
+      // Temporarily show menu off-screen to measure dimensions
+      menu.classList.remove('hidden');
+      menu.style.left = '-9999px';
+      menu.style.top = '-9999px';
+
+      // Get menu dimensions for positioning calculation
+      const rect = menu.getBoundingClientRect();
+      const menuWidth = rect.width;
+      const menuHeight = rect.height;
+
+      // Calculate final position with viewport bounds checking
+      let finalX = x;
+      let finalY = y;
+
+      if (x + menuWidth > window.innerWidth) {
+        finalX = x - menuWidth;
+      }
+      if (y + menuHeight > window.innerHeight) {
+        finalY = y - menuHeight;
+      }
+
+      // Ensure menu stays within viewport bounds
+      finalX = Math.max(0, finalX);
+      finalY = Math.max(0, finalY);
+
+      // Apply final position and show menu
+      menu.style.left = finalX + 'px';
+      menu.style.top = finalY + 'px';
     }
 
     // Create group
