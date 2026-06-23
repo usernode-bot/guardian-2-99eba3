@@ -1365,6 +1365,7 @@
     let conversationsPollInterval = null;
     let sidebarOpen = false;
     let pendingDeleteContactId = null;
+    let isDeleteContactInProgress = false;
     let currentActiveView = 'messages';
     let pendingConvIds = new Set();
     let pendingConversationData = {}; // Maps convId to full conversation object for recipient check
@@ -2125,20 +2126,43 @@
 
     async function confirmDeleteContact() {
       if (!pendingDeleteContactId) return;
+
+      // Prevent duplicate API calls
+      if (isDeleteContactInProgress) {
+        console.warn('Delete contact already in progress');
+        return;
+      }
+
       const contactId = pendingDeleteContactId;
+      isDeleteContactInProgress = true;
       hideDeleteContactModal();
 
-      const data = await apiCall(`/api/contacts/${contactId}`, {
-        method: 'DELETE'
-      });
+      const btn = document.getElementById('deleteContactConfirm');
+      if (btn) btn.disabled = true;
 
-      if (data) {
-        const contacts = JSON.parse(localStorage.getItem(`guardian_contacts_${currentUser.id}`) || '[]');
-        const filtered = contacts.filter(c => c.id !== contactId);
-        localStorage.setItem(`guardian_contacts_${currentUser.id}`, JSON.stringify(filtered));
-        hideContactHeaderMenu();
-        currentContactId = null;
-        loadContactsList();
+      try {
+        const data = await apiCall(`/api/contacts/${contactId}`, {
+          method: 'DELETE'
+        });
+
+        if (data && !data.error && data.ok) {
+          const contacts = JSON.parse(localStorage.getItem(`guardian_contacts_${currentUser.id}`) || '[]');
+          const filtered = contacts.filter(c => c.id !== contactId);
+          localStorage.setItem(`guardian_contacts_${currentUser.id}`, JSON.stringify(filtered));
+          hideContactHeaderMenu();
+          currentContactId = null;
+          loadContactsList();
+          showToast('Contact deleted', 'success');
+        } else {
+          const errorMsg = data?.error || 'Failed to delete contact';
+          showToast(errorMsg, 'error');
+        }
+      } catch (err) {
+        console.error('Error deleting contact:', err);
+        showToast('Failed to delete contact', 'error');
+      } finally {
+        isDeleteContactInProgress = false;
+        if (btn) btn.disabled = false;
       }
     }
 
