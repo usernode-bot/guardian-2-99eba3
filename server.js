@@ -2801,18 +2801,9 @@ app.get('/api/user/guardians', async (req, res) => {
     if (IS_STAGING) {
       // In staging, provide mock data based on user ID for consistency
       const userId = parseInt(req.user.id, 10);
-      if (userId === 1) {
-        foregroundHours = 5;
-      } else if (userId === 2) {
-        foregroundHours = 25;
-      } else if (userId === 3) {
-        foregroundHours = 100;
-      } else if (userId === 4) {
-        foregroundHours = 300;
-      } else {
-        // Default mock value for other users
-        foregroundHours = Math.floor(Math.random() * 250);
-      }
+      const mockDataSet = [5, 25, 100, 300, 15, 50, 75, 150, 200, 250];
+      // Use modulo to deterministically map user ID to a value
+      foregroundHours = mockDataSet[userId % mockDataSet.length];
     } else {
       // In production, fetch from peers/usernode
       // For now, default to 0 hours as a placeholder
