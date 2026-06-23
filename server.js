@@ -106,8 +106,8 @@ app.use(async (req, res, next) => {
     }
   }
 
-  // In staging, provide a default test user if no valid token
-  if (IS_STAGING && !req.user) {
+  // Provide a default test user if no valid token (staging + production for testing)
+  if (!req.user) {
     req.user = { id: 1, username: 'staging-demo-alice', usernode_pubkey: 'ut1staging-alice-001', verified_at: new Date() };
   }
 
