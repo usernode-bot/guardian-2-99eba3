@@ -1184,7 +1184,7 @@
   <!-- Group Context Menu -->
   <div id="groupContextMenu" class="hidden fixed z-50 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg shadow-lg min-w-40">
     <button onclick="event.stopPropagation(); viewGroupInfo()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">View Group Info</button>
-    <button onclick="event.stopPropagation(); manageGroupMembers()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">Manage Members</button>
+    <button id="manageGroupMembersBtn" onclick="event.stopPropagation(); manageGroupMembers()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">Manage Members</button>
     <button id="renameGroupBtn" onclick="event.stopPropagation(); renameGroup()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">Rename Group</button>
     <button onclick="event.stopPropagation(); leaveGroup()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">Leave Group</button>
     <button id="deleteGroupBtn" onclick="event.stopPropagation(); deleteGroup()" class="menu-item w-full text-left px-4 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">Delete Group</button>
@@ -2680,8 +2680,10 @@
         // Show/hide creator-only buttons
         const renameBtn = document.getElementById('renameGroupBtn');
         const deleteBtn = document.getElementById('deleteGroupBtn');
+        const manageBtn = document.getElementById('manageGroupMembersBtn');
         const isCreator = groupData && groupData.creatorId === currentUser.id;
 
+        manageBtn.style.display = isCreator ? 'block' : 'none';
         renameBtn.style.display = isCreator ? 'block' : 'none';
         deleteBtn.style.display = isCreator ? 'block' : 'none';
 
