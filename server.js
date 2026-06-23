@@ -2879,6 +2879,35 @@ app.get('/api/peers/:peer_id', async (req, res) => {
   }
 });
 
+app.get('/api/network/peer-count', async (req, res) => {
+  try {
+    let peerCount = 0;
+    let status = 'offline';
+
+    if (IS_STAGING) {
+      // In staging, provide mock data with deterministic peer count cycling
+      const mockPeerCounts = [5, 12, 8, 15, 10];
+      const timeWindow = Math.floor(Date.now() / 30000); // 30-second windows
+      peerCount = mockPeerCounts[timeWindow % mockPeerCounts.length];
+      status = peerCount > 0 ? 'online' : 'offline';
+    } else {
+      // In production, default to 0 as placeholder
+      // TODO: Integrate with Usernode peer discovery API to fetch real peer count
+      peerCount = 0;
+      status = 'offline';
+    }
+
+    res.json({
+      peerCount,
+      status,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('Error fetching peer count:', err);
+    res.status(500).json({ error: 'Failed to fetch peer count' });
+  }
+});
+
 app.get('/api/activity', async (req, res) => {
   try {
     if (!req.user) {

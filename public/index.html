@@ -4456,6 +4456,16 @@
       loadProfileActivity();
     }
 
+    async function fetchPeerCount() {
+      try {
+        const response = await apiCall('/api/network/peer-count');
+        return response;
+      } catch (err) {
+        console.error('Error fetching peer count:', err);
+        return { peerCount: 0, status: 'offline' };
+      }
+    }
+
     async function loadGuardiansData() {
       try {
         const response = await apiCall('/api/user/guardians');
@@ -4475,6 +4485,16 @@
           } catch (err) {
             console.error('Error loading peer data:', err);
           }
+        }
+
+        // Fetch peer count (network connectivity)
+        try {
+          const peerCountResponse = await fetchPeerCount();
+          if (peerCountResponse) {
+            response.peerCount = peerCountResponse;
+          }
+        } catch (err) {
+          console.error('Error loading peer count:', err);
         }
 
         // Cache the data
@@ -4498,9 +4518,13 @@
       const hours = data.foregroundHours || 0;
       const level = data.contributionLevel || 0;
       const rank = data.rank || 'New Guardian';
+      const peerCount = data.peerCount?.peerCount || 0;
 
-      // Update hours
-      document.getElementById('profileGuardianHours').textContent = hours.toString();
+      // Update hours with peer count info
+      const hoursDisplay = document.getElementById('profileGuardianHours');
+      if (hoursDisplay) {
+        hoursDisplay.innerHTML = `<div>${hours}</div><div class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Connected Peers: ${peerCount}</div>`;
+      }
 
       // Update rank
       document.getElementById('profileGuardianRank').textContent = rank;
@@ -4614,7 +4638,7 @@
     }
 
     function showPeerModal(data) {
-      const peerId = data.usernode_pubkey || 'Unknown';
+      const peerCount = data.peerCount?.peerCount || 0;
       const foregroundHours = (data.peerData && data.peerData.foreground_hours) || data.foregroundHours || 0;
       const rank = data.rank || 'New Guardian';
 
@@ -4633,12 +4657,13 @@
             <button onclick="closePeerModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
           </div>
           <div class="space-y-4">
-            <div>
-              <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Peer ID</div>
-              <div class="bg-zinc-100 dark:bg-zinc-800 rounded-lg p-3 font-mono text-sm text-zinc-900 dark:text-zinc-100 break-all">${peerId}</div>
+            <div class="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+              <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Connected Peers</div>
+              <div class="text-3xl font-bold text-blue-600 dark:text-blue-400">${peerCount}</div>
+              <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">peers in Usernode network</div>
             </div>
             <div class="bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-200 dark:border-cyan-800 rounded-lg p-4">
-              <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Foreground Hours</div>
+              <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Your Foreground Hours</div>
               <div class="text-3xl font-bold text-cyan-600 dark:text-cyan-400">${foregroundHours}</div>
             </div>
             <div>
