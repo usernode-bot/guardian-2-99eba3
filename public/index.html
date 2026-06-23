@@ -918,8 +918,8 @@
 
       <!-- Profile View -->
       <div id="profileView" class="hidden flex flex-col flex-1 overflow-hidden">
-        <!-- Core Profile Content (Always Visible) -->
-        <div class="overflow-y-auto flex-1 pb-20">
+        <!-- Core Profile Content (Shown on Identity Tab Only) -->
+        <div id="profileCoreContent" class="overflow-y-auto flex-1 pb-20">
           <div class="p-4 space-y-4">
             <!-- Avatar Section -->
             <div class="flex justify-center pt-4 pb-2">
@@ -4380,6 +4380,14 @@
       document.getElementById('profileTabContentGuardians').classList.add('hidden');
       document.getElementById('profileTabContentActivity').classList.add('hidden');
 
+      // Show/hide core profile content based on active tab
+      const coreContent = document.getElementById('profileCoreContent');
+      if (tabName === 'identity') {
+        coreContent.classList.remove('hidden');
+      } else {
+        coreContent.classList.add('hidden');
+      }
+
       // Reset all tab buttons to inactive state
       ['identity', 'guardians', 'activity'].forEach(name => {
         const btn = document.getElementById(`profileTab${name.charAt(0).toUpperCase() + name.slice(1)}`);
@@ -4389,11 +4397,16 @@
         }
       });
 
-      // Show selected tab content
-      const contentId = tabName === 'guardians'
-        ? 'profileTabContentGuardians'
-        : `profileTabContent${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`;
-      document.getElementById(contentId).classList.remove('hidden');
+      // Show selected tab content (but only if not identity, since identity shows core content instead)
+      if (tabName !== 'identity') {
+        const contentId = tabName === 'guardians'
+          ? 'profileTabContentGuardians'
+          : `profileTabContent${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`;
+        document.getElementById(contentId).classList.remove('hidden');
+      } else {
+        // For identity tab, show the Identity tab content div (which is empty) and core content above
+        document.getElementById('profileTabContentIdentity').classList.remove('hidden');
+      }
 
       // Activate selected tab button
       const buttonId = tabName === 'guardians'
