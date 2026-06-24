@@ -2406,14 +2406,30 @@
       }, 300);
     }
 
+    function openAttachmentPicker() {
+      console.log('[FileInput] openAttachmentPicker() called');
+      const input = document.getElementById('attachmentFileInput');
+      if (!input) {
+        console.error('[FileInput] FAILED: attachmentFileInput not found');
+        return;
+      }
+      input.value = '';
+      console.log('[FileInput] Attachment input value reset');
+      console.log('[FileInput] About to call input.click()');
+      try {
+        input.click();
+        console.log('[FileInput] click() executed successfully');
+      } catch (err) {
+        console.error('[FileInput] FAILED: Exception calling click():', err);
+      }
+    }
+
     function handleAttachmentSelect(type) {
+      console.log('[FileInput] handleAttachmentSelect() called with type:', type);
       closeAttachmentSheet();
       if (type === 'image') {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = 'image/*';
-        input.onchange = (e) => handleImageUpload(e.target.files[0]);
-        input.click();
+        console.log('[FileInput] Image attachment selected, calling openAttachmentPicker()');
+        openAttachmentPicker();
       } else if (type === 'token') {
         showTokenModal();
       }
@@ -2676,6 +2692,66 @@
       setupEventListeners();
     }
 
+    // Factory function for creating stable file inputs for mobile-safe file operations
+    // Ensures handler is attached once during init, not dynamically per interaction
+    function createFileInput(config) {
+      console.log('[FileInput] createFileInput() called with config:', config.id);
+      const { id, accept, onFileSelected } = config;
+
+      // Check if this file input was already created
+      let input = document.getElementById(id);
+      if (input) {
+        console.log('[FileInput] File input', id, 'already exists, reusing');
+        return input;
+      }
+
+      // Create and configure the file input element
+      console.log('[FileInput] Creating new file input element:', id);
+      input = document.createElement('input');
+      input.type = 'file';
+      input.id = id;
+      input.accept = accept;
+      input.style.position = 'absolute';
+      input.style.left = '-9999px';
+      input.style.top = '-9999px';
+      console.log('[FileInput] File input element configured, accept:', accept);
+
+      // Attach handler via addEventListener (not direct property assignment)
+      console.log('[FileInput] Attaching change handler via addEventListener');
+      input.addEventListener('change', function(e) {
+        console.log('[FileInput] Change event fired on', id);
+        const file = e.target.files[0];
+        console.log('[FileInput] File selected:', file ? file.name : 'NO FILE');
+        if (file && onFileSelected) {
+          console.log('[FileInput] Calling onFileSelected callback');
+          onFileSelected(file);
+        }
+      });
+      console.log('[FileInput] Change handler successfully attached');
+
+      // Append to DOM so it's part of the page
+      console.log('[FileInput] Appending file input to document body');
+      document.body.appendChild(input);
+      console.log('[FileInput] File input', id, 'created and attached successfully');
+
+      return input;
+    }
+
+    // Registry to store file input elements for reuse
+    const fileInputRegistry = {};
+
+    // Wrapper to get or create a file input from the registry
+    function getOrCreateFileInput(config) {
+      console.log('[FileInput] getOrCreateFileInput() called for:', config.id);
+      if (!fileInputRegistry[config.id]) {
+        console.log('[FileInput] Creating new file input for registry:', config.id);
+        fileInputRegistry[config.id] = createFileInput(config);
+      } else {
+        console.log('[FileInput] File input already in registry:', config.id);
+      }
+      return fileInputRegistry[config.id];
+    }
+
     function setupEventListeners() {
       document.getElementById('menuBtn').addEventListener('click', toggleSidebar);
       document.getElementById('backBtn').addEventListener('click', () => {
@@ -2769,6 +2845,32 @@
         console.log('[Avatar] touchend listener successfully attached to edit button');
       } else {
         console.warn('[Avatar] avatarEditBtn element not found - touch handler for edit button not attached');
+      }
+
+      // Setup persistent file input for image attachments (using factory function)
+      console.log('[FileInput] Setting up image attachment file input');
+      getOrCreateFileInput({
+        id: 'attachmentFileInput',
+        accept: 'image/*',
+        onFileSelected: function(file) {
+          console.log('[FileInput] Image attachment file selected:', file.name);
+          handleImageUpload(file);
+        }
+      });
+      console.log('[FileInput] Image attachment file input setup completed');
+
+      // Add touch event handler for attachment file input
+      const attachmentInput = document.getElementById('attachmentFileInput');
+      if (attachmentInput) {
+        console.log('[FileInput] Attaching touchend listener to attachment input');
+        attachmentInput.addEventListener('touchend', function(e) {
+          console.log('[FileInput] Touch event on attachment input - triggering click');
+          e.preventDefault();
+          openAttachmentPicker();
+        });
+        console.log('[FileInput] touchend listener for attachment input attached');
+      } else {
+        console.warn('[FileInput] attachmentFileInput element not found for touch handler');
       }
 
       console.log('[Avatar] setupEventListeners() completed');
