@@ -932,7 +932,7 @@
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
                   </svg>
                 </div>
-                <div class="absolute bottom-0 right-0 bg-cyan-600 dark:bg-cyan-500 hover:bg-cyan-700 dark:hover:bg-cyan-400 text-white rounded-full p-2 cursor-pointer transition" onclick="console.log('[Avatar] Edit button clicked'); openAvatarUpload()" title="Change avatar">
+                <div id="avatarEditBtn" class="absolute bottom-0 right-0 bg-cyan-600 dark:bg-cyan-500 hover:bg-cyan-700 dark:hover:bg-cyan-400 text-white rounded-full p-2 cursor-pointer transition" onclick="console.log('[Avatar] Edit button clicked'); openAvatarUpload()" title="Change avatar">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -1482,9 +1482,16 @@
   <script src="https://social-vibecoding.usernodelabs.org/usernode-bridge/v1/bridge.js"></script>
 
   <script>
+    // Early initialization logging - fires before any other code
+    console.log('[Avatar] Main script block starting at page initialization');
+    console.log('[Avatar] DOM readyState:', document.readyState);
+    console.log('[Avatar] Window location:', window.location.href);
+
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token') || '';
     const headers = token ? { 'x-usernode-token': token } : {};
+
+    console.log('[Avatar] Early init: params loaded, token present:', !!token);
 
     function escapeHtml(text) {
       const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
@@ -2717,10 +2724,12 @@
       window.addEventListener('beforeunload', stopNetworkStatusPolling);
 
       // Setup avatar file input handler - attach once during initialization for mobile compatibility
+      console.log('[Avatar] setupEventListeners() called - starting initialization');
       const avatarFileInput = document.getElementById('avatarFileInput');
+      console.log('[Avatar] avatarFileInput element found:', avatarFileInput ? 'YES' : 'NO');
+
       if (avatarFileInput) {
-        console.log('[Avatar] setupEventListeners() called - attempting handler attachment');
-        console.log('[Avatar] avatarFileInput element found in DOM:', avatarFileInput ? 'YES' : 'NO');
+        console.log('[Avatar] Attempting handler attachment to file input');
         attachAvatarFileInputHandler(avatarFileInput);
         window.avatarHandlerAttached = true;
         console.log('[Avatar] Handler attachment completed, flag set to true');
@@ -2728,6 +2737,41 @@
         console.error('[Avatar] FAILED: avatarFileInput element not found during setupEventListeners');
         window.avatarHandlerAttached = false;
       }
+
+      // Add touch event listeners for avatar image and edit button for mobile support
+      console.log('[Avatar] Looking for avatar elements to attach touch handlers...');
+
+      const profileAvatar = document.getElementById('profileAvatar');
+      console.log('[Avatar] profileAvatar element found:', profileAvatar ? 'YES' : 'NO');
+
+      if (profileAvatar) {
+        console.log('[Avatar] Attaching touchend listener to profileAvatar image');
+        profileAvatar.addEventListener('touchend', function(e) {
+          console.log('[Avatar] Touch event on avatar image - calling openAvatarUpload()');
+          e.preventDefault();
+          openAvatarUpload();
+        });
+        console.log('[Avatar] touchend listener successfully attached to profileAvatar');
+      } else {
+        console.warn('[Avatar] profileAvatar element not found - touch handler for avatar image not attached');
+      }
+
+      const avatarEditBtn = document.getElementById('avatarEditBtn');
+      console.log('[Avatar] avatarEditBtn element found:', avatarEditBtn ? 'YES' : 'NO');
+
+      if (avatarEditBtn) {
+        console.log('[Avatar] Attaching touchend listener to edit button');
+        avatarEditBtn.addEventListener('touchend', function(e) {
+          console.log('[Avatar] Touch event on edit button - calling openAvatarUpload()');
+          e.preventDefault();
+          openAvatarUpload();
+        });
+        console.log('[Avatar] touchend listener successfully attached to edit button');
+      } else {
+        console.warn('[Avatar] avatarEditBtn element not found - touch handler for edit button not attached');
+      }
+
+      console.log('[Avatar] setupEventListeners() completed');
     }
 
     async function loadConversations() {
