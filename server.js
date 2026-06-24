@@ -325,7 +325,7 @@ app.put('/api/user/bio', async (req, res) => {
   }
 });
 
-app.post('/api/user/avatar', async (req, res) => {
+app.post('/api/user/avatar', express.json({ limit: '2mb' }), async (req, res) => {
   try {
     if (!req.user) {
       return res.status(401).json({ error: 'Not authenticated' });
@@ -3717,7 +3717,7 @@ async function start() {
         username VARCHAR(255) NOT NULL UNIQUE,
         usernode_pubkey VARCHAR(100) UNIQUE,
         verified_at TIMESTAMPTZ,
-        avatar_url VARCHAR(500),
+        avatar_url TEXT,
         blocked_users INTEGER[],
         created_at TIMESTAMPTZ DEFAULT NOW()
       )
@@ -3746,6 +3746,11 @@ async function start() {
     // Add bio column if it doesn't exist (idempotent migration)
     await pool.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS bio VARCHAR(500)
+    `);
+
+    // Widen avatar_url to TEXT so base64 data URIs are not truncated (idempotent migration)
+    await pool.query(`
+      ALTER TABLE users ALTER COLUMN avatar_url TYPE TEXT
     `);
 
     // Create conversations table (marked private)
@@ -3910,10 +3915,15 @@ async function start() {
         creator_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         name VARCHAR(255) NOT NULL,
         description TEXT,
-        avatar_url VARCHAR(500),
+        avatar_url TEXT,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )
+    `);
+
+    // Widen groups.avatar_url to TEXT (idempotent migration)
+    await pool.query(`
+      ALTER TABLE groups ALTER COLUMN avatar_url TYPE TEXT
     `);
 
     // Create group_members table (marked private)
