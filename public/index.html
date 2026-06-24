@@ -1461,6 +1461,67 @@
   <!-- Hidden Avatar File Input (mobile-compatible) -->
   <input id="avatarFileInput" type="file" accept="image/png,image/jpeg,image/gif" style="position: absolute; left: -9999px; top: -9999px;">
 
+  <!-- Hidden Attachment File Input (mobile-compatible) -->
+  <input id="attachmentFileInput" type="file" accept="image/*" style="position: absolute; left: -9999px; top: -9999px;">
+
+  <!-- File Selection Modal (for avatar and attachments) -->
+  <div id="fileSelectionModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-800 rounded-lg shadow-lg max-w-sm w-full">
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between p-6 border-b border-zinc-200 dark:border-zinc-700">
+        <h2 id="fileSelectionModalTitle" class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Choose File</h2>
+        <button onclick="closeFileSelectionModal()" class="text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-300 text-xl">×</button>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="p-6 space-y-4">
+        <!-- File Info Display -->
+        <div id="fileInfoSection" class="hidden">
+          <div class="bg-zinc-100 dark:bg-zinc-700 rounded p-4">
+            <p class="text-sm font-medium text-zinc-900 dark:text-zinc-100">Selected File</p>
+            <p id="selectedFileName" class="text-sm text-zinc-600 dark:text-zinc-400 mt-1"></p>
+            <p id="selectedFileSize" class="text-xs text-zinc-500 dark:text-zinc-500 mt-1"></p>
+          </div>
+        </div>
+
+        <!-- Browse Button -->
+        <button id="fileBrowseButton" onclick="triggerFileInput()" class="w-full bg-cyan-600 dark:bg-cyan-500 hover:bg-cyan-700 dark:hover:bg-cyan-400 text-white font-medium py-2 px-4 rounded transition">
+          Browse Files
+        </button>
+
+        <!-- Or divider -->
+        <div id="fileDividerSection" class="hidden">
+          <div class="relative">
+            <div class="absolute inset-0 flex items-center">
+              <div class="w-full border-t border-zinc-300 dark:border-zinc-600"></div>
+            </div>
+            <div class="relative flex justify-center text-sm">
+              <span class="px-2 bg-white dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400">or</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Paste Button -->
+        <button id="filePasteButton" onclick="pasteFromClipboard()" class="hidden w-full bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 text-zinc-900 dark:text-zinc-100 font-medium py-2 px-4 rounded transition">
+          Paste from Clipboard
+        </button>
+
+        <!-- Error Message -->
+        <div id="fileSelectionError" class="hidden bg-red-100 dark:bg-red-900 border border-red-300 dark:border-red-700 text-red-800 dark:text-red-200 px-4 py-2 rounded text-sm"></div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="flex gap-3 p-6 border-t border-zinc-200 dark:border-zinc-700">
+        <button onclick="closeFileSelectionModal()" class="flex-1 bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 text-zinc-900 dark:text-zinc-100 font-medium py-2 px-4 rounded transition">
+          Cancel
+        </button>
+        <button id="fileSelectConfirmButton" onclick="confirmFileSelection()" class="hidden flex-1 bg-cyan-600 dark:bg-cyan-500 hover:bg-cyan-700 dark:hover:bg-cyan-400 text-white font-medium py-2 px-4 rounded transition">
+          Use This File
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Transaction Details Modal -->
   <div id="transactionDetailsModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 rounded-lg shadow-xl max-w-md w-full max-h-[80vh] overflow-y-auto">
@@ -2428,8 +2489,8 @@
       console.log('[FileInput] handleAttachmentSelect() called with type:', type);
       closeAttachmentSheet();
       if (type === 'image') {
-        console.log('[FileInput] Image attachment selected, calling openAttachmentPicker()');
-        openAttachmentPicker();
+        console.log('[FileInput] Image attachment selected, opening file selection modal');
+        openFileSelectionModal('attachmentFileInput', 'Attach Image');
       } else if (type === 'token') {
         showTokenModal();
       }
@@ -2454,6 +2515,129 @@
       }
 
       document.getElementById('deleteContactModal').classList.remove('hidden');
+    }
+
+    // File Selection Modal Functions
+    let currentFileInput = null;
+    let selectedFileForModal = null;
+
+    function openFileSelectionModal(inputId, title = 'Choose File') {
+      console.log('[FileModal] openFileSelectionModal() called for:', inputId);
+      currentFileInput = document.getElementById(inputId);
+      console.log('[FileModal] Current file input element:', currentFileInput ? 'found' : 'NOT FOUND');
+
+      if (!currentFileInput) {
+        console.error('[FileModal] FAILED: File input', inputId, 'not found');
+        return;
+      }
+
+      selectedFileForModal = null;
+      document.getElementById('fileSelectionModalTitle').textContent = title;
+      document.getElementById('fileSelectionModal').classList.remove('hidden');
+      document.getElementById('fileInfoSection').classList.add('hidden');
+      document.getElementById('fileDividerSection').classList.add('hidden');
+      document.getElementById('filePasteButton').classList.add('hidden');
+      document.getElementById('fileSelectConfirmButton').classList.add('hidden');
+      document.getElementById('fileSelectionError').classList.add('hidden');
+      console.log('[FileModal] Modal opened for:', inputId);
+    }
+
+    function closeFileSelectionModal() {
+      console.log('[FileModal] closeFileSelectionModal() called');
+      document.getElementById('fileSelectionModal').classList.add('hidden');
+      currentFileInput = null;
+      selectedFileForModal = null;
+    }
+
+    function triggerFileInput() {
+      console.log('[FileModal] triggerFileInput() called');
+      if (!currentFileInput) {
+        console.error('[FileModal] FAILED: currentFileInput is null');
+        return;
+      }
+      currentFileInput.value = '';
+      console.log('[FileModal] About to click file input');
+      try {
+        currentFileInput.click();
+        console.log('[FileModal] File input click() executed successfully');
+      } catch (err) {
+        console.error('[FileModal] FAILED: Exception calling click():', err);
+        showFileSelectionError('Unable to open file picker. Please try again.');
+      }
+    }
+
+    function handleFileSelected(inputId, file) {
+      console.log('[FileModal] handleFileSelected() called for:', inputId, 'file:', file.name);
+      selectedFileForModal = file;
+
+      const fileName = document.getElementById('selectedFileName');
+      const fileSize = document.getElementById('selectedFileSize');
+      const fileSizeKB = (file.size / 1024).toFixed(2);
+
+      fileName.textContent = file.name;
+      fileSize.textContent = fileSizeKB + ' KB';
+
+      document.getElementById('fileInfoSection').classList.remove('hidden');
+      document.getElementById('fileDividerSection').classList.remove('hidden');
+      document.getElementById('filePasteButton').classList.remove('hidden');
+      document.getElementById('fileSelectConfirmButton').classList.remove('hidden');
+
+      console.log('[FileModal] File displayed in modal:', file.name, '-', fileSizeKB, 'KB');
+    }
+
+    function confirmFileSelection() {
+      console.log('[FileModal] confirmFileSelection() called');
+      if (!selectedFileForModal) {
+        console.warn('[FileModal] No file selected');
+        return;
+      }
+
+      const file = selectedFileForModal;
+      console.log('[FileModal] Confirming file:', file.name);
+      closeFileSelectionModal();
+
+      // Determine which upload function to call based on currentFileInput
+      if (currentFileInput.id === 'avatarFileInput') {
+        console.log('[FileModal] Processing as avatar upload');
+        uploadAvatar(file);
+      } else if (currentFileInput.id === 'attachmentFileInput') {
+        console.log('[FileModal] Processing as attachment upload');
+        handleImageUpload(file);
+      } else {
+        console.error('[FileModal] FAILED: Unknown file input type');
+      }
+    }
+
+    function showFileSelectionError(message) {
+      console.error('[FileModal] Error:', message);
+      const errorDiv = document.getElementById('fileSelectionError');
+      errorDiv.textContent = message;
+      errorDiv.classList.remove('hidden');
+    }
+
+    async function pasteFromClipboard() {
+      console.log('[FileModal] pasteFromClipboard() called');
+      try {
+        const items = await navigator.clipboard.read();
+        console.log('[FileModal] Clipboard items count:', items.length);
+
+        for (const item of items) {
+          console.log('[FileModal] Clipboard item types:', item.types);
+          if (item.types.includes('image/png') || item.types.includes('image/jpeg') || item.types.includes('image/gif')) {
+            const blob = await item.getType('image/png').catch(() => item.getType('image/jpeg')).catch(() => item.getType('image/gif'));
+            if (blob) {
+              const file = new File([blob], 'pasted-image.png', { type: blob.type });
+              console.log('[FileModal] File created from clipboard:', file.name);
+              handleFileSelected(currentFileInput.id, file);
+              return;
+            }
+          }
+        }
+        showFileSelectionError('No image found in clipboard. Copy an image and try again.');
+      } catch (err) {
+        console.error('[FileModal] Clipboard API error:', err);
+        showFileSelectionError('Clipboard access not available. Try using the Browse button instead.');
+      }
     }
 
     function hideDeleteContactModal() {
@@ -5990,8 +6174,8 @@
       const file = e.target.files[0];
       console.log('[Avatar] File selected:', file ? file.name : 'NO FILE', file ? `(${(file.size / 1024).toFixed(2)} KB)` : '');
       if (file) {
-        console.log('[Avatar] Calling uploadAvatar() with file:', file.name);
-        uploadAvatar(file);
+        console.log('[Avatar] Displaying file in modal:', file.name);
+        handleFileSelected('avatarFileInput', file);
       } else {
         console.warn('[Avatar] Change event fired but no file was selected');
       }
@@ -5999,40 +6183,8 @@
 
     function openAvatarUpload() {
       console.log('[Avatar] openAvatarUpload() function entered');
-      const input = document.getElementById('avatarFileInput');
-      console.log('[Avatar] File input element found:', input ? 'YES' : 'NO');
-      if (!input) {
-        console.error('[Avatar] FAILED: avatarFileInput element not found in DOM');
-        return;
-      }
-
-      // Fallback mechanism: ensure handler is attached before click
-      console.log('[Avatar] Checking if handler was previously attached...');
-      console.log('[Avatar] window.avatarHandlerAttached =', window.avatarHandlerAttached);
-
-      if (!window.avatarHandlerAttached) {
-        console.warn('[Avatar] FALLBACK: Handler was not attached during initialization - attaching now');
-        const attached = attachAvatarFileInputHandler(input);
-        if (attached) {
-          window.avatarHandlerAttached = true;
-          console.log('[Avatar] FALLBACK: Handler successfully attached in openAvatarUpload()');
-        } else {
-          console.error('[Avatar] FALLBACK FAILED: Could not attach handler');
-          return;
-        }
-      } else {
-        console.log('[Avatar] Handler was already attached during initialization - reusing it');
-      }
-
-      input.value = '';
-      console.log('[Avatar] Input value reset to empty');
-      console.log('[Avatar] About to call input.click()');
-      try {
-        input.click();
-        console.log('[Avatar] click() executed successfully');
-      } catch (err) {
-        console.error('[Avatar] FAILED: Exception calling click():', err);
-      }
+      console.log('[Avatar] Opening file selection modal for avatar upload');
+      openFileSelectionModal('avatarFileInput', 'Upload Avatar');
     }
 
     async function uploadAvatar(file) {
