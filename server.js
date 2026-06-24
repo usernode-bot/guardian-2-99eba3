@@ -1784,6 +1784,15 @@ app.get('/api/user/contact-info', (req, res) => {
 
 app.get('/api/search/users', async (req, res) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
     const q = req.query.q || '';
     let rows;
 
@@ -1791,7 +1800,7 @@ app.get('/api/search/users', async (req, res) => {
       const result = await queryWithTimeout(pool, `
         SELECT id, username, verified_at, usernode_pubkey
         FROM users
-        WHERE username ILIKE $1 OR usernode_pubkey ILIKE $2
+        WHERE (username ILIKE $1 OR usernode_pubkey ILIKE $2) AND id != $7
         ORDER BY
           CASE
             WHEN username = $3 OR usernode_pubkey = $4 THEN 0
@@ -1800,18 +1809,25 @@ app.get('/api/search/users', async (req, res) => {
           END,
           username ASC
         LIMIT 20
-      `, ['%' + q + '%', '%' + q + '%', q, q, q + '%', q + '%'], 2000);
+      `, ['%' + q + '%', '%' + q + '%', q, q, q + '%', q + '%', userId], 2000);
       rows = result.rows;
     } catch (timeoutErr) {
       // On timeout, return demo fallback users
       if (timeoutErr.message === 'QUERY_TIMEOUT') {
         console.info('Search query timeout after 2000ms, returning demo fallback');
-        const users = [
-          { id: 1, username: 'staging-demo-alice', usernode_pubkey: 'ut1staging-alice-001', verified: true, mutualCount: 0 },
-          { id: 2, username: 'staging-demo-bob', usernode_pubkey: 'ut1staging-bob-001', verified: true, mutualCount: 0 },
-          { id: 3, username: 'staging-demo-charlie', usernode_pubkey: 'ut1staging-charlie-001', verified: false, mutualCount: 0 }
+        const demoUsers = [
+          { id: 1, username: 'staging-demo-alice', usernode_pubkey: 'ut1staging-alice-001', verified_at: new Date() },
+          { id: 2, username: 'staging-demo-bob', usernode_pubkey: 'ut1staging-bob-001', verified_at: new Date() },
+          { id: 3, username: 'staging-demo-charlie', usernode_pubkey: 'ut1staging-charlie-001', verified_at: null }
         ];
-        return res.json({ users });
+        const filteredUsers = demoUsers.filter(u => u.id !== userId).map(u => ({
+          id: u.id,
+          username: u.username,
+          usernode_pubkey: u.usernode_pubkey,
+          verified: !!u.verified_at,
+          mutualCount: 0,
+        }));
+        return res.json({ users: filteredUsers });
       }
       // For non-timeout errors, re-throw to be caught by outer catch
       throw timeoutErr;
