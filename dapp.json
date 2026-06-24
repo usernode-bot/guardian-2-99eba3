@@ -18,6 +18,7 @@
     { "name": "Settings panel opens", "path": "/", "expectSelector": "#settingsPanel" },
     { "name": "Network dropdown in settings", "path": "/", "expectSelector": "#networkSelect" },
     { "name": "Network Status section in settings", "path": "/", "expectSelector": "#networkAccordion" },
-    { "name": "Profile Guardian's tab loads", "path": "/", "expectSelector": "#profileTabGuardians" }
+    { "name": "Profile Guardian's tab loads", "path": "/", "expectSelector": "#profileTabGuardians" },
+    { "name": "Feed view renders", "path": "/", "expectSelector": "#feedView" }
   ]
 }
