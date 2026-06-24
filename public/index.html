@@ -6249,6 +6249,7 @@
     }
 
     let mentionDebounceTimer = null;
+    const mentionSearchCache = new Map();
 
     function closeMentionDropdown() {
       const dropdown = document.getElementById('mentionDropdown');
@@ -6275,6 +6276,29 @@
       input.focus();
     }
 
+    function renderMentionDropdown(users) {
+      const dropdown = document.getElementById('mentionDropdown');
+      if (!dropdown) return;
+      if (!users || users.length === 0) {
+        closeMentionDropdown();
+        return;
+      }
+      const html = users.map(u => {
+        const avatarInitial = u.username ? u.username.charAt(0).toUpperCase() : '?';
+        const avatarHtml = u.avatar_url
+          ? `<img src="${escapeHtml(u.avatar_url)}" alt="${escapeHtml(u.username)}" class="w-6 h-6 rounded-full object-cover flex-shrink-0" onerror="this.style.display='none'">`
+          : `<div class="w-6 h-6 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">${avatarInitial}</div>`;
+        const verifiedBadge = u.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs ml-1">✓</span>' : '';
+        return `<div class="flex items-center gap-2 px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer transition" onclick="insertMention('${escapeHtml(u.username)}')">
+          ${avatarHtml}
+          <span class="text-sm font-medium text-zinc-900 dark:text-zinc-100">@${escapeHtml(u.username)}</span>
+          ${verifiedBadge}
+        </div>`;
+      }).join('');
+      dropdown.innerHTML = html;
+      dropdown.classList.remove('hidden');
+    }
+
     async function handleMentionInput() {
       const input = document.getElementById('feedComposeInput');
       if (!input) return;
@@ -6290,42 +6314,39 @@
       const query = mentionMatch[1];
       try {
         const result = await apiCall(`/api/users/search?q=${encodeURIComponent(query)}`, { method: 'GET' });
-        const dropdown = document.getElementById('mentionDropdown');
-        if (!dropdown) return;
+        if (!result) { closeMentionDropdown(); return; }
+        mentionSearchCache.set(query, result.users || []);
 
         const currentBefore = input.value.slice(0, input.selectionStart);
-        if (!currentBefore.match(/@([a-zA-Z0-9_]*)$/)) {
-          closeMentionDropdown();
-          return;
-        }
+        if (!currentBefore.match(/@([a-zA-Z0-9_]*)$/)) { closeMentionDropdown(); return; }
 
-        if (!result || !result.users || result.users.length === 0) {
-          closeMentionDropdown();
-          return;
-        }
-
-        dropdown.innerHTML = result.users.map(u => {
-          const avatarInitial = u.username ? u.username.charAt(0).toUpperCase() : '?';
-          const avatarHtml = u.avatar_url
-            ? `<img src="${escapeHtml(u.avatar_url)}" alt="${escapeHtml(u.username)}" class="w-6 h-6 rounded-full object-cover flex-shrink-0" onerror="this.style.display='none'">`
-            : `<div class="w-6 h-6 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">${avatarInitial}</div>`;
-          const verifiedBadge = u.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs ml-1">✓</span>' : '';
-          return `<div class="flex items-center gap-2 px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer transition" onclick="insertMention('${escapeHtml(u.username)}')">
-            ${avatarHtml}
-            <span class="text-sm font-medium text-zinc-900 dark:text-zinc-100">@${escapeHtml(u.username)}</span>
-            ${verifiedBadge}
-          </div>`;
-        }).join('');
-
-        dropdown.classList.remove('hidden');
+        renderMentionDropdown(result.users);
       } catch (err) {
         closeMentionDropdown();
       }
     }
 
     function onComposeInput() {
+      const input = document.getElementById('feedComposeInput');
+      if (!input) return;
+      const before = input.value.slice(0, input.selectionStart);
+      const mentionMatch = before.match(/@([a-zA-Z0-9_]*)$/);
+
+      if (!mentionMatch || mentionMatch[1].length === 0) {
+        clearTimeout(mentionDebounceTimer);
+        closeMentionDropdown();
+        return;
+      }
+
+      const query = mentionMatch[1];
+      if (mentionSearchCache.has(query)) {
+        clearTimeout(mentionDebounceTimer);
+        renderMentionDropdown(mentionSearchCache.get(query));
+        return;
+      }
+
       clearTimeout(mentionDebounceTimer);
-      mentionDebounceTimer = setTimeout(handleMentionInput, 200);
+      mentionDebounceTimer = setTimeout(handleMentionInput, 80);
     }
 
     function onComposeKeydown(e) {
