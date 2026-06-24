@@ -1859,6 +1859,64 @@ app.get('/api/search/users', async (req, res) => {
   }
 });
 
+app.get('/api/users/search', async (req, res) => {
+  try {
+    if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+    const q = (req.query.q || '').trim();
+    if (!q) return res.json({ users: [] });
+    const { rows } = await pool.query(`
+      SELECT id, username, verified_at, avatar_url
+      FROM users
+      WHERE LOWER(username) LIKE LOWER($1)
+      ORDER BY username
+      LIMIT 8
+    `, [q + '%']);
+    res.json({
+      users: rows.map(r => ({
+        id: r.id,
+        username: r.username,
+        avatar_url: r.avatar_url || null,
+        verified: !!r.verified_at,
+      }))
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/users/by-username/:username', async (req, res) => {
+  try {
+    if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+    const { username } = req.params;
+    const { rows } = await pool.query(`
+      SELECT id, username, verified_at, usernode_pubkey, avatar_url, bio
+      FROM users
+      WHERE LOWER(username) = LOWER($1)
+    `, [username]);
+    if (!rows.length) return res.status(404).json({ error: 'User not found' });
+    const user = rows[0];
+    const foregroundHours = getForegroundHours(user.id);
+    const { rank, hoursBracket, contributionLevel } = calculateRankData(foregroundHours);
+    res.json({
+      id: user.id,
+      username: user.username,
+      usernode_pubkey: user.usernode_pubkey || null,
+      verified: !!user.verified_at,
+      avatar_url: user.avatar_url || null,
+      bio: user.bio || null,
+      foregroundHours,
+      rank,
+      hoursBracket,
+      contributionLevel,
+      mutualCount: 0,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/users/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
@@ -4573,6 +4631,16 @@ async function start() {
             link: 'https://example.com/resource'
           },
           offset: 300000
+        },
+        {
+          userId: alice,
+          content: { text: '[Staging demo] Hey @staging-demo-bob, loved your new dapp! 🚀' },
+          offset: 120000
+        },
+        {
+          userId: emma,
+          content: { text: '[Staging demo] @staging-demo-david and @staging-demo-alice — anyone joining the Web3 standards discussion?' },
+          offset: 60000
         }
       ];
 
@@ -4637,12 +4705,13 @@ async function start() {
       if (aliceArticlePostRows.length > 0) {
         const alicePostId = aliceArticlePostRows[0].id;
         const commentTime = new Date(feedBaseTime.getTime() - 300000);
+        const commentTime2 = new Date(feedBaseTime.getTime() - 200000);
 
         await pool.query(`
           INSERT INTO feed_comments (post_id, user_id, content, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, $4)
+          VALUES ($1, $2, $3, $4, $4), ($1, $5, $6, $7, $7)
           ON CONFLICT DO NOTHING
-        `, [alicePostId, bob, '[Staging demo] Great read! Security is so important in Web3.', commentTime]);
+        `, [alicePostId, bob, '[Staging demo] Great read! Security is so important in Web3.', commentTime, charlie, '[Staging demo] @staging-demo-alice nice one! 👏', commentTime2]);
       }
 
       // Seed comments on David's Web3 standards post
