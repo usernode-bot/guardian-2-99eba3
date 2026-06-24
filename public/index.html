@@ -6399,8 +6399,8 @@
         reader.onload = (e) => {
           const img = new Image();
           img.onload = () => {
-            const MAX_WIDTH = 400;
-            const MAX_HEIGHT = 300;
+            const MAX_WIDTH = 300;
+            const MAX_HEIGHT = 200;
             let w = img.width;
             let h = img.height;
 
@@ -6426,7 +6426,7 @@
               };
               reader2.onerror = reject;
               reader2.readAsDataURL(blob);
-            }, 'image/jpeg', 0.7);
+            }, 'image/jpeg', 0.6);
           };
           img.onerror = reject;
           img.src = e.target.result;
