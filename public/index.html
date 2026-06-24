@@ -1444,7 +1444,7 @@
         <div id="mentionDropdown" class="hidden absolute left-4 right-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg z-10 overflow-hidden"></div>
         <!-- Image Preview Container -->
         <div id="feedComposeImagePreview" class="mt-3 hidden">
-          <div class="grid grid-cols-2 gap-2" id="feedComposeImageGrid"></div>
+          <div class="flex flex-col gap-2 max-w-xs" id="feedComposeImageGrid"></div>
           <div class="text-xs text-zinc-500 dark:text-zinc-400 mt-2"><span id="feedComposeImageCount">0</span>/4 images</div>
         </div>
       </div>
@@ -6281,22 +6281,11 @@
 
       // Render images if present
       if (post.images && post.images.length > 0) {
-        const imageCount = post.images.length;
-        let imageGallery = '<div class="mb-2 ';
-
-        if (imageCount === 1) {
-          imageGallery += 'flex">';
-          imageGallery += post.images.map((img, idx) => {
-            const encodedUrl = img.url.replace(/'/g, "\\'");
-            return `<img src="${escapeHtml(img.url)}" alt="Post image" class="w-full rounded cursor-pointer hover:opacity-90 transition" onclick="showLightbox('${encodedUrl}')" onerror="this.style.display='none'">`;
-          }).join('');
-        } else {
-          imageGallery += 'grid ' + (imageCount === 2 ? 'grid-cols-2' : 'grid-cols-2') + ' gap-1">';
-          imageGallery += post.images.map((img, idx) => {
-            const encodedUrl = img.url.replace(/'/g, "\\'");
-            return `<img src="${escapeHtml(img.url)}" alt="Post image ${idx + 1}" class="w-full h-24 object-cover rounded cursor-pointer hover:opacity-90 transition" onclick="showLightbox('${encodedUrl}')" onerror="this.style.display='none'">`;
-          }).join('');
-        }
+        let imageGallery = '<div class="mb-2 flex flex-col gap-2 max-w-xs">';
+        imageGallery += post.images.map((img, idx) => {
+          const encodedUrl = img.url.replace(/'/g, "\\'");
+          return `<img src="${escapeHtml(img.url)}" alt="Post image ${idx + 1}" class="w-full h-auto object-cover rounded cursor-pointer hover:opacity-90 transition" onclick="showLightbox('${encodedUrl}')" onerror="this.style.display='none'">`;
+        }).join('');
         imageGallery += '</div>';
         content += imageGallery;
       }
@@ -6452,7 +6441,7 @@
 
       grid.innerHTML = feedComposeImages.map((dataUri, idx) => `
         <div class="relative group">
-          <img src="${dataUri}" alt="Image preview ${idx + 1}" class="w-full h-24 object-cover rounded cursor-pointer hover:opacity-80 transition">
+          <img src="${dataUri}" alt="Image preview ${idx + 1}" class="w-full max-w-xs h-auto object-cover rounded cursor-pointer hover:opacity-80 transition">
           <button onclick="removeComposeImage(${idx})" class="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition">×</button>
         </div>
       `).join('');
