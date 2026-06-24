@@ -925,14 +925,14 @@
             <!-- Avatar Section -->
             <div class="flex justify-center pt-4 pb-2">
               <div class="relative">
-                <img id="profileAvatar" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23d4d4d8' width='100' height='100'/%3E%3Ccircle cx='50' cy='35' r='18' fill='%23a1a1a9'/%3E%3Cpath d='M20 75 Q20 55 50 55 Q80 55 80 75' fill='%23a1a1a9'/%3E%3C/svg%3E" alt="Profile Avatar" class="w-32 h-32 rounded-full bg-zinc-200 dark:bg-zinc-700 border-2 border-cyan-600 dark:border-cyan-500 cursor-pointer hover:opacity-80 transition" onclick="openAvatarUpload()">
+                <img id="profileAvatar" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23d4d4d8' width='100' height='100'/%3E%3Ccircle cx='50' cy='35' r='18' fill='%23a1a1a9'/%3E%3Cpath d='M20 75 Q20 55 50 55 Q80 55 80 75' fill='%23a1a1a9'/%3E%3C/svg%3E" alt="Profile Avatar" class="w-32 h-32 rounded-full bg-zinc-200 dark:bg-zinc-700 border-2 border-cyan-600 dark:border-cyan-500 cursor-pointer hover:opacity-80 transition" onclick="console.log('[Avatar] Avatar image clicked'); openAvatarUpload()">
                 <div id="avatarUploadSpinner" class="hidden absolute inset-0 rounded-full bg-black bg-opacity-40 flex items-center justify-center">
                   <svg class="animate-spin w-8 h-8 text-white" fill="none" viewBox="0 0 24 24">
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
                   </svg>
                 </div>
-                <div class="absolute bottom-0 right-0 bg-cyan-600 dark:bg-cyan-500 hover:bg-cyan-700 dark:hover:bg-cyan-400 text-white rounded-full p-2 cursor-pointer transition" onclick="openAvatarUpload()" title="Change avatar">
+                <div class="absolute bottom-0 right-0 bg-cyan-600 dark:bg-cyan-500 hover:bg-cyan-700 dark:hover:bg-cyan-400 text-white rounded-full p-2 cursor-pointer transition" onclick="console.log('[Avatar] Edit button clicked'); openAvatarUpload()" title="Change avatar">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -2715,6 +2715,26 @@
       });
 
       window.addEventListener('beforeunload', stopNetworkStatusPolling);
+
+      // Setup avatar file input handler - attach once during initialization for mobile compatibility
+      const avatarFileInput = document.getElementById('avatarFileInput');
+      if (avatarFileInput) {
+        console.log('[Avatar] Setting up file input change handler during initialization');
+        avatarFileInput.addEventListener('change', async (e) => {
+          console.log('[Avatar] File input change event fired');
+          const file = e.target.files[0];
+          console.log('[Avatar] File selected:', file ? file.name : 'NO FILE', file ? `(${(file.size / 1024).toFixed(2)} KB)` : '');
+          if (file) {
+            console.log('[Avatar] Calling uploadAvatar() with file:', file.name);
+            await uploadAvatar(file);
+          } else {
+            console.warn('[Avatar] Change event fired but no file was selected');
+          }
+        });
+        console.log('[Avatar] File input change handler attached successfully');
+      } else {
+        console.error('[Avatar] FAILED: avatarFileInput element not found during setupEventListeners');
+      }
     }
 
     async function loadConversations() {
@@ -5805,21 +5825,29 @@
     }
 
     function openAvatarUpload() {
+      console.log('[Avatar] openAvatarUpload() function entered');
       const input = document.getElementById('avatarFileInput');
-      if (!input) return;
+      console.log('[Avatar] File input element found:', input ? 'YES' : 'NO', input);
+      if (!input) {
+        console.error('[Avatar] FAILED: avatarFileInput element not found in DOM');
+        return;
+      }
       input.value = '';
-      input.onchange = async (e) => {
-        const file = e.target.files[0];
-        if (file) {
-          await uploadAvatar(file);
-        }
-      };
-      input.click();
+      console.log('[Avatar] Input value reset to empty');
+      console.log('[Avatar] About to call input.click()');
+      try {
+        input.click();
+        console.log('[Avatar] click() executed successfully');
+      } catch (err) {
+        console.error('[Avatar] FAILED: Exception calling click():', err);
+      }
     }
 
     async function uploadAvatar(file) {
+      console.log('[Avatar] uploadAvatar() started with file:', file.name, `(${(file.size / 1024).toFixed(2)} KB)`);
       // Validate file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
+        console.error('[Avatar] FAILED: File size exceeds 5MB limit:', (file.size / 1024 / 1024).toFixed(2), 'MB');
         showToast('Image size must be less than 5MB', 'error');
         return;
       }
@@ -5829,6 +5857,7 @@
       const spinner = document.getElementById('avatarUploadSpinner');
       if (avatarImg) avatarImg.style.opacity = '0.5';
       if (spinner) spinner.classList.remove('hidden');
+      console.log('[Avatar] Loading state shown');
 
       function clearLoadingState() {
         if (avatarImg) avatarImg.style.opacity = '';
@@ -5837,10 +5866,13 @@
 
       try {
         // Resize and recompress via canvas before uploading, with timeout to catch hangs on mobile
+        console.log('[Avatar] Starting canvas image processing');
         const dataUri = await new Promise((resolve, reject) => {
           const img = new Image();
           const objectUrl = URL.createObjectURL(file);
+          console.log('[Avatar] Image object URL created');
           img.onload = () => {
+            console.log('[Avatar] Image loaded, dimensions:', img.width, 'x', img.height);
             URL.revokeObjectURL(objectUrl);
             const MAX = 400;
             let w = img.width;
@@ -5849,31 +5881,54 @@
               if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
               else { w = Math.round(w * MAX / h); h = MAX; }
             }
+            console.log('[Avatar] Canvas dimensions after resize:', w, 'x', h);
             const canvas = document.createElement('canvas');
             canvas.width = w;
             canvas.height = h;
             canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+            console.log('[Avatar] Image drawn to canvas');
 
             // Use Promise.race to timeout canvas.toBlob if it hangs on mobile
+            console.log('[Avatar] Starting canvas.toBlob conversion');
             Promise.race([
               new Promise((blobResolve, blobReject) => {
                 canvas.toBlob((blob) => {
-                  if (!blob) { blobReject(new Error('Canvas blob is null')); return; }
+                  if (!blob) {
+                    console.error('[Avatar] FAILED: canvas.toBlob returned null');
+                    blobReject(new Error('Canvas blob is null'));
+                    return;
+                  }
+                  console.log('[Avatar] Canvas blob created, size:', (blob.size / 1024).toFixed(2), 'KB');
                   const reader = new FileReader();
-                  reader.onload = (e) => blobResolve(e.target.result);
-                  reader.onerror = () => blobReject(new Error('FileReader error'));
+                  reader.onload = (e) => {
+                    console.log('[Avatar] FileReader completed, data URI length:', e.target.result.length);
+                    blobResolve(e.target.result);
+                  };
+                  reader.onerror = () => {
+                    console.error('[Avatar] FAILED: FileReader error');
+                    blobReject(new Error('FileReader error'));
+                  };
                   reader.readAsDataURL(blob);
                 }, 'image/jpeg', 0.8);
               }),
               new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Canvas processing timeout')), 10000)
+                setTimeout(() => {
+                  console.error('[Avatar] FAILED: Canvas processing timeout (10s)');
+                  reject(new Error('Canvas processing timeout'));
+                }, 10000)
               )
             ]).then(resolve, reject);
           };
-          img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('Image load failed')); };
+          img.onerror = () => {
+            console.error('[Avatar] FAILED: Image load error');
+            URL.revokeObjectURL(objectUrl);
+            reject(new Error('Image load failed'));
+          };
           img.src = objectUrl;
         });
+        console.log('[Avatar] Canvas processing completed successfully');
 
+        console.log('[Avatar] Sending avatar data to server, data URI length:', dataUri.length);
         const response = await fetch('/api/user/avatar', {
           method: 'POST',
           headers: {
@@ -5883,7 +5938,9 @@
           body: JSON.stringify({ dataUri }),
         });
 
+        console.log('[Avatar] Fetch completed, status:', response.status, response.statusText);
         if (!response.ok) {
+          console.error('[Avatar] FAILED: Server returned non-OK status:', response.status);
           let errMsg = 'Unknown error';
           try { const err = await response.json(); errMsg = err.error || errMsg; } catch {}
           clearLoadingState();
@@ -5894,38 +5951,47 @@
         // Validate response body: verify it's valid JSON and contains avatar_url
         let data;
         try {
+          console.log('[Avatar] Parsing response JSON');
           data = await response.json();
+          console.log('[Avatar] Response parsed, keys:', data ? Object.keys(data) : 'null');
         } catch (parseErr) {
+          console.error('[Avatar] FAILED: JSON parse error:', parseErr);
           clearLoadingState();
           showToast('Error uploading avatar: Invalid server response', 'error');
-          console.error('Failed to parse avatar response:', parseErr);
           return;
         }
 
         if (!data || !data.avatar_url) {
+          console.error('[Avatar] FAILED: Missing avatar_url in response:', data);
           clearLoadingState();
           showToast('Error uploading avatar: Server did not return image URL', 'error');
           return;
         }
 
         // Update UI with new avatar
+        console.log('[Avatar] Avatar URL received, updating UI');
         if (avatarImg) avatarImg.src = data.avatar_url;
         currentUser.avatar_url = data.avatar_url;
         clearLoadingState();
+        console.log('[Avatar] Avatar upload completed successfully');
         showToast('Avatar updated successfully', 'success');
       } catch (err) {
+        console.error('[Avatar] FAILED: Caught exception in uploadAvatar():', err.message, err.stack);
         clearLoadingState();
         // Provide specific error messages based on error type
         if (err.message === 'Canvas processing timeout') {
+          console.error('[Avatar] Error type: Canvas timeout');
           showToast('Image processing took too long. Check your connection and try again.', 'error');
         } else if (err.message.includes('Canvas') || err.message.includes('Image')) {
+          console.error('[Avatar] Error type: Canvas/Image processing error');
           showToast('Error processing image: ' + err.message, 'error');
         } else if (err.message === 'Network error') {
+          console.error('[Avatar] Error type: Network error');
           showToast('Network error uploading avatar', 'error');
         } else {
+          console.error('[Avatar] Error type: Unknown/Other error');
           showToast('Error uploading avatar: ' + (err.message || 'Unknown error'), 'error');
         }
-        console.error('Avatar upload error:', err);
       }
     }
 
