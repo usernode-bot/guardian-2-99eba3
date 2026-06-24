@@ -664,12 +664,6 @@
           </svg>
           Profile
         </button>
-        <button id="navGuardiaNFTBtn" onclick="showGuardiaNFTModal(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
-          <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
-          guardiaNFT
-        </button>
       </nav>
 
       <div id="sidebarUser" class="p-4 border-t border-zinc-200 dark:border-zinc-800">
@@ -1034,6 +1028,22 @@
                   <div class="px-3 py-2 bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-200 dark:border-cyan-800 rounded-lg flex items-center justify-between group-hover:bg-cyan-100 dark:group-hover:bg-cyan-900/40 transition">
                     <div>
                       <div id="profileGuardianRank" class="font-bold text-cyan-900 dark:text-cyan-100">New Guardian</div>
+                    </div>
+                    <svg class="w-5 h-5 text-cyan-600 dark:text-cyan-400 group-hover:translate-x-0.5 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              <!-- guardiaNFT Eligibility Section -->
+              <div class="space-y-2">
+                <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">guardiaNFT Eligibility</label>
+                <div id="profileGuardiaNFTContainer" class="cursor-pointer group" onclick="showGuardiaNFTModal()">
+                  <div class="px-3 py-2 bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-200 dark:border-cyan-800 rounded-lg flex items-center justify-between group-hover:bg-cyan-100 dark:group-hover:bg-cyan-900/40 transition">
+                    <div>
+                      <div id="profileGuardiaNFTStatus" class="text-sm font-semibold text-cyan-700 dark:text-cyan-300">View Eligibility</div>
+                      <div id="profileGuardiaNFTPreview" class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">Click to check your NFT eligibility status</div>
                     </div>
                     <svg class="w-5 h-5 text-cyan-600 dark:text-cyan-400 group-hover:translate-x-0.5 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
