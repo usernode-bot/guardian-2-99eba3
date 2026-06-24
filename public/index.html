@@ -1420,8 +1420,9 @@
         <button onclick="closeFeedComposeModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition duration-200 ease-out text-lg active:scale-90">✕</button>
       </div>
       <!-- Modal Body -->
-      <div class="p-4">
+      <div class="p-4 relative">
         <textarea id="feedComposeInput" placeholder="What's happening?" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition duration-200 ease-out resize-none text-sm" rows="5"></textarea>
+        <div id="mentionDropdown" class="hidden absolute left-4 right-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg z-10 overflow-hidden"></div>
       </div>
       <!-- Modal Footer -->
       <div class="flex items-center gap-2 px-4 py-3 border-t border-zinc-200 dark:border-zinc-800">
@@ -5652,6 +5653,31 @@
       }
     }
 
+    async function showUserProfileModalByUsername(username) {
+      if (!/^[a-zA-Z0-9_]{1,50}$/.test(username)) return;
+      if (currentUser && currentUser.username === username) return;
+
+      const cacheKey = 'username:' + username;
+      const cached = userProfileCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < PROFILE_CACHE_TTL) {
+        displayUserProfileModal(cached.data);
+        return;
+      }
+
+      try {
+        const response = await apiCall(`/api/users/by-username/${encodeURIComponent(username)}`, { method: 'GET' });
+        if (!response) {
+          showToast('User not found', 'error');
+          return;
+        }
+        userProfileCache.set(cacheKey, { data: response, timestamp: Date.now() });
+        userProfileCache.set(response.id, { data: response, timestamp: Date.now() });
+        displayUserProfileModal(response);
+      } catch (err) {
+        showToast('User not found', 'error');
+      }
+    }
+
     function displayUserProfileModal(user) {
       const modal = document.createElement('div');
       modal.id = 'userProfileModal';
@@ -6172,7 +6198,7 @@
 
       let content = '';
       if (post.content.text) {
-        content += `<p class="text-zinc-900 dark:text-zinc-100 mb-2 text-sm">${escapeHtml(post.content.text)}</p>`;
+        content += `<p class="text-zinc-900 dark:text-zinc-100 mb-2 text-sm">${renderMentions(post.content.text)}</p>`;
       }
 
       if (post.content.link) {
@@ -6222,6 +6248,92 @@
       showToast('Image attachments coming soon (Phase 2)', 'info');
     }
 
+    let mentionDebounceTimer = null;
+
+    function closeMentionDropdown() {
+      const dropdown = document.getElementById('mentionDropdown');
+      if (dropdown) {
+        dropdown.classList.add('hidden');
+        dropdown.innerHTML = '';
+      }
+    }
+
+    function insertMention(username) {
+      const input = document.getElementById('feedComposeInput');
+      if (!input) return;
+      const cursor = input.selectionStart;
+      const before = input.value.slice(0, cursor);
+      const after = input.value.slice(cursor);
+      const mentionMatch = before.match(/@([a-zA-Z0-9_]*)$/);
+      if (mentionMatch) {
+        const newBefore = before.slice(0, before.length - mentionMatch[0].length) + '@' + username + ' ';
+        input.value = newBefore + after;
+        const newCursor = newBefore.length;
+        input.setSelectionRange(newCursor, newCursor);
+      }
+      closeMentionDropdown();
+      input.focus();
+    }
+
+    async function handleMentionInput() {
+      const input = document.getElementById('feedComposeInput');
+      if (!input) return;
+      const cursor = input.selectionStart;
+      const before = input.value.slice(0, cursor);
+      const mentionMatch = before.match(/@([a-zA-Z0-9_]*)$/);
+
+      if (!mentionMatch || mentionMatch[1].length === 0) {
+        closeMentionDropdown();
+        return;
+      }
+
+      const query = mentionMatch[1];
+      try {
+        const result = await apiCall(`/api/users/search?q=${encodeURIComponent(query)}`, { method: 'GET' });
+        const dropdown = document.getElementById('mentionDropdown');
+        if (!dropdown) return;
+
+        const currentBefore = input.value.slice(0, input.selectionStart);
+        if (!currentBefore.match(/@([a-zA-Z0-9_]*)$/)) {
+          closeMentionDropdown();
+          return;
+        }
+
+        if (!result || !result.users || result.users.length === 0) {
+          closeMentionDropdown();
+          return;
+        }
+
+        dropdown.innerHTML = result.users.map(u => {
+          const avatarInitial = u.username ? u.username.charAt(0).toUpperCase() : '?';
+          const avatarHtml = u.avatar_url
+            ? `<img src="${escapeHtml(u.avatar_url)}" alt="${escapeHtml(u.username)}" class="w-6 h-6 rounded-full object-cover flex-shrink-0" onerror="this.style.display='none'">`
+            : `<div class="w-6 h-6 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">${avatarInitial}</div>`;
+          const verifiedBadge = u.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs ml-1">✓</span>' : '';
+          return `<div class="flex items-center gap-2 px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer transition" onclick="insertMention('${escapeHtml(u.username)}')">
+            ${avatarHtml}
+            <span class="text-sm font-medium text-zinc-900 dark:text-zinc-100">@${escapeHtml(u.username)}</span>
+            ${verifiedBadge}
+          </div>`;
+        }).join('');
+
+        dropdown.classList.remove('hidden');
+      } catch (err) {
+        closeMentionDropdown();
+      }
+    }
+
+    function onComposeInput() {
+      clearTimeout(mentionDebounceTimer);
+      mentionDebounceTimer = setTimeout(handleMentionInput, 200);
+    }
+
+    function onComposeKeydown(e) {
+      if (e.key === 'Escape') {
+        closeMentionDropdown();
+      }
+    }
+
     function openFeedComposeModal() {
       const modal = document.getElementById('feedComposeModal');
       const input = document.getElementById('feedComposeInput');
@@ -6230,6 +6342,9 @@
       requestAnimationFrame(() => {
         modal.style.opacity = '1';
       });
+      input.addEventListener('input', onComposeInput);
+      input.addEventListener('keydown', onComposeKeydown);
+      input.addEventListener('blur', () => setTimeout(closeMentionDropdown, 150));
       input.focus();
     }
 
@@ -6238,6 +6353,9 @@
       const input = document.getElementById('feedComposeInput');
       // Animate out
       modal.style.opacity = '0';
+      closeMentionDropdown();
+      input.removeEventListener('input', onComposeInput);
+      input.removeEventListener('keydown', onComposeKeydown);
       // Wait for animation to complete before hiding
       setTimeout(() => {
         modal.classList.add('hidden');
@@ -6343,6 +6461,19 @@
       return div.innerHTML;
     }
 
+    function renderMentions(rawText) {
+      if (!rawText) return '';
+      const parts = rawText.split(/(@[a-zA-Z0-9_]{1,50})/g);
+      return parts.map(part => {
+        const m = part.match(/^@([a-zA-Z0-9_]{1,50})$/);
+        if (m) {
+          const uname = m[1];
+          return `<span class="text-cyan-600 dark:text-cyan-400 cursor-pointer hover:underline" onclick="showUserProfileModalByUsername('${uname}')">@${escapeHtml(uname)}</span>`;
+        }
+        return escapeHtml(part);
+      }).join('');
+    }
+
     // ===== FEED COMMENTS FUNCTIONS =====
 
     const commentsCache = {};
@@ -6423,7 +6554,7 @@
                 ${comment.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs">✓</span>' : ''}
                 <span class="text-xs text-zinc-500 dark:text-zinc-400">${timestamp}</span>
               </div>
-              <p class="text-sm text-zinc-700 dark:text-zinc-300">${escapeHtml(comment.content)}</p>
+              <p class="text-sm text-zinc-700 dark:text-zinc-300">${renderMentions(comment.content)}</p>
             </div>
           </div>
           ${isOwner ? `
