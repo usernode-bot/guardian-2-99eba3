@@ -1809,48 +1809,78 @@ app.get('/api/search/users', async (req, res) => {
 
     try {
       const result = await queryWithTimeout(pool, `
-        SELECT id, username, verified_at, usernode_pubkey
+        SELECT 'user' as source, id, username, usernode_pubkey, verified_at, NULL as wallet_address
         FROM users
         WHERE (username ILIKE $1 OR usernode_pubkey ILIKE $2) AND id != $7
+        UNION ALL
+        SELECT 'producer' as source, NULL as id, username, NULL as usernode_pubkey, NULL as verified_at, wallet_address
+        FROM block_producers
+        WHERE username ILIKE $3 OR wallet_address ILIKE $4
         ORDER BY
           CASE
-            WHEN username = $3 OR usernode_pubkey = $4 THEN 0
-            WHEN username ILIKE $5 OR usernode_pubkey ILIKE $6 THEN 1
-            ELSE 2
+            WHEN source = 'user' AND username = $5 THEN 0
+            WHEN source = 'user' AND username ILIKE $6 THEN 1
+            WHEN source = 'user' THEN 2
+            WHEN source = 'producer' AND username = $5 THEN 3
+            WHEN source = 'producer' AND username ILIKE $6 THEN 4
+            ELSE 5
           END,
+          source ASC,
           username ASC
         LIMIT 20
-      `, ['%' + q + '%', '%' + q + '%', q, q, q + '%', q + '%', userId], 2000);
+      `, ['%' + q + '%', '%' + q + '%', '%' + q + '%', '%' + q + '%', q, q + '%', userId], 2000);
       rows = result.rows;
     } catch (timeoutErr) {
       // On timeout, return demo fallback users
       if (timeoutErr.message === 'QUERY_TIMEOUT') {
         console.info('Search query timeout after 2000ms, returning demo fallback');
         const demoUsers = [
-          { id: 1, username: 'staging-demo-alice', usernode_pubkey: 'ut1staging-alice-001', verified_at: new Date() },
-          { id: 2, username: 'staging-demo-bob', usernode_pubkey: 'ut1staging-bob-001', verified_at: new Date() },
-          { id: 3, username: 'staging-demo-charlie', usernode_pubkey: 'ut1staging-charlie-001', verified_at: null }
+          { source: 'user', id: 1, username: 'staging-demo-alice', usernode_pubkey: 'ut1staging-alice-001', verified_at: new Date() },
+          { source: 'user', id: 2, username: 'staging-demo-bob', usernode_pubkey: 'ut1staging-bob-001', verified_at: new Date() },
+          { source: 'user', id: 3, username: 'staging-demo-charlie', usernode_pubkey: 'ut1staging-charlie-001', verified_at: null }
         ];
-        const filteredUsers = demoUsers.filter(u => u.id !== userId).map(u => ({
-          id: u.id,
-          username: u.username,
-          usernode_pubkey: u.usernode_pubkey,
-          verified: !!u.verified_at,
-          mutualCount: 0,
-        }));
+        const filteredUsers = demoUsers.filter(u => u.source !== 'user' || u.id !== userId).map(u => {
+          if (u.source === 'user') {
+            return {
+              source: 'user',
+              id: u.id,
+              username: u.username,
+              usernode_pubkey: u.usernode_pubkey,
+              verified: !!u.verified_at,
+              mutualCount: 0,
+            };
+          } else {
+            return {
+              source: 'producer',
+              wallet_address: u.wallet_address,
+              username: u.username
+            };
+          }
+        });
         return res.json({ users: filteredUsers });
       }
       // For non-timeout errors, re-throw to be caught by outer catch
       throw timeoutErr;
     }
 
-    const users = rows.map(r => ({
-      id: r.id,
-      username: r.username,
-      usernode_pubkey: r.usernode_pubkey || null,
-      verified: !!r.verified_at,
-      mutualCount: 0,
-    }));
+    const users = rows.map(r => {
+      if (r.source === 'user') {
+        return {
+          source: 'user',
+          id: r.id,
+          username: r.username,
+          usernode_pubkey: r.usernode_pubkey || null,
+          verified: !!r.verified_at,
+          mutualCount: 0,
+        };
+      } else {
+        return {
+          source: 'producer',
+          wallet_address: r.wallet_address,
+          username: r.username
+        };
+      }
+    });
 
     res.json({ users });
   } catch (err) {
@@ -1865,19 +1895,34 @@ app.get('/api/users/search', async (req, res) => {
     const q = (req.query.q || '').trim();
     if (!q) return res.json({ users: [] });
     const { rows } = await pool.query(`
-      SELECT id, username, verified_at, avatar_url
+      SELECT 'user' as source, id, username, verified_at, avatar_url, NULL as wallet_address
       FROM users
       WHERE LOWER(username) LIKE LOWER($1)
-      ORDER BY username
+      UNION ALL
+      SELECT 'producer' as source, NULL as id, username, NULL as verified_at, NULL as avatar_url, wallet_address
+      FROM block_producers
+      WHERE LOWER(username) LIKE LOWER($2) OR LOWER(wallet_address) LIKE LOWER($3)
+      ORDER BY source ASC, username ASC
       LIMIT 8
-    `, [q + '%']);
+    `, [q + '%', q + '%', q + '%']);
     res.json({
-      users: rows.map(r => ({
-        id: r.id,
-        username: r.username,
-        avatar_url: r.avatar_url || null,
-        verified: !!r.verified_at,
-      }))
+      users: rows.map(r => {
+        if (r.source === 'user') {
+          return {
+            source: 'user',
+            id: r.id,
+            username: r.username,
+            avatar_url: r.avatar_url || null,
+            verified: !!r.verified_at,
+          };
+        } else {
+          return {
+            source: 'producer',
+            wallet_address: r.wallet_address,
+            username: r.username
+          };
+        }
+      })
     });
   } catch (err) {
     console.error(err);
@@ -4050,7 +4095,26 @@ async function start() {
         ON peers(peer_id)
     `);
 
-    // Mark tables as private
+    // Create block_producers table (public - synced from leaderboard)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS block_producers (
+        id SERIAL PRIMARY KEY,
+        wallet_address VARCHAR(255) NOT NULL UNIQUE,
+        username VARCHAR(255) NOT NULL,
+        synced_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_block_producers_wallet
+        ON block_producers(wallet_address)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_block_producers_username
+        ON block_producers(username)
+    `);
+
+    // Mark tables as private/public
     await pool.query(`COMMENT ON TABLE conversations IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE messages IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE read_receipts IS 'staging:private'`);
@@ -4060,6 +4124,7 @@ async function start() {
     await pool.query(`COMMENT ON TABLE group_members IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE group_messages IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE group_read_receipts IS 'staging:private'`);
+    await pool.query(`COMMENT ON TABLE block_producers IS 'staging:public'`);
 
     // Seed staging data
     // Seed mock testnet users (grace, henry, iris, jack) in all environments for user search testing
@@ -4760,6 +4825,25 @@ async function start() {
         `, [peer.peer_id, peer.foreground_hours]);
       }
 
+      // Seed block producers data
+      const producersData = [
+        { wallet_address: 'ut1staging-producer-001', username: 'validator-alice' },
+        { wallet_address: 'ut1staging-producer-002', username: 'validator-bob' },
+        { wallet_address: 'ut1staging-producer-003', username: 'validator-charlie' },
+        { wallet_address: 'ut1staging-producer-004', username: 'validator-david' },
+        { wallet_address: 'ut1staging-producer-005', username: 'validator-emma' }
+      ];
+
+      for (const producer of producersData) {
+        await pool.query(`
+          INSERT INTO block_producers (wallet_address, username, synced_at, updated_at)
+          VALUES ($1, $2, NOW(), NOW())
+          ON CONFLICT (wallet_address) DO UPDATE SET
+            username = EXCLUDED.username,
+            updated_at = NOW()
+        `, [producer.wallet_address, producer.username]);
+      }
+
       // Seed additional test data for profile counter verification
       // Create a conversation where Alice receives messages but doesn't send any
       // This tests that the Messages counter counts participation, not sent messages
@@ -4825,6 +4909,46 @@ async function start() {
         VALUES ($1, $2, NOW()), ($3, $2, NOW())
         ON CONFLICT (user_id, group_id) DO NOTHING
       `, [alice, testGroupId, david]);
+    }
+
+    // Sync block producers from leaderboard (production only)
+    async function syncBlockProducers() {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+        const response = await fetch('https://leaderboard.usernodelabs.org/block-production', {
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          console.warn(`Failed to fetch block producers: HTTP ${response.status}`);
+          return;
+        }
+
+        const producers = await response.json();
+        // Expect format: [{ wallet_address: string, username: string }, ...]
+
+        for (const producer of producers) {
+          await pool.query(`
+            INSERT INTO block_producers (wallet_address, username, synced_at, updated_at)
+            VALUES ($1, $2, NOW(), NOW())
+            ON CONFLICT (wallet_address) DO UPDATE SET
+              username = EXCLUDED.username,
+              updated_at = NOW()
+          `, [producer.wallet_address, producer.username]);
+        }
+
+        console.log(`Synced ${producers.length} block producers`);
+      } catch (err) {
+        console.warn('Block producer sync failed (non-fatal):', err.message);
+      }
+    }
+
+    if (!IS_STAGING) {
+      await syncBlockProducers();
     }
 
     app.listen(port, () => console.log(`Listening on :${port}`));
