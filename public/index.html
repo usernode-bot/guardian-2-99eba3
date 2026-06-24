@@ -6192,8 +6192,12 @@
 
     function renderFeedPost(post) {
       const postEl = document.createElement('div');
-      postEl.className = 'p-3 bg-white dark:bg-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-lg transition feed-post-enter';
+      postEl.className = 'p-3 bg-white dark:bg-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-lg transition feed-post-enter group';
+      postEl.id = `post-${post.id}`;
+      postEl.dataset.postText = post.content.text || '';
 
+      const isOwner = currentUser && currentUser.id === post.userId;
+      const isEdited = post.isEdited || false;
       const timestamp = formatRelativeTime(post.createdAt);
 
       let content = '';
@@ -6221,17 +6225,33 @@
 
       const onChainBadge = post.onChain ? '<span class="inline-block ml-1 px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-xs rounded font-medium">✓ On-Chain</span>' : '';
 
+      const ownerMenu = isOwner ? `
+        <div class="relative ml-auto flex-shrink-0">
+          <button onclick="openPostMenu(${post.id}, event)" class="post-menu-btn opacity-0 group-hover:opacity-100 transition p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 rounded leading-none" title="Post options">⋯</button>
+          <div id="postMenu-${post.id}" class="hidden absolute right-0 top-7 z-10 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg py-1 min-w-[110px]">
+            <button onclick="startEditPost(${post.id})" class="w-full text-left px-3 py-1.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300">✏️ Edit</button>
+            <button onclick="deletePost(${post.id})" class="w-full text-left px-3 py-1.5 text-sm hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400">🗑️ Delete</button>
+          </div>
+        </div>
+      ` : '';
+
       postEl.innerHTML = `
         <div class="flex gap-2">
           ${avatarHtml}
           <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-1 flex-wrap mb-1">
-              <span class="font-medium text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username)}</span>
-              ${post.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs">✓</span>' : ''}
-              <span class="text-xs text-zinc-500 dark:text-zinc-400">${timestamp}</span>
-              ${onChainBadge}
+            <div class="flex items-start gap-1 mb-1">
+              <div class="flex items-center gap-1 flex-wrap flex-1">
+                <span class="font-medium text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username)}</span>
+                ${post.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs">✓</span>' : ''}
+                <span class="text-xs text-zinc-500 dark:text-zinc-400">${timestamp}</span>
+                <span id="postEditedLabel-${post.id}" class="text-xs text-zinc-400 dark:text-zinc-500 italic ${isEdited ? '' : 'hidden'}">(edited)</span>
+                ${onChainBadge}
+              </div>
+              ${ownerMenu}
             </div>
-            ${content}
+            <div id="postContent-${post.id}">
+              ${content}
+            </div>
             <div class="flex gap-3 mt-2 text-xs text-zinc-600 dark:text-zinc-400">
               <button onclick="toggleLike(${post.id}, event)" class="hover:text-red-600 dark:hover:text-red-400 transition cursor-pointer" id="likeBtn-${post.id}">❤️ <span id="likeCount-${post.id}">${post.likeCount || 0}</span></button>
               <button onclick="toggleComments(${post.id})" class="hover:text-cyan-600 dark:hover:text-cyan-400 transition">💬 <span id="commentCount-${post.id}">${post.commentCount || 0}</span></button>
@@ -6672,6 +6692,142 @@
         alert('Failed to delete comment');
       }
     }
+
+    // ===== FEED POST EDIT / DELETE FUNCTIONS =====
+
+    function openPostMenu(postId, event) {
+      event.stopPropagation();
+      const menu = document.getElementById(`postMenu-${postId}`);
+      if (!menu) return;
+      const isHidden = menu.classList.contains('hidden');
+      // Close all other open post menus
+      document.querySelectorAll('[id^="postMenu-"]').forEach(m => m.classList.add('hidden'));
+      if (isHidden) menu.classList.remove('hidden');
+    }
+
+    async function deletePost(postId) {
+      if (!confirm('Delete this post? This cannot be undone.')) return;
+
+      try {
+        const data = await apiCall(`/api/feed/posts/${postId}`, { method: 'DELETE' });
+        if (!data || data.error) {
+          alert('Failed to delete post');
+          return;
+        }
+        const postEl = document.getElementById(`post-${postId}`);
+        if (postEl) postEl.remove();
+      } catch (err) {
+        console.error('Error deleting post:', err);
+        alert('Failed to delete post');
+      }
+    }
+
+    function startEditPost(postId) {
+      const menu = document.getElementById(`postMenu-${postId}`);
+      if (menu) menu.classList.add('hidden');
+
+      const postEl = document.getElementById(`post-${postId}`);
+      if (!postEl) return;
+
+      const contentDiv = document.getElementById(`postContent-${postId}`);
+      if (!contentDiv) return;
+
+      // Save original HTML for cancel
+      postEl.dataset.originalContent = contentDiv.innerHTML;
+
+      const currentText = postEl.dataset.postText || '';
+      const editHtml = `
+        <textarea id="postEditTextarea-${postId}" class="w-full p-2 text-sm bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded resize-none text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500" rows="3">${escapeHtml(currentText)}</textarea>
+        <div class="flex gap-2 mt-1">
+          <button onclick="saveEditPost(${postId})" class="px-3 py-1 text-xs bg-cyan-600 hover:bg-cyan-700 text-white rounded transition">Save</button>
+          <button onclick="cancelEditPost(${postId})" class="px-3 py-1 text-xs bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-300 rounded transition">Cancel</button>
+        </div>
+      `;
+
+      // Replace just the text paragraph; keep any link preview
+      const textPara = contentDiv.querySelector('p');
+      if (textPara) {
+        textPara.outerHTML = editHtml;
+      } else {
+        contentDiv.insertAdjacentHTML('afterbegin', editHtml);
+      }
+
+      const textarea = document.getElementById(`postEditTextarea-${postId}`);
+      if (textarea) {
+        textarea.focus();
+        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+      }
+    }
+
+    async function saveEditPost(postId) {
+      const textarea = document.getElementById(`postEditTextarea-${postId}`);
+      if (!textarea) return;
+
+      const text = textarea.value.trim();
+      if (!text) {
+        alert('Post text cannot be empty');
+        return;
+      }
+
+      try {
+        const data = await apiCall(`/api/feed/posts/${postId}`, {
+          method: 'PUT',
+          body: JSON.stringify({ text })
+        });
+
+        if (!data || data.error) {
+          alert('Failed to save changes');
+          return;
+        }
+
+        const postEl = document.getElementById(`post-${postId}`);
+        const contentDiv = document.getElementById(`postContent-${postId}`);
+
+        if (postEl) postEl.dataset.postText = text;
+
+        if (contentDiv && postEl && postEl.dataset.originalContent) {
+          // Restore original HTML with updated text
+          const temp = document.createElement('div');
+          temp.innerHTML = postEl.dataset.originalContent;
+          const para = temp.querySelector('p');
+          if (para) {
+            para.textContent = text;
+          } else {
+            const newPara = document.createElement('p');
+            newPara.className = 'text-zinc-900 dark:text-zinc-100 mb-2 text-sm';
+            newPara.textContent = text;
+            temp.insertBefore(newPara, temp.firstChild);
+          }
+          contentDiv.innerHTML = temp.innerHTML;
+          delete postEl.dataset.originalContent;
+        }
+
+        // Show (edited) label
+        const editedLabel = document.getElementById(`postEditedLabel-${postId}`);
+        if (editedLabel) editedLabel.classList.remove('hidden');
+
+      } catch (err) {
+        console.error('Error saving post:', err);
+        alert('Failed to save changes');
+      }
+    }
+
+    function cancelEditPost(postId) {
+      const postEl = document.getElementById(`post-${postId}`);
+      if (!postEl) return;
+      const contentDiv = document.getElementById(`postContent-${postId}`);
+      if (contentDiv && postEl.dataset.originalContent) {
+        contentDiv.innerHTML = postEl.dataset.originalContent;
+        delete postEl.dataset.originalContent;
+      }
+    }
+
+    // Close post menus when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('[id^="postMenu-"]') && !e.target.closest('.post-menu-btn')) {
+        document.querySelectorAll('[id^="postMenu-"]').forEach(m => m.classList.add('hidden'));
+      }
+    });
 
     // Close conversation menu when clicking outside
     document.addEventListener('click', (e) => {

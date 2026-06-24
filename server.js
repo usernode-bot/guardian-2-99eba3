@@ -1252,6 +1252,7 @@ app.get('/api/user/feed-posts', async (req, res) => {
         fp.user_id,
         fp.content,
         fp.created_at,
+        fp.updated_at,
         u.username,
         u.verified_at,
         u.avatar_url,
@@ -1280,6 +1281,8 @@ app.get('/api/user/feed-posts', async (req, res) => {
         avatarUrl: p.avatar_url,
         content: p.content,
         createdAt: p.created_at,
+        updatedAt: p.updated_at,
+        isEdited: p.updated_at && p.created_at && (new Date(p.updated_at) - new Date(p.created_at)) > 1000,
         likeCount: p.like_count || 0,
         commentCount: p.comment_count || 0
       })),
@@ -3193,6 +3196,7 @@ app.get('/api/feed/posts', async (req, res) => {
         fp.user_id,
         fp.content,
         fp.created_at,
+        fp.updated_at,
         fp.on_chain,
         u.username,
         u.verified_at,
@@ -3221,6 +3225,8 @@ app.get('/api/feed/posts', async (req, res) => {
         avatarUrl: p.avatar_url,
         content: p.content,
         createdAt: p.created_at,
+        updatedAt: p.updated_at,
+        isEdited: p.updated_at && p.created_at && (new Date(p.updated_at) - new Date(p.created_at)) > 1000,
         onChain: p.on_chain,
         likeCount: p.like_count || 0,
         commentCount: p.comment_count || 0
@@ -3586,6 +3592,88 @@ app.delete('/api/feed/posts/:postId/like', async (req, res) => {
   } catch (err) {
     console.error('Error unliking post:', err);
     res.status(500).json({ error: 'Failed to unlike post' });
+  }
+});
+
+// DELETE /api/feed/posts/:postId - Delete a feed post (owner only)
+app.delete('/api/feed/posts/:postId', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { postId } = req.params;
+    const userId = req.user.id;
+
+    const { rows } = await pool.query(`
+      SELECT user_id FROM feed_posts WHERE id = $1
+    `, [postId]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    if (rows[0].user_id !== userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    await pool.query(`DELETE FROM feed_posts WHERE id = $1`, [postId]);
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error deleting post:', err);
+    res.status(500).json({ error: 'Failed to delete post' });
+  }
+});
+
+// PUT /api/feed/posts/:postId - Edit a feed post's text (owner only)
+app.put('/api/feed/posts/:postId', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { postId } = req.params;
+    const userId = req.user.id;
+    const { text } = req.body;
+
+    if (!text || !text.trim()) {
+      return res.status(400).json({ error: 'Post text cannot be empty' });
+    }
+
+    const { rows } = await pool.query(`
+      SELECT user_id, content FROM feed_posts WHERE id = $1
+    `, [postId]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    if (rows[0].user_id !== userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const newContent = { ...rows[0].content, text: text.trim() };
+
+    const { rows: updated } = await pool.query(`
+      UPDATE feed_posts SET content = $1, updated_at = NOW()
+      WHERE id = $2
+      RETURNING id, user_id, content, created_at, updated_at
+    `, [JSON.stringify(newContent), postId]);
+
+    const post = updated[0];
+
+    res.json({
+      id: post.id,
+      userId: post.user_id,
+      content: post.content,
+      createdAt: post.created_at,
+      updatedAt: post.updated_at,
+      isEdited: (new Date(post.updated_at) - new Date(post.created_at)) > 1000,
+    });
+  } catch (err) {
+    console.error('Error editing post:', err);
+    res.status(500).json({ error: 'Failed to edit post' });
   }
 });
 
@@ -4223,6 +4311,17 @@ async function start() {
         VALUES ($1, $2, NULL, NOW()), ($1, $3, NULL, NOW())
         ON CONFLICT (user_id, contact_user_id) DO NOTHING
       `, [alice, david, emma]);
+
+      // Seed a clearly-labelled test post for edit/delete feature testing
+      const { rows: editTestRows } = await pool.query(`
+        SELECT id FROM feed_posts WHERE user_id = $1 AND content->>'text' LIKE '%edited or deleted%' LIMIT 1
+      `, [alice]);
+      if (editTestRows.length === 0) {
+        await pool.query(`
+          INSERT INTO feed_posts (user_id, content, created_at, updated_at)
+          VALUES ($1, $2, NOW() - INTERVAL '30 minutes', NOW() - INTERVAL '30 minutes')
+        `, [alice, JSON.stringify({ text: '[Staging] This post can be edited or deleted — try it!' })]);
+      }
 
       // Seed feed posts for Alice (min 8-12 posts)
       const postTimes = [
