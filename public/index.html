@@ -1242,6 +1242,18 @@
     </div>
   </div>
 
+  <!-- Delete Post Modal -->
+  <div id="deletePostModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onclick="closeDeletePostModal()">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4" onclick="event.stopPropagation()">
+      <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Delete this post?</h2>
+      <p class="text-sm text-zinc-600 dark:text-zinc-400">This cannot be undone.</p>
+      <div class="flex gap-2">
+        <button onclick="closeDeletePostModal()" class="flex-1 px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
+        <button onclick="confirmDeletePost()" class="flex-1 px-3 py-2 bg-red-600 hover:bg-red-700 dark:hover:bg-red-500 text-white rounded-lg transition font-medium">Delete</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Create Group Modal -->
   <div id="createGroupModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
@@ -6733,6 +6745,51 @@
       }
     }
 
+    // ===== DELETE POST MODAL FUNCTIONS =====
+
+    let pendingDeletePostId = null;
+
+    function openDeletePostModal(postId) {
+      pendingDeletePostId = postId;
+      document.getElementById('deletePostModal').classList.remove('hidden');
+    }
+
+    function closeDeletePostModal() {
+      document.getElementById('deletePostModal').classList.add('hidden');
+      pendingDeletePostId = null;
+    }
+
+    async function confirmDeletePost() {
+      if (!pendingDeletePostId) return;
+
+      try {
+        const postId = pendingDeletePostId;
+        const data = await apiCall(`/api/feed/posts/${postId}`, { method: 'DELETE' });
+
+        if (!data || data.error) {
+          showToast('Failed to delete post', 'error');
+          closeDeletePostModal();
+          return;
+        }
+
+        const postEl = document.getElementById(`post-${postId}`);
+        if (postEl) {
+          postEl.style.opacity = '0';
+          postEl.style.transition = 'opacity 0.2s ease-out';
+          setTimeout(() => {
+            postEl.remove();
+          }, 200);
+        }
+
+        showToast('Post deleted', 'success');
+      } catch (err) {
+        console.error('Error deleting post:', err);
+        showToast('Failed to delete post', 'error');
+      } finally {
+        closeDeletePostModal();
+      }
+    }
+
     // ===== FEED POST EDIT / DELETE FUNCTIONS =====
 
     function openPostMenu(postId, event) {
@@ -6745,21 +6802,8 @@
       if (isHidden) menu.classList.remove('hidden');
     }
 
-    async function deletePost(postId) {
-      if (!confirm('Delete this post? This cannot be undone.')) return;
-
-      try {
-        const data = await apiCall(`/api/feed/posts/${postId}`, { method: 'DELETE' });
-        if (!data || data.error) {
-          alert('Failed to delete post');
-          return;
-        }
-        const postEl = document.getElementById(`post-${postId}`);
-        if (postEl) postEl.remove();
-      } catch (err) {
-        console.error('Error deleting post:', err);
-        alert('Failed to delete post');
-      }
+    function deletePost(postId) {
+      openDeletePostModal(postId);
     }
 
     function startEditPost(postId) {
