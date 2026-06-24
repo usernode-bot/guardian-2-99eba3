@@ -1458,6 +1458,9 @@
   <!-- Persistent Notification Container -->
   <div id="persistentNotificationContainer" class="fixed top-4 right-4 z-40 flex flex-col gap-3 pointer-events-none max-w-sm"></div>
 
+  <!-- Hidden Avatar File Input (mobile-compatible) -->
+  <input id="avatarFileInput" type="file" accept="image/png,image/jpeg,image/gif" style="display: none;">
+
   <!-- Transaction Details Modal -->
   <div id="transactionDetailsModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 rounded-lg shadow-xl max-w-md w-full max-h-[80vh] overflow-y-auto">
@@ -5802,9 +5805,9 @@
     }
 
     function openAvatarUpload() {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'image/png,image/jpeg,image/gif';
+      const input = document.getElementById('avatarFileInput');
+      if (!input) return;
+      input.value = '';
       input.onchange = async (e) => {
         const file = e.target.files[0];
         if (file) {
