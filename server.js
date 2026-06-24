@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 
 // Guardian 2 - Build PR #147: Modal dialogs for group management
+// Fresh rebuild trigger - infrastructure staging rebuild
 const app = express();
 const port = process.env.PORT || 3000;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
