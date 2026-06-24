@@ -1013,7 +1013,7 @@
               <!-- Foreground Hours Section -->
               <div class="space-y-2">
                 <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Foreground Hours</label>
-                <div id="profileGuardianForegroundHoursContainer" class="cursor-pointer group" onclick="if (cachedGuardiansData) showPeerModal(cachedGuardiansData)">
+                <div id="profileGuardianForegroundHoursContainer" class="cursor-pointer group" onclick="showPeerModal()">
                   <div class="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg hover:bg-zinc-150 dark:hover:bg-zinc-750 transition">
                     <div id="profileGuardianHours" class="text-xl font-bold text-cyan-600 dark:text-cyan-400">0</div>
                     <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">click to view peer details</div>
@@ -1024,7 +1024,7 @@
               <!-- Rank Section -->
               <div class="space-y-2">
                 <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Rank</label>
-                <div id="profileGuardianRankContainer" class="cursor-pointer group" onclick="if (cachedGuardiansData) showGuardianRankModal(cachedGuardiansData)">
+                <div id="profileGuardianRankContainer" class="cursor-pointer group" onclick="showGuardianRankModal()">
                   <div class="px-3 py-2 bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-200 dark:border-cyan-800 rounded-lg flex items-center justify-between group-hover:bg-cyan-100 dark:group-hover:bg-cyan-900/40 transition">
                     <div>
                       <div id="profileGuardianRank" class="font-bold text-cyan-900 dark:text-cyan-100">New Guardian</div>
@@ -5213,40 +5213,59 @@
 
     async function loadGuardiansData() {
       try {
+        console.log('[Guardian Data] Loading guardians data...');
         const response = await apiCall('/api/user/guardians');
-        if (!response || response.error) {
-          console.error('Error loading guardians data:', response?.error);
+
+        if (!response) {
+          console.error('[Guardian Data] No response from /api/user/guardians');
           displayGuardiansError();
           return;
         }
 
+        if (response.error) {
+          console.error('[Guardian Data] API error:', response.error);
+          displayGuardiansError();
+          return;
+        }
+
+        console.log('[Guardian Data] Loaded successfully:', {
+          foregroundHours: response.foregroundHours,
+          rank: response.rank,
+          contributionLevel: response.contributionLevel
+        });
+
         // Fetch peer data using usernode_pubkey if available
         if (response.usernode_pubkey) {
           try {
+            console.log('[Guardian Data] Fetching peer data for:', response.usernode_pubkey);
             const peerResponse = await apiCall(`/api/peers/${response.usernode_pubkey}`);
             if (peerResponse) {
               response.peerData = peerResponse;
+              console.log('[Guardian Data] Peer data loaded');
             }
           } catch (err) {
-            console.error('Error loading peer data:', err);
+            console.error('[Guardian Data] Error loading peer data:', err);
           }
         }
 
         // Fetch peer count (network connectivity)
         try {
+          console.log('[Guardian Data] Fetching peer count...');
           const peerCountResponse = await fetchPeerCount();
           if (peerCountResponse) {
             response.peerCount = peerCountResponse;
+            console.log('[Guardian Data] Peer count loaded:', peerCountResponse.peerCount);
           }
         } catch (err) {
-          console.error('Error loading peer count:', err);
+          console.error('[Guardian Data] Error loading peer count:', err);
         }
 
         // Cache the data
         cachedGuardiansData = response;
+        console.log('[Guardian Data] Data cached and ready');
         displayGuardiansData(response);
       } catch (err) {
-        console.error('Error loading guardians data:', err);
+        console.error('[Guardian Data] Unexpected error:', err);
         displayGuardiansError();
       }
     }
@@ -5305,8 +5324,17 @@
     }
 
     function showGuardianRankModal(data) {
-      const hours = data.foregroundHours || 0;
-      const rank = data.rank || 'New Guardian';
+      // Use cached data if available, otherwise show error
+      const guardianData = data || cachedGuardiansData;
+
+      if (!guardianData) {
+        console.error('Rank modal: no Guardian data available');
+        showErrorModal('Guardian Rank', 'Unable to load rank information. Please try again.');
+        return;
+      }
+
+      const hours = guardianData.foregroundHours || 0;
+      const rank = guardianData.rank || 'New Guardian';
 
       // Determine progress to next tier
       let nextTierHours = 10;
@@ -5377,8 +5405,17 @@
     }
 
     function showPeerModal(data) {
-      const peerCount = data.peerCount?.peerCount || 0;
-      const foregroundHours = (data.peerData && data.peerData.foreground_hours) || data.foregroundHours || 0;
+      // Use cached data if available, otherwise show error
+      const guardianData = data || cachedGuardiansData;
+
+      if (!guardianData) {
+        console.error('Peer modal: no Guardian data available');
+        showErrorModal('Peer Details', 'Unable to load peer details. Please try again.');
+        return;
+      }
+
+      const peerCount = guardianData.peerCount?.peerCount || 0;
+      const foregroundHours = (guardianData.peerData && guardianData.peerData.foreground_hours) || guardianData.foregroundHours || 0;
 
       // Create modal
       const modal = document.createElement('div');
@@ -5416,16 +5453,49 @@
       if (modal) modal.remove();
     }
 
+    function showErrorModal(title, message) {
+      const modal = document.createElement('div');
+      modal.id = 'errorModal';
+      modal.className = 'fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4';
+      modal.onclick = (e) => {
+        if (e.target === modal) {
+          const m = document.getElementById('errorModal');
+          if (m) m.remove();
+        }
+      };
+
+      modal.innerHTML = `
+        <div class="bg-white dark:bg-zinc-900 rounded-lg p-6 w-full max-w-md shadow-lg space-y-4">
+          <div class="flex justify-between items-start">
+            <h2 class="text-xl font-bold text-zinc-900 dark:text-white">${title}</h2>
+            <button onclick="const m = document.getElementById('errorModal'); if (m) m.remove();" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
+          </div>
+          <p class="text-sm text-red-600 dark:text-red-400">${message}</p>
+        </div>
+      `;
+
+      document.body.appendChild(modal);
+    }
+
     async function showGuardiaNFTModal() {
       try {
+        console.log('[GuardiaNFT] Loading NFT eligibility data...');
         const [userRes, guardiansRes] = await Promise.all([
           apiCall('/api/user'),
           apiCall('/api/user/guardians')
         ]);
 
+        if (!guardiansRes) {
+          console.error('[GuardiaNFT] No guardians response');
+          showErrorModal('Guardian NFT Eligibility', 'Unable to load eligibility data. Please try again.');
+          return;
+        }
+
         const foregroundHours = guardiansRes.foregroundHours || 0;
-        const isVerified = userRes.verified || false;
+        const isVerified = userRes?.verified || false;
         const isEligible = foregroundHours >= 200 && isVerified;
+
+        console.log('[GuardiaNFT] Loaded:', { foregroundHours, isVerified, isEligible });
 
         const progressPercentage = Math.min((foregroundHours / 200) * 100, 100);
         const verifiedText = isVerified ? 'Verified' : 'Unverified';
@@ -5477,23 +5547,8 @@
 
         document.body.appendChild(modal);
       } catch (err) {
-        console.error('Error loading Guardian NFT eligibility data:', err);
-        const modal = document.createElement('div');
-        modal.id = 'guardiaNFTModal';
-        modal.className = 'fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4';
-        modal.onclick = (e) => {
-          if (e.target === modal) closeGuardiaNFTModal();
-        };
-        modal.innerHTML = `
-          <div class="bg-white dark:bg-zinc-900 rounded-lg p-6 w-full max-w-md shadow-lg space-y-4">
-            <div class="flex justify-between items-start">
-              <h2 class="text-xl font-bold text-zinc-900 dark:text-white">Guardian NFT Eligibility</h2>
-              <button onclick="closeGuardiaNFTModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
-            </div>
-            <p class="text-sm text-red-600 dark:text-red-400">Unable to load eligibility data. Please try again.</p>
-          </div>
-        `;
-        document.body.appendChild(modal);
+        console.error('[GuardiaNFT] Error loading eligibility data:', err);
+        showErrorModal('Guardian NFT Eligibility', 'Unable to load eligibility data. Please try again.');
       }
     }
 
