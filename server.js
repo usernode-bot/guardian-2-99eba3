@@ -273,14 +273,22 @@ app.get('/api/user/stats', async (req, res) => {
     const contactsRes = await pool.query(`SELECT COUNT(*) as count FROM user_contacts WHERE user_id = $1`, [userId]);
     const contactsCount = parseInt(contactsRes.rows[0]?.count || 0, 10);
 
-    // Query messages count (direct + group messages sent by this user)
-    const directMessagesRes = await pool.query(`SELECT COUNT(*) as count FROM messages WHERE sender_id = $1`, [userId]);
-    const directCount = parseInt(directMessagesRes.rows[0]?.count || 0, 10);
+    // Query messages count: count distinct conversations + groups the user participates in
+    // This reflects the user's participation in the Messages view (both Direct and Groups tabs)
+    const conversationsRes = await pool.query(`
+      SELECT COUNT(DISTINCT id) as count FROM conversations
+      WHERE (participant_a_id = $1 OR participant_b_id = $1)
+      AND status_a != 'ignored' AND status_b != 'ignored'
+    `, [userId]);
+    const conversationCount = parseInt(conversationsRes.rows[0]?.count || 0, 10);
 
-    const groupMessagesRes = await pool.query(`SELECT COUNT(*) as count FROM group_messages WHERE sender_id = $1`, [userId]);
-    const groupCount = parseInt(groupMessagesRes.rows[0]?.count || 0, 10);
+    const groupsRes = await pool.query(`
+      SELECT COUNT(DISTINCT group_id) as count FROM group_members
+      WHERE user_id = $1
+    `, [userId]);
+    const groupCount = parseInt(groupsRes.rows[0]?.count || 0, 10);
 
-    const messagesCount = directCount + groupCount;
+    const messagesCount = conversationCount + groupCount;
 
     res.json({
       postsCount: postsCount,
@@ -4557,6 +4565,72 @@ async function start() {
             foreground_hours = EXCLUDED.foreground_hours
         `, [peer.peer_id, peer.foreground_hours]);
       }
+
+      // Seed additional test data for profile counter verification
+      // Create a conversation where Alice receives messages but doesn't send any
+      // This tests that the Messages counter counts participation, not sent messages
+      const [frankAliceA, frankAliceB] = [alice, frank].sort((x, y) => x - y);
+      const { rows: convFrankAliceRows } = await pool.query(`
+        SELECT id FROM conversations WHERE participant_a_id = $1 AND participant_b_id = $2
+      `, [frankAliceA, frankAliceB]);
+
+      let convFrankAliceId;
+      if (convFrankAliceRows.length === 0) {
+        const result = await pool.query(`
+          INSERT INTO conversations (participant_a_id, participant_b_id, status_a, status_b, created_at, updated_at)
+          VALUES ($1, $2, 'accepted', 'accepted', NOW(), NOW())
+          RETURNING id
+        `, [frankAliceA, frankAliceB]);
+        convFrankAliceId = result.rows[0].id;
+      } else {
+        convFrankAliceId = convFrankAliceRows[0].id;
+      }
+
+      // Add a message from Frank to Alice (Alice receives but doesn't send)
+      await pool.query(`
+        INSERT INTO messages (conversation_id, sender_id, type, content, created_at)
+        VALUES ($1, $2, 'text', '{"text": "[Staging] Hi Alice! Just wanted to check in."}', NOW())
+        ON CONFLICT DO NOTHING
+      `, [convFrankAliceId, frank]);
+
+      // Create a group where Alice is a member but doesn't send messages
+      // This also tests counter for group participation without sending
+      const { rows: testGroupRows } = await pool.query(`
+        SELECT id FROM groups WHERE creator_id = $1 AND name = 'Staging Test Group'
+      `, [david]);
+
+      let testGroupId;
+      if (testGroupRows.length === 0) {
+        const result = await pool.query(`
+          INSERT INTO groups (creator_id, name, description, created_at, updated_at)
+          VALUES ($1, 'Staging Test Group', '[Staging] Test group for counter verification', NOW(), NOW())
+          RETURNING id
+        `, [david]);
+        testGroupId = result.rows[0].id;
+      } else {
+        testGroupId = testGroupRows[0].id;
+      }
+
+      // Add Alice to the test group (but she won't send messages)
+      await pool.query(`
+        INSERT INTO group_members (group_id, user_id, role, joined_at)
+        VALUES ($1, $2, 'member', NOW()), ($1, $3, 'creator', NOW())
+        ON CONFLICT (group_id, user_id) DO NOTHING
+      `, [testGroupId, alice, david]);
+
+      // Add a message from David (Alice receives but doesn't send)
+      await pool.query(`
+        INSERT INTO group_messages (group_id, sender_id, type, content, created_at)
+        VALUES ($1, $2, 'text', '{"text": "[Staging] Welcome to the test group, Alice!"}', NOW())
+        ON CONFLICT DO NOTHING
+      `, [testGroupId, david]);
+
+      // Initialize read receipts
+      await pool.query(`
+        INSERT INTO group_read_receipts (user_id, group_id, last_read_at)
+        VALUES ($1, $2, NOW()), ($3, $2, NOW())
+        ON CONFLICT (user_id, group_id) DO NOTHING
+      `, [alice, testGroupId, david]);
     }
 
     app.listen(port, () => console.log(`Listening on :${port}`));
