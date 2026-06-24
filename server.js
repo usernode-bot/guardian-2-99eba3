@@ -29,6 +29,16 @@ function checkRateLimit(key, limit, windowMs) {
 const PUBLIC_API_PATHS = new Set(['/health', '/favicon.ico']);
 const PUBLIC_PREFIXES = ['/explorer-api/'];
 
+// Database connection test with timeout
+async function testDatabaseConnection(timeoutMs = 10000) {
+  return Promise.race([
+    pool.query('SELECT 1'),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('DATABASE_CONNECTION_TIMEOUT')), timeoutMs)
+    )
+  ]);
+}
+
 // Helper function to compute SHA-256 hash of content
 function computeContentHash(content) {
   const contentStr = typeof content === 'string' ? content : JSON.stringify(content);
@@ -141,6 +151,11 @@ async function monitorBlockchainStatus(auditLogId, txHash) {
 
 app.use(express.json());
 app.use(async (req, res, next) => {
+  // Skip user upsert for healthcheck endpoint to ensure it responds immediately
+  if (req.path === '/health') {
+    return next();
+  }
+
   const token = req.query.token || req.headers['x-usernode-token'];
   if (token && JWT_SECRET) {
     try { req.user = jwt.verify(token, JWT_SECRET); } catch (e) {
@@ -3706,6 +3721,32 @@ app.get('*', (req, res) => {
 
 async function start() {
   try {
+    // Test database connection with timeout to ensure we can proceed
+    console.log('Testing database connection...');
+    await testDatabaseConnection(10000);
+    console.log('Database connection successful');
+
+    // Start the server immediately after database is ready
+    // Migrations and seeding will run in parallel via startupTasks
+    app.listen(port, () => {
+      console.log(`Listening on :${port}`);
+      console.log('Server ready for requests (migrations running in background)');
+    });
+
+    // Run migrations and seeding as background tasks (don't block healthcheck)
+    startupTasks().catch(err => {
+      console.error('Error during startup tasks:', err);
+      process.exit(1);
+    });
+
+  } catch (err) {
+    console.error('Failed to start server:', err);
+    process.exit(1);
+  }
+}
+
+async function startupTasks() {
+  try {
     // Drop old presses table if it exists (for demo purposes)
     await pool.query(`DROP TABLE IF EXISTS presses CASCADE`);
 
@@ -4853,9 +4894,9 @@ async function start() {
       `, [alice, testGroupId, david]);
     }
 
-    app.listen(port, () => console.log(`Listening on :${port}`));
+    console.log('All startup tasks completed successfully');
   } catch (err) {
-    console.error(err);
+    console.error('Error during startup tasks:', err);
     process.exit(1);
   }
 }
