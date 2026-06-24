@@ -2719,21 +2719,14 @@
       // Setup avatar file input handler - attach once during initialization for mobile compatibility
       const avatarFileInput = document.getElementById('avatarFileInput');
       if (avatarFileInput) {
-        console.log('[Avatar] Setting up file input change handler during initialization');
-        avatarFileInput.addEventListener('change', async (e) => {
-          console.log('[Avatar] File input change event fired');
-          const file = e.target.files[0];
-          console.log('[Avatar] File selected:', file ? file.name : 'NO FILE', file ? `(${(file.size / 1024).toFixed(2)} KB)` : '');
-          if (file) {
-            console.log('[Avatar] Calling uploadAvatar() with file:', file.name);
-            await uploadAvatar(file);
-          } else {
-            console.warn('[Avatar] Change event fired but no file was selected');
-          }
-        });
-        console.log('[Avatar] File input change handler attached successfully');
+        console.log('[Avatar] setupEventListeners() called - attempting handler attachment');
+        console.log('[Avatar] avatarFileInput element found in DOM:', avatarFileInput ? 'YES' : 'NO');
+        attachAvatarFileInputHandler(avatarFileInput);
+        window.avatarHandlerAttached = true;
+        console.log('[Avatar] Handler attachment completed, flag set to true');
       } else {
         console.error('[Avatar] FAILED: avatarFileInput element not found during setupEventListeners');
+        window.avatarHandlerAttached = false;
       }
     }
 
@@ -5824,14 +5817,67 @@
       if (modal) modal.remove();
     }
 
+    function attachAvatarFileInputHandler(input) {
+      console.log('[Avatar] attachAvatarFileInputHandler() called');
+      console.log('[Avatar] Input element:', input ? 'present' : 'missing');
+
+      if (!input) {
+        console.error('[Avatar] FAILED: attachAvatarFileInputHandler received null/undefined input');
+        return false;
+      }
+
+      console.log('[Avatar] Attempting addEventListener attachment...');
+      try {
+        input.addEventListener('change', handleAvatarFileChange);
+        console.log('[Avatar] addEventListener completed without exception');
+        console.log('[Avatar] Handler successfully attached to avatarFileInput');
+        return true;
+      } catch (err) {
+        console.error('[Avatar] FAILED: Exception during addEventListener:', err.message, err.stack);
+        return false;
+      }
+    }
+
+    function handleAvatarFileChange(e) {
+      console.log('[Avatar] handleAvatarFileChange() triggered');
+      console.log('[Avatar] File input change event fired');
+      const file = e.target.files[0];
+      console.log('[Avatar] File selected:', file ? file.name : 'NO FILE', file ? `(${(file.size / 1024).toFixed(2)} KB)` : '');
+      if (file) {
+        console.log('[Avatar] Calling uploadAvatar() with file:', file.name);
+        uploadAvatar(file);
+      } else {
+        console.warn('[Avatar] Change event fired but no file was selected');
+      }
+    }
+
     function openAvatarUpload() {
       console.log('[Avatar] openAvatarUpload() function entered');
       const input = document.getElementById('avatarFileInput');
-      console.log('[Avatar] File input element found:', input ? 'YES' : 'NO', input);
+      console.log('[Avatar] File input element found:', input ? 'YES' : 'NO');
       if (!input) {
         console.error('[Avatar] FAILED: avatarFileInput element not found in DOM');
         return;
       }
+
+      // Fallback mechanism: ensure handler is attached before click
+      console.log('[Avatar] Checking if handler was previously attached...');
+      console.log('[Avatar] window.avatarHandlerAttached =', window.avatarHandlerAttached);
+
+      if (!window.avatarHandlerAttached) {
+        console.warn('[Avatar] FALLBACK: Handler was not attached during initialization - attaching now');
+        const attached = attachAvatarFileInputHandler(input);
+        if (attached) {
+          window.avatarHandlerAttached = true;
+          console.log('[Avatar] FALLBACK: Handler successfully attached in openAvatarUpload()');
+        } else {
+          console.error('[Avatar] FALLBACK FAILED: Could not attach handler');
+          return;
+        }
+      } else {
+        console.log('[Avatar] Handler was already attached during initialization - reusing it');
+      }
+
       input.value = '';
       console.log('[Avatar] Input value reset to empty');
       console.log('[Avatar] About to call input.click()');
