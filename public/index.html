@@ -1465,7 +1465,7 @@
   <input id="attachmentFileInput" type="file" accept="image/*" style="position: absolute; left: -9999px; top: -9999px;">
 
   <!-- File Selection Modal (for avatar and attachments) -->
-  <div id="fileSelectionModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+  <div id="fileSelectionModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" ondragover="handleModalDragOver(event)" ondragleave="handleModalDragLeave(event)" ondrop="handleModalDrop(event)">
     <div class="bg-white dark:bg-zinc-800 rounded-lg shadow-lg max-w-sm w-full">
       <!-- Modal Header -->
       <div class="flex items-center justify-between p-6 border-b border-zinc-200 dark:border-zinc-700">
@@ -1482,6 +1482,13 @@
             <p id="selectedFileName" class="text-sm text-zinc-600 dark:text-zinc-400 mt-1"></p>
             <p id="selectedFileSize" class="text-xs text-zinc-500 dark:text-zinc-500 mt-1"></p>
           </div>
+        </div>
+
+        <!-- Drag-drop zone -->
+        <div id="fileDragDropZone" class="border-2 border-dashed border-zinc-300 dark:border-zinc-600 rounded-lg p-6 text-center transition cursor-pointer hover:border-cyan-500 dark:hover:border-cyan-400">
+          <div class="text-2xl mb-2">📁</div>
+          <p class="text-sm font-medium text-zinc-900 dark:text-zinc-100">Drag files here</p>
+          <p class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">or use options below</p>
         </div>
 
         <!-- Browse Button -->
@@ -1505,6 +1512,12 @@
         <button id="filePasteButton" onclick="pasteFromClipboard()" class="hidden w-full bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 text-zinc-900 dark:text-zinc-100 font-medium py-2 px-4 rounded transition">
           Paste from Clipboard
         </button>
+
+        <!-- Method Status Display -->
+        <div id="fileMethodStatus" class="hidden bg-zinc-50 dark:bg-zinc-900 rounded p-3 text-xs space-y-1 max-h-32 overflow-y-auto border border-zinc-200 dark:border-zinc-700">
+          <p class="text-zinc-600 dark:text-zinc-400">File Access Methods:</p>
+          <div id="methodStatusText" class="text-zinc-500 dark:text-zinc-500 font-mono text-xs"></div>
+        </div>
 
         <!-- Error Message -->
         <div id="fileSelectionError" class="hidden bg-red-100 dark:bg-red-900 border border-red-300 dark:border-red-700 text-red-800 dark:text-red-200 px-4 py-2 rounded text-sm"></div>
@@ -2468,30 +2481,49 @@
     }
 
     function openAttachmentPicker() {
-      console.log('[FileInput] openAttachmentPicker() called');
+      console.log('[Attachment:FileInput] openAttachmentPicker() called');
       const input = document.getElementById('attachmentFileInput');
       if (!input) {
-        console.error('[FileInput] FAILED: attachmentFileInput not found');
+        console.error('[Attachment:FileInput] FAILED: attachmentFileInput not found');
         return;
       }
       input.value = '';
-      console.log('[FileInput] Attachment input value reset');
-      console.log('[FileInput] About to call input.click()');
+      console.log('[Attachment:FileInput] Attachment input value reset');
+      console.log('[Attachment:FileInput] Input element details:', {
+        id: input.id,
+        type: input.type,
+        accept: input.getAttribute('accept'),
+        style: input.getAttribute('style'),
+        clickSupported: typeof input.click === 'function'
+      });
+      console.log('[Attachment:FileInput] About to call input.click()');
       try {
+        const clickStartTime = performance.now();
         input.click();
-        console.log('[FileInput] click() executed successfully');
+        const clickEndTime = performance.now();
+        console.log('[Attachment:FileInput] click() executed successfully in', (clickEndTime - clickStartTime).toFixed(2), 'ms');
       } catch (err) {
-        console.error('[FileInput] FAILED: Exception calling click():', err);
+        console.error('[Attachment:FileInput] FAILED: Exception calling click():', {
+          message: err.message,
+          name: err.name,
+          code: err.code
+        });
       }
     }
 
     function handleAttachmentSelect(type) {
-      console.log('[FileInput] handleAttachmentSelect() called with type:', type);
+      console.log('[Attachment:Handler] handleAttachmentSelect() called with type:', type);
       closeAttachmentSheet();
       if (type === 'image') {
-        console.log('[FileInput] Image attachment selected, opening file selection modal');
+        console.log('[Attachment:Handler] Image attachment selected, opening file selection modal');
+        if (!currentConvId && !currentGroupId) {
+          console.warn('[Attachment:Handler] No conversation or group selected');
+          showToast('No conversation selected', 'error');
+          return;
+        }
         openFileSelectionModal('attachmentFileInput', 'Attach Image');
       } else if (type === 'token') {
+        console.log('[Attachment:Handler] Token transfer requested');
         showTokenModal();
       }
     }
@@ -2521,6 +2553,61 @@
     let currentFileInput = null;
     let selectedFileForModal = null;
 
+    function handleModalDragOver(event) {
+      console.log('[FileModal:DragDrop] dragover event fired');
+      event.preventDefault();
+      event.stopPropagation();
+      const zone = document.getElementById('fileDragDropZone');
+      if (zone) {
+        zone.classList.add('border-cyan-500', 'dark:border-cyan-400', 'bg-cyan-50', 'dark:bg-cyan-900/20');
+        console.log('[FileModal:DragDrop] Drop zone highlighted');
+      }
+    }
+
+    function handleModalDragLeave(event) {
+      console.log('[FileModal:DragDrop] dragleave event fired');
+      const zone = document.getElementById('fileDragDropZone');
+      if (zone && event.target === zone) {
+        zone.classList.remove('border-cyan-500', 'dark:border-cyan-400', 'bg-cyan-50', 'dark:bg-cyan-900/20');
+        console.log('[FileModal:DragDrop] Drop zone de-highlighted');
+      }
+    }
+
+    function handleModalDrop(event) {
+      console.log('[FileModal:DragDrop] drop event fired');
+      event.preventDefault();
+      event.stopPropagation();
+
+      const zone = document.getElementById('fileDragDropZone');
+      if (zone) {
+        zone.classList.remove('border-cyan-500', 'dark:border-cyan-400', 'bg-cyan-50', 'dark:bg-cyan-900/20');
+      }
+
+      console.log('[FileModal:DragDrop] Event dataTransfer available:', !!event.dataTransfer);
+      console.log('[FileModal:DragDrop] DataTransfer types:', event.dataTransfer?.types || []);
+
+      const files = event.dataTransfer?.files;
+      console.log('[FileModal:DragDrop] Files in drop:', files?.length || 0);
+
+      if (files && files.length > 0) {
+        const file = files[0];
+        console.log('[FileModal:DragDrop] Processing dropped file:', file.name, `(${(file.size / 1024).toFixed(2)} KB, type: ${file.type})`);
+
+        // Validate file type
+        const allowedTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+        if (!allowedTypes.includes(file.type)) {
+          console.warn('[FileModal:DragDrop] File type not allowed:', file.type);
+          showFileSelectionError('File type not supported. Please use PNG, JPEG, GIF, or WebP.');
+          return;
+        }
+
+        handleFileSelected(currentFileInput.id, file);
+      } else {
+        console.warn('[FileModal:DragDrop] No files found in drop event');
+        showFileSelectionError('Unable to read dropped files. Try using the Browse button.');
+      }
+    }
+
     function openFileSelectionModal(inputId, title = 'Choose File') {
       console.log('[FileModal] openFileSelectionModal() called for:', inputId);
       currentFileInput = document.getElementById(inputId);
@@ -2539,6 +2626,17 @@
       document.getElementById('filePasteButton').classList.add('hidden');
       document.getElementById('fileSelectConfirmButton').classList.add('hidden');
       document.getElementById('fileSelectionError').classList.add('hidden');
+
+      // Detect and log available file access methods
+      const isIframe = window.self !== window.top;
+      const clipboardSupported = !!navigator.clipboard?.read;
+      const dragDropSupported = 'ondrop' in document.createElement('div');
+      console.log('[FileModal] Modal opened. Environment:', {
+        isIframe: isIframe,
+        clipboardSupported: clipboardSupported,
+        dragDropSupported: dragDropSupported,
+        fileInputSupported: !!HTMLInputElement.prototype.click
+      });
       console.log('[FileModal] Modal opened for:', inputId);
     }
 
@@ -2550,19 +2648,33 @@
     }
 
     function triggerFileInput() {
-      console.log('[FileModal] triggerFileInput() called');
+      console.log('[FileModal:FileInput] triggerFileInput() called');
       if (!currentFileInput) {
-        console.error('[FileModal] FAILED: currentFileInput is null');
+        console.error('[FileModal:FileInput] FAILED: currentFileInput is null');
         return;
       }
       currentFileInput.value = '';
-      console.log('[FileModal] About to click file input');
+      console.log('[FileModal:FileInput] Input element found, ID:', currentFileInput.id);
+      console.log('[FileModal:FileInput] Checking input element visibility:', {
+        offsetParent: currentFileInput.offsetParent,
+        style: currentFileInput.getAttribute('style'),
+        display: window.getComputedStyle(currentFileInput).display,
+        visibility: window.getComputedStyle(currentFileInput).visibility
+      });
+      console.log('[FileModal:FileInput] About to click file input');
       try {
+        const clickStartTime = performance.now();
         currentFileInput.click();
-        console.log('[FileModal] File input click() executed successfully');
+        const clickEndTime = performance.now();
+        console.log('[FileModal:FileInput] File input click() executed successfully (took', (clickEndTime - clickStartTime).toFixed(2), 'ms)');
+        console.log('[FileModal:FileInput] Browser event support:', {
+          clickSupported: typeof currentFileInput.click === 'function',
+          changeEvent: 'onchange' in currentFileInput,
+          inputEvent: 'oninput' in currentFileInput
+        });
       } catch (err) {
-        console.error('[FileModal] FAILED: Exception calling click():', err);
-        showFileSelectionError('Unable to open file picker. Please try again.');
+        console.error('[FileModal:FileInput] FAILED: Exception calling click():', err.message, err.stack);
+        showFileSelectionError('Unable to open file picker: ' + (err.message || 'Unknown error'));
       }
     }
 
@@ -2616,27 +2728,46 @@
     }
 
     async function pasteFromClipboard() {
-      console.log('[FileModal] pasteFromClipboard() called');
+      console.log('[FileModal:Clipboard] pasteFromClipboard() called');
+      console.log('[FileModal:Clipboard] Browser clipboard API support:', {
+        clipboardAPI: !!navigator.clipboard,
+        readMethod: !!navigator.clipboard?.read,
+        writeMethod: !!navigator.clipboard?.write,
+        readTextMethod: !!navigator.clipboard?.readText
+      });
       try {
+        const startTime = performance.now();
         const items = await navigator.clipboard.read();
-        console.log('[FileModal] Clipboard items count:', items.length);
+        const endTime = performance.now();
+        console.log('[FileModal:Clipboard] Clipboard read completed in', (endTime - startTime).toFixed(2), 'ms');
+        console.log('[FileModal:Clipboard] Clipboard items count:', items.length);
 
-        for (const item of items) {
-          console.log('[FileModal] Clipboard item types:', item.types);
-          if (item.types.includes('image/png') || item.types.includes('image/jpeg') || item.types.includes('image/gif')) {
-            const blob = await item.getType('image/png').catch(() => item.getType('image/jpeg')).catch(() => item.getType('image/gif'));
-            if (blob) {
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          console.log('[FileModal:Clipboard] Item', i, 'types:', item.types);
+          const imageTypes = ['image/png', 'image/jpeg', 'image/gif'];
+          const foundType = imageTypes.find(type => item.types.includes(type));
+
+          if (foundType) {
+            console.log('[FileModal:Clipboard] Found image type:', foundType);
+            try {
+              const blob = await item.getType(foundType);
+              console.log('[FileModal:Clipboard] Blob retrieved, size:', (blob.size / 1024).toFixed(2), 'KB, type:', blob.type);
               const file = new File([blob], 'pasted-image.png', { type: blob.type });
-              console.log('[FileModal] File created from clipboard:', file.name);
+              console.log('[FileModal:Clipboard] File created from clipboard:', file.name);
               handleFileSelected(currentFileInput.id, file);
               return;
+            } catch (typeErr) {
+              console.error('[FileModal:Clipboard] Failed to get type', foundType, ':', typeErr.message);
             }
           }
         }
+        console.warn('[FileModal:Clipboard] No image types found in clipboard items');
         showFileSelectionError('No image found in clipboard. Copy an image and try again.');
       } catch (err) {
-        console.error('[FileModal] Clipboard API error:', err);
-        showFileSelectionError('Clipboard access not available. Try using the Browse button instead.');
+        console.error('[FileModal:Clipboard] Clipboard API error:', err.message, err.name);
+        console.error('[FileModal:Clipboard] Error stack:', err.stack);
+        showFileSelectionError('Clipboard access not available (' + (err.name || 'Unknown error') + '). Try using the Browse button instead.');
       }
     }
 
@@ -4540,16 +4671,28 @@
     }
 
     async function handleImageUpload(file) {
-      if (!file) return;
-      if (!currentConvId && !currentGroupId) return;
+      console.log('[Attachment:Upload] handleImageUpload() called with file:', file.name, `(${(file.size / 1024).toFixed(2)} KB, type: ${file.type})`);
+      if (!file) {
+        console.warn('[Attachment:Upload] No file provided');
+        return;
+      }
+      if (!currentConvId && !currentGroupId) {
+        console.warn('[Attachment:Upload] No conversation or group selected');
+        return;
+      }
 
       const reader = new FileReader();
+      console.log('[Attachment:FileReader] Starting FileReader for attachment');
+      const readerStartTime = performance.now();
       reader.onload = async (e) => {
+        const readerEndTime = performance.now();
         const dataUri = e.target.result;
         const imageSizeKb = Math.round(dataUri.length / 1024);
+        console.log('[Attachment:FileReader] FileReader completed in', (readerEndTime - readerStartTime).toFixed(2), 'ms, data URI length:', dataUri.length, 'bytes');
 
         try {
           const endpoint = currentGroupId ? `/api/groups/${currentGroupId}/messages` : `/api/conversations/${currentConvId}/messages`;
+          console.log('[Attachment:Upload] Uploading to endpoint:', endpoint);
 
           if (isDemoMode) {
             // Show wallet confirmation modal in demo mode
@@ -4599,10 +4742,18 @@
           }
         } catch (err) {
           if (err.message !== 'User cancelled wallet confirmation') {
-            console.error('Image upload error:', err);
+            console.error('[Attachment:Upload] Image upload error:', {
+              message: err.message,
+              name: err.name,
+              stack: err.stack
+            });
             showToast(`Error: ${err.message}`, 'error');
           }
         }
+      };
+      reader.onerror = () => {
+        console.error('[Attachment:FileReader] FileReader error occurred');
+        showToast('Error reading file. Please try again.', 'error');
       };
       reader.readAsDataURL(file);
     }
@@ -6169,15 +6320,21 @@
     }
 
     function handleAvatarFileChange(e) {
-      console.log('[Avatar] handleAvatarFileChange() triggered');
-      console.log('[Avatar] File input change event fired');
+      console.log('[Avatar:FileInput] handleAvatarFileChange() triggered');
+      console.log('[Avatar:FileInput] File input change event:', {
+        type: e.type,
+        timeStamp: e.timeStamp,
+        isTrusted: e.isTrusted,
+        eventPhase: e.eventPhase
+      });
       const file = e.target.files[0];
-      console.log('[Avatar] File selected:', file ? file.name : 'NO FILE', file ? `(${(file.size / 1024).toFixed(2)} KB)` : '');
+      console.log('[Avatar:FileInput] File selected:', file ? file.name : 'NO FILE', file ? `(${(file.size / 1024 / 1024).toFixed(2)} MB, type: ${file.type})` : '');
       if (file) {
-        console.log('[Avatar] Displaying file in modal:', file.name);
+        console.log('[Avatar:FileInput] File validation: isBinary=', !!file.type.startsWith('image'), 'lastModified=', new Date(file.lastModified).toISOString());
+        console.log('[Avatar:FileInput] Displaying file in modal:', file.name);
         handleFileSelected('avatarFileInput', file);
       } else {
-        console.warn('[Avatar] Change event fired but no file was selected');
+        console.warn('[Avatar:FileInput] Change event fired but no file was selected - files array:', e.target.files.length);
       }
     }
 
@@ -6188,10 +6345,10 @@
     }
 
     async function uploadAvatar(file) {
-      console.log('[Avatar] uploadAvatar() started with file:', file.name, `(${(file.size / 1024).toFixed(2)} KB)`);
+      console.log('[Avatar:Upload] uploadAvatar() started with file:', file.name, `(${(file.size / 1024 / 1024).toFixed(2)} MB, type: ${file.type})`);
       // Validate file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
-        console.error('[Avatar] FAILED: File size exceeds 5MB limit:', (file.size / 1024 / 1024).toFixed(2), 'MB');
+        console.error('[Avatar:Upload] FAILED: File size exceeds 5MB limit:', (file.size / 1024 / 1024).toFixed(2), 'MB');
         showToast('Image size must be less than 5MB', 'error');
         return;
       }
@@ -6201,7 +6358,12 @@
       const spinner = document.getElementById('avatarUploadSpinner');
       if (avatarImg) avatarImg.style.opacity = '0.5';
       if (spinner) spinner.classList.remove('hidden');
-      console.log('[Avatar] Loading state shown');
+      console.log('[Avatar:Upload] Loading state shown, browser info:', {
+        canvasSupported: !!document.createElement('canvas').getContext,
+        fileReaderSupported: !!window.FileReader,
+        blobSupported: !!window.Blob,
+        fetchSupported: !!window.fetch
+      });
 
       function clearLoadingState() {
         if (avatarImg) avatarImg.style.opacity = '';
@@ -6210,13 +6372,14 @@
 
       try {
         // Resize and recompress via canvas before uploading, with timeout to catch hangs on mobile
-        console.log('[Avatar] Starting canvas image processing');
+        console.log('[Avatar:Canvas] Starting canvas image processing');
+        const canvasStartTime = performance.now();
         const dataUri = await new Promise((resolve, reject) => {
           const img = new Image();
           const objectUrl = URL.createObjectURL(file);
-          console.log('[Avatar] Image object URL created');
+          console.log('[Avatar:Canvas] Image object URL created:', objectUrl);
           img.onload = () => {
-            console.log('[Avatar] Image loaded, dimensions:', img.width, 'x', img.height);
+            console.log('[Avatar:Canvas] Image loaded, dimensions:', img.width, 'x', img.height, 'naturalWidth:', img.naturalWidth, 'naturalHeight:', img.naturalHeight);
             URL.revokeObjectURL(objectUrl);
             const MAX = 400;
             let w = img.width;
@@ -6225,31 +6388,41 @@
               if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
               else { w = Math.round(w * MAX / h); h = MAX; }
             }
-            console.log('[Avatar] Canvas dimensions after resize:', w, 'x', h);
+            console.log('[Avatar:Canvas] Canvas dimensions after resize:', w, 'x', h);
             const canvas = document.createElement('canvas');
             canvas.width = w;
             canvas.height = h;
-            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-            console.log('[Avatar] Image drawn to canvas');
+            try {
+              canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+              console.log('[Avatar:Canvas] Image drawn to canvas successfully');
+            } catch (drawErr) {
+              console.error('[Avatar:Canvas] FAILED: drawImage error:', drawErr.message);
+              reject(drawErr);
+              return;
+            }
 
             // Use Promise.race to timeout canvas.toBlob if it hangs on mobile
-            console.log('[Avatar] Starting canvas.toBlob conversion');
+            console.log('[Avatar:Canvas] Starting canvas.toBlob conversion');
+            const toBlobStartTime = performance.now();
             Promise.race([
               new Promise((blobResolve, blobReject) => {
                 canvas.toBlob((blob) => {
+                  const toBlobEndTime = performance.now();
                   if (!blob) {
-                    console.error('[Avatar] FAILED: canvas.toBlob returned null');
+                    console.error('[Avatar:Canvas] FAILED: canvas.toBlob returned null after', (toBlobEndTime - toBlobStartTime).toFixed(2), 'ms');
                     blobReject(new Error('Canvas blob is null'));
                     return;
                   }
-                  console.log('[Avatar] Canvas blob created, size:', (blob.size / 1024).toFixed(2), 'KB');
+                  console.log('[Avatar:Canvas] Canvas blob created in', (toBlobEndTime - toBlobStartTime).toFixed(2), 'ms, size:', (blob.size / 1024).toFixed(2), 'KB, type:', blob.type);
                   const reader = new FileReader();
+                  const readerStartTime = performance.now();
                   reader.onload = (e) => {
-                    console.log('[Avatar] FileReader completed, data URI length:', e.target.result.length);
+                    const readerEndTime = performance.now();
+                    console.log('[Avatar:Canvas] FileReader completed in', (readerEndTime - readerStartTime).toFixed(2), 'ms, data URI length:', e.target.result.length);
                     blobResolve(e.target.result);
                   };
                   reader.onerror = () => {
-                    console.error('[Avatar] FAILED: FileReader error');
+                    console.error('[Avatar:Canvas] FAILED: FileReader error');
                     blobReject(new Error('FileReader error'));
                   };
                   reader.readAsDataURL(blob);
@@ -6257,22 +6430,24 @@
               }),
               new Promise((_, reject) =>
                 setTimeout(() => {
-                  console.error('[Avatar] FAILED: Canvas processing timeout (10s)');
+                  console.error('[Avatar:Canvas] FAILED: Canvas processing timeout (10s)');
                   reject(new Error('Canvas processing timeout'));
                 }, 10000)
               )
             ]).then(resolve, reject);
           };
           img.onerror = () => {
-            console.error('[Avatar] FAILED: Image load error');
+            console.error('[Avatar:Canvas] FAILED: Image load error, src was:', objectUrl);
             URL.revokeObjectURL(objectUrl);
             reject(new Error('Image load failed'));
           };
           img.src = objectUrl;
         });
-        console.log('[Avatar] Canvas processing completed successfully');
+        const canvasEndTime = performance.now();
+        console.log('[Avatar:Canvas] Canvas processing completed in', (canvasEndTime - canvasStartTime).toFixed(2), 'ms');
 
-        console.log('[Avatar] Sending avatar data to server, data URI length:', dataUri.length);
+        console.log('[Avatar:Fetch] Sending avatar data to server, data URI length:', dataUri.length, 'bytes');
+        const fetchStartTime = performance.now();
         const response = await fetch('/api/user/avatar', {
           method: 'POST',
           headers: {
@@ -6281,8 +6456,9 @@
           },
           body: JSON.stringify({ dataUri }),
         });
+        const fetchEndTime = performance.now();
 
-        console.log('[Avatar] Fetch completed, status:', response.status, response.statusText);
+        console.log('[Avatar:Fetch] Fetch completed in', (fetchEndTime - fetchStartTime).toFixed(2), 'ms, status:', response.status, response.statusText);
         if (!response.ok) {
           console.error('[Avatar] FAILED: Server returned non-OK status:', response.status);
           let errMsg = 'Unknown error';
@@ -6320,20 +6496,25 @@
         console.log('[Avatar] Avatar upload completed successfully');
         showToast('Avatar updated successfully', 'success');
       } catch (err) {
-        console.error('[Avatar] FAILED: Caught exception in uploadAvatar():', err.message, err.stack);
+        console.error('[Avatar:Error] FAILED: Caught exception in uploadAvatar():', {
+          message: err.message,
+          name: err.name,
+          code: err.code,
+          stack: err.stack
+        });
         clearLoadingState();
         // Provide specific error messages based on error type
         if (err.message === 'Canvas processing timeout') {
-          console.error('[Avatar] Error type: Canvas timeout');
+          console.error('[Avatar:Error] Error type: Canvas timeout - image processing took longer than 10 seconds');
           showToast('Image processing took too long. Check your connection and try again.', 'error');
         } else if (err.message.includes('Canvas') || err.message.includes('Image')) {
-          console.error('[Avatar] Error type: Canvas/Image processing error');
+          console.error('[Avatar:Error] Error type: Canvas/Image processing error');
           showToast('Error processing image: ' + err.message, 'error');
         } else if (err.message === 'Network error') {
-          console.error('[Avatar] Error type: Network error');
+          console.error('[Avatar:Error] Error type: Network error');
           showToast('Network error uploading avatar', 'error');
         } else {
-          console.error('[Avatar] Error type: Unknown/Other error');
+          console.error('[Avatar:Error] Error type: Unknown/Other error');
           showToast('Error uploading avatar: ' + (err.message || 'Unknown error'), 'error');
         }
       }
