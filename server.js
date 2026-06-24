@@ -3882,6 +3882,22 @@ async function start() {
     await pool.query(`COMMENT ON TABLE group_read_receipts IS 'staging:private'`);
 
     // Seed staging data
+    // Seed mock testnet users (grace, henry, iris, jack) in all environments for user search testing
+    const grace = 11, henry = 12, iris = 13, jack = 14;
+    await pool.query(`
+      INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at, bio, avatar_url) VALUES
+        ($1, 'test-user-grace', 'ut1staging-grace-001', NOW(), NOW() - INTERVAL '5 days', 'Test user - DevOps engineer', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2310b981%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EG%3C/text%3E%3C/svg%3E'),
+        ($2, 'test-user-henry', 'ut1staging-henry-001', NOW(), NOW() - INTERVAL '3 days', 'Test user - Frontend specialist', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%238b5cf6%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EH%3C/text%3E%3C/svg%3E'),
+        ($3, 'test-user-iris', 'ut1staging-iris-001', null, NOW() - INTERVAL '1 day', 'Test user - Data scientist', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%23f59e0b%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EI%3C/text%3E%3C/svg%3E'),
+        ($4, 'test-user-jack', 'ut1staging-jack-001', NOW(), NOW(), 'Test user - QA engineer', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%23ef4444%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EJ%3C/text%3E%3C/svg%3E')
+      ON CONFLICT (id) DO UPDATE SET
+        username = EXCLUDED.username,
+        usernode_pubkey = EXCLUDED.usernode_pubkey,
+        verified_at = EXCLUDED.verified_at,
+        bio = EXCLUDED.bio,
+        avatar_url = EXCLUDED.avatar_url
+    `, [grace, henry, iris, jack]);
+
     if (IS_STAGING) {
       const alice = 1, bob = 2, charlie = 3, david = 4, emma = 5, frank = 10;
       // Note: User 10 will map to 10 % 10 = 0 -> 5 hours (New Guardian)
@@ -3890,8 +3906,12 @@ async function start() {
       // User 3 -> 300 hours (Elite Guardian)
       // User 4 -> 15 hours (Active Guardian)
       // User 5 -> 50 hours (Trusted Guardian)
+      // User 11 -> 1 % 10 = 1 -> 25 hours (Active Guardian)
+      // User 12 -> 2 % 10 = 2 -> 100 hours (Trusted Guardian)
+      // User 13 -> 3 % 10 = 3 -> 300 hours (Elite Guardian)
+      // User 14 -> 4 % 10 = 4 -> 15 hours (Active Guardian)
 
-      // Create test users with wallet addresses
+      // Create staging demo users with wallet addresses
       await pool.query(`
         INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at, bio, avatar_url) VALUES
           ($1, 'staging-demo-alice', 'ut1staging-alice-001', NOW(), NOW() - INTERVAL '6 months', 'Staging demo user - Cloud architect | Web3 enthusiast', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EA%3C/text%3E%3C/svg%3E'),
