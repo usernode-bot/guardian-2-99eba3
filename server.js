@@ -3288,7 +3288,7 @@ app.get('/api/feed/posts/:postId/comments', async (req, res) => {
       return res.status(404).json({ error: 'Post not found' });
     }
 
-    // Fetch comments
+    // Fetch comments (only top-level comments)
     const { rows: comments } = await pool.query(`
       SELECT
         fc.id,
@@ -3297,17 +3297,18 @@ app.get('/api/feed/posts/:postId/comments', async (req, res) => {
         fc.created_at,
         u.username,
         u.verified_at,
-        u.avatar_url
+        u.avatar_url,
+        (SELECT COUNT(*) FROM feed_comments WHERE parent_comment_id = fc.id)::INTEGER as reply_count
       FROM feed_comments fc
       JOIN users u ON u.id = fc.user_id
-      WHERE fc.post_id = $1
+      WHERE fc.post_id = $1 AND fc.parent_comment_id IS NULL
       ORDER BY fc.created_at ASC
       LIMIT $2 OFFSET $3
     `, [postId, limit, offset]);
 
-    // Get total count
+    // Get total count (only top-level comments)
     const { rows: countResult } = await pool.query(`
-      SELECT COUNT(*) as count FROM feed_comments WHERE post_id = $1
+      SELECT COUNT(*) as count FROM feed_comments WHERE post_id = $1 AND parent_comment_id IS NULL
     `, [postId]);
 
     const total = parseInt(countResult[0].count);
@@ -3321,7 +3322,8 @@ app.get('/api/feed/posts/:postId/comments', async (req, res) => {
         verified: !!c.verified_at,
         avatarUrl: c.avatar_url,
         content: c.content,
-        createdAt: c.created_at
+        createdAt: c.created_at,
+        replyCount: c.reply_count || 0
       })),
       total,
       hasMore
@@ -3424,6 +3426,148 @@ app.delete('/api/feed/posts/:postId/comments/:commentId', async (req, res) => {
   } catch (err) {
     console.error('Error deleting comment:', err);
     res.status(500).json({ error: 'Failed to delete comment' });
+  }
+});
+
+// GET /api/feed/posts/:postId/comments/:commentId/replies - Fetch replies to a comment
+app.get('/api/feed/posts/:postId/comments/:commentId/replies', async (req, res) => {
+  try {
+    const { postId, commentId } = req.params;
+    const limit = Math.min(parseInt(req.query.limit || 50), 100);
+    const offset = parseInt(req.query.offset || 0);
+
+    // Verify post exists
+    const { rows: postRows } = await pool.query(`
+      SELECT id FROM feed_posts WHERE id = $1
+    `, [postId]);
+
+    if (postRows.length === 0) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    // Verify parent comment exists
+    const { rows: parentCommentRows } = await pool.query(`
+      SELECT id FROM feed_comments WHERE id = $1 AND post_id = $2
+    `, [commentId, postId]);
+
+    if (parentCommentRows.length === 0) {
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+
+    // Fetch replies
+    const { rows: replies } = await pool.query(`
+      SELECT
+        fc.id,
+        fc.user_id,
+        fc.content,
+        fc.created_at,
+        u.username,
+        u.verified_at,
+        u.avatar_url,
+        (SELECT COUNT(*) FROM feed_comments WHERE parent_comment_id = fc.id)::INTEGER as reply_count
+      FROM feed_comments fc
+      JOIN users u ON u.id = fc.user_id
+      WHERE fc.parent_comment_id = $1
+      ORDER BY fc.created_at ASC
+      LIMIT $2 OFFSET $3
+    `, [commentId, limit, offset]);
+
+    // Get total count
+    const { rows: countResult } = await pool.query(`
+      SELECT COUNT(*) as count FROM feed_comments WHERE parent_comment_id = $1
+    `, [commentId]);
+
+    const total = parseInt(countResult[0].count);
+    const hasMore = offset + limit < total;
+
+    res.json({
+      replies: replies.map(r => ({
+        id: r.id,
+        userId: r.user_id,
+        username: r.username,
+        verified: !!r.verified_at,
+        avatarUrl: r.avatar_url,
+        content: r.content,
+        createdAt: r.created_at,
+        replyCount: r.reply_count || 0,
+        parentCommentId: commentId
+      })),
+      total,
+      hasMore
+    });
+  } catch (err) {
+    console.error('Error fetching replies:', err);
+    res.status(500).json({ error: 'Failed to fetch replies' });
+  }
+});
+
+// POST /api/feed/posts/:postId/comments/:commentId/replies - Create a reply to a comment
+app.post('/api/feed/posts/:postId/comments/:commentId/replies', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { postId, commentId } = req.params;
+    const { content } = req.body;
+    const userId = req.user.id;
+
+    if (!checkRateLimit(`comment:${userId}`, 200, 60000)) {
+      return res.status(429).json({ error: 'Rate limited' });
+    }
+
+    if (!content || content.trim() === '') {
+      return res.status(400).json({ error: 'Reply content is required' });
+    }
+
+    // Verify post exists
+    const { rows: postRows } = await pool.query(`
+      SELECT id FROM feed_posts WHERE id = $1
+    `, [postId]);
+
+    if (postRows.length === 0) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    // Verify parent comment exists
+    const { rows: parentCommentRows } = await pool.query(`
+      SELECT id FROM feed_comments WHERE id = $1 AND post_id = $2
+    `, [commentId, postId]);
+
+    if (parentCommentRows.length === 0) {
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+
+    // Create reply
+    const { rows: replyRows } = await pool.query(`
+      INSERT INTO feed_comments (post_id, user_id, parent_comment_id, content, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, NOW(), NOW())
+      RETURNING id, created_at
+    `, [postId, userId, commentId, content.trim()]);
+
+    const reply = replyRows[0];
+
+    // Fetch user info
+    const { rows: userRows } = await pool.query(`
+      SELECT username, verified_at, avatar_url FROM users WHERE id = $1
+    `, [userId]);
+
+    const user = userRows[0];
+
+    res.json({
+      id: reply.id,
+      userId: userId,
+      username: user.username,
+      verified: !!user.verified_at,
+      avatarUrl: user.avatar_url,
+      content: content.trim(),
+      createdAt: reply.created_at,
+      replyCount: 0,
+      parentCommentId: commentId
+    });
+  } catch (err) {
+    console.error('Error creating reply:', err);
+    res.status(500).json({ error: 'Failed to create reply' });
   }
 });
 
@@ -3845,6 +3989,7 @@ async function start() {
         id BIGSERIAL PRIMARY KEY,
         post_id BIGINT NOT NULL REFERENCES feed_posts(id) ON DELETE CASCADE,
         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        parent_comment_id BIGINT REFERENCES feed_comments(id) ON DELETE CASCADE,
         content TEXT NOT NULL,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -3857,6 +4002,16 @@ async function start() {
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_feed_comments_user_id
         ON feed_comments(user_id)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_feed_comments_parent_id
+        ON feed_comments(parent_comment_id)
+    `);
+
+    // Add parent_comment_id column if it doesn't exist (for existing DBs)
+    await pool.query(`
+      ALTER TABLE feed_comments
+      ADD COLUMN IF NOT EXISTS parent_comment_id BIGINT REFERENCES feed_comments(id) ON DELETE CASCADE
     `);
 
     // Create feed_likes table (public - likes on feed posts)
@@ -4557,6 +4712,54 @@ async function start() {
           VALUES ($1, $2, $3, $4, $4), ($1, $5, $6, $7, $7)
           ON CONFLICT DO NOTHING
         `, [davidPostId, alice, '[Staging demo] Count me in! We should organize a discussion thread.', commentTime1, emma, '[Staging demo] This is an important topic for the ecosystem!', commentTime2]);
+      }
+
+      // Seed replies to comments
+      if (bobDeployPostRows.length > 0) {
+        const bobPostId = bobDeployPostRows[0].id;
+
+        // Get the first two comments on Bob's post
+        const { rows: bobCommentRows } = await pool.query(`
+          SELECT id FROM feed_comments WHERE post_id = $1 AND parent_comment_id IS NULL ORDER BY created_at ASC LIMIT 2
+        `, [bobPostId]);
+
+        if (bobCommentRows.length > 0) {
+          const comment1Id = bobCommentRows[0].id;
+          const replyTime1 = new Date(feedBaseTime.getTime() - 2100000);
+          const replyTime2 = new Date(feedBaseTime.getTime() - 1800000);
+
+          await pool.query(`
+            INSERT INTO feed_comments (post_id, user_id, parent_comment_id, content, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $5), ($1, $6, $3, $7, $8, $8)
+            ON CONFLICT DO NOTHING
+          `, [
+            bobPostId,
+            emma,
+            comment1Id,
+            '[Staging demo] Absolutely! This is a game changer.',
+            replyTime1,
+            frank,
+            '[Staging demo] The release notes look super polished too!',
+            replyTime2
+          ]);
+        }
+
+        if (bobCommentRows.length > 1) {
+          const comment2Id = bobCommentRows[1].id;
+          const replyTime3 = new Date(feedBaseTime.getTime() - 1500000);
+
+          await pool.query(`
+            INSERT INTO feed_comments (post_id, user_id, parent_comment_id, content, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $5)
+            ON CONFLICT DO NOTHING
+          `, [
+            bobPostId,
+            alice,
+            comment2Id,
+            '[Staging demo] Same here! Definitely checking it out later today.',
+            replyTime3
+          ]);
+        }
       }
 
       // Seed peer data with realistic peer IDs and foreground hours

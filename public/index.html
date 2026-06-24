@@ -6403,7 +6403,7 @@
 
     function renderComment(comment, postId) {
       const commentEl = document.createElement('div');
-      commentEl.className = 'p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg group';
+      commentEl.className = 'space-y-2';
       commentEl.id = `comment-${comment.id}`;
 
       const timestamp = formatRelativeTime(comment.createdAt);
@@ -6413,26 +6413,42 @@
         ? `<img src="${escapeHtml(comment.avatarUrl)}" alt="${escapeHtml(comment.username)}" class="w-6 h-6 rounded-full object-cover flex-shrink-0 cursor-pointer hover:opacity-80 transition" onclick="showUserProfileModal(${comment.userId})" onerror="this.style.display='none'">`
         : `<div class="w-6 h-6 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0 cursor-pointer hover:opacity-80 transition" onclick="showUserProfileModal(${comment.userId})">${avatarInitial}</div>`;
 
-      commentEl.innerHTML = `
-        <div class="flex gap-2 justify-between items-start">
-          <div class="flex gap-2 flex-1">
-            ${avatarHtml}
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-2 mb-1">
-                <span class="text-sm font-medium text-zinc-900 dark:text-zinc-100">${escapeHtml(comment.username)}</span>
-                ${comment.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs">✓</span>' : ''}
-                <span class="text-xs text-zinc-500 dark:text-zinc-400">${timestamp}</span>
+      const replyCountHtml = comment.replyCount && comment.replyCount > 0 ? `<button onclick="toggleReplies(${comment.id}, ${postId})" class="text-zinc-600 hover:text-cyan-600 dark:text-zinc-400 dark:hover:text-cyan-400 transition cursor-pointer text-xs">${comment.replyCount} ${comment.replyCount === 1 ? 'reply' : 'replies'}</button>` : '';
+
+      const mainCommentHtml = `
+        <div class="p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg group">
+          <div class="flex gap-2 justify-between items-start">
+            <div class="flex gap-2 flex-1">
+              ${avatarHtml}
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="text-sm font-medium text-zinc-900 dark:text-zinc-100">${escapeHtml(comment.username)}</span>
+                  ${comment.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs">✓</span>' : ''}
+                  <span class="text-xs text-zinc-500 dark:text-zinc-400">${timestamp}</span>
+                </div>
+                <p class="text-sm text-zinc-700 dark:text-zinc-300">${escapeHtml(comment.content)}</p>
+                <div class="flex gap-3 mt-2 text-xs text-zinc-600 dark:text-zinc-400">
+                  <button onclick="expandReplyForm(${comment.id}, ${postId})" class="text-zinc-600 hover:text-cyan-600 dark:text-zinc-400 dark:hover:text-cyan-400 transition cursor-pointer opacity-0 group-hover:opacity-100 flex-shrink-0" title="Reply">↩️</button>
+                  ${replyCountHtml}
+                </div>
               </div>
-              <p class="text-sm text-zinc-700 dark:text-zinc-300">${escapeHtml(comment.content)}</p>
             </div>
+            ${isOwner ? `
+              <button onclick="deleteComment(${postId}, ${comment.id})" class="text-zinc-400 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition text-xs flex-shrink-0" title="Delete">
+                🗑️
+              </button>
+            ` : ''}
           </div>
-          ${isOwner ? `
-            <button onclick="deleteComment(${postId}, ${comment.id})" class="text-zinc-400 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition text-xs flex-shrink-0" title="Delete">
-              🗑️
-            </button>
-          ` : ''}
         </div>
       `;
+
+      commentEl.innerHTML = mainCommentHtml;
+
+      // Add replies container
+      const repliesContainer = document.createElement('div');
+      repliesContainer.id = `replies-${comment.id}`;
+      repliesContainer.className = 'hidden ml-6 space-y-2';
+      commentEl.appendChild(repliesContainer);
 
       return commentEl;
     }
@@ -6518,6 +6534,186 @@
       } catch (err) {
         console.error('Error deleting comment:', err);
         alert('Failed to delete comment');
+      }
+    }
+
+    const repliesCache = {};
+
+    async function toggleReplies(commentId, postId) {
+      const repliesContainer = document.getElementById(`replies-${commentId}`);
+      const isHidden = repliesContainer.classList.contains('hidden');
+
+      if (isHidden) {
+        if (!repliesCache[commentId]) {
+          await loadReplies(commentId, postId);
+        }
+        repliesContainer.classList.remove('hidden');
+      } else {
+        repliesContainer.classList.add('hidden');
+      }
+    }
+
+    async function loadReplies(commentId, postId) {
+      try {
+        const data = await apiCall(`/api/feed/posts/${postId}/comments/${commentId}/replies?limit=50&offset=0`);
+        if (!data || data.error) {
+          console.error('Failed to load replies:', data?.error);
+          return;
+        }
+
+        const repliesContainer = document.getElementById(`replies-${commentId}`);
+        repliesContainer.innerHTML = '';
+
+        const replies = data.replies || [];
+
+        // Display existing replies
+        replies.forEach(reply => {
+          const replyEl = renderReply(reply, postId, commentId);
+          repliesContainer.appendChild(replyEl);
+        });
+
+        // Add reply input if user is authenticated
+        if (currentUser) {
+          const inputEl = document.createElement('div');
+          inputEl.className = 'mt-2 pt-2 space-y-2';
+          inputEl.innerHTML = `
+            <textarea id="replyInput-${commentId}" placeholder="Write a reply..." class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-sm resize-none" rows="2"></textarea>
+            <button onclick="submitReply(${postId}, ${commentId})" class="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 text-white rounded text-sm">Reply</button>
+          `;
+          repliesContainer.appendChild(inputEl);
+        }
+
+        repliesCache[commentId] = { replies, total: data.total };
+      } catch (err) {
+        console.error('Error loading replies:', err);
+      }
+    }
+
+    function renderReply(reply, postId, parentCommentId) {
+      const replyEl = document.createElement('div');
+      replyEl.className = 'p-3 bg-zinc-100/50 dark:bg-zinc-700/30 rounded-lg group';
+      replyEl.id = `reply-${reply.id}`;
+
+      const timestamp = formatRelativeTime(reply.createdAt);
+      const isOwner = currentUser && currentUser.id === reply.userId;
+      const avatarInitial = reply.username ? reply.username.charAt(0).toUpperCase() : '?';
+      const avatarHtml = reply.avatarUrl
+        ? `<img src="${escapeHtml(reply.avatarUrl)}" alt="${escapeHtml(reply.username)}" class="w-5 h-5 rounded-full object-cover flex-shrink-0 cursor-pointer hover:opacity-80 transition" onclick="showUserProfileModal(${reply.userId})" onerror="this.style.display='none'">`
+        : `<div class="w-5 h-5 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0 cursor-pointer hover:opacity-80 transition" onclick="showUserProfileModal(${reply.userId})">${avatarInitial}</div>`;
+
+      replyEl.innerHTML = `
+        <div class="flex gap-2 justify-between items-start">
+          <div class="flex gap-2 flex-1">
+            ${avatarHtml}
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 mb-1">
+                <span class="text-sm font-medium text-zinc-900 dark:text-zinc-100">${escapeHtml(reply.username)}</span>
+                ${reply.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs">✓</span>' : ''}
+                <span class="text-xs text-zinc-500 dark:text-zinc-400">${timestamp}</span>
+              </div>
+              <p class="text-sm text-zinc-700 dark:text-zinc-300">${escapeHtml(reply.content)}</p>
+            </div>
+          </div>
+          ${isOwner ? `
+            <button onclick="deleteReply(${postId}, ${parentCommentId}, ${reply.id})" class="text-zinc-400 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition text-xs flex-shrink-0" title="Delete">
+              🗑️
+            </button>
+          ` : ''}
+        </div>
+      `;
+
+      return replyEl;
+    }
+
+    async function expandReplyForm(commentId, postId) {
+      const repliesContainer = document.getElementById(`replies-${commentId}`);
+
+      // If not loaded yet, load replies first
+      if (!repliesCache[commentId]) {
+        await loadReplies(commentId, postId);
+      }
+
+      // Show the replies container
+      repliesContainer.classList.remove('hidden');
+
+      // Focus on the reply input
+      setTimeout(() => {
+        const input = document.getElementById(`replyInput-${commentId}`);
+        if (input) input.focus();
+      }, 0);
+    }
+
+    async function submitReply(postId, commentId) {
+      const input = document.getElementById(`replyInput-${commentId}`);
+      const content = input.value.trim();
+
+      if (!content) {
+        alert('Reply cannot be empty');
+        return;
+      }
+
+      try {
+        const data = await apiCall(`/api/feed/posts/${postId}/comments/${commentId}/replies`, {
+          method: 'POST',
+          body: JSON.stringify({ content })
+        });
+
+        if (!data || data.error) {
+          alert('Failed to post reply: ' + (data?.error || 'Unknown error'));
+          return;
+        }
+
+        // Add new reply to DOM
+        const repliesContainer = document.getElementById(`replies-${commentId}`);
+        const replyEl = renderReply(data, postId, commentId);
+
+        // Insert before the input area
+        const inputArea = repliesContainer.querySelector('[id^="replyInput-"]')?.parentElement;
+        if (inputArea) {
+          repliesContainer.insertBefore(replyEl, inputArea);
+        } else {
+          repliesContainer.appendChild(replyEl);
+        }
+
+        // Clear input
+        input.value = '';
+
+        // Update cache
+        if (repliesCache[commentId]) {
+          repliesCache[commentId].total += 1;
+        }
+      } catch (err) {
+        console.error('Error posting reply:', err);
+        alert('Failed to post reply');
+      }
+    }
+
+    async function deleteReply(postId, commentId, replyId) {
+      if (!confirm('Delete this reply?')) return;
+
+      try {
+        const data = await apiCall(`/api/feed/posts/${postId}/comments/${replyId}`, {
+          method: 'DELETE'
+        });
+
+        if (!data || data.error) {
+          alert('Failed to delete reply');
+          return;
+        }
+
+        // Remove from DOM
+        const replyEl = document.getElementById(`reply-${replyId}`);
+        if (replyEl) {
+          replyEl.remove();
+        }
+
+        // Update cache
+        if (repliesCache[commentId]) {
+          repliesCache[commentId].total = Math.max(0, repliesCache[commentId].total - 1);
+        }
+      } catch (err) {
+        console.error('Error deleting reply:', err);
+        alert('Failed to delete reply');
       }
     }
 
