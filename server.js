@@ -1272,8 +1272,14 @@ app.get('/api/user/feed-posts', async (req, res) => {
     const total = parseInt(countResult[0].count);
     const hasMore = offset + limit < total;
 
-    res.json({
-      posts: posts.map(p => ({
+    const postsWithImages = await Promise.all(posts.map(async (p) => {
+      const { rows: images } = await pool.query(`
+        SELECT id, image_url, display_order FROM feed_post_images
+        WHERE post_id = $1
+        ORDER BY display_order ASC
+      `, [p.id]);
+
+      return {
         id: p.id,
         userId: p.user_id,
         username: p.username,
@@ -1284,8 +1290,17 @@ app.get('/api/user/feed-posts', async (req, res) => {
         updatedAt: p.updated_at,
         isEdited: p.updated_at && p.created_at && (new Date(p.updated_at) - new Date(p.created_at)) > 1000,
         likeCount: p.like_count || 0,
-        commentCount: p.comment_count || 0
-      })),
+        commentCount: p.comment_count || 0,
+        images: images.map(img => ({
+          id: img.id,
+          url: img.image_url,
+          displayOrder: img.display_order
+        }))
+      };
+    }));
+
+    res.json({
+      posts: postsWithImages,
       hasMore
     });
   } catch (err) {
@@ -3216,8 +3231,14 @@ app.get('/api/feed/posts', async (req, res) => {
     const total = parseInt(countResult[0].count);
     const hasMore = offset + limit < total;
 
-    res.json({
-      posts: posts.map(p => ({
+    const postsWithImages = await Promise.all(posts.map(async (p) => {
+      const { rows: images } = await pool.query(`
+        SELECT id, image_url, display_order FROM feed_post_images
+        WHERE post_id = $1
+        ORDER BY display_order ASC
+      `, [p.id]);
+
+      return {
         id: p.id,
         userId: p.user_id,
         username: p.username,
@@ -3229,8 +3250,17 @@ app.get('/api/feed/posts', async (req, res) => {
         isEdited: p.updated_at && p.created_at && (new Date(p.updated_at) - new Date(p.created_at)) > 1000,
         onChain: p.on_chain,
         likeCount: p.like_count || 0,
-        commentCount: p.comment_count || 0
-      })),
+        commentCount: p.comment_count || 0,
+        images: images.map(img => ({
+          id: img.id,
+          url: img.image_url,
+          displayOrder: img.display_order
+        }))
+      };
+    }));
+
+    res.json({
+      posts: postsWithImages,
       hasMore
     });
   } catch (err) {
@@ -3326,11 +3356,75 @@ app.post('/api/feed/posts', async (req, res) => {
       verified: !!user.verified_at,
       avatarUrl: user.avatar_url,
       content: post.content,
-      createdAt: post.created_at
+      createdAt: post.created_at,
+      imageIds: []
     });
   } catch (err) {
     console.error('Error creating feed post:', err);
     res.status(500).json({ error: 'Failed to create post' });
+  }
+});
+
+// POST /api/feed/posts/:postId/images - Upload images to a feed post
+app.post('/api/feed/posts/:postId/images', express.json({ limit: '10mb' }), async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const postId = parseInt(req.params.postId, 10);
+    if (isNaN(postId)) {
+      return res.status(400).json({ error: 'Invalid post ID' });
+    }
+
+    // Verify post exists and belongs to the user
+    const postRes = await pool.query(`SELECT user_id FROM feed_posts WHERE id = $1`, [postId]);
+    if (postRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+    if (postRes.rows[0].user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Not authorized to add images to this post' });
+    }
+
+    const { images } = req.body;
+    if (!images || !Array.isArray(images) || images.length === 0) {
+      return res.status(400).json({ error: 'No images provided' });
+    }
+
+    if (images.length > 4) {
+      return res.status(400).json({ error: 'Maximum 4 images per post' });
+    }
+
+    const imageIds = [];
+    const imageUrls = [];
+
+    for (let i = 0; i < images.length; i++) {
+      const img = images[i];
+      if (!img.data || typeof img.data !== 'string') {
+        return res.status(400).json({ error: `Image ${i + 1} missing data` });
+      }
+
+      if (!img.data.startsWith('data:image/')) {
+        return res.status(400).json({ error: `Image ${i + 1} has invalid format` });
+      }
+
+      const { rows: imgRows } = await pool.query(`
+        INSERT INTO feed_post_images (post_id, image_url, display_order)
+        VALUES ($1, $2, $3)
+        RETURNING id, image_url
+      `, [postId, img.data, i]);
+
+      imageIds.push(imgRows[0].id);
+      imageUrls.push(imgRows[0].image_url);
+    }
+
+    res.json({
+      imageIds,
+      imageUrls
+    });
+  } catch (err) {
+    console.error('Error uploading post images:', err);
+    res.status(500).json({ error: 'Failed to upload images' });
   }
 });
 
@@ -4036,6 +4130,21 @@ async function start() {
       ADD COLUMN IF NOT EXISTS on_chain BOOLEAN DEFAULT FALSE
     `);
 
+    // Create feed_post_images table (public - images attached to feed posts)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS feed_post_images (
+        id BIGSERIAL PRIMARY KEY,
+        post_id BIGINT NOT NULL REFERENCES feed_posts(id) ON DELETE CASCADE,
+        image_url TEXT NOT NULL,
+        display_order INT NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_feed_post_images_post_id
+        ON feed_post_images(post_id, display_order)
+    `);
+
     // Create peers table (public - peer foreground hours data)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS peers (
@@ -4353,6 +4462,40 @@ async function start() {
           VALUES ($1, $2, to_timestamp($3/1000.0))
           ON CONFLICT DO NOTHING
         `, [alice, JSON.stringify({ text: `[Staging] Demo feed post #${i+1}` }), postTimes[i]]);
+      }
+
+      // Seed feed posts with images for testing image upload feature
+      const mockImage1 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mP8z8DwHwMxxGAIwAAADkkBkMTjF4UAAAAASUVORK5CYII=';
+      const mockImage2 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mNkYPhfwcDAwMjIyMjIyAgAEq4DBaIjqKQAAAAASUVORK5CYII=';
+
+      // Create a post with one image
+      const { rows: imagePost1Rows } = await pool.query(`
+        INSERT INTO feed_posts (user_id, content, created_at)
+        VALUES ($1, $2, NOW() - INTERVAL '2 hours')
+        RETURNING id
+      `, [alice, JSON.stringify({ text: '[Staging] Beautiful sunset today! 🌅' })]);
+
+      if (imagePost1Rows.length > 0) {
+        await pool.query(`
+          INSERT INTO feed_post_images (post_id, image_url, display_order)
+          VALUES ($1, $2, 0)
+          ON CONFLICT DO NOTHING
+        `, [imagePost1Rows[0].id, mockImage1]);
+      }
+
+      // Create a post with two images
+      const { rows: imagePost2Rows } = await pool.query(`
+        INSERT INTO feed_posts (user_id, content, created_at)
+        VALUES ($1, $2, NOW() - INTERVAL '1 hour')
+        RETURNING id
+      `, [bob, JSON.stringify({ text: '[Staging] Check out these cool patterns!' })]);
+
+      if (imagePost2Rows.length > 0) {
+        await pool.query(`
+          INSERT INTO feed_post_images (post_id, image_url, display_order)
+          VALUES ($1, $2, 0), ($1, $3, 1)
+          ON CONFLICT DO NOTHING
+        `, [imagePost2Rows[0].id, mockImage1, mockImage2]);
       }
 
       // Create sample groups

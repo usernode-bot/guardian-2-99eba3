@@ -1442,6 +1442,11 @@
       <div class="p-4 relative">
         <textarea id="feedComposeInput" placeholder="What's happening?" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition duration-200 ease-out resize-none text-sm" rows="5"></textarea>
         <div id="mentionDropdown" class="hidden absolute left-4 right-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg z-10 overflow-hidden"></div>
+        <!-- Image Preview Container -->
+        <div id="feedComposeImagePreview" class="mt-3 hidden">
+          <div class="grid grid-cols-2 gap-2" id="feedComposeImageGrid"></div>
+          <div class="text-xs text-zinc-500 dark:text-zinc-400 mt-2"><span id="feedComposeImageCount">0</span>/4 images</div>
+        </div>
       </div>
       <!-- Modal Footer -->
       <div class="flex items-center gap-2 px-4 py-3 border-t border-zinc-200 dark:border-zinc-800">
@@ -6274,6 +6279,28 @@
         `;
       }
 
+      // Render images if present
+      if (post.images && post.images.length > 0) {
+        const imageCount = post.images.length;
+        let imageGallery = '<div class="mb-2 ';
+
+        if (imageCount === 1) {
+          imageGallery += 'flex">';
+          imageGallery += post.images.map((img, idx) => {
+            const encodedUrl = img.url.replace(/'/g, "\\'");
+            return `<img src="${escapeHtml(img.url)}" alt="Post image" class="w-full rounded cursor-pointer hover:opacity-90 transition" onclick="showLightbox('${encodedUrl}')" onerror="this.style.display='none'">`;
+          }).join('');
+        } else {
+          imageGallery += 'grid ' + (imageCount === 2 ? 'grid-cols-2' : 'grid-cols-2') + ' gap-1">';
+          imageGallery += post.images.map((img, idx) => {
+            const encodedUrl = img.url.replace(/'/g, "\\'");
+            return `<img src="${escapeHtml(img.url)}" alt="Post image ${idx + 1}" class="w-full h-24 object-cover rounded cursor-pointer hover:opacity-90 transition" onclick="showLightbox('${encodedUrl}')" onerror="this.style.display='none'">`;
+          }).join('');
+        }
+        imageGallery += '</div>';
+        content += imageGallery;
+      }
+
       const avatarInitial = post.username ? post.username.charAt(0).toUpperCase() : '?';
       const avatarHtml = post.avatarUrl
         ? `<img src="${escapeHtml(post.avatarUrl)}" alt="${escapeHtml(post.username)}" class="w-8 h-8 rounded-full object-cover flex-shrink-0 cursor-pointer hover:opacity-80 transition" onclick="event.stopPropagation(); showUserProfileModal(${post.userId})" onerror="this.style.display='none'">`
@@ -6320,8 +6347,120 @@
       return postEl;
     }
 
+    let feedComposeImages = [];
+
     function openAttachmentMenu() {
-      showToast('Image attachments coming soon (Phase 2)', 'info');
+      if (feedComposeImages.length >= 4) {
+        showToast('Maximum 4 images per post', 'error');
+        return;
+      }
+
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/jpeg,image/png,image/gif,image/webp';
+      input.multiple = true;
+      input.onchange = async (e) => {
+        const files = Array.from(e.target.files || []);
+        for (const file of files) {
+          if (feedComposeImages.length >= 4) break;
+          await addImageToCompose(file);
+        }
+      };
+      input.click();
+    }
+
+    async function addImageToCompose(file) {
+      // Validate file size (max 10MB)
+      if (file.size > 10 * 1024 * 1024) {
+        showToast('Image size must be less than 10MB', 'error');
+        return;
+      }
+
+      // Validate MIME type
+      if (!file.type.startsWith('image/')) {
+        showToast('Only image files are allowed', 'error');
+        return;
+      }
+
+      try {
+        // Resize and convert to data URI
+        const dataUri = await resizeImageToDataUri(file);
+        feedComposeImages.push(dataUri);
+        updateImagePreview();
+      } catch (err) {
+        console.error('Error processing image:', err);
+        showToast('Failed to process image', 'error');
+      }
+    }
+
+    async function resizeImageToDataUri(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const MAX_WIDTH = 800;
+            const MAX_HEIGHT = 600;
+            let w = img.width;
+            let h = img.height;
+
+            if (w > MAX_WIDTH || h > MAX_HEIGHT) {
+              if (w > h) {
+                h = Math.round(h * MAX_WIDTH / w);
+                w = MAX_WIDTH;
+              } else {
+                w = Math.round(w * MAX_HEIGHT / h);
+                h = MAX_HEIGHT;
+              }
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+
+            canvas.toBlob((blob) => {
+              const reader2 = new FileReader();
+              reader2.onload = (e2) => {
+                resolve(e2.target.result);
+              };
+              reader2.onerror = reject;
+              reader2.readAsDataURL(blob);
+            }, 'image/jpeg', 0.9);
+          };
+          img.onerror = reject;
+          img.src = e.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function updateImagePreview() {
+      const grid = document.getElementById('feedComposeImageGrid');
+      const previewContainer = document.getElementById('feedComposeImagePreview');
+      const countSpan = document.getElementById('feedComposeImageCount');
+
+      if (feedComposeImages.length === 0) {
+        previewContainer.classList.add('hidden');
+        grid.innerHTML = '';
+        return;
+      }
+
+      previewContainer.classList.remove('hidden');
+      countSpan.textContent = feedComposeImages.length;
+
+      grid.innerHTML = feedComposeImages.map((dataUri, idx) => `
+        <div class="relative group">
+          <img src="${dataUri}" alt="Image preview ${idx + 1}" class="w-full h-24 object-cover rounded cursor-pointer hover:opacity-80 transition">
+          <button onclick="removeComposeImage(${idx})" class="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition">×</button>
+        </div>
+      `).join('');
+    }
+
+    function removeComposeImage(idx) {
+      feedComposeImages.splice(idx, 1);
+      updateImagePreview();
     }
 
     let mentionDebounceTimer = null;
@@ -6457,6 +6596,8 @@
       setTimeout(() => {
         modal.classList.add('hidden');
         input.value = '';
+        feedComposeImages = [];
+        updateImagePreview();
       }, 300);
     }
 
@@ -6472,8 +6613,8 @@
         text = text.replace(urlMatch[0], '').trim();
       }
 
-      if (!text && !link) {
-        showToast('Please enter some text or a link', 'error');
+      if (!text && !link && feedComposeImages.length === 0) {
+        showToast('Please enter some text, a link, or add images', 'error');
         return;
       }
 
@@ -6491,6 +6632,26 @@
         if (!data || data.error) {
           showToast('Failed to post: ' + (data?.error || 'Unknown error'), 'error');
           return;
+        }
+
+        // Upload images if any
+        if (feedComposeImages.length > 0) {
+          const imagePayload = {
+            images: feedComposeImages.map((dataUri, idx) => ({
+              data: dataUri,
+              displayOrder: idx
+            }))
+          };
+
+          const imageData = await apiCall(`/api/feed/posts/${data.id}/images`, {
+            method: 'POST',
+            body: JSON.stringify(imagePayload)
+          });
+
+          if (!imageData || imageData.error) {
+            console.error('Warning: Images failed to upload, but post was created', imageData?.error);
+            showToast('Post published but image upload failed', 'warning');
+          }
         }
 
         composeInput.value = '';
