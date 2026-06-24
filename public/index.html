@@ -5833,7 +5833,7 @@
       }
 
       try {
-        // Resize and recompress via canvas before uploading
+        // Resize and recompress via canvas before uploading, with timeout to catch hangs on mobile
         const dataUri = await new Promise((resolve, reject) => {
           const img = new Image();
           const objectUrl = URL.createObjectURL(file);
@@ -5850,13 +5850,22 @@
             canvas.width = w;
             canvas.height = h;
             canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-            canvas.toBlob((blob) => {
-              if (!blob) { reject(new Error('Canvas export failed')); return; }
-              const reader = new FileReader();
-              reader.onload = (e) => resolve(e.target.result);
-              reader.onerror = () => reject(new Error('FileReader error'));
-              reader.readAsDataURL(blob);
-            }, 'image/jpeg', 0.8);
+
+            // Use Promise.race to timeout canvas.toBlob if it hangs on mobile
+            Promise.race([
+              new Promise((blobResolve, blobReject) => {
+                canvas.toBlob((blob) => {
+                  if (!blob) { blobReject(new Error('Canvas blob is null')); return; }
+                  const reader = new FileReader();
+                  reader.onload = (e) => blobResolve(e.target.result);
+                  reader.onerror = () => blobReject(new Error('FileReader error'));
+                  reader.readAsDataURL(blob);
+                }, 'image/jpeg', 0.8);
+              }),
+              new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Canvas processing timeout')), 10000)
+              )
+            ]).then(resolve, reject);
           };
           img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('Image load failed')); };
           img.src = objectUrl;
@@ -5879,17 +5888,41 @@
           return;
         }
 
-        const data = await response.json();
-        if (data.avatar_url) {
-          if (avatarImg) avatarImg.src = data.avatar_url;
-          currentUser.avatar_url = data.avatar_url;
+        // Validate response body: verify it's valid JSON and contains avatar_url
+        let data;
+        try {
+          data = await response.json();
+        } catch (parseErr) {
+          clearLoadingState();
+          showToast('Error uploading avatar: Invalid server response', 'error');
+          console.error('Failed to parse avatar response:', parseErr);
+          return;
         }
+
+        if (!data || !data.avatar_url) {
+          clearLoadingState();
+          showToast('Error uploading avatar: Server did not return image URL', 'error');
+          return;
+        }
+
+        // Update UI with new avatar
+        if (avatarImg) avatarImg.src = data.avatar_url;
+        currentUser.avatar_url = data.avatar_url;
         clearLoadingState();
         showToast('Avatar updated successfully', 'success');
       } catch (err) {
-        console.error('Error uploading avatar:', err);
         clearLoadingState();
-        showToast('Error uploading avatar', 'error');
+        // Provide specific error messages based on error type
+        if (err.message === 'Canvas processing timeout') {
+          showToast('Image processing took too long. Check your connection and try again.', 'error');
+        } else if (err.message.includes('Canvas') || err.message.includes('Image')) {
+          showToast('Error processing image: ' + err.message, 'error');
+        } else if (err.message === 'Network error') {
+          showToast('Network error uploading avatar', 'error');
+        } else {
+          showToast('Error uploading avatar: ' + (err.message || 'Unknown error'), 'error');
+        }
+        console.error('Avatar upload error:', err);
       }
     }
 
