@@ -3783,6 +3783,38 @@ function generateRandomMilestones() {
   };
 }
 
+// Helper function to check if 24 hours have passed since the last milestone post
+async function shouldCreateMilestonePost() {
+  try {
+    const { rows } = await pool.query(`
+      SELECT created_at FROM feed_posts
+      WHERE user_id = -1
+      ORDER BY created_at DESC
+      LIMIT 1
+    `);
+
+    if (rows.length === 0) {
+      // No previous milestone post, allow creation
+      return true;
+    }
+
+    const lastPostTime = new Date(rows[0].created_at);
+    const now = new Date();
+    const hoursSinceLastPost = (now - lastPostTime) / (1000 * 60 * 60);
+
+    if (hoursSinceLastPost >= 24) {
+      console.log(`[MILESTONE] 24+ hours since last post (${hoursSinceLastPost.toFixed(1)}h). Creating new post.`);
+      return true;
+    } else {
+      console.log(`[MILESTONE] Skipping post creation. Only ${hoursSinceLastPost.toFixed(1)}h since last post (need 24h cooldown)`);
+      return false;
+    }
+  } catch (err) {
+    console.error('[MILESTONE] Error checking cooldown:', err);
+    return false;
+  }
+}
+
 // Helper function to create a milestone post from randomized values
 async function createMilestonePost() {
   try {
@@ -5222,13 +5254,18 @@ async function start() {
       }
     }
 
-    // Start hourly milestone post generator (runs every hour)
-    // Create initial milestone post on startup
-    await createMilestonePost();
-
-    // Set interval to create a new milestone post every hour (3600000 ms)
-    setInterval(async () => {
+    // Start hourly milestone post generator (runs every hour with 24-hour cooldown)
+    // Create initial milestone post on startup if cooldown allows
+    if (await shouldCreateMilestonePost()) {
       await createMilestonePost();
+    }
+
+    // Set interval to check and create milestone post every hour (3600000 ms)
+    // Only creates if 24 hours have passed since the last post
+    setInterval(async () => {
+      if (await shouldCreateMilestonePost()) {
+        await createMilestonePost();
+      }
     }, 3600000);
 
     app.listen(port, () => console.log(`Listening on :${port}`));
