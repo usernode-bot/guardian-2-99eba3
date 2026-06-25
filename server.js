@@ -347,6 +347,44 @@ app.use(async (req, res, next) => {
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
+// Debug endpoint to verify GuardiAI user exists (public for troubleshooting)
+app.get('/api/debug/guardiAI', async (_req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT id, username, is_bot, usernode_pubkey, created_at, avatar_url
+      FROM users
+      WHERE id = 100 OR username = 'GuardiAI'
+      LIMIT 1
+    `);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: 'GuardiAI user not found',
+        message: 'User with ID 100 or username GuardiAI does not exist in the database'
+      });
+    }
+
+    const guardianUser = result.rows[0];
+    res.json({
+      status: 'ok',
+      user: {
+        id: guardianUser.id,
+        username: guardianUser.username,
+        is_bot: guardianUser.is_bot,
+        usernode_pubkey: guardianUser.usernode_pubkey,
+        created_at: guardianUser.created_at,
+        avatar_url: guardianUser.avatar_url
+      }
+    });
+  } catch (err) {
+    console.error('[Debug] Error checking GuardiAI user:', err);
+    res.status(500).json({
+      error: 'Database error',
+      message: err.message
+    });
+  }
+});
+
 app.get('/favicon.ico', (_req, res) => {
   res.status(204).send();
 });
@@ -4319,9 +4357,16 @@ async function start() {
     `);
 
     // Add is_bot column to users table (idempotent migration)
-    await pool.query(`
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_bot BOOLEAN DEFAULT FALSE
-    `);
+    try {
+      console.log('[Migration] Adding is_bot column to users table...');
+      await pool.query(`
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS is_bot BOOLEAN DEFAULT FALSE
+      `);
+      console.log('[Migration] ✅ is_bot column migration completed');
+    } catch (err) {
+      console.error('[Migration] ❌ ERROR adding is_bot column:', err.message);
+      throw err;
+    }
 
     // Create conversations table (marked private)
     await pool.query(`
@@ -5616,16 +5661,46 @@ async function start() {
     `, [-1, 'Usernode Network Updates', 'ut1-network-system']);
 
     // Create GuardiAI bot account in all environments
-    await pool.query(`
-      INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at, is_bot)
-      VALUES (100, 'GuardiAI', 'ut1-guardiAI-bot', NOW(), NOW(), true)
-      ON CONFLICT (id) DO UPDATE SET
-        username = EXCLUDED.username,
-        is_bot = EXCLUDED.is_bot
-    `);
+    try {
+      console.log('[GuardiAI Seed] Starting GuardiAI user account creation...');
+
+      const guardianResult = await pool.query(`
+        INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at, is_bot)
+        VALUES (100, 'GuardiAI', 'ut1-guardiAI-bot', NOW(), NOW(), true)
+        ON CONFLICT (id) DO UPDATE SET
+          username = EXCLUDED.username,
+          is_bot = EXCLUDED.is_bot
+      `);
+
+      console.log('[GuardiAI Seed] GuardiAI user insert/upsert completed', { rowCount: guardianResult.rowCount });
+
+      // Verify the user was created
+      const verifyResult = await pool.query(`
+        SELECT id, username, is_bot, usernode_pubkey, created_at
+        FROM users
+        WHERE id = 100
+      `);
+
+      if (verifyResult.rows.length > 0) {
+        const guardianUser = verifyResult.rows[0];
+        console.log('[GuardiAI Seed] ✅ GuardiAI user verified in database:', {
+          id: guardianUser.id,
+          username: guardianUser.username,
+          is_bot: guardianUser.is_bot,
+          usernode_pubkey: guardianUser.usernode_pubkey,
+          created_at: guardianUser.created_at
+        });
+      } else {
+        console.error('[GuardiAI Seed] ❌ ERROR: GuardiAI user NOT found in database after insert!');
+      }
+    } catch (err) {
+      console.error('[GuardiAI Seed] ❌ ERROR creating/upserting GuardiAI user:', err.message);
+      throw err;
+    }
 
     // Seed GuardiAI bot demo data in staging
     if (IS_STAGING) {
+      console.log('[GuardiAI Seed] Starting staging demo data seed...');
 
       // Seed a crypto-mention post and demo replies
       const cryptoPostRes = await pool.query(`
@@ -5637,6 +5712,7 @@ async function start() {
 
       if (cryptoPostRes.rows.length > 0) {
         const postId = cryptoPostRes.rows[0].id;
+        console.log('[GuardiAI Seed] Created staging crypto demo post:', { postId });
 
         // Seed a comment with crypto mention
         await pool.query(`
@@ -5646,17 +5722,24 @@ async function start() {
         `, [postId, 2, '@GuardiAI whats the price on BTC and ethereum right now?']);
 
         // Seed bot replies with sample crypto data
-        await pool.query(`
+        const btcReply = await pool.query(`
           INSERT INTO feed_comments (post_id, user_id, content, created_at)
           VALUES ($1, $2, $3, NOW() - INTERVAL '89 minutes')
           ON CONFLICT DO NOTHING
+          RETURNING id
         `, [postId, 100, 'BTC: $45230.00 📈 +3.2% (24h) | Strong momentum here!']);
 
-        await pool.query(`
+        const ethReply = await pool.query(`
           INSERT INTO feed_comments (post_id, user_id, content, created_at)
           VALUES ($1, $2, $3, NOW() - INTERVAL '88 minutes')
           ON CONFLICT DO NOTHING
+          RETURNING id
         `, [postId, 100, 'ETH: $2340.00 📉 -1.8% (24h) | Could be interesting!']);
+
+        console.log('[GuardiAI Seed] Created staging crypto demo replies:', {
+          btcReplyId: btcReply.rows[0]?.id,
+          ethReplyId: ethReply.rows[0]?.id
+        });
       }
 
       // Seed a friendly-reply post (no crypto mention)
@@ -5669,6 +5752,7 @@ async function start() {
 
       if (friendlyPostRes.rows.length > 0) {
         const postId = friendlyPostRes.rows[0].id;
+        console.log('[GuardiAI Seed] Created staging friendly demo post:', { postId });
 
         // Seed a comment with @GuardiAI mention but no crypto
         await pool.query(`
@@ -5678,12 +5762,19 @@ async function start() {
         `, [postId, 3, '@GuardiAI what do you think of this update?']);
 
         // Seed a friendly bot reply
-        await pool.query(`
+        const friendlyReply = await pool.query(`
           INSERT INTO feed_comments (post_id, user_id, content, created_at)
           VALUES ($1, $2, $3, NOW() - INTERVAL '49 minutes')
           ON CONFLICT DO NOTHING
+          RETURNING id
         `, [postId, 100, 'Yooo that\'s fire! 🔥 Love the energy! Can\'t wait to see what you build next.']);
+
+        console.log('[GuardiAI Seed] Created staging friendly demo reply:', {
+          friendlyReplyId: friendlyReply.rows[0]?.id
+        });
       }
+
+      console.log('[GuardiAI Seed] ✅ Staging demo data seed completed');
     }
 
     // Create reserved system user for Crypto Daily bot (all environments)
