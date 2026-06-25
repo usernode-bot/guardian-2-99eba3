@@ -6260,7 +6260,7 @@
       if (post.content.text) {
         if (post.username === 'Usernode Network Updates') {
           // Milestone posts: render metrics in monospace for proper alignment
-          content += `<pre class="bg-zinc-900 dark:bg-zinc-950 text-zinc-100 dark:text-zinc-200 p-3 rounded font-mono text-xs overflow-x-auto mb-2"><code>${renderMentions(post.content.text)}</code></pre>`;
+          content += `<pre class="bg-purple-900 dark:bg-purple-950 text-zinc-100 dark:text-zinc-200 p-3 rounded font-mono text-xs overflow-x-auto mb-2"><code>${renderMentions(post.content.text)}</code></pre>`;
         } else {
           // Regular posts: render with proportional font
           content += `<p class="text-zinc-900 dark:text-zinc-100 mb-2 text-sm" style="white-space: pre-wrap;">${renderMentions(post.content.text)}</p>`;
