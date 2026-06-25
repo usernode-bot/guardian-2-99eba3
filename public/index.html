@@ -6268,25 +6268,25 @@
       // Create card element
       const cardEl = document.createElement('div');
       cardEl.id = 'networkStatsCard';
-      cardEl.className = 'p-4 bg-white dark:bg-zinc-800/50 rounded-lg mb-3 border border-zinc-200 dark:border-zinc-700';
+      cardEl.className = 'p-6 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-lg mb-3 shadow-lg';
 
       const activeNodes = data.activeNodes || 0;
       const uptime = data.uptime || 0;
       const validators = data.validators || 0;
 
       cardEl.innerHTML = `
-        <div class="grid grid-cols-3 gap-4">
+        <div class="grid grid-cols-3 gap-6">
           <div class="text-center">
-            <div class="text-2xl font-bold text-cyan-600 dark:text-cyan-400">${activeNodes.toLocaleString()}</div>
-            <div class="text-xs font-medium text-zinc-600 dark:text-zinc-400 mt-1">Active Nodes</div>
+            <div class="text-4xl font-bold text-white">${activeNodes.toLocaleString()}</div>
+            <div class="text-sm font-semibold text-white/90 mt-2">Active Nodes</div>
           </div>
           <div class="text-center">
-            <div class="text-2xl font-bold text-cyan-600 dark:text-cyan-400">${uptime}%</div>
-            <div class="text-xs font-medium text-zinc-600 dark:text-zinc-400 mt-1">Network Uptime</div>
+            <div class="text-4xl font-bold text-white">${uptime}%</div>
+            <div class="text-sm font-semibold text-white/90 mt-2">Network Uptime</div>
           </div>
           <div class="text-center">
-            <div class="text-2xl font-bold text-cyan-600 dark:text-cyan-400">${validators}</div>
-            <div class="text-xs font-medium text-zinc-600 dark:text-zinc-400 mt-1">Validators</div>
+            <div class="text-4xl font-bold text-white">${validators}</div>
+            <div class="text-sm font-semibold text-white/90 mt-2">Validators</div>
           </div>
         </div>
       `;
