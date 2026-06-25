@@ -557,14 +557,13 @@ app.get('/api/conversations', async (req, res) => {
         : '';
       const isArchived = conv.archived_by && conv.archived_by.includes(userId);
       const isMuted = conv.muted_by && conv.muted_by.includes(userId);
-      const isSavedContact = !!conv.contact_id;
       const myStatus = conv.participant_a_id === userId ? conv.status_a : conv.status_b;
       const isIgnored = myStatus === 'ignored';
 
       // Skip conversations the user has chosen to ignore — treat as hidden
       if (isIgnored) continue;
 
-      const isPending = !isArchived && !isSavedContact;
+      const isPending = !isArchived && myStatus === 'pending';
 
       const convData = {
         id: conv.id,
@@ -583,9 +582,9 @@ app.get('/api/conversations', async (req, res) => {
 
       if (isArchived) {
         archived.push(convData);
-      } else if (isSavedContact) {
+      } else if (myStatus === 'accepted') {
         active.push(convData);
-      } else {
+      } else if (isPending) {
         pending.push(convData);
       }
     }
@@ -1412,12 +1411,30 @@ app.post('/api/conversations/:convId/accept', async (req, res) => {
       WHERE id = $1
     `, [convId]);
 
-    // Auto-save the other person as a contact so the conversation moves to active
+    // Fetch the other user's details for nickname
+    const otherUserRes = await pool.query(`
+      SELECT username FROM users WHERE id = $1
+    `, [otherUserId]);
+    const otherUsername = otherUserRes.rows[0]?.username || null;
+
+    const currentUserRes = await pool.query(`
+      SELECT username FROM users WHERE id = $1
+    `, [userId]);
+    const currentUsername = currentUserRes.rows[0]?.username || null;
+
+    // Auto-save the other person as a contact with their username as nickname
     await pool.query(`
-      INSERT INTO user_contacts (user_id, contact_user_id, created_at)
-      VALUES ($1, $2, NOW())
+      INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
+      VALUES ($1, $2, $3, NOW())
       ON CONFLICT (user_id, contact_user_id) DO NOTHING
-    `, [userId, otherUserId]);
+    `, [userId, otherUserId, otherUsername]);
+
+    // Also create reciprocal contact: the other user adds this user as a contact
+    await pool.query(`
+      INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
+      VALUES ($1, $2, $3, NOW())
+      ON CONFLICT (user_id, contact_user_id) DO NOTHING
+    `, [otherUserId, userId, currentUsername]);
 
     res.json({ ok: true });
   } catch (err) {
@@ -4456,6 +4473,57 @@ async function start() {
         ON CONFLICT DO NOTHING
       `, [convDavidBobId, david]);
 
+      // Seed pending contact requests for alice from charlie and david
+      // Charlie → Alice: pending incoming message
+      const [charlieAliceA, charlieAliceB] = [alice, charlie].sort((x, y) => x - y);
+      const { rows: convCharlieAliceRows } = await pool.query(`
+        SELECT id FROM conversations WHERE participant_a_id = $1 AND participant_b_id = $2
+      `, [charlieAliceA, charlieAliceB]);
+
+      let convCharlieAliceId;
+      if (convCharlieAliceRows.length === 0) {
+        const result = await pool.query(`
+          INSERT INTO conversations (participant_a_id, participant_b_id, status_a, status_b, created_at, updated_at)
+          VALUES ($1, $2, 'accepted', 'pending', NOW(), NOW())
+          RETURNING id
+        `, [charlieAliceA, charlieAliceB]);
+        convCharlieAliceId = result.rows[0].id;
+      } else {
+        convCharlieAliceId = convCharlieAliceRows[0].id;
+      }
+
+      // Add a test message from Charlie to Alice
+      await pool.query(`
+        INSERT INTO messages (conversation_id, sender_id, type, content, created_at)
+        VALUES ($1, $2, 'text', '{"text": "[Staging] Hi Alice! Just wanted to reach out about a project."}', NOW() - INTERVAL '2 hours')
+        ON CONFLICT DO NOTHING
+      `, [convCharlieAliceId, charlie]);
+
+      // David → Alice: pending incoming message
+      const [davidAliceA, davidAliceB] = [alice, david].sort((x, y) => x - y);
+      const { rows: convDavidAliceRows } = await pool.query(`
+        SELECT id FROM conversations WHERE participant_a_id = $1 AND participant_b_id = $2
+      `, [davidAliceA, davidAliceB]);
+
+      let convDavidAliceId;
+      if (convDavidAliceRows.length === 0) {
+        const result = await pool.query(`
+          INSERT INTO conversations (participant_a_id, participant_b_id, status_a, status_b, created_at, updated_at)
+          VALUES ($1, $2, 'accepted', 'pending', NOW(), NOW())
+          RETURNING id
+        `, [davidAliceA, davidAliceB]);
+        convDavidAliceId = result.rows[0].id;
+      } else {
+        convDavidAliceId = convDavidAliceRows[0].id;
+      }
+
+      // Add a test message from David to Alice
+      await pool.query(`
+        INSERT INTO messages (conversation_id, sender_id, type, content, created_at)
+        VALUES ($1, $2, 'text', '{"text": "[Staging] Hey Alice, interested in collaborating on the new initiative?"}', NOW() - INTERVAL '1 hour')
+        ON CONFLICT DO NOTHING
+      `, [convDavidAliceId, david]);
+
       // Seed archived alice-charlie conversation (archived by alice) for testing archive/unarchive UI
       const { rows: convAliceCharlieRows } = await pool.query(`
         SELECT id FROM conversations
@@ -4504,19 +4572,12 @@ async function start() {
         ON CONFLICT (user_id, contact_user_id) DO NOTHING
       `, [bob, alice]);
 
-      // Alice also has Charlie as a contact for testing wallet address search with saved contacts
+      // Alice has Emma as an additional contact (Charlie and David are pending requests, not saved contacts)
       await pool.query(`
         INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
         VALUES ($1, $2, NULL, NOW())
         ON CONFLICT (user_id, contact_user_id) DO NOTHING
-      `, [alice, charlie]);
-
-      // Alice has David and Emma as additional contacts
-      await pool.query(`
-        INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
-        VALUES ($1, $2, NULL, NOW()), ($1, $3, NULL, NOW())
-        ON CONFLICT (user_id, contact_user_id) DO NOTHING
-      `, [alice, david, emma]);
+      `, [alice, emma]);
 
       // Seed a clearly-labelled test post for edit/delete feature testing
       const { rows: editTestRows } = await pool.query(`

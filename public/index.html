@@ -898,6 +898,19 @@
             <input id="contactsSearchInput" type="text" placeholder="Search by wallet address" oninput="handleContactSearch(event)" class="w-full px-3 py-2 bg-white dark:bg-zinc-700 border border-zinc-300 dark:border-zinc-600 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition text-sm">
           </div>
 
+          <!-- Pending Requests Box -->
+          <div id="pendingRequestsSection" class="m-4 p-4 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg flex-shrink-0 hidden">
+            <div onclick="togglePendingRequestsSection()" class="flex items-center justify-between cursor-pointer select-none">
+              <h3 class="text-xs font-semibold text-zinc-600 dark:text-zinc-400 uppercase tracking-wide">
+                Pending Requests <span id="pendingRequestsCount" class="text-sm text-zinc-700 dark:text-zinc-300 font-normal">(0)</span>
+              </h3>
+              <span id="pendingRequestsArrow" class="text-zinc-500">▼</span>
+            </div>
+            <div id="pendingRequestsList" class="space-y-2 mt-3">
+              <!-- Filled by renderPendingRequestsSection -->
+            </div>
+          </div>
+
           <!-- Your Contacts Box -->
           <div id="yourContactsSection" class="m-4 p-4 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg flex-shrink-0">
             <h3 class="text-xs font-semibold text-zinc-600 dark:text-zinc-400 uppercase tracking-wide mb-3">Your Contacts</h3>
@@ -4652,6 +4665,11 @@
       // Always render the "Your Contacts" submenu section
       renderYourContactsSection(allContacts);
 
+      // Load conversations to extract pending requests
+      const convData = await apiCall('/api/conversations');
+      const pendingConversations = convData && convData.conversations ? convData.conversations.pending || [] : [];
+      renderPendingRequestsSection(pendingConversations);
+
       // Render the main list (used for search results)
       const list = document.getElementById('contactsList');
       if (!allContacts || allContacts.length === 0) {
@@ -4713,6 +4731,83 @@
           </div>
         </div>
       `).join('');
+    }
+
+    function renderPendingRequestsSection(conversations) {
+      const pendingList = document.getElementById('pendingRequestsList');
+      const pendingSection = document.getElementById('pendingRequestsSection');
+      const pendingCount = document.getElementById('pendingRequestsCount');
+
+      if (!conversations || conversations.length === 0) {
+        pendingList.innerHTML = '';
+        pendingCount.textContent = '(0)';
+        pendingSection.classList.add('hidden');
+        return;
+      }
+
+      pendingCount.textContent = `(${conversations.length})`;
+      pendingSection.classList.remove('hidden');
+
+      pendingList.innerHTML = conversations.map(conv => `
+        <div class="p-3 bg-white dark:bg-zinc-700 rounded-lg flex justify-between items-start gap-2">
+          <div class="flex-1 min-w-0">
+            <div class="font-medium truncate text-sm text-zinc-900 dark:text-zinc-100">
+              ${conv.username} ${conv.verified ? '<span class="text-xs text-zinc-600 dark:text-zinc-500">✓</span>' : ''}
+            </div>
+            <div class="text-xs text-zinc-500 dark:text-zinc-400 truncate">${conv.usernode_pubkey || 'No wallet'}</div>
+          </div>
+          <div class="flex gap-1 flex-shrink-0">
+            <button onclick="acceptPendingContactRequest(${conv.id})" class="px-2 py-1 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-xs font-medium transition">✓</button>
+            <button onclick="declinePendingContactRequest(${conv.id})" class="px-2 py-1 bg-red-200 hover:bg-red-300 dark:bg-red-900 dark:hover:bg-red-800 text-red-700 dark:text-red-200 rounded text-xs font-medium transition">✗</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function togglePendingRequestsSection() {
+      const section = document.getElementById('pendingRequestsSection');
+      const list = document.getElementById('pendingRequestsList');
+      const arrow = document.getElementById('pendingRequestsArrow');
+
+      const isHidden = list.classList.contains('hidden');
+      if (isHidden) {
+        list.classList.remove('hidden');
+        arrow.textContent = '▲';
+        localStorage.setItem(`guardian_pending_requests_open_${currentUser.id}`, 'true');
+      } else {
+        list.classList.add('hidden');
+        arrow.textContent = '▼';
+        localStorage.removeItem(`guardian_pending_requests_open_${currentUser.id}`);
+      }
+    }
+
+    async function acceptPendingContactRequest(convId) {
+      const data = await apiCall(`/api/conversations/${convId}/accept`, {
+        method: 'POST',
+        body: JSON.stringify({})
+      });
+
+      if (data && data.ok) {
+        showToast('Request accepted', 'success');
+        await loadContactsList();
+        await loadConversations();
+      } else {
+        alert('Failed to accept: ' + (data?.error || 'Unknown error'));
+      }
+    }
+
+    async function declinePendingContactRequest(convId) {
+      const data = await apiCall(`/api/conversations/${convId}/ignore`, {
+        method: 'POST',
+        body: JSON.stringify({})
+      });
+
+      if (data && data.ok) {
+        showToast('Request declined', 'success');
+        await loadContactsList();
+      } else {
+        alert('Failed to decline: ' + (data?.error || 'Unknown error'));
+      }
     }
 
     async function handleContactSearch(event) {
@@ -5164,6 +5259,19 @@
       if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
       document.getElementById('contactsSearchInput').value = '';
       loadContactsList();
+      // Restore pending requests section expand/collapse state
+      if (currentUser && localStorage.getItem(`guardian_pending_requests_open_${currentUser.id}`) === 'true') {
+        setTimeout(() => {
+          const list = document.getElementById('pendingRequestsList');
+          const arrow = document.getElementById('pendingRequestsArrow');
+          if (list && !list.classList.contains('hidden')) {
+            // Already visible, do nothing
+          } else if (list) {
+            list.classList.remove('hidden');
+            arrow.textContent = '▲';
+          }
+        }, 100);
+      }
     }
 
     function showFeedView() {
