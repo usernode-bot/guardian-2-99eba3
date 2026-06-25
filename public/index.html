@@ -2941,7 +2941,7 @@
       const { active = [], archived = [] } = data.groups;
 
       if (active.length === 0 && archived.length === 0) {
-        list.innerHTML = '<div class="sticky top-0 z-10 bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 p-4">' + createGroupButtonHtml + '</div><div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No groups yet.</div>';
+        list.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No groups yet.</div>';
         return;
       }
 
@@ -2971,7 +2971,9 @@
         }).join('');
       };
 
-      let html = '';
+      const createButtonHtml = '<div class="sticky top-0 z-10 bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 p-4">' + createGroupButtonHtml + '</div>';
+
+      let html = createButtonHtml;
 
       // Render active groups
       if (active.length > 0) {
