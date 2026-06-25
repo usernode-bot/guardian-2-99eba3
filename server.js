@@ -3844,9 +3844,8 @@ async function fetchCryptoDailyData() {
     const cryptoData = coins.map((coin, index) => ({
       rank: index + 1,
       name: coin.name,
-      symbol: coin.symbol.toUpperCase(),
-      market_cap: coin.market_cap ? `$${coin.market_cap.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : 'N/A',
-      price_change_24h: coin.price_change_percentage_24h ? `${coin.price_change_percentage_24h.toFixed(2)}%` : 'N/A'
+      current_price: coin.current_price || 0,
+      price_change_24h: coin.price_change_percentage_24h || 0
     }));
 
     await pool.query(`
@@ -3871,26 +3870,21 @@ async function createCryptoDailyPost() {
       return;
     }
 
-    // Format as monospace table
-    const tableHeader = 'Rank  Coin                    Symbol  Market Cap              24h Change\n' +
-                        '====  =====================  ======  ======================  ===========';
-    const tableRows = cryptoData.map(coin => {
-      const rankStr = String(coin.rank).padEnd(4);
-      const nameStr = coin.name.padEnd(23);
-      const symbolStr = coin.symbol.padEnd(6);
-      const marketCapStr = coin.market_cap.padEnd(22);
-      const changeStr = coin.price_change_24h;
-      return `${rankStr}  ${nameStr}  ${symbolStr}  ${marketCapStr}  ${changeStr}`;
+    // Format as simple numbered list with rank, name, price, and direction
+    const listRows = cryptoData.map(coin => {
+      const direction = coin.price_change_24h >= 0 ? '↑' : '↓';
+      const price = Math.round(coin.current_price);
+      return `${coin.rank}. ${coin.name} ${price} ${direction}`;
     }).join('\n');
 
     const timestamp = new Date().toISOString();
-    const tableText = `${tableHeader}\n${tableRows}\n\nLast updated: ${timestamp}`;
+    const listText = `${listRows}\n\nLast updated: ${timestamp}`;
 
     const { rows } = await pool.query(`
       INSERT INTO feed_posts (user_id, content, created_at)
       VALUES ($1, $2, NOW())
       RETURNING id, created_at
-    `, [-2, JSON.stringify({ type: 'text', text: tableText })]);
+    `, [-2, JSON.stringify({ type: 'text', text: listText })]);
 
     console.log(`[CRYPTO] Created Crypto Daily post #${rows[0].id} at ${timestamp}`);
     return rows[0];
