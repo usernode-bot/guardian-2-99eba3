@@ -3248,7 +3248,7 @@ async function fetchLinkPreview(url) {
   }
 }
 
-// GET /api/feed/posts - Fetch paginated feed posts
+// GET /api/feed/posts - Fetch paginated feed posts with milestone posts
 app.get('/api/feed/posts', async (req, res) => {
   try {
     if (!req.user) {
@@ -3258,6 +3258,7 @@ app.get('/api/feed/posts', async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
     const offset = parseInt(req.query.offset || 0);
 
+    // Fetch all posts (both user posts and milestone posts from user_id = -1)
     const { rows: posts } = await pool.query(`
       SELECT
         fp.id,
@@ -3277,6 +3278,22 @@ app.get('/api/feed/posts', async (req, res) => {
       LIMIT $1 OFFSET $2
     `, [limit, offset]);
 
+    const resultPosts = posts.map(post => ({
+      id: post.id,
+      userId: post.user_id,
+      username: post.username,
+      verified: !!post.verified_at,
+      avatarUrl: post.avatar_url,
+      content: post.content,
+      createdAt: post.created_at,
+      updatedAt: post.updated_at,
+      isEdited: post.updated_at && post.created_at && (new Date(post.updated_at) - new Date(post.created_at)) > 1000,
+      onChain: post.on_chain,
+      likeCount: post.like_count || 0,
+      commentCount: post.comment_count || 0,
+      isMilestone: post.user_id === -1
+    }));
+
     const { rows: countResult } = await pool.query(`
       SELECT COUNT(*) as count FROM feed_posts
     `);
@@ -3285,20 +3302,7 @@ app.get('/api/feed/posts', async (req, res) => {
     const hasMore = offset + limit < total;
 
     res.json({
-      posts: posts.map(p => ({
-        id: p.id,
-        userId: p.user_id,
-        username: p.username,
-        verified: !!p.verified_at,
-        avatarUrl: p.avatar_url,
-        content: p.content,
-        createdAt: p.created_at,
-        updatedAt: p.updated_at,
-        isEdited: p.updated_at && p.created_at && (new Date(p.updated_at) - new Date(p.created_at)) > 1000,
-        onChain: p.on_chain,
-        likeCount: p.like_count || 0,
-        commentCount: p.comment_count || 0
-      })),
+      posts: resultPosts,
       hasMore
     });
   } catch (err) {
@@ -3745,6 +3749,103 @@ app.put('/api/feed/posts/:postId', async (req, res) => {
   }
 });
 
+// Helper function to generate randomized milestone values
+function generateRandomMilestones() {
+  const activeNodes = Math.floor(Math.random() * 31) + 30; // 30-60
+  const networkThroughput = (Math.random() * 2 + 1.5).toFixed(1); // 1.5-3.5
+  const transactions24h = Math.floor(Math.random() * 200000) + 100000; // 100k-300k
+  const avgLatency = Math.floor(Math.random() * 101) + 80; // 80-180ms
+
+  return {
+    activeNodes: activeNodes.toString(),
+    networkThroughput: networkThroughput.toString(),
+    transactions24h: transactions24h.toLocaleString(),
+    avgLatency: avgLatency.toString()
+  };
+}
+
+// Helper function to create a milestone post from randomized values
+async function createMilestonePost() {
+  try {
+    const randomValues = generateRandomMilestones();
+
+    // Format metrics with right-aligned colons at column ~30
+    const metrics = [
+      { label: 'Active Nodes', value: randomValues.activeNodes, unit: 'nodes' },
+      { label: 'Network Throughput', value: randomValues.networkThroughput, unit: 'Gbps' },
+      { label: 'Transactions (24h)', value: randomValues.transactions24h, unit: 'tx' },
+      { label: 'Avg Latency', value: randomValues.avgLatency, unit: 'ms' }
+    ];
+
+    const metricsText = metrics.map(m => {
+      const paddingSize = Math.max(0, 30 - m.label.length - 4); // -4 for bold markers
+      const padding = ' '.repeat(paddingSize);
+      return `**${m.label}${padding}:**  ${m.value} ${m.unit}`;
+    }).join('\n');
+
+    const { rows } = await pool.query(`
+      INSERT INTO feed_posts (user_id, content, created_at)
+      VALUES ($1, $2, NOW())
+      RETURNING id, created_at
+    `, [-1, JSON.stringify({ type: 'text', text: metricsText })]);
+
+    console.log(`[MILESTONE] Created hourly milestone post #${rows[0].id} at ${new Date().toISOString()}`);
+    return rows[0];
+  } catch (err) {
+    console.error('[MILESTONE] Error creating milestone post:', err);
+  }
+}
+
+// POST /api/feed/milestones/refresh - Refresh network milestone data on-demand
+app.post('/api/feed/milestones/refresh', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    // Create a new milestone post with random values
+    const newPost = await createMilestonePost();
+
+    // Update network_milestones last_refreshed_at (for backwards compatibility)
+    await pool.query(`
+      UPDATE network_milestones
+      SET last_refreshed_at = NOW(), updated_at = NOW()
+    `);
+
+    // Return the newly created milestone post
+    const { rows: milestones } = await pool.query(`
+      SELECT id, key, label, value, unit, category, last_refreshed_at, updated_at
+      FROM network_milestones
+      ORDER BY last_refreshed_at DESC
+    `);
+
+    const milestonePosts = milestones.map(m => ({
+      id: 'milestone_' + m.key,
+      userId: -1,
+      username: 'Usernode Network Updates',
+      verified: true,
+      avatarUrl: null,
+      content: { type: 'milestone', text: m.label, metrics: { key: m.key, value: m.value, unit: m.unit } },
+      createdAt: m.last_refreshed_at,
+      updatedAt: m.updated_at,
+      isEdited: false,
+      onChain: false,
+      likeCount: 0,
+      commentCount: 0,
+      isMilestone: true
+    }));
+
+    res.json({
+      milestones: milestonePosts,
+      newPostId: newPost?.id,
+      refreshedAt: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('Error refreshing milestones:', err);
+    res.status(500).json({ error: 'Failed to refresh milestones' });
+  }
+});
+
 // Simple proxy for explorer API to avoid CORS issues
 app.use('/explorer-api', (req, res) => {
   // Forward requests to testnet explorer
@@ -4116,6 +4217,25 @@ async function start() {
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_peers_peer_id
         ON peers(peer_id)
+    `);
+
+    // Create network_milestones table (public - Usernode network statistics)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS network_milestones (
+        id SERIAL PRIMARY KEY,
+        key VARCHAR(50) UNIQUE NOT NULL,
+        label VARCHAR(255) NOT NULL,
+        value TEXT NOT NULL,
+        unit VARCHAR(50),
+        category VARCHAR(50),
+        last_refreshed_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_network_milestones_key
+        ON network_milestones(key)
     `);
 
     // Mark tables as private
@@ -4893,7 +5013,69 @@ async function start() {
         VALUES ($1, $2, NOW()), ($3, $2, NOW())
         ON CONFLICT (user_id, group_id) DO NOTHING
       `, [alice, testGroupId, david]);
+
+      // Seed network milestone posts for staging
+      const milestones = [
+        { key: 'active_nodes', label: 'Active Nodes', value: '42', unit: 'nodes', category: 'network' },
+        { key: 'network_throughput', label: 'Network Throughput', value: '2.5', unit: 'Gbps', category: 'network' },
+        { key: 'transactions_24h', label: 'Transactions (24h)', value: '187,432', unit: 'tx', category: 'activity' },
+        { key: 'avg_latency', label: 'Avg Latency', value: '125', unit: 'ms', category: 'performance' }
+      ];
+
+      for (const m of milestones) {
+        await pool.query(`
+          INSERT INTO network_milestones (key, label, value, unit, category, last_refreshed_at)
+          VALUES ($1, $2, $3, $4, $5, NOW())
+          ON CONFLICT (key) DO UPDATE SET
+            label = EXCLUDED.label,
+            value = EXCLUDED.value,
+            unit = EXCLUDED.unit,
+            category = EXCLUDED.category,
+            updated_at = NOW()
+        `, [m.key, m.label, m.value, m.unit, m.category]);
+      }
     }
+
+    // Create reserved system user for network milestones (all environments)
+    await pool.query(`
+      INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at)
+      VALUES ($1, $2, $3, NOW(), NOW())
+      ON CONFLICT (id) DO UPDATE SET
+        username = EXCLUDED.username,
+        usernode_pubkey = EXCLUDED.usernode_pubkey
+    `, [-1, 'Usernode Network Updates', 'ut1-network-system']);
+
+    // Seed network milestones in production (hardcoded values for now)
+    if (!IS_STAGING) {
+      const milestones = [
+        { key: 'active_nodes', label: 'Active Nodes', value: '42', unit: 'nodes', category: 'network' },
+        { key: 'network_throughput', label: 'Network Throughput', value: '2.5', unit: 'Gbps', category: 'network' },
+        { key: 'transactions_24h', label: 'Transactions (24h)', value: '187,432', unit: 'tx', category: 'activity' },
+        { key: 'avg_latency', label: 'Avg Latency', value: '125', unit: 'ms', category: 'performance' }
+      ];
+
+      for (const m of milestones) {
+        await pool.query(`
+          INSERT INTO network_milestones (key, label, value, unit, category, last_refreshed_at)
+          VALUES ($1, $2, $3, $4, $5, NOW())
+          ON CONFLICT (key) DO UPDATE SET
+            label = EXCLUDED.label,
+            value = EXCLUDED.value,
+            unit = EXCLUDED.unit,
+            category = EXCLUDED.category,
+            updated_at = NOW()
+        `, [m.key, m.label, m.value, m.unit, m.category]);
+      }
+    }
+
+    // Start hourly milestone post generator (runs every hour)
+    // Create initial milestone post on startup
+    await createMilestonePost();
+
+    // Set interval to create a new milestone post every hour (3600000 ms)
+    setInterval(async () => {
+      await createMilestonePost();
+    }, 3600000);
 
     app.listen(port, () => console.log(`Listening on :${port}`));
   } catch (err) {
