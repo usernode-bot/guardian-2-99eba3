@@ -3978,6 +3978,38 @@ async function fetchCryptoDailyData() {
   }
 }
 
+// Helper function to check if 24 hours have passed since the last Crypto Daily post
+async function shouldCreateCryptoDailyPost() {
+  try {
+    const { rows } = await pool.query(`
+      SELECT created_at FROM feed_posts
+      WHERE user_id = -2
+      ORDER BY created_at DESC
+      LIMIT 1
+    `);
+
+    if (rows.length === 0) {
+      // No previous Crypto Daily post, allow creation
+      return true;
+    }
+
+    const lastPostTime = new Date(rows[0].created_at);
+    const now = new Date();
+    const hoursSinceLastPost = (now - lastPostTime) / (1000 * 60 * 60);
+
+    if (hoursSinceLastPost >= 24) {
+      console.log(`[CRYPTO] 24+ hours since last post (${hoursSinceLastPost.toFixed(1)}h). Creating new post.`);
+      return true;
+    } else {
+      console.log(`[CRYPTO] Skipping post creation. Only ${hoursSinceLastPost.toFixed(1)}h since last post (need 24h cooldown)`);
+      return false;
+    }
+  } catch (err) {
+    console.error('[CRYPTO] Error checking cooldown:', err);
+    return false;
+  }
+}
+
 // Helper function to create a Crypto Daily post
 async function createCryptoDailyPost() {
   try {
@@ -3985,7 +4017,7 @@ async function createCryptoDailyPost() {
 
     if (!cryptoData || cryptoData.length === 0) {
       console.log('[CRYPTO] No data available, skipping post creation');
-      return;
+      return { created: false, reason: 'No crypto data available' };
     }
 
     // Format as simple numbered list with rank, name, price, and direction
@@ -4005,9 +4037,10 @@ async function createCryptoDailyPost() {
     `, [-2, JSON.stringify({ type: 'text', text: listText })]);
 
     console.log(`[CRYPTO] Created Crypto Daily post #${rows[0].id} at ${timestamp}`);
-    return rows[0];
+    return { created: true, postId: rows[0].id, createdAt: rows[0].created_at };
   } catch (err) {
     console.error('[CRYPTO] Error creating crypto daily post:', err);
+    return { created: false, reason: 'Error creating post' };
   }
 }
 
@@ -5496,12 +5529,17 @@ async function start() {
     }, 3600000);
 
     // Start Crypto Daily bot (runs every 2 hours)
-    // Create initial post on startup
-    await createCryptoDailyPost();
+    // Create initial post on startup if cooldown check passes
+    if (await shouldCreateCryptoDailyPost()) {
+      await createCryptoDailyPost();
+    }
 
     // Set interval to create a new Crypto Daily post every 2 hours (7200000 ms)
+    // Conditionally create posts only when cooldown criteria are met
     setInterval(async () => {
-      await createCryptoDailyPost();
+      if (await shouldCreateCryptoDailyPost()) {
+        await createCryptoDailyPost();
+      }
     }, 7200000);
 
     app.listen(port, () => console.log(`Listening on :${port}`));
