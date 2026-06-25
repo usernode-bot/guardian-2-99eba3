@@ -353,7 +353,7 @@ app.get('/api/debug/guardiAI', async (_req, res) => {
     const result = await pool.query(`
       SELECT id, username, is_bot, usernode_pubkey, created_at, avatar_url
       FROM users
-      WHERE id = 100 OR username = 'GuardiAI'
+      WHERE id = 100 OR username LIKE 'GuardiAI%'
       LIMIT 1
     `);
 
@@ -5900,7 +5900,7 @@ async function start() {
 
       const guardianResult = await pool.query(`
         INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at, is_bot)
-        VALUES (100, 'GuardiAI', 'ut1-guardiAI-bot', NOW(), NOW(), true)
+        VALUES (100, 'GuardiAI 🤖', 'ut1-guardiAI-bot', NOW(), NOW(), true)
         ON CONFLICT (id) DO UPDATE SET
           username = EXCLUDED.username,
           is_bot = EXCLUDED.is_bot
