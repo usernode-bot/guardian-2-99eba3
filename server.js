@@ -3180,7 +3180,7 @@ async function fetchLinkPreview(url) {
   }
 }
 
-// GET /api/feed/posts - Fetch paginated feed posts with all milestones in a single post
+// GET /api/feed/posts - Fetch paginated feed posts with milestone posts
 app.get('/api/feed/posts', async (req, res) => {
   try {
     if (!req.user) {
@@ -3190,6 +3190,7 @@ app.get('/api/feed/posts', async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
     const offset = parseInt(req.query.offset || 0);
 
+    // Fetch all posts (both user posts and milestone posts from user_id = -1)
     const { rows: posts } = await pool.query(`
       SELECT
         fp.id,
@@ -3209,73 +3210,21 @@ app.get('/api/feed/posts', async (req, res) => {
       LIMIT $1 OFFSET $2
     `, [limit, offset]);
 
-    // Fetch network milestones
-    const { rows: milestones } = await pool.query(`
-      SELECT id, key, label, value, unit, category, last_refreshed_at, updated_at
-      FROM network_milestones
-      ORDER BY key ASC
-    `);
-
-    // Create single milestone post with all metrics
-    const resultPosts = [];
-
-    if (milestones.length > 0) {
-      // Get the most recent refresh time from all milestones
-      const mostRecentRefresh = milestones.reduce((max, m) => {
-        const mTime = new Date(m.last_refreshed_at).getTime();
-        const maxTime = new Date(max).getTime();
-        return mTime > maxTime ? m.last_refreshed_at : max;
-      }, milestones[0].last_refreshed_at);
-
-      // Build metrics text for all milestones
-      const metricsText = milestones
-        .map(m => `${m.label}: ${m.value} ${m.unit}`)
-        .join('\n');
-
-      // Create single milestone post
-      const milestonePost = {
-        id: 'milestone_network_updates',
-        userId: -1,
-        username: 'Usernode Network Updates',
-        verified: true,
-        avatarUrl: null,
-        content: {
-          type: 'text',
-          text: metricsText
-        },
-        createdAt: mostRecentRefresh,
-        updatedAt: mostRecentRefresh,
-        isEdited: false,
-        onChain: false,
-        likeCount: 0,
-        commentCount: 0,
-        isMilestone: false
-      };
-
-      resultPosts.push(milestonePost);
-    }
-
-    // Add regular posts
-    for (const post of posts) {
-      resultPosts.push({
-        id: post.id,
-        userId: post.user_id,
-        username: post.username,
-        verified: !!post.verified_at,
-        avatarUrl: post.avatar_url,
-        content: post.content,
-        createdAt: post.created_at,
-        updatedAt: post.updated_at,
-        isEdited: post.updated_at && post.created_at && (new Date(post.updated_at) - new Date(post.created_at)) > 1000,
-        onChain: post.on_chain,
-        likeCount: post.like_count || 0,
-        commentCount: post.comment_count || 0,
-        isMilestone: false
-      });
-    }
-
-    // Sort by createdAt descending
-    resultPosts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    const resultPosts = posts.map(post => ({
+      id: post.id,
+      userId: post.user_id,
+      username: post.username,
+      verified: !!post.verified_at,
+      avatarUrl: post.avatar_url,
+      content: post.content,
+      createdAt: post.created_at,
+      updatedAt: post.updated_at,
+      isEdited: post.updated_at && post.created_at && (new Date(post.updated_at) - new Date(post.created_at)) > 1000,
+      onChain: post.on_chain,
+      likeCount: post.like_count || 0,
+      commentCount: post.comment_count || 0,
+      isMilestone: post.user_id === -1
+    }));
 
     const { rows: countResult } = await pool.query(`
       SELECT COUNT(*) as count FROM feed_posts
@@ -3732,6 +3681,40 @@ app.put('/api/feed/posts/:postId', async (req, res) => {
   }
 });
 
+// Helper function to generate randomized milestone values
+function generateRandomMilestones() {
+  const activeNodes = Math.floor(Math.random() * 31) + 30; // 30-60
+  const networkThroughput = (Math.random() * 2 + 1.5).toFixed(1); // 1.5-3.5
+  const transactions24h = Math.floor(Math.random() * 200000) + 100000; // 100k-300k
+  const avgLatency = Math.floor(Math.random() * 101) + 80; // 80-180ms
+
+  return {
+    activeNodes: activeNodes.toString(),
+    networkThroughput: networkThroughput.toString(),
+    transactions24h: transactions24h.toLocaleString(),
+    avgLatency: avgLatency.toString()
+  };
+}
+
+// Helper function to create a milestone post from randomized values
+async function createMilestonePost() {
+  try {
+    const randomValues = generateRandomMilestones();
+    const metricsText = `Active Nodes: ${randomValues.activeNodes} nodes\nNetwork Throughput: ${randomValues.networkThroughput} Gbps\nTransactions (24h): ${randomValues.transactions24h} tx\nAvg Latency: ${randomValues.avgLatency} ms`;
+
+    const { rows } = await pool.query(`
+      INSERT INTO feed_posts (user_id, content, created_at)
+      VALUES ($1, $2, NOW())
+      RETURNING id, created_at
+    `, [-1, JSON.stringify({ type: 'text', text: metricsText })]);
+
+    console.log(`[MILESTONE] Created hourly milestone post #${rows[0].id} at ${new Date().toISOString()}`);
+    return rows[0];
+  } catch (err) {
+    console.error('[MILESTONE] Error creating milestone post:', err);
+  }
+}
+
 // POST /api/feed/milestones/refresh - Refresh network milestone data on-demand
 app.post('/api/feed/milestones/refresh', async (req, res) => {
   try {
@@ -3739,13 +3722,16 @@ app.post('/api/feed/milestones/refresh', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    // Update last_refreshed_at for all milestones
+    // Create a new milestone post with random values
+    const newPost = await createMilestonePost();
+
+    // Update network_milestones last_refreshed_at (for backwards compatibility)
     await pool.query(`
       UPDATE network_milestones
       SET last_refreshed_at = NOW(), updated_at = NOW()
     `);
 
-    // Return refreshed milestones
+    // Return the newly created milestone post
     const { rows: milestones } = await pool.query(`
       SELECT id, key, label, value, unit, category, last_refreshed_at, updated_at
       FROM network_milestones
@@ -3770,6 +3756,7 @@ app.post('/api/feed/milestones/refresh', async (req, res) => {
 
     res.json({
       milestones: milestonePosts,
+      newPostId: newPost?.id,
       refreshedAt: new Date().toISOString()
     });
   } catch (err) {
@@ -4999,6 +4986,15 @@ async function start() {
         `, [m.key, m.label, m.value, m.unit, m.category]);
       }
     }
+
+    // Start hourly milestone post generator (runs every hour)
+    // Create initial milestone post on startup
+    await createMilestonePost();
+
+    // Set interval to create a new milestone post every hour (3600000 ms)
+    setInterval(async () => {
+      await createMilestonePost();
+    }, 3600000);
 
     app.listen(port, () => console.log(`Listening on :${port}`));
   } catch (err) {
