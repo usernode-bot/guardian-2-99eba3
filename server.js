@@ -3700,7 +3700,7 @@ function generateRandomMilestones() {
 async function createMilestonePost() {
   try {
     const randomValues = generateRandomMilestones();
-    const metricsText = `Active Nodes: ${randomValues.activeNodes} nodes\nNetwork Throughput: ${randomValues.networkThroughput} Gbps\nTransactions (24h): ${randomValues.transactions24h} tx\nAvg Latency: ${randomValues.avgLatency} ms`;
+    const metricsText = `**Active Nodes:** ${randomValues.activeNodes} nodes\n**Network Throughput:** ${randomValues.networkThroughput} Gbps\n**Transactions (24h):** ${randomValues.transactions24h} tx\n**Avg Latency:** ${randomValues.avgLatency} ms`;
 
     const { rows } = await pool.query(`
       INSERT INTO feed_posts (user_id, content, created_at)
