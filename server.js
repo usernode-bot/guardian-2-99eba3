@@ -273,14 +273,22 @@ app.get('/api/user/stats', async (req, res) => {
     const contactsRes = await pool.query(`SELECT COUNT(*) as count FROM user_contacts WHERE user_id = $1`, [userId]);
     const contactsCount = parseInt(contactsRes.rows[0]?.count || 0, 10);
 
-    // Query messages count (direct + group messages sent by this user)
-    const directMessagesRes = await pool.query(`SELECT COUNT(*) as count FROM messages WHERE sender_id = $1`, [userId]);
-    const directCount = parseInt(directMessagesRes.rows[0]?.count || 0, 10);
+    // Query messages count: count distinct conversations + groups the user participates in
+    // This reflects the user's participation in the Messages view (both Direct and Groups tabs)
+    const conversationsRes = await pool.query(`
+      SELECT COUNT(DISTINCT id) as count FROM conversations
+      WHERE (participant_a_id = $1 OR participant_b_id = $1)
+      AND status_a != 'ignored' AND status_b != 'ignored'
+    `, [userId]);
+    const conversationCount = parseInt(conversationsRes.rows[0]?.count || 0, 10);
 
-    const groupMessagesRes = await pool.query(`SELECT COUNT(*) as count FROM group_messages WHERE sender_id = $1`, [userId]);
-    const groupCount = parseInt(groupMessagesRes.rows[0]?.count || 0, 10);
+    const groupsRes = await pool.query(`
+      SELECT COUNT(DISTINCT group_id) as count FROM group_members
+      WHERE user_id = $1
+    `, [userId]);
+    const groupCount = parseInt(groupsRes.rows[0]?.count || 0, 10);
 
-    const messagesCount = directCount + groupCount;
+    const messagesCount = conversationCount + groupCount;
 
     res.json({
       postsCount: postsCount,
@@ -317,7 +325,7 @@ app.put('/api/user/bio', async (req, res) => {
   }
 });
 
-app.post('/api/user/avatar', async (req, res) => {
+app.post('/api/user/avatar', express.json({ limit: '2mb' }), async (req, res) => {
   try {
     if (!req.user) {
       return res.status(401).json({ error: 'Not authenticated' });
@@ -1244,6 +1252,7 @@ app.get('/api/user/feed-posts', async (req, res) => {
         fp.user_id,
         fp.content,
         fp.created_at,
+        fp.updated_at,
         u.username,
         u.verified_at,
         u.avatar_url,
@@ -1272,6 +1281,8 @@ app.get('/api/user/feed-posts', async (req, res) => {
         avatarUrl: p.avatar_url,
         content: p.content,
         createdAt: p.created_at,
+        updatedAt: p.updated_at,
+        isEdited: p.updated_at && p.created_at && (new Date(p.updated_at) - new Date(p.created_at)) > 1000,
         likeCount: p.like_count || 0,
         commentCount: p.comment_count || 0
       })),
@@ -1784,6 +1795,15 @@ app.get('/api/user/contact-info', (req, res) => {
 
 app.get('/api/search/users', async (req, res) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
     const q = req.query.q || '';
     let rows;
 
@@ -1791,7 +1811,7 @@ app.get('/api/search/users', async (req, res) => {
       const result = await queryWithTimeout(pool, `
         SELECT id, username, verified_at, usernode_pubkey
         FROM users
-        WHERE username ILIKE $1 OR usernode_pubkey ILIKE $2
+        WHERE (username ILIKE $1 OR usernode_pubkey ILIKE $2) AND id != $7
         ORDER BY
           CASE
             WHEN username = $3 OR usernode_pubkey = $4 THEN 0
@@ -1800,18 +1820,25 @@ app.get('/api/search/users', async (req, res) => {
           END,
           username ASC
         LIMIT 20
-      `, ['%' + q + '%', '%' + q + '%', q, q, q + '%', q + '%'], 2000);
+      `, ['%' + q + '%', '%' + q + '%', q, q, q + '%', q + '%', userId], 2000);
       rows = result.rows;
     } catch (timeoutErr) {
       // On timeout, return demo fallback users
       if (timeoutErr.message === 'QUERY_TIMEOUT') {
         console.info('Search query timeout after 2000ms, returning demo fallback');
-        const users = [
-          { id: 1, username: 'staging-demo-alice', usernode_pubkey: 'ut1staging-alice-001', verified: true, mutualCount: 0 },
-          { id: 2, username: 'staging-demo-bob', usernode_pubkey: 'ut1staging-bob-001', verified: true, mutualCount: 0 },
-          { id: 3, username: 'staging-demo-charlie', usernode_pubkey: 'ut1staging-charlie-001', verified: false, mutualCount: 0 }
+        const demoUsers = [
+          { id: 1, username: 'staging-demo-alice', usernode_pubkey: 'ut1staging-alice-001', verified_at: new Date() },
+          { id: 2, username: 'staging-demo-bob', usernode_pubkey: 'ut1staging-bob-001', verified_at: new Date() },
+          { id: 3, username: 'staging-demo-charlie', usernode_pubkey: 'ut1staging-charlie-001', verified_at: null }
         ];
-        return res.json({ users });
+        const filteredUsers = demoUsers.filter(u => u.id !== userId).map(u => ({
+          id: u.id,
+          username: u.username,
+          usernode_pubkey: u.usernode_pubkey,
+          verified: !!u.verified_at,
+          mutualCount: 0,
+        }));
+        return res.json({ users: filteredUsers });
       }
       // For non-timeout errors, re-throw to be caught by outer catch
       throw timeoutErr;
@@ -1826,6 +1853,64 @@ app.get('/api/search/users', async (req, res) => {
     }));
 
     res.json({ users });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/users/search', async (req, res) => {
+  try {
+    if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+    const q = (req.query.q || '').trim();
+    if (!q) return res.json({ users: [] });
+    const { rows } = await pool.query(`
+      SELECT id, username, verified_at, avatar_url
+      FROM users
+      WHERE LOWER(username) LIKE LOWER($1)
+      ORDER BY username
+      LIMIT 8
+    `, [q + '%']);
+    res.json({
+      users: rows.map(r => ({
+        id: r.id,
+        username: r.username,
+        avatar_url: r.avatar_url || null,
+        verified: !!r.verified_at,
+      }))
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/users/by-username/:username', async (req, res) => {
+  try {
+    if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+    const { username } = req.params;
+    const { rows } = await pool.query(`
+      SELECT id, username, verified_at, usernode_pubkey, avatar_url, bio
+      FROM users
+      WHERE LOWER(username) = LOWER($1)
+    `, [username]);
+    if (!rows.length) return res.status(404).json({ error: 'User not found' });
+    const user = rows[0];
+    const foregroundHours = getForegroundHours(user.id);
+    const { rank, hoursBracket, contributionLevel } = calculateRankData(foregroundHours);
+    res.json({
+      id: user.id,
+      username: user.username,
+      usernode_pubkey: user.usernode_pubkey || null,
+      verified: !!user.verified_at,
+      avatar_url: user.avatar_url || null,
+      bio: user.bio || null,
+      foregroundHours,
+      rank,
+      hoursBracket,
+      contributionLevel,
+      mutualCount: 0,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -3165,7 +3250,7 @@ async function fetchLinkPreview(url) {
   }
 }
 
-// GET /api/feed/posts - Fetch paginated feed posts
+// GET /api/feed/posts - Fetch paginated feed posts with milestone posts
 app.get('/api/feed/posts', async (req, res) => {
   try {
     if (!req.user) {
@@ -3175,12 +3260,14 @@ app.get('/api/feed/posts', async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
     const offset = parseInt(req.query.offset || 0);
 
+    // Fetch all posts (both user posts and milestone posts from user_id = -1)
     const { rows: posts } = await pool.query(`
       SELECT
         fp.id,
         fp.user_id,
         fp.content,
         fp.created_at,
+        fp.updated_at,
         fp.on_chain,
         u.username,
         u.verified_at,
@@ -3193,6 +3280,22 @@ app.get('/api/feed/posts', async (req, res) => {
       LIMIT $1 OFFSET $2
     `, [limit, offset]);
 
+    const resultPosts = posts.map(post => ({
+      id: post.id,
+      userId: post.user_id,
+      username: post.username,
+      verified: !!post.verified_at,
+      avatarUrl: post.avatar_url,
+      content: post.content,
+      createdAt: post.created_at,
+      updatedAt: post.updated_at,
+      isEdited: post.updated_at && post.created_at && (new Date(post.updated_at) - new Date(post.created_at)) > 1000,
+      onChain: post.on_chain,
+      likeCount: post.like_count || 0,
+      commentCount: post.comment_count || 0,
+      isMilestone: post.user_id === -1
+    }));
+
     const { rows: countResult } = await pool.query(`
       SELECT COUNT(*) as count FROM feed_posts
     `);
@@ -3201,18 +3304,7 @@ app.get('/api/feed/posts', async (req, res) => {
     const hasMore = offset + limit < total;
 
     res.json({
-      posts: posts.map(p => ({
-        id: p.id,
-        userId: p.user_id,
-        username: p.username,
-        verified: !!p.verified_at,
-        avatarUrl: p.avatar_url,
-        content: p.content,
-        createdAt: p.created_at,
-        onChain: p.on_chain,
-        likeCount: p.like_count || 0,
-        commentCount: p.comment_count || 0
-      })),
+      posts: resultPosts,
       hasMore
     });
   } catch (err) {
@@ -3577,6 +3669,185 @@ app.delete('/api/feed/posts/:postId/like', async (req, res) => {
   }
 });
 
+// DELETE /api/feed/posts/:postId - Delete a feed post (owner only)
+app.delete('/api/feed/posts/:postId', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { postId } = req.params;
+    const userId = req.user.id;
+
+    const { rows } = await pool.query(`
+      SELECT user_id FROM feed_posts WHERE id = $1
+    `, [postId]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    if (rows[0].user_id !== userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    await pool.query(`DELETE FROM feed_posts WHERE id = $1`, [postId]);
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error deleting post:', err);
+    res.status(500).json({ error: 'Failed to delete post' });
+  }
+});
+
+// PUT /api/feed/posts/:postId - Edit a feed post's text (owner only)
+app.put('/api/feed/posts/:postId', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { postId } = req.params;
+    const userId = req.user.id;
+    const { text } = req.body;
+
+    if (!text || !text.trim()) {
+      return res.status(400).json({ error: 'Post text cannot be empty' });
+    }
+
+    const { rows } = await pool.query(`
+      SELECT user_id, content FROM feed_posts WHERE id = $1
+    `, [postId]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    if (rows[0].user_id !== userId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const newContent = { ...rows[0].content, text: text.trim() };
+
+    const { rows: updated } = await pool.query(`
+      UPDATE feed_posts SET content = $1, updated_at = NOW()
+      WHERE id = $2
+      RETURNING id, user_id, content, created_at, updated_at
+    `, [JSON.stringify(newContent), postId]);
+
+    const post = updated[0];
+
+    res.json({
+      id: post.id,
+      userId: post.user_id,
+      content: post.content,
+      createdAt: post.created_at,
+      updatedAt: post.updated_at,
+      isEdited: (new Date(post.updated_at) - new Date(post.created_at)) > 1000,
+    });
+  } catch (err) {
+    console.error('Error editing post:', err);
+    res.status(500).json({ error: 'Failed to edit post' });
+  }
+});
+
+// Helper function to generate randomized milestone values
+function generateRandomMilestones() {
+  const activeNodes = Math.floor(Math.random() * 31) + 30; // 30-60
+  const networkThroughput = (Math.random() * 2 + 1.5).toFixed(1); // 1.5-3.5
+  const transactions24h = Math.floor(Math.random() * 200000) + 100000; // 100k-300k
+  const avgLatency = Math.floor(Math.random() * 101) + 80; // 80-180ms
+
+  return {
+    activeNodes: activeNodes.toString(),
+    networkThroughput: networkThroughput.toString(),
+    transactions24h: transactions24h.toLocaleString(),
+    avgLatency: avgLatency.toString()
+  };
+}
+
+// Helper function to create a milestone post from randomized values
+async function createMilestonePost() {
+  try {
+    const randomValues = generateRandomMilestones();
+
+    // Format metrics with right-aligned colons at column ~30
+    const metrics = [
+      { label: 'Active Nodes', value: randomValues.activeNodes, unit: 'nodes' },
+      { label: 'Network Throughput', value: randomValues.networkThroughput, unit: 'Gbps' },
+      { label: 'Transactions (24h)', value: randomValues.transactions24h, unit: 'tx' },
+      { label: 'Avg Latency', value: randomValues.avgLatency, unit: 'ms' }
+    ];
+
+    const metricsText = metrics.map(m => {
+      const paddingSize = Math.max(0, 30 - m.label.length - 4); // -4 for bold markers
+      const padding = ' '.repeat(paddingSize);
+      return `**${m.label}${padding}:**  ${m.value} ${m.unit}`;
+    }).join('\n');
+
+    const { rows } = await pool.query(`
+      INSERT INTO feed_posts (user_id, content, created_at)
+      VALUES ($1, $2, NOW())
+      RETURNING id, created_at
+    `, [-1, JSON.stringify({ type: 'text', text: metricsText })]);
+
+    console.log(`[MILESTONE] Created hourly milestone post #${rows[0].id} at ${new Date().toISOString()}`);
+    return rows[0];
+  } catch (err) {
+    console.error('[MILESTONE] Error creating milestone post:', err);
+  }
+}
+
+// POST /api/feed/milestones/refresh - Refresh network milestone data on-demand
+app.post('/api/feed/milestones/refresh', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    // Create a new milestone post with random values
+    const newPost = await createMilestonePost();
+
+    // Update network_milestones last_refreshed_at (for backwards compatibility)
+    await pool.query(`
+      UPDATE network_milestones
+      SET last_refreshed_at = NOW(), updated_at = NOW()
+    `);
+
+    // Return the newly created milestone post
+    const { rows: milestones } = await pool.query(`
+      SELECT id, key, label, value, unit, category, last_refreshed_at, updated_at
+      FROM network_milestones
+      ORDER BY last_refreshed_at DESC
+    `);
+
+    const milestonePosts = milestones.map(m => ({
+      id: 'milestone_' + m.key,
+      userId: -1,
+      username: 'Usernode Network Updates',
+      verified: true,
+      avatarUrl: null,
+      content: { type: 'milestone', text: m.label, metrics: { key: m.key, value: m.value, unit: m.unit } },
+      createdAt: m.last_refreshed_at,
+      updatedAt: m.updated_at,
+      isEdited: false,
+      onChain: false,
+      likeCount: 0,
+      commentCount: 0,
+      isMilestone: true
+    }));
+
+    res.json({
+      milestones: milestonePosts,
+      newPostId: newPost?.id,
+      refreshedAt: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('Error refreshing milestones:', err);
+    res.status(500).json({ error: 'Failed to refresh milestones' });
+  }
+});
+
 // Simple proxy for explorer API to avoid CORS issues
 app.use('/explorer-api', (req, res) => {
   // Forward requests to testnet explorer
@@ -3617,7 +3888,7 @@ async function start() {
         username VARCHAR(255) NOT NULL UNIQUE,
         usernode_pubkey VARCHAR(100) UNIQUE,
         verified_at TIMESTAMPTZ,
-        avatar_url VARCHAR(500),
+        avatar_url TEXT,
         blocked_users INTEGER[],
         created_at TIMESTAMPTZ DEFAULT NOW()
       )
@@ -3646,6 +3917,11 @@ async function start() {
     // Add bio column if it doesn't exist (idempotent migration)
     await pool.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS bio VARCHAR(500)
+    `);
+
+    // Widen avatar_url to TEXT so base64 data URIs are not truncated (idempotent migration)
+    await pool.query(`
+      ALTER TABLE users ALTER COLUMN avatar_url TYPE TEXT
     `);
 
     // Create conversations table (marked private)
@@ -3810,7 +4086,7 @@ async function start() {
         creator_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         name VARCHAR(255) NOT NULL,
         description TEXT,
-        avatar_url VARCHAR(500),
+        avatar_url TEXT,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )
@@ -3820,6 +4096,11 @@ async function start() {
     await pool.query(`
       ALTER TABLE groups
       ADD COLUMN IF NOT EXISTS archived_by INTEGER[] DEFAULT '{}'
+    `);
+
+    // Widen groups.avatar_url to TEXT (idempotent migration)
+    await pool.query(`
+      ALTER TABLE groups ALTER COLUMN avatar_url TYPE TEXT
     `);
 
     // Create group_members table (marked private)
@@ -3946,6 +4227,25 @@ async function start() {
         ON peers(peer_id)
     `);
 
+    // Create network_milestones table (public - Usernode network statistics)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS network_milestones (
+        id SERIAL PRIMARY KEY,
+        key VARCHAR(50) UNIQUE NOT NULL,
+        label VARCHAR(255) NOT NULL,
+        value TEXT NOT NULL,
+        unit VARCHAR(50),
+        category VARCHAR(50),
+        last_refreshed_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_network_milestones_key
+        ON network_milestones(key)
+    `);
+
     // Mark tables as private
     await pool.query(`COMMENT ON TABLE conversations IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE messages IS 'staging:private'`);
@@ -3958,6 +4258,22 @@ async function start() {
     await pool.query(`COMMENT ON TABLE group_read_receipts IS 'staging:private'`);
 
     // Seed staging data
+    // Seed mock testnet users (grace, henry, iris, jack) in all environments for user search testing
+    const grace = 11, henry = 12, iris = 13, jack = 14;
+    await pool.query(`
+      INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at, bio, avatar_url) VALUES
+        ($1, 'test-user-grace', 'ut1staging-grace-001', NOW(), NOW() - INTERVAL '5 days', 'Test user - DevOps engineer', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2310b981%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EG%3C/text%3E%3C/svg%3E'),
+        ($2, 'test-user-henry', 'ut1staging-henry-001', NOW(), NOW() - INTERVAL '3 days', 'Test user - Frontend specialist', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%238b5cf6%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EH%3C/text%3E%3C/svg%3E'),
+        ($3, 'test-user-iris', 'ut1staging-iris-001', null, NOW() - INTERVAL '1 day', 'Test user - Data scientist', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%23f59e0b%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EI%3C/text%3E%3C/svg%3E'),
+        ($4, 'test-user-jack', 'ut1staging-jack-001', NOW(), NOW(), 'Test user - QA engineer', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%23ef4444%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EJ%3C/text%3E%3C/svg%3E')
+      ON CONFLICT (id) DO UPDATE SET
+        username = EXCLUDED.username,
+        usernode_pubkey = EXCLUDED.usernode_pubkey,
+        verified_at = EXCLUDED.verified_at,
+        bio = EXCLUDED.bio,
+        avatar_url = EXCLUDED.avatar_url
+    `, [grace, henry, iris, jack]);
+
     if (IS_STAGING) {
       const alice = 1, bob = 2, charlie = 3, david = 4, emma = 5, frank = 10;
       // Note: User 10 will map to 10 % 10 = 0 -> 5 hours (New Guardian)
@@ -3966,8 +4282,12 @@ async function start() {
       // User 3 -> 300 hours (Elite Guardian)
       // User 4 -> 15 hours (Active Guardian)
       // User 5 -> 50 hours (Trusted Guardian)
+      // User 11 -> 1 % 10 = 1 -> 25 hours (Active Guardian)
+      // User 12 -> 2 % 10 = 2 -> 100 hours (Trusted Guardian)
+      // User 13 -> 3 % 10 = 3 -> 300 hours (Elite Guardian)
+      // User 14 -> 4 % 10 = 4 -> 15 hours (Active Guardian)
 
-      // Create test users with wallet addresses
+      // Create staging demo users with wallet addresses
       await pool.query(`
         INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at, bio, avatar_url) VALUES
           ($1, 'staging-demo-alice', 'ut1staging-alice-001', NOW(), NOW() - INTERVAL '6 months', 'Staging demo user - Cloud architect | Web3 enthusiast', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EA%3C/text%3E%3C/svg%3E'),
@@ -4197,6 +4517,17 @@ async function start() {
         VALUES ($1, $2, NULL, NOW()), ($1, $3, NULL, NOW())
         ON CONFLICT (user_id, contact_user_id) DO NOTHING
       `, [alice, david, emma]);
+
+      // Seed a clearly-labelled test post for edit/delete feature testing
+      const { rows: editTestRows } = await pool.query(`
+        SELECT id FROM feed_posts WHERE user_id = $1 AND content->>'text' LIKE '%edited or deleted%' LIMIT 1
+      `, [alice]);
+      if (editTestRows.length === 0) {
+        await pool.query(`
+          INSERT INTO feed_posts (user_id, content, created_at, updated_at)
+          VALUES ($1, $2, NOW() - INTERVAL '30 minutes', NOW() - INTERVAL '30 minutes')
+        `, [alice, JSON.stringify({ text: '[Staging] This post can be edited or deleted — try it!' })]);
+      }
 
       // Seed feed posts for Alice (min 8-12 posts)
       const postTimes = [
@@ -4506,6 +4837,16 @@ async function start() {
             link: 'https://example.com/resource'
           },
           offset: 300000
+        },
+        {
+          userId: alice,
+          content: { text: '[Staging demo] Hey @staging-demo-bob, loved your new dapp! 🚀' },
+          offset: 120000
+        },
+        {
+          userId: emma,
+          content: { text: '[Staging demo] @staging-demo-david and @staging-demo-alice — anyone joining the Web3 standards discussion?' },
+          offset: 60000
         }
       ];
 
@@ -4570,12 +4911,13 @@ async function start() {
       if (aliceArticlePostRows.length > 0) {
         const alicePostId = aliceArticlePostRows[0].id;
         const commentTime = new Date(feedBaseTime.getTime() - 300000);
+        const commentTime2 = new Date(feedBaseTime.getTime() - 200000);
 
         await pool.query(`
           INSERT INTO feed_comments (post_id, user_id, content, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, $4)
+          VALUES ($1, $2, $3, $4, $4), ($1, $5, $6, $7, $7)
           ON CONFLICT DO NOTHING
-        `, [alicePostId, bob, '[Staging demo] Great read! Security is so important in Web3.', commentTime]);
+        `, [alicePostId, bob, '[Staging demo] Great read! Security is so important in Web3.', commentTime, charlie, '[Staging demo] @staging-demo-alice nice one! 👏', commentTime2]);
       }
 
       // Seed comments on David's Web3 standards post
@@ -4691,7 +5033,135 @@ async function start() {
             foreground_hours = EXCLUDED.foreground_hours
         `, [peer.peer_id, peer.foreground_hours]);
       }
+
+      // Seed additional test data for profile counter verification
+      // Create a conversation where Alice receives messages but doesn't send any
+      // This tests that the Messages counter counts participation, not sent messages
+      const [frankAliceA, frankAliceB] = [alice, frank].sort((x, y) => x - y);
+      const { rows: convFrankAliceRows } = await pool.query(`
+        SELECT id FROM conversations WHERE participant_a_id = $1 AND participant_b_id = $2
+      `, [frankAliceA, frankAliceB]);
+
+      let convFrankAliceId;
+      if (convFrankAliceRows.length === 0) {
+        const result = await pool.query(`
+          INSERT INTO conversations (participant_a_id, participant_b_id, status_a, status_b, created_at, updated_at)
+          VALUES ($1, $2, 'accepted', 'accepted', NOW(), NOW())
+          RETURNING id
+        `, [frankAliceA, frankAliceB]);
+        convFrankAliceId = result.rows[0].id;
+      } else {
+        convFrankAliceId = convFrankAliceRows[0].id;
+      }
+
+      // Add a message from Frank to Alice (Alice receives but doesn't send)
+      await pool.query(`
+        INSERT INTO messages (conversation_id, sender_id, type, content, created_at)
+        VALUES ($1, $2, 'text', '{"text": "[Staging] Hi Alice! Just wanted to check in."}', NOW())
+        ON CONFLICT DO NOTHING
+      `, [convFrankAliceId, frank]);
+
+      // Create a group where Alice is a member but doesn't send messages
+      // This also tests counter for group participation without sending
+      const { rows: testGroupRows } = await pool.query(`
+        SELECT id FROM groups WHERE creator_id = $1 AND name = 'Staging Test Group'
+      `, [david]);
+
+      let testGroupId;
+      if (testGroupRows.length === 0) {
+        const result = await pool.query(`
+          INSERT INTO groups (creator_id, name, description, created_at, updated_at)
+          VALUES ($1, 'Staging Test Group', '[Staging] Test group for counter verification', NOW(), NOW())
+          RETURNING id
+        `, [david]);
+        testGroupId = result.rows[0].id;
+      } else {
+        testGroupId = testGroupRows[0].id;
+      }
+
+      // Add Alice to the test group (but she won't send messages)
+      await pool.query(`
+        INSERT INTO group_members (group_id, user_id, role, joined_at)
+        VALUES ($1, $2, 'member', NOW()), ($1, $3, 'creator', NOW())
+        ON CONFLICT (group_id, user_id) DO NOTHING
+      `, [testGroupId, alice, david]);
+
+      // Add a message from David (Alice receives but doesn't send)
+      await pool.query(`
+        INSERT INTO group_messages (group_id, sender_id, type, content, created_at)
+        VALUES ($1, $2, 'text', '{"text": "[Staging] Welcome to the test group, Alice!"}', NOW())
+        ON CONFLICT DO NOTHING
+      `, [testGroupId, david]);
+
+      // Initialize read receipts
+      await pool.query(`
+        INSERT INTO group_read_receipts (user_id, group_id, last_read_at)
+        VALUES ($1, $2, NOW()), ($3, $2, NOW())
+        ON CONFLICT (user_id, group_id) DO NOTHING
+      `, [alice, testGroupId, david]);
+
+      // Seed network milestone posts for staging
+      const milestones = [
+        { key: 'active_nodes', label: 'Active Nodes', value: '42', unit: 'nodes', category: 'network' },
+        { key: 'network_throughput', label: 'Network Throughput', value: '2.5', unit: 'Gbps', category: 'network' },
+        { key: 'transactions_24h', label: 'Transactions (24h)', value: '187,432', unit: 'tx', category: 'activity' },
+        { key: 'avg_latency', label: 'Avg Latency', value: '125', unit: 'ms', category: 'performance' }
+      ];
+
+      for (const m of milestones) {
+        await pool.query(`
+          INSERT INTO network_milestones (key, label, value, unit, category, last_refreshed_at)
+          VALUES ($1, $2, $3, $4, $5, NOW())
+          ON CONFLICT (key) DO UPDATE SET
+            label = EXCLUDED.label,
+            value = EXCLUDED.value,
+            unit = EXCLUDED.unit,
+            category = EXCLUDED.category,
+            updated_at = NOW()
+        `, [m.key, m.label, m.value, m.unit, m.category]);
+      }
     }
+
+    // Create reserved system user for network milestones (all environments)
+    await pool.query(`
+      INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at)
+      VALUES ($1, $2, $3, NOW(), NOW())
+      ON CONFLICT (id) DO UPDATE SET
+        username = EXCLUDED.username,
+        usernode_pubkey = EXCLUDED.usernode_pubkey
+    `, [-1, 'Usernode Network Updates', 'ut1-network-system']);
+
+    // Seed network milestones in production (hardcoded values for now)
+    if (!IS_STAGING) {
+      const milestones = [
+        { key: 'active_nodes', label: 'Active Nodes', value: '42', unit: 'nodes', category: 'network' },
+        { key: 'network_throughput', label: 'Network Throughput', value: '2.5', unit: 'Gbps', category: 'network' },
+        { key: 'transactions_24h', label: 'Transactions (24h)', value: '187,432', unit: 'tx', category: 'activity' },
+        { key: 'avg_latency', label: 'Avg Latency', value: '125', unit: 'ms', category: 'performance' }
+      ];
+
+      for (const m of milestones) {
+        await pool.query(`
+          INSERT INTO network_milestones (key, label, value, unit, category, last_refreshed_at)
+          VALUES ($1, $2, $3, $4, $5, NOW())
+          ON CONFLICT (key) DO UPDATE SET
+            label = EXCLUDED.label,
+            value = EXCLUDED.value,
+            unit = EXCLUDED.unit,
+            category = EXCLUDED.category,
+            updated_at = NOW()
+        `, [m.key, m.label, m.value, m.unit, m.category]);
+      }
+    }
+
+    // Start hourly milestone post generator (runs every hour)
+    // Create initial milestone post on startup
+    await createMilestonePost();
+
+    // Set interval to create a new milestone post every hour (3600000 ms)
+    setInterval(async () => {
+      await createMilestonePost();
+    }, 3600000);
 
     app.listen(port, () => console.log(`Listening on :${port}`));
   } catch (err) {
