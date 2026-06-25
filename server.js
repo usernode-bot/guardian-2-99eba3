@@ -1968,7 +1968,7 @@ app.get('/api/groups', async (req, res) => {
 
     // Get groups where user is a member
     const { rows: groupRows } = await pool.query(`
-      SELECT DISTINCT g.id, g.creator_id, g.name, g.description, g.avatar_url, g.created_at, g.updated_at,
+      SELECT DISTINCT g.id, g.creator_id, g.name, g.description, g.avatar_url, g.created_at, g.updated_at, g.archived_by,
              (SELECT COUNT(*) FROM group_members WHERE group_id = g.id) as member_count,
              (SELECT COUNT(*) FROM group_messages gm WHERE gm.group_id = g.id AND gm.created_at > COALESCE(grr.last_read_at, '1970-01-01')) as unread_count,
              (SELECT sender_id FROM group_messages WHERE group_id = g.id ORDER BY created_at DESC LIMIT 1) as last_sender_id,
@@ -2013,10 +2013,23 @@ app.get('/api/groups', async (req, res) => {
         lastMessage,
         lastMessageAt: row.last_created_at || null,
         unreadCount: parseInt(row.unread_count || 0),
+        archived_by: row.archived_by || [],
       };
     }));
 
-    res.json({ groups });
+    // Categorize groups by archive state
+    const active = [];
+    const archived = [];
+    for (const group of groups) {
+      const isArchived = group.archived_by && group.archived_by.includes(userId);
+      if (isArchived) {
+        archived.push(group);
+      } else {
+        active.push(group);
+      }
+    }
+
+    res.json({ groups: { active, archived } });
   } catch (err) {
     console.error('Error fetching groups:', err);
     res.status(500).json({ error: err.message });
@@ -2569,6 +2582,46 @@ app.post('/api/groups/:groupId/messages/:messageId/delete', async (req, res) => 
   }
 });
 
+app.post('/api/groups/:groupId/messages/delete-all', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { groupId } = req.params;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    // Verify user is a member of the group
+    const { rows: memberRows } = await pool.query(`
+      SELECT id FROM group_members WHERE group_id = $1 AND user_id = $2
+    `, [groupId, userId]);
+
+    if (memberRows.length === 0) {
+      return res.status(403).json({ error: 'Not a member of this group' });
+    }
+
+    // Bulk update all messages to add current user to deleted_by
+    const { rows: deletedRows } = await pool.query(`
+      UPDATE group_messages
+      SET deleted_by = CASE
+        WHEN deleted_by IS NULL THEN ARRAY[$1]
+        WHEN (deleted_by @> ARRAY[$1]::integer[]) THEN deleted_by
+        ELSE array_append(deleted_by, $1)
+      END
+      WHERE group_id = $2
+      RETURNING id
+    `, [userId, groupId]);
+
+    res.json({ ok: true, deletedCount: deletedRows.length });
+  } catch (err) {
+    console.error('Error deleting all group messages:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/groups/:groupId/members', async (req, res) => {
   try {
     if (!req.user) {
@@ -2989,8 +3042,25 @@ app.post('/api/groups/:groupId/archive', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
-    // For now, just mark as read to simulate archiving
-    // TODO: Add archived_by column to groups table for persistence
+    // Verify user is a member of the group
+    const { rows: memberRows } = await pool.query(`
+      SELECT id FROM group_members WHERE group_id = $1 AND user_id = $2
+    `, [groupId, userId]);
+
+    if (memberRows.length === 0) {
+      return res.status(403).json({ error: 'Not a member of this group' });
+    }
+
+    // Toggle archive state
+    await pool.query(`
+      UPDATE groups
+      SET archived_by = CASE
+        WHEN archived_by @> ARRAY[$1]::integer[] THEN array_remove(archived_by, $1)
+        ELSE CASE WHEN archived_by IS NULL THEN ARRAY[$1] ELSE array_append(archived_by, $1) END
+      END
+      WHERE id = $2
+    `, [userId, groupId]);
+
     res.json({ ok: true });
   } catch (err) {
     console.error('Error archiving group:', err);
@@ -4022,6 +4092,12 @@ async function start() {
       )
     `);
 
+    // Add archived_by column to groups if it doesn't exist
+    await pool.query(`
+      ALTER TABLE groups
+      ADD COLUMN IF NOT EXISTS archived_by INTEGER[] DEFAULT '{}'
+    `);
+
     // Widen groups.avatar_url to TEXT (idempotent migration)
     await pool.query(`
       ALTER TABLE groups ALTER COLUMN avatar_url TYPE TEXT
@@ -4855,6 +4931,84 @@ async function start() {
           VALUES ($1, $2, $3, $4, $4), ($1, $5, $6, $7, $7)
           ON CONFLICT DO NOTHING
         `, [davidPostId, alice, '[Staging demo] Count me in! We should organize a discussion thread.', commentTime1, emma, '[Staging demo] This is an important topic for the ecosystem!', commentTime2]);
+      }
+
+      // Create additional test group with many messages for archive/delete testing
+      const { rows: techGroupRows } = await pool.query(`
+        SELECT id FROM groups WHERE creator_id = $1 AND name = 'Staging Tech Discussions'
+      `, [charlie]);
+
+      let techGroupId;
+      if (techGroupRows.length === 0) {
+        const result = await pool.query(`
+          INSERT INTO groups (creator_id, name, description, created_at, updated_at)
+          VALUES ($1, 'Staging Tech Discussions', '[Staging] Technical discussions and Q&A', NOW(), NOW())
+          RETURNING id
+        `, [charlie]);
+        techGroupId = result.rows[0].id;
+      } else {
+        techGroupId = techGroupRows[0].id;
+      }
+
+      // Add members to Tech Discussions group
+      for (const memberId of [charlie, alice, bob, david]) {
+        await pool.query(`
+          INSERT INTO group_members (group_id, user_id, role, joined_at)
+          VALUES ($1, $2, $3, NOW())
+          ON CONFLICT (group_id, user_id) DO NOTHING
+        `, [techGroupId, memberId, memberId === charlie ? 'creator' : 'member']);
+      }
+
+      // Add many messages to Tech group (30+ for testing bulk delete)
+      const techBaseTime = new Date(Date.now() - 3600000);
+      const techMessages = [
+        { offset: 0, sender: charlie, content: { text: '[Staging] Anyone here familiar with smart contract optimization?' } },
+        { offset: 120000, sender: alice, content: { text: '[Staging] Yes, I work with Solidity regularly. What are you trying to optimize?' } },
+        { offset: 240000, sender: bob, content: { text: '[Staging] Gas optimization is always the tricky part' } },
+        { offset: 360000, sender: david, content: { text: '[Staging] Have you considered using assembly? Sometimes thats the answer' } },
+        { offset: 480000, sender: charlie, content: { text: '[Staging] We are already using some assembly, but thanks for the tip!' } },
+        { offset: 600000, sender: alice, content: { text: '[Staging] What patterns are you using for state management?' } },
+        { offset: 720000, sender: bob, content: { text: '[Staging] Mapping with enumerable sets is usually my go-to' } },
+        { offset: 840000, sender: david, content: { text: '[Staging] Just be careful with array iteration performance' } },
+        { offset: 960000, sender: charlie, content: { text: '[Staging] Good point! We had issues with that before' } },
+        { offset: 1080000, sender: alice, content: { text: '[Staging] Have you looked at OpenZeppelin libraries?' } },
+        { offset: 1200000, sender: bob, content: { text: '[Staging] Their upgradeable patterns are really solid' } },
+        { offset: 1320000, sender: david, content: { text: '[Staging] Just make sure to audit thoroughly if using upgrades' } },
+        { offset: 1440000, sender: charlie, content: { text: '[Staging] Security is always the priority for us' } },
+        { offset: 1560000, sender: alice, content: { text: '[Staging] What testing frameworks do you use?' } },
+        { offset: 1680000, sender: bob, content: { text: '[Staging] Hardhat and Foundry are my favorites currently' } },
+        { offset: 1800000, sender: david, content: { text: '[Staging] Foundry is getting really good. Love the speed' } },
+        { offset: 1920000, sender: charlie, content: { text: '[Staging] Were migrating to Foundry soon actually' } },
+        { offset: 2040000, sender: alice, content: { text: '[Staging] Excellent choice. The developer experience is much better' } },
+        { offset: 2160000, sender: bob, content: { text: '[Staging] Agreed. Cheatcodes are super useful for testing' } },
+        { offset: 2280000, sender: david, content: { text: '[Staging] Make sure you have good coverage targets in place' } },
+        { offset: 2400000, sender: charlie, content: { text: '[Staging] We aim for 90% coverage minimum' } },
+        { offset: 2520000, sender: alice, content: { text: '[Staging] Thats a solid target. Edge cases are important' } },
+        { offset: 2640000, sender: bob, content: { text: '[Staging] Fuzzing is also really helpful for finding edge cases' } },
+        { offset: 2760000, sender: david, content: { text: '[Staging] Echidna is great for fuzzing Solidity' } },
+        { offset: 2880000, sender: charlie, content: { text: '[Staging] Will definitely check that out, thanks for the tips everyone!' } },
+        { offset: 3000000, sender: alice, content: { text: '[Staging] Anytime! Feel free to reach out if you hit any roadblocks' } },
+        { offset: 3120000, sender: bob, content: { text: '[Staging] Great discussion! Always love these tech talks' } },
+        { offset: 3240000, sender: david, content: { text: '[Staging] Same here. Its good to share knowledge' } },
+        { offset: 3360000, sender: charlie, content: { text: '[Staging] Definitely. This community is awesome' } },
+      ];
+
+      for (const msg of techMessages) {
+        const msgTime = new Date(techBaseTime.getTime() + msg.offset);
+        await pool.query(`
+          INSERT INTO group_messages (group_id, sender_id, type, content, blockchain_recorded, created_at)
+          VALUES ($1, $2, $3, $4, $5, $6)
+          ON CONFLICT DO NOTHING
+        `, [techGroupId, msg.sender, 'text', JSON.stringify(msg.content), false, msgTime]);
+      }
+
+      // Initialize read receipts for Tech group
+      for (const memberId of [charlie, alice, bob, david]) {
+        await pool.query(`
+          INSERT INTO group_read_receipts (user_id, group_id, last_read_at)
+          VALUES ($1, $2, NOW())
+          ON CONFLICT (user_id, group_id) DO NOTHING
+        `, [memberId, techGroupId]);
       }
 
       // Seed peer data with realistic peer IDs and foreground hours

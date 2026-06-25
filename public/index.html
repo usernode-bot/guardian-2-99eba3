@@ -1226,6 +1226,9 @@
     <button onclick="event.stopPropagation(); viewGroupInfo()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">View Group Info</button>
     <button id="manageGroupMembersBtn" onclick="event.stopPropagation(); manageGroupMembers()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">Manage Members</button>
     <button id="renameGroupBtn" onclick="event.stopPropagation(); renameGroup()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">Rename Group</button>
+    <button id="archiveGroupBtn" onclick="event.stopPropagation(); archiveGroup()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">Archive Group</button>
+    <button id="unarchiveGroupBtn" onclick="event.stopPropagation(); unarchiveGroup()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 hidden">Unarchive Group</button>
+    <button onclick="event.stopPropagation(); deleteAllGroupMessages()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">Delete All Messages</button>
     <button onclick="event.stopPropagation(); leaveGroup()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">Leave Group</button>
     <button id="deleteGroupBtn" onclick="event.stopPropagation(); deleteGroup()" class="menu-item w-full text-left px-4 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">Delete Group</button>
   </div>
@@ -1376,6 +1379,23 @@
       <div class="p-6 border-t border-zinc-300 dark:border-zinc-700 flex gap-2">
         <button id="leaveGroupCancelBtn" onclick="closeLeaveGroupModal()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
         <button id="leaveGroupSubmitBtn" onclick="submitLeaveGroup()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Leave</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete All Messages Modal -->
+  <div id="deleteAllMessagesModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-sm">
+      <div class="p-6 border-b border-zinc-300 dark:border-zinc-700">
+        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Delete All Messages</h2>
+      </div>
+      <div class="p-6 space-y-4">
+        <p class="text-sm text-zinc-700 dark:text-zinc-300">Delete all messages in this group for you only? This cannot be undone. Other members will still see their copies.</p>
+        <div id="deleteAllMessagesError" class="hidden text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg"></div>
+      </div>
+      <div class="p-6 border-t border-zinc-300 dark:border-zinc-700 flex gap-2">
+        <button id="deleteAllMessagesCancelBtn" onclick="closeDeleteAllMessagesModal()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
+        <button id="deleteAllMessagesSubmitBtn" onclick="submitDeleteAllMessages()" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 dark:hover:bg-red-500 text-white rounded-lg transition font-medium">Delete</button>
       </div>
     </div>
   </div>
@@ -2905,38 +2925,78 @@
 
       const createGroupButtonHtml = '<button onclick="openCreateGroupModal()" class="w-full px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium text-sm">+ Create Group</button>';
 
-      if (data.groups.length === 0) {
-        list.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No groups yet.<br><button onclick="openCreateGroupModal()" class="mt-2 text-cyan-600 dark:text-cyan-400 hover:underline">Create Group</button></div>';
+      const { active = [], archived = [] } = data.groups;
+
+      if (active.length === 0 && archived.length === 0) {
+        list.innerHTML = '<div class="sticky top-0 z-10 bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 p-4">' + createGroupButtonHtml + '</div><div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No groups yet.<br><button onclick="openCreateGroupModal()" class="mt-2 text-cyan-600 dark:text-cyan-400 hover:underline">Create Group</button></div>';
         return;
       }
 
-      const groupsHtml = data.groups.map(group => {
-        const isActive = currentGroupId === group.id;
-        const activeClass = isActive ? 'border-l-4 border-cyan-600 bg-cyan-50 dark:bg-cyan-900/20' : '';
-        const lastMessage = group.lastMessage || 'No messages';
-        const lastTime = group.lastMessageAt ? formatTime(new Date(group.lastMessageAt)) : '';
+      const renderGroupsList = (groups) => {
+        return groups.map(group => {
+          const isActive = currentGroupId === group.id;
+          const activeClass = isActive ? 'border-l-4 border-cyan-600 bg-cyan-50 dark:bg-cyan-900/20' : '';
+          const lastMessage = group.lastMessage || 'No messages';
+          const lastTime = group.lastMessageAt ? formatTime(new Date(group.lastMessageAt)) : '';
 
-        return `
-          <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer transition border-b border-zinc-300 dark:border-zinc-800 ${activeClass}" onclick="openGroup(${group.id})" oncontextmenu="openGroupContextMenu(event, ${group.id})">
-            <div class="flex justify-between items-start gap-2">
-              <div class="flex-1 min-w-0">
-                <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${group.name}</div>
-                <div class="text-xs text-zinc-600 dark:text-zinc-400">${group.memberCount} members</div>
-                <div class="text-xs text-zinc-600 dark:text-zinc-400 truncate">${lastMessage}</div>
-              </div>
-              <div class="text-xs text-zinc-600 dark:text-zinc-500 text-right flex-shrink-0 flex items-center gap-1">
-                <span>${lastTime}</span>
-                <button onclick="event.stopPropagation(); openGroupContextMenu(event, ${group.id})" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare" title="Group options">⋯</button>
-                ${group.unreadCount > 0 ? `<div class="px-2 py-0.5 bg-cyan-600 rounded-full text-white text-xs">${group.unreadCount}</div>` : ''}
+          return `
+            <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer transition border-b border-zinc-300 dark:border-zinc-800 ${activeClass}" onclick="openGroup(${group.id})" oncontextmenu="openGroupContextMenu(event, ${group.id})">
+              <div class="flex justify-between items-start gap-2">
+                <div class="flex-1 min-w-0">
+                  <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${group.name}</div>
+                  <div class="text-xs text-zinc-600 dark:text-zinc-400">${group.memberCount} members</div>
+                  <div class="text-xs text-zinc-600 dark:text-zinc-400 truncate">${lastMessage}</div>
+                </div>
+                <div class="text-xs text-zinc-600 dark:text-zinc-500 text-right flex-shrink-0 flex items-center gap-1">
+                  <span>${lastTime}</span>
+                  <button onclick="event.stopPropagation(); openGroupContextMenu(event, ${group.id})" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare" title="Group options">⋯</button>
+                  ${group.unreadCount > 0 ? `<div class="px-2 py-0.5 bg-cyan-600 rounded-full text-white text-xs">${group.unreadCount}</div>` : ''}
+                </div>
               </div>
             </div>
-          </div>
-        `;
-      }).join('');
+          `;
+        }).join('');
+      };
 
       const createButtonHtml = '<div class="sticky top-0 z-10 bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 p-4">' + createGroupButtonHtml + '</div>';
 
-      list.innerHTML = createButtonHtml + groupsHtml;
+      let html = createButtonHtml;
+
+      // Render active groups
+      if (active.length > 0) {
+        html += renderGroupsList(active);
+      }
+
+      // Render archived section
+      if (archived.length > 0) {
+        const archivedOpen = currentUser && localStorage.getItem(`guardian_archived_groups_open_${currentUser.id}`) === 'true';
+        const listHiddenClass = archivedOpen ? '' : 'hidden';
+        const arrowChar = archivedOpen ? '▲' : '▼';
+        html += `
+          <div class="sticky top-0 z-10 bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 p-4">
+            <button onclick="event.stopPropagation(); toggleArchivedGroupsSection()" class="w-full text-left flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
+              <span>Archived</span>
+              <span id="archivedGroupsSectionArrow" class="text-zinc-500 text-sm">${arrowChar}</span>
+            </button>
+          </div>
+          <div id="archivedGroupsSectionList" class="${listHiddenClass}">
+            ${renderGroupsList(archived)}
+          </div>
+        `;
+      }
+
+      list.innerHTML = html;
+    }
+
+    function toggleArchivedGroupsSection() {
+      const list = document.getElementById('archivedGroupsSectionList');
+      const arrow = document.getElementById('archivedGroupsSectionArrow');
+      if (!list) return;
+      const isHidden = list.classList.toggle('hidden');
+      if (arrow) arrow.textContent = isHidden ? '▼' : '▲';
+      if (currentUser) {
+        localStorage.setItem(`guardian_archived_groups_open_${currentUser.id}`, isHidden ? 'false' : 'true');
+      }
     }
 
     // Open a group
@@ -3064,12 +3124,17 @@
       const renameBtn = document.getElementById('renameGroupBtn');
       const deleteBtn = document.getElementById('deleteGroupBtn');
       const manageBtn = document.getElementById('manageGroupMembersBtn');
+      const archiveBtn = document.getElementById('archiveGroupBtn');
+      const unarchiveBtn = document.getElementById('unarchiveGroupBtn');
       const isCreator = groupData && parseInt(groupData.creatorId, 10) === parseInt(currentUser.id, 10);
+      const isArchived = groupData.archived_by && groupData.archived_by.includes(parseInt(currentUser.id, 10));
 
       // Pre-configure button visibility before showing menu
       manageBtn.style.display = isCreator ? 'block' : 'none';
       renameBtn.style.display = isCreator ? 'block' : 'none';
       deleteBtn.style.display = isCreator ? 'block' : 'none';
+      archiveBtn.style.display = isArchived ? 'none' : 'block';
+      unarchiveBtn.style.display = isArchived ? 'block' : 'none';
 
       // Position menu, accounting for viewport
       let x = event.clientX;
@@ -3790,6 +3855,90 @@
 
     function closeDeleteGroupModal() {
       document.getElementById('deleteGroupModal').classList.add('hidden');
+    }
+
+    async function archiveGroup() {
+      try {
+        const data = await apiCall(`/api/groups/${currentGroupContextMenuId}/archive`, {
+          method: 'POST',
+          body: JSON.stringify({})
+        });
+        if (data && data.ok) {
+          document.getElementById('groupContextMenu').classList.add('hidden');
+          showToast('Group archived', 'success');
+          loadGroups();
+        } else {
+          alert('Failed to archive group: ' + (data?.error || 'Unknown error'));
+        }
+      } catch (err) {
+        console.error('archiveGroup error:', err);
+      }
+    }
+
+    async function unarchiveGroup() {
+      try {
+        const data = await apiCall(`/api/groups/${currentGroupContextMenuId}/archive`, {
+          method: 'POST',
+          body: JSON.stringify({})
+        });
+        if (data && data.ok) {
+          document.getElementById('groupContextMenu').classList.add('hidden');
+          showToast('Group unarchived', 'success');
+          loadGroups();
+        } else {
+          alert('Failed to unarchive group: ' + (data?.error || 'Unknown error'));
+        }
+      } catch (err) {
+        console.error('unarchiveGroup error:', err);
+      }
+    }
+
+    function deleteAllGroupMessages() {
+      document.getElementById('deleteAllMessagesError').classList.add('hidden');
+      document.getElementById('deleteAllMessagesSubmitBtn').disabled = false;
+      document.getElementById('deleteAllMessagesCancelBtn').disabled = false;
+      document.getElementById('deleteAllMessagesModal').classList.remove('hidden');
+      document.getElementById('groupContextMenu').classList.add('hidden');
+    }
+
+    function closeDeleteAllMessagesModal() {
+      document.getElementById('deleteAllMessagesModal').classList.add('hidden');
+    }
+
+    async function submitDeleteAllMessages() {
+      const submitBtn = document.getElementById('deleteAllMessagesSubmitBtn');
+      const cancelBtn = document.getElementById('deleteAllMessagesCancelBtn');
+      const errorDiv = document.getElementById('deleteAllMessagesError');
+
+      submitBtn.disabled = true;
+      cancelBtn.disabled = true;
+      errorDiv.classList.add('hidden');
+
+      try {
+        const data = await apiCall(`/api/groups/${currentGroupContextMenuId}/messages/delete-all`, {
+          method: 'POST',
+          body: JSON.stringify({})
+        });
+
+        if (data && data.ok) {
+          closeDeleteAllMessagesModal();
+          showToast('All messages deleted for you', 'success');
+          if (currentGroupId === currentGroupContextMenuId) {
+            loadGroupMessages(currentGroupContextMenuId);
+          }
+        } else {
+          errorDiv.textContent = data?.error || 'Failed to delete messages';
+          errorDiv.classList.remove('hidden');
+          submitBtn.disabled = false;
+          cancelBtn.disabled = false;
+        }
+      } catch (err) {
+        console.error('Error deleting all messages:', err);
+        errorDiv.textContent = err.message || 'An error occurred';
+        errorDiv.classList.remove('hidden');
+        submitBtn.disabled = false;
+        cancelBtn.disabled = false;
+      }
     }
 
     // Close context menu when clicking outside
