@@ -4349,6 +4349,81 @@ async function createCryptoDailyPost() {
   }
 }
 
+// Helper function to generate GuardiAI friendly content
+function generateGuardiAIContent() {
+  const friendlyMessages = [
+    "Wassup bro?",
+    "Hey everyone!",
+    "What's up folks?",
+    "Yo, what's good?",
+    "What's happening out there?",
+    "How's it going?",
+    "Heyyy friends!",
+    "Good vibes only 🤙",
+    "Let's goooo!",
+    "Just checking in on y'all",
+    "What's good in the hood?",
+    "Keeping it real with y'all",
+    "Vibing with this community",
+    "Yo, let's make it happen",
+    "Stay blessed out there"
+  ];
+
+  const randomIndex = Math.floor(Math.random() * friendlyMessages.length);
+  return friendlyMessages[randomIndex];
+}
+
+// Helper function to check if 12 hours have passed since the last GuardiAI auto-post
+async function shouldCreateGuardiAIPost() {
+  try {
+    const { rows } = await pool.query(`
+      SELECT created_at FROM feed_posts
+      WHERE user_id = 100
+      ORDER BY created_at DESC
+      LIMIT 1
+    `);
+
+    if (rows.length === 0) {
+      // No previous GuardiAI post, allow creation
+      return true;
+    }
+
+    const lastPostTime = new Date(rows[0].created_at);
+    const now = new Date();
+    const hoursSinceLastPost = (now - lastPostTime) / (1000 * 60 * 60);
+
+    if (hoursSinceLastPost >= 12) {
+      console.log(`[GUARDIAI] 12+ hours since last post (${hoursSinceLastPost.toFixed(1)}h). Creating new post.`);
+      return true;
+    } else {
+      console.log(`[GUARDIAI] Skipping post creation. Only ${hoursSinceLastPost.toFixed(1)}h since last post (need 12h cooldown)`);
+      return false;
+    }
+  } catch (err) {
+    console.error('[GUARDIAI] Error checking cooldown:', err);
+    return false;
+  }
+}
+
+// Helper function to create a GuardiAI auto-post
+async function createGuardiAIPost() {
+  try {
+    const content = generateGuardiAIContent();
+
+    const { rows } = await pool.query(`
+      INSERT INTO feed_posts (user_id, content, created_at)
+      VALUES ($1, $2, NOW())
+      RETURNING id, created_at
+    `, [100, JSON.stringify({ type: 'text', text: content })]);
+
+    console.log(`[GUARDIAI] Created GuardiAI auto-post #${rows[0].id} at ${new Date().toISOString()}`);
+    return { created: true, postId: rows[0].id, createdAt: rows[0].created_at };
+  } catch (err) {
+    console.error('[GUARDIAI] Error creating GuardiAI post:', err);
+    return { created: false, reason: 'Error creating post' };
+  }
+}
+
 // POST /api/feed/milestones/refresh - Refresh network milestone data on-demand
 app.post('/api/feed/milestones/refresh', async (req, res) => {
   try {
@@ -5933,6 +6008,33 @@ async function start() {
         });
       }
 
+      // Seed GuardiAI auto-post demo data
+      console.log('[GuardiAI Seed] Starting GuardiAI auto-post demo data seed...');
+
+      // Seed a recent GuardiAI friendly post
+      const guardiAIPost1Res = await pool.query(`
+        INSERT INTO feed_posts (user_id, content, created_at)
+        VALUES (100, $1, NOW())
+        ON CONFLICT DO NOTHING
+        RETURNING id
+      `, [JSON.stringify({ type: 'text', text: 'Hey everyone!' })]);
+
+      if (guardiAIPost1Res.rows.length > 0) {
+        console.log('[GuardiAI Seed] Created GuardiAI demo post 1:', { postId: guardiAIPost1Res.rows[0].id });
+      }
+
+      // Seed an older GuardiAI friendly post (14 hours ago to trigger new post creation)
+      const guardiAIPost2Res = await pool.query(`
+        INSERT INTO feed_posts (user_id, content, created_at)
+        VALUES (100, $1, NOW() - INTERVAL '14 hours')
+        ON CONFLICT DO NOTHING
+        RETURNING id
+      `, [JSON.stringify({ type: 'text', text: 'What\'s up folks?' })]);
+
+      if (guardiAIPost2Res.rows.length > 0) {
+        console.log('[GuardiAI Seed] Created GuardiAI demo post 2:', { postId: guardiAIPost2Res.rows[0].id });
+      }
+
       console.log('[GuardiAI Seed] ✅ Staging demo data seed completed');
     }
 
@@ -5995,6 +6097,20 @@ async function start() {
         await createCryptoDailyPost();
       }
     }, 7200000);
+
+    // Start GuardiAI bot (runs every 12 hours)
+    // Create initial post on startup if cooldown check passes
+    if (await shouldCreateGuardiAIPost()) {
+      await createGuardiAIPost();
+    }
+
+    // Set interval to create a new GuardiAI post every 12 hours (43200000 ms)
+    // Conditionally create posts only when cooldown criteria are met
+    setInterval(async () => {
+      if (await shouldCreateGuardiAIPost()) {
+        await createGuardiAIPost();
+      }
+    }, 43200000);
 
     app.listen(port, () => console.log(`Listening on :${port}`));
   } catch (err) {
