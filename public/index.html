@@ -6281,6 +6281,11 @@
 
       const onChainBadge = post.onChain ? '<span class="inline-block ml-1 px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-xs rounded font-medium">✓ On-Chain</span>' : '';
 
+      // Format username with bold and globe icon for milestone posts
+      const usernameDisplay = post.username === 'Usernode Network Updates'
+        ? `<span class="font-bold text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username)} 🌐</span>`
+        : `<span class="font-medium text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username)}</span>`;
+
       const ownerMenu = isOwner ? `
         <div class="relative ml-auto flex-shrink-0">
           <button onclick="openPostMenu(${post.id}, event)" class="post-menu-btn opacity-0 group-hover:opacity-100 transition p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 rounded leading-none" title="Post options">⋯</button>
@@ -6297,7 +6302,7 @@
           <div class="flex-1 min-w-0">
             <div class="flex items-start gap-1 mb-1">
               <div class="flex items-center gap-1 flex-wrap flex-1">
-                <span class="font-medium text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username)}</span>
+                ${usernameDisplay}
                 ${post.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs">✓</span>' : ''}
                 <span class="text-xs text-zinc-500 dark:text-zinc-400">${timestamp}</span>
                 <span id="postEditedLabel-${post.id}" class="text-xs text-zinc-400 dark:text-zinc-500 italic ${isEdited ? '' : 'hidden'}">(edited)</span>
