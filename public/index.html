@@ -4823,6 +4823,9 @@
       // Always render the "Your Contacts" section
       renderYourContactsSection(allContacts);
 
+      // Keep Pending Requests section in sync with any state changes
+      await loadPendingRequests();
+
       if (!query) {
         // When no search query, show all contacts in the main list (duplicates the submenu but maintains backward compatibility)
         const list = document.getElementById('contactsList');
