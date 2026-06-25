@@ -7,6 +7,20 @@
       "required": false,
       "private": false,
       "default": "false"
+    },
+    {
+      "key": "RAPIDAPI_KEY",
+      "description": "RapidAPI key for api-football.com authentication. Used to fetch live World Cup 2026 match scores and standings.",
+      "required": true,
+      "private": true,
+      "staging_default": "demo-key-for-testing-only"
+    },
+    {
+      "key": "RAPIDAPI_HOST",
+      "description": "RapidAPI host identifier for api-football.com (public constant identifier).",
+      "required": true,
+      "private": false,
+      "default": "api-football.com"
     }
   ],
   "tests": [

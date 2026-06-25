@@ -4044,44 +4044,135 @@ async function createCryptoDailyPost() {
   }
 }
 
-// Helper function to generate World Cup match data
-function generateMockWorldCupData() {
-  const matches = [
-    { team1: 'Brazil', team2: 'Germany', score1: 2, score2: 1, status: 'finished', kickoff: '2026-01-15 14:00' },
-    { team1: 'France', team2: 'Spain', score1: 1, score2: 1, status: 'finished', kickoff: '2026-01-15 18:00' },
-    { team1: 'Argentina', team2: 'Netherlands', score1: 2, score2: 0, status: 'finished', kickoff: '2026-01-15 22:00' },
-    { team1: 'England', team2: 'Belgium', score1: 0, score2: 0, status: 'ongoing', kickoff: '2026-01-16 14:00' },
-    { team1: 'Italy', team2: 'Portugal', score1: null, score2: null, status: 'upcoming', kickoff: '2026-01-16 18:00' },
-    { team1: 'Uruguay', team2: 'Mexico', score1: null, score2: null, status: 'upcoming', kickoff: '2026-01-16 22:00' },
-    { team1: 'Japan', team2: 'South Korea', score1: 1, score2: 2, status: 'finished', kickoff: '2026-01-17 14:00' },
-    { team1: 'Australia', team2: 'Canada', score1: 0, score2: 0, status: 'finished', kickoff: '2026-01-17 18:00' }
-  ];
-
-  const standings = [
-    { group: 'A', rank: 1, team: 'Brazil', played: 3, won: 3, drawn: 0, lost: 0, gf: 7, ga: 1, pts: 9 },
-    { group: 'A', rank: 2, team: 'Germany', played: 3, won: 2, drawn: 0, lost: 1, gf: 5, ga: 2, pts: 6 },
-    { group: 'B', rank: 1, team: 'France', played: 3, won: 2, drawn: 1, lost: 0, gf: 5, ga: 2, pts: 7 },
-    { group: 'B', rank: 2, team: 'Spain', played: 3, won: 2, drawn: 0, lost: 1, gf: 4, ga: 3, pts: 6 }
-  ];
-
-  return { matches, standings };
-}
-
-// Helper function to fetch World Cup data from API or mock
+// Helper function to fetch World Cup data from api-football.com
 async function fetchWorldCupData() {
   try {
-    if (IS_STAGING) {
-      console.log('[WORLD_CUP] Using mock data (staging)');
-      return generateMockWorldCupData();
+    const cacheResult = await pool.query(`
+      SELECT data FROM world_cup_cache
+      WHERE last_fetched_at > NOW() - INTERVAL '25 seconds'
+      ORDER BY last_fetched_at DESC
+      LIMIT 1
+    `);
+
+    if (cacheResult.rows.length > 0) {
+      console.log('[WORLD_CUP] Using cached data');
+      return cacheResult.rows[0].data;
     }
 
-    // In production, try to fetch from a sports API (e.g., RapidAPI World Cup endpoint)
-    // For now, return mock data with a log indicating production would fetch real data
-    console.log('[WORLD_CUP] Would fetch from external API in production');
-    return generateMockWorldCupData();
+    console.log('[WORLD_CUP] Fetching fresh data from api-football.com');
+
+    const rapidAPIKey = process.env.RAPIDAPI_KEY;
+    const rapidAPIHost = process.env.RAPIDAPI_HOST;
+
+    if (!rapidAPIKey || !rapidAPIHost) {
+      console.error('[WORLD_CUP] Missing RapidAPI credentials');
+      return null;
+    }
+
+    // Fetch fixtures for 2026 World Cup (league_id=1, season=2026)
+    const fixturesResponse = await fetch(
+      'https://api-football-v1.p.rapidapi.com/v3/fixtures?league=1&season=2026&status=all',
+      {
+        method: 'GET',
+        headers: {
+          'x-rapidapi-key': rapidAPIKey,
+          'x-rapidapi-host': rapidAPIHost
+        }
+      }
+    );
+
+    if (!fixturesResponse.ok) {
+      const status = fixturesResponse.status;
+      if (status === 401) {
+        console.error('[WORLD_CUP] API authentication failed (invalid RapidAPI key)');
+      } else if (status === 429) {
+        console.error('[WORLD_CUP] API rate limit exceeded');
+      } else {
+        console.error('[WORLD_CUP] API error:', status);
+      }
+      return null;
+    }
+
+    const fixturesData = await fixturesResponse.json();
+
+    // Fetch standings for 2026 World Cup
+    const standingsResponse = await fetch(
+      'https://api-football-v1.p.rapidapi.com/v3/standings?league=1&season=2026',
+      {
+        method: 'GET',
+        headers: {
+          'x-rapidapi-key': rapidAPIKey,
+          'x-rapidapi-host': rapidAPIHost
+        }
+      }
+    );
+
+    if (!standingsResponse.ok) {
+      console.error('[WORLD_CUP] Failed to fetch standings');
+      return null;
+    }
+
+    const standingsData = await standingsResponse.json();
+
+    // Transform fixtures into normalized format
+    const matches = [];
+    if (fixturesData.response && Array.isArray(fixturesData.response)) {
+      fixturesData.response.slice(0, 10).forEach(fixture => {
+        const status = fixture.fixture.status.short;
+        let matchStatus = 'upcoming';
+        if (status === 'FT' || status === 'AET' || status === 'PEN') {
+          matchStatus = 'finished';
+        } else if (status === 'LIVE' || status === '1H' || status === '2H' || status === 'HT') {
+          matchStatus = 'ongoing';
+        }
+
+        matches.push({
+          team1: fixture.teams.home.name,
+          team2: fixture.teams.away.name,
+          score1: fixture.goals.home,
+          score2: fixture.goals.away,
+          status: matchStatus,
+          kickoff: fixture.fixture.date
+        });
+      });
+    }
+
+    // Transform standings into normalized format
+    const standings = [];
+    if (standingsData.response && Array.isArray(standingsData.response)) {
+      standingsData.response.forEach(groupData => {
+        if (groupData.group && Array.isArray(groupData.standings)) {
+          const group = groupData.group;
+          groupData.standings[0].forEach((team, index) => {
+            standings.push({
+              group: group,
+              rank: index + 1,
+              team: team.team.name,
+              played: team.all.played,
+              won: team.all.win,
+              drawn: team.all.draw,
+              lost: team.all.lose,
+              gf: team.all.goals.for,
+              ga: team.all.goals.against,
+              pts: team.points
+            });
+          });
+        }
+      });
+    }
+
+    const result = { matches, standings };
+
+    // Cache the result
+    await pool.query(`
+      INSERT INTO world_cup_cache (data, last_fetched_at, created_at)
+      VALUES ($1, NOW(), NOW())
+    `, [JSON.stringify(result)]);
+
+    return result;
   } catch (err) {
     console.error('[WORLD_CUP] Error fetching World Cup data:', err);
-    return generateMockWorldCupData();
+    return null;
   }
 }
 
@@ -4642,6 +4733,20 @@ async function start() {
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_crypto_data_cache_fetched
         ON crypto_data_cache(last_fetched_at DESC)
+    `);
+
+    // Create world_cup_cache table (public - cached api-football.com data for World Cup 2026 bot)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS world_cup_cache (
+        id BIGSERIAL PRIMARY KEY,
+        data JSONB NOT NULL,
+        last_fetched_at TIMESTAMPTZ DEFAULT NOW(),
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_world_cup_cache_fetched
+        ON world_cup_cache(last_fetched_at DESC)
     `);
 
     // Mark tables as private
