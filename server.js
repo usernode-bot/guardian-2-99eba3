@@ -3699,101 +3699,103 @@ app.post('/api/feed/posts/:postId/comments', async (req, res) => {
 
     // Trigger GuardiAI bot reply if @GuardiAI is mentioned
     if (/@guardiAI/i.test(content)) {
-      try {
-        const cryptoTickers = parseCryptoCurrencies(content);
+      await (async () => {
+        try {
+          const cryptoTickers = parseCryptoCurrencies(content);
 
-        if (cryptoTickers.length > 0) {
-          // Reply for each unique crypto detected
-          for (const geckoId of cryptoTickers) {
-            try {
-              const priceData = await fetchCryptoPrice(geckoId);
-              const replyText = formatCryptoReply(geckoId, priceData);
+          if (cryptoTickers.length > 0) {
+            // Reply for each unique crypto detected
+            for (const geckoId of cryptoTickers) {
+              try {
+                const priceData = await fetchCryptoPrice(geckoId);
+                const replyText = formatCryptoReply(geckoId, priceData);
 
-              // Insert bot reply
-              const { rows: botReplyRows } = await pool.query(`
-                INSERT INTO feed_comments (post_id, user_id, content, created_at, updated_at)
-                VALUES ($1, $2, $3, NOW(), NOW())
-                RETURNING id
-              `, [postId, 100, replyText]);
-
-              // Log the interaction
-              if (botReplyRows.length > 0) {
-                await pool.query(`
-                  INSERT INTO bot_reply_log (trigger_comment_id, bot_reply_comment_id, trigger_username, reply_content, crypto_ticker, crypto_price, price_change_24h, api_source)
-                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                  ON CONFLICT DO NOTHING
-                `, [
-                  comment.id,
-                  botReplyRows[0].id,
-                  user.username,
-                  replyText,
-                  geckoId,
-                  priceData.price,
-                  priceData.change24h,
-                  'coingecko'
-                ]);
-              }
-            } catch (err) {
-              if (err.message === 'RATE_LIMIT') {
-                // Silently skip on rate limit
-                console.log('CoinGecko rate limit hit, skipping bot reply');
-                continue;
-              } else if (err.message === 'API_TIMEOUT') {
-                // Fall back to friendly tone on timeout
-                const replyText = selectRandomFriendlyReply();
+                // Insert bot reply
                 const { rows: botReplyRows } = await pool.query(`
                   INSERT INTO feed_comments (post_id, user_id, content, created_at, updated_at)
                   VALUES ($1, $2, $3, NOW(), NOW())
                   RETURNING id
                 `, [postId, 100, replyText]);
 
+                // Log the interaction
                 if (botReplyRows.length > 0) {
                   await pool.query(`
-                    INSERT INTO bot_reply_log (trigger_comment_id, bot_reply_comment_id, trigger_username, reply_content, api_source)
-                    VALUES ($1, $2, $3, $4, $5)
+                    INSERT INTO bot_reply_log (trigger_comment_id, bot_reply_comment_id, trigger_username, reply_content, crypto_ticker, crypto_price, price_change_24h, api_source)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                     ON CONFLICT DO NOTHING
-                  `, [comment.id, botReplyRows[0].id, user.username, replyText, 'friendly_fallback']);
+                  `, [
+                    comment.id,
+                    botReplyRows[0].id,
+                    user.username,
+                    replyText,
+                    geckoId,
+                    priceData.price,
+                    priceData.change24h,
+                    'coingecko'
+                  ]);
                 }
-              } else {
-                // Other API errors: fall back to friendly tone
-                const replyText = selectRandomFriendlyReply();
-                const { rows: botReplyRows } = await pool.query(`
-                  INSERT INTO feed_comments (post_id, user_id, content, created_at, updated_at)
-                  VALUES ($1, $2, $3, NOW(), NOW())
-                  RETURNING id
-                `, [postId, 100, replyText]);
+              } catch (err) {
+                if (err.message === 'RATE_LIMIT') {
+                  // Silently skip on rate limit
+                  console.log('CoinGecko rate limit hit, skipping bot reply');
+                  continue;
+                } else if (err.message === 'API_TIMEOUT') {
+                  // Fall back to friendly tone on timeout
+                  const replyText = selectRandomFriendlyReply();
+                  const { rows: botReplyRows } = await pool.query(`
+                    INSERT INTO feed_comments (post_id, user_id, content, created_at, updated_at)
+                    VALUES ($1, $2, $3, NOW(), NOW())
+                    RETURNING id
+                  `, [postId, 100, replyText]);
 
-                if (botReplyRows.length > 0) {
-                  await pool.query(`
-                    INSERT INTO bot_reply_log (trigger_comment_id, bot_reply_comment_id, trigger_username, reply_content, api_source)
-                    VALUES ($1, $2, $3, $4, $5)
-                    ON CONFLICT DO NOTHING
-                  `, [comment.id, botReplyRows[0].id, user.username, replyText, 'friendly_fallback']);
+                  if (botReplyRows.length > 0) {
+                    await pool.query(`
+                      INSERT INTO bot_reply_log (trigger_comment_id, bot_reply_comment_id, trigger_username, reply_content, api_source)
+                      VALUES ($1, $2, $3, $4, $5)
+                      ON CONFLICT DO NOTHING
+                    `, [comment.id, botReplyRows[0].id, user.username, replyText, 'friendly_fallback']);
+                  }
+                } else {
+                  // Other API errors: fall back to friendly tone
+                  const replyText = selectRandomFriendlyReply();
+                  const { rows: botReplyRows } = await pool.query(`
+                    INSERT INTO feed_comments (post_id, user_id, content, created_at, updated_at)
+                    VALUES ($1, $2, $3, NOW(), NOW())
+                    RETURNING id
+                  `, [postId, 100, replyText]);
+
+                  if (botReplyRows.length > 0) {
+                    await pool.query(`
+                      INSERT INTO bot_reply_log (trigger_comment_id, bot_reply_comment_id, trigger_username, reply_content, api_source)
+                      VALUES ($1, $2, $3, $4, $5)
+                      ON CONFLICT DO NOTHING
+                    `, [comment.id, botReplyRows[0].id, user.username, replyText, 'friendly_fallback']);
+                  }
                 }
               }
             }
-          }
-        } else {
-          // No crypto found, use friendly tone
-          const replyText = selectRandomFriendlyReply();
-          const { rows: botReplyRows } = await pool.query(`
-            INSERT INTO feed_comments (post_id, user_id, content, created_at, updated_at)
-            VALUES ($1, $2, $3, NOW(), NOW())
-            RETURNING id
-          `, [postId, 100, replyText]);
+          } else {
+            // No crypto found, use friendly tone
+            const replyText = selectRandomFriendlyReply();
+            const { rows: botReplyRows } = await pool.query(`
+              INSERT INTO feed_comments (post_id, user_id, content, created_at, updated_at)
+              VALUES ($1, $2, $3, NOW(), NOW())
+              RETURNING id
+            `, [postId, 100, replyText]);
 
-          if (botReplyRows.length > 0) {
-            await pool.query(`
-              INSERT INTO bot_reply_log (trigger_comment_id, bot_reply_comment_id, trigger_username, reply_content, api_source)
-              VALUES ($1, $2, $3, $4, $5)
-              ON CONFLICT DO NOTHING
-            `, [comment.id, botReplyRows[0].id, user.username, replyText, 'friendly']);
+            if (botReplyRows.length > 0) {
+              await pool.query(`
+                INSERT INTO bot_reply_log (trigger_comment_id, bot_reply_comment_id, trigger_username, reply_content, api_source)
+                VALUES ($1, $2, $3, $4, $5)
+                ON CONFLICT DO NOTHING
+              `, [comment.id, botReplyRows[0].id, user.username, replyText, 'friendly']);
+            }
           }
+        } catch (err) {
+          // Log bot errors but don't fail the user's comment
+          console.error('Error triggering bot reply:', err);
         }
-      } catch (err) {
-        // Log bot errors but don't fail the user's comment
-        console.error('Error triggering bot reply:', err);
-      }
+      })();
     }
 
     res.json({
