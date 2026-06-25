@@ -579,13 +579,14 @@ app.get('/api/conversations', async (req, res) => {
         unreadCount: parseInt(conv.unread_count || 0),
         isMuted,
         isPending,
+        myStatus,
       };
 
       if (isArchived) {
         archived.push(convData);
-      } else if (isSavedContact) {
+      } else if (isSavedContact || myStatus === 'accepted') {
         active.push(convData);
-      } else {
+      } else if (myStatus === 'pending') {
         pending.push(convData);
       }
     }
@@ -621,11 +622,14 @@ app.post('/api/conversations', async (req, res) => {
 
     let convId = rows[0]?.id;
     if (!convId) {
+      const isUserAInitiator = userId === a;
       const result = await pool.query(`
-        INSERT INTO conversations (participant_a_id, participant_b_id, created_at, updated_at)
-        VALUES ($1, $2, NOW(), NOW())
+        INSERT INTO conversations (participant_a_id, participant_b_id, status_a, status_b, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, NOW(), NOW())
         RETURNING id
-      `, [a, b]);
+      `, [a, b,
+          isUserAInitiator ? 'accepted' : 'pending',
+          isUserAInitiator ? 'pending' : 'accepted']);
       convId = result.rows[0].id;
     }
 
@@ -1419,7 +1423,20 @@ app.post('/api/conversations/:convId/accept', async (req, res) => {
       ON CONFLICT (user_id, contact_user_id) DO NOTHING
     `, [userId, otherUserId]);
 
-    res.json({ ok: true });
+    // Fetch other user's info for response
+    const { rows: otherUserRows } = await pool.query(`
+      SELECT username FROM users WHERE id = $1
+    `, [otherUserId]);
+    const otherUsername = otherUserRows[0]?.username || 'Unknown';
+
+    // Auto-create reciprocal contact for the other user
+    await pool.query(`
+      INSERT INTO user_contacts (user_id, contact_user_id, created_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (user_id, contact_user_id) DO NOTHING
+    `, [otherUserId, userId]);
+
+    res.json({ ok: true, otherId: otherUserId, otherUsername });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -4488,6 +4505,57 @@ async function start() {
           ($1, $2, 'text', '{"text": "[Staging] Let me know if you want to catch up sometime."}', NOW() - INTERVAL '3 days' + INTERVAL '10 minutes')
         ON CONFLICT DO NOTHING
       `, [convAliceCharlieId, charlie, alice]);
+
+      // Seed pending contact requests for testing "Pending Requests" feature
+      // Charlie → Alice: Charlie sends a pending request to Alice
+      const [charlieAliceA, charlieAliceB] = [alice, charlie].sort((x, y) => x - y);
+      const { rows: convCharlieAliceRows } = await pool.query(`
+        SELECT id FROM conversations WHERE participant_a_id = $1 AND participant_b_id = $2
+      `, [charlieAliceA, charlieAliceB]);
+
+      if (convCharlieAliceRows.length === 0) {
+        const charlieIsA = charlie === charlieAliceA;
+        const result = await pool.query(`
+          INSERT INTO conversations (participant_a_id, participant_b_id, status_a, status_b, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, NOW(), NOW())
+          RETURNING id
+        `, [charlieAliceA, charlieAliceB,
+            charlieIsA ? 'accepted' : 'pending',
+            charlieIsA ? 'pending' : 'accepted']);
+        const convCharlieAliceId = result.rows[0].id;
+
+        // Add a test message from Charlie to Alice
+        await pool.query(`
+          INSERT INTO messages (conversation_id, sender_id, type, content, created_at)
+          VALUES ($1, $2, 'text', '{"text": "[Staging] Hey Alice, want to connect?"}', NOW() - INTERVAL '2 hours')
+          ON CONFLICT DO NOTHING
+        `, [convCharlieAliceId, charlie]);
+      }
+
+      // David → Bob: David sends a pending request to Bob
+      const [davidBobA2, davidBobB2] = [bob, david].sort((x, y) => x - y);
+      const { rows: convDavidBob2Rows } = await pool.query(`
+        SELECT id FROM conversations WHERE participant_a_id = $1 AND participant_b_id = $2
+      `, [davidBobA2, davidBobB2]);
+
+      if (convDavidBob2Rows.length === 0) {
+        const davidIsA = david === davidBobA2;
+        const result = await pool.query(`
+          INSERT INTO conversations (participant_a_id, participant_b_id, status_a, status_b, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, NOW(), NOW())
+          RETURNING id
+        `, [davidBobA2, davidBobB2,
+            davidIsA ? 'accepted' : 'pending',
+            davidIsA ? 'pending' : 'accepted']);
+        const convDavidBob2Id = result.rows[0].id;
+
+        // Add a test message from David to Bob
+        await pool.query(`
+          INSERT INTO messages (conversation_id, sender_id, type, content, created_at)
+          VALUES ($1, $2, 'text', '{"text": "[Staging] Hi Bob, I have something interesting to share!"}', NOW() - INTERVAL '1 hour')
+          ON CONFLICT DO NOTHING
+        `, [convDavidBob2Id, david]);
+      }
 
       // Seed sample contact relationships for testing "Add Contact" feature
       // Alice has Bob as a saved contact
