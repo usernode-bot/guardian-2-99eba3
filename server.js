@@ -3,6 +3,7 @@ const path = require('path');
 const { Pool } = require('pg');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const https = require('https');
 
 // Guardian 2 - Build PR #147: Modal dialogs for group management
 const app = express();
@@ -138,6 +139,171 @@ async function monitorBlockchainStatus(auditLogId, txHash) {
   }
 }
 
+// Cryptocurrency ticker to CoinGecko ID mapping
+const CRYPTO_MAPPING = {
+  'BTC': 'bitcoin',
+  'ETH': 'ethereum',
+  'SOL': 'solana',
+  'ADA': 'cardano',
+  'DOGE': 'dogecoin',
+  'SHIB': 'shiba-inu',
+  'XRP': 'ripple',
+  'DOT': 'polkadot',
+  'AVAX': 'avalanche-2',
+  'MATIC': 'matic-network',
+  'LINK': 'chainlink',
+  'UNI': 'uniswap',
+  'AAVE': 'aave',
+  'WBTC': 'wrapped-bitcoin',
+  'USDC': 'usd-coin',
+  'USDT': 'tether',
+  'DAI': 'dai',
+  'BNBBNB': 'binancecoin',
+  'LTC': 'litecoin',
+  'BCH': 'bitcoin-cash'
+};
+
+// Reverse mapping for name-based lookup
+const CRYPTO_NAME_MAPPING = {
+  'bitcoin': 'bitcoin',
+  'ethereum': 'ethereum',
+  'solana': 'solana',
+  'cardano': 'cardano',
+  'dogecoin': 'dogecoin',
+  'shiba': 'shiba-inu',
+  'shiba inu': 'shiba-inu',
+  'ripple': 'ripple',
+  'polkadot': 'polkadot',
+  'avalanche': 'avalanche-2',
+  'matic': 'matic-network',
+  'chainlink': 'chainlink',
+  'uniswap': 'uniswap',
+  'aave': 'aave',
+  'litecoin': 'litecoin',
+  'bitcoin cash': 'bitcoin-cash'
+};
+
+// Friendly tone variations for default replies
+const FRIENDLY_REPLIES = [
+  "Yooo that's fire! 🔥",
+  "Love it! 🚀 This is going to be huge!",
+  "Yooo wassup Guardian! Excited to see this! ⚡",
+  "That's incredible! Keep crushing it! 💪",
+  "Loving the energy! This is dope! 🎉",
+  "Yooo! Let's goooo! 🌟",
+  "Dude, that's awesome! 🔥 Can't wait to try it!",
+  "That's what I'm talking about! Keep it up! 💯",
+  "Fire drop! Excited for what's next! 🚀",
+  "Yooo Guardian, this is exactly what we needed! ✨"
+];
+
+// Parse cryptocurrency references from text
+function parseCryptoCurrencies(text) {
+  if (!text) return [];
+  const lowerText = text.toLowerCase();
+  const found = new Set();
+
+  // Check for ticker symbols (case-insensitive, word boundaries)
+  for (const [ticker, geckoId] of Object.entries(CRYPTO_MAPPING)) {
+    const regex = new RegExp(`\\b${ticker.toLowerCase()}\\b`, 'i');
+    if (regex.test(lowerText)) {
+      found.add(geckoId);
+    }
+  }
+
+  // Check for full names (case-insensitive, word boundaries)
+  for (const [name, geckoId] of Object.entries(CRYPTO_NAME_MAPPING)) {
+    const regex = new RegExp(`\\b${name.replace(/\\s+/g, '\\s+')}\\b`, 'i');
+    if (regex.test(lowerText)) {
+      found.add(geckoId);
+    }
+  }
+
+  return Array.from(found);
+}
+
+// Fetch crypto price data from CoinGecko
+async function fetchCryptoPrice(geckoId) {
+  return new Promise((resolve, reject) => {
+    let httpRequest;
+    const timeoutHandle = setTimeout(() => {
+      if (httpRequest) httpRequest.destroy();
+      reject(new Error('API_TIMEOUT'));
+    }, 5000);
+
+    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${geckoId}&vs_currencies=usd&include_24hr_change=true`;
+
+    httpRequest = https.get(url, (res) => {
+      clearTimeout(timeoutHandle);
+
+      if (res.statusCode === 429) {
+        res.destroy();
+        reject(new Error('RATE_LIMIT'));
+        return;
+      }
+
+      if (res.statusCode !== 200) {
+        res.destroy();
+        reject(new Error(`API error: ${res.statusCode}`));
+        return;
+      }
+
+      let data = '';
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          const priceData = parsed[geckoId];
+
+          if (!priceData || !priceData.usd) {
+            reject(new Error('No price data'));
+            return;
+          }
+
+          resolve({
+            price: priceData.usd,
+            change24h: priceData.usd_24h_change || 0
+          });
+        } catch (err) {
+          reject(new Error(`JSON parse error: ${err.message}`));
+        }
+      });
+    }).on('error', (err) => {
+      clearTimeout(timeoutHandle);
+      reject(new Error(`Network error: ${err.message}`));
+    });
+  });
+}
+
+// Format crypto reply text
+function formatCryptoReply(ticker, priceData) {
+  const price = priceData.price.toFixed(2);
+  const change = priceData.change24h.toFixed(1);
+  const sentiment = priceData.change24h >= 0 ? '📈' : '📉';
+  const sign = priceData.change24h >= 0 ? '+' : '';
+
+  const friendlyComments = [
+    'Strong momentum here!',
+    'Keep an eye on this!',
+    'Could be interesting!',
+    'Watch this space!',
+    'Making moves!',
+    'Things are heating up!'
+  ];
+
+  const comment = friendlyComments[Math.floor(Math.random() * friendlyComments.length)];
+
+  return `${ticker.toUpperCase()}: $${price} ${sentiment} ${sign}${change}% (24h) | ${comment}`;
+}
+
+// Select random friendly reply
+function selectRandomFriendlyReply() {
+  return FRIENDLY_REPLIES[Math.floor(Math.random() * FRIENDLY_REPLIES.length)];
+}
+
 app.use(express.json());
 app.use(async (req, res, next) => {
   const token = req.query.token || req.headers['x-usernode-token'];
@@ -180,6 +346,44 @@ app.use(async (req, res, next) => {
 });
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+
+// Debug endpoint to verify GuardiAI user exists (public for troubleshooting)
+app.get('/api/debug/guardiAI', async (_req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT id, username, is_bot, usernode_pubkey, created_at, avatar_url
+      FROM users
+      WHERE id = 100 OR username = 'GuardiAI'
+      LIMIT 1
+    `);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: 'GuardiAI user not found',
+        message: 'User with ID 100 or username GuardiAI does not exist in the database'
+      });
+    }
+
+    const guardianUser = result.rows[0];
+    res.json({
+      status: 'ok',
+      user: {
+        id: guardianUser.id,
+        username: guardianUser.username,
+        is_bot: guardianUser.is_bot,
+        usernode_pubkey: guardianUser.usernode_pubkey,
+        created_at: guardianUser.created_at,
+        avatar_url: guardianUser.avatar_url
+      }
+    });
+  } catch (err) {
+    console.error('[Debug] Error checking GuardiAI user:', err);
+    res.status(500).json({
+      error: 'Database error',
+      message: err.message
+    });
+  }
+});
 
 app.get('/favicon.ico', (_req, res) => {
   res.status(204).send();
@@ -3617,6 +3821,107 @@ app.post('/api/feed/posts/:postId/comments', async (req, res) => {
 
     const user = userRows[0];
 
+    // Trigger GuardiAI bot reply if @GuardiAI is mentioned
+    if (/@guardiAI/i.test(content)) {
+      await (async () => {
+        try {
+          const cryptoTickers = parseCryptoCurrencies(content);
+
+          if (cryptoTickers.length > 0) {
+            // Reply for each unique crypto detected
+            for (const geckoId of cryptoTickers) {
+              try {
+                const priceData = await fetchCryptoPrice(geckoId);
+                const replyText = formatCryptoReply(geckoId, priceData);
+
+                // Insert bot reply
+                const { rows: botReplyRows } = await pool.query(`
+                  INSERT INTO feed_comments (post_id, user_id, content, created_at, updated_at)
+                  VALUES ($1, $2, $3, NOW(), NOW())
+                  RETURNING id
+                `, [postId, 100, replyText]);
+
+                // Log the interaction
+                if (botReplyRows.length > 0) {
+                  await pool.query(`
+                    INSERT INTO bot_reply_log (trigger_comment_id, bot_reply_comment_id, trigger_username, reply_content, crypto_ticker, crypto_price, price_change_24h, api_source)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    ON CONFLICT DO NOTHING
+                  `, [
+                    comment.id,
+                    botReplyRows[0].id,
+                    user.username,
+                    replyText,
+                    geckoId,
+                    priceData.price,
+                    priceData.change24h,
+                    'coingecko'
+                  ]);
+                }
+              } catch (err) {
+                if (err.message === 'RATE_LIMIT') {
+                  // Silently skip on rate limit
+                  console.log('CoinGecko rate limit hit, skipping bot reply');
+                  continue;
+                } else if (err.message === 'API_TIMEOUT') {
+                  // Fall back to friendly tone on timeout
+                  const replyText = selectRandomFriendlyReply();
+                  const { rows: botReplyRows } = await pool.query(`
+                    INSERT INTO feed_comments (post_id, user_id, content, created_at, updated_at)
+                    VALUES ($1, $2, $3, NOW(), NOW())
+                    RETURNING id
+                  `, [postId, 100, replyText]);
+
+                  if (botReplyRows.length > 0) {
+                    await pool.query(`
+                      INSERT INTO bot_reply_log (trigger_comment_id, bot_reply_comment_id, trigger_username, reply_content, api_source)
+                      VALUES ($1, $2, $3, $4, $5)
+                      ON CONFLICT DO NOTHING
+                    `, [comment.id, botReplyRows[0].id, user.username, replyText, 'friendly_fallback']);
+                  }
+                } else {
+                  // Other API errors: fall back to friendly tone
+                  const replyText = selectRandomFriendlyReply();
+                  const { rows: botReplyRows } = await pool.query(`
+                    INSERT INTO feed_comments (post_id, user_id, content, created_at, updated_at)
+                    VALUES ($1, $2, $3, NOW(), NOW())
+                    RETURNING id
+                  `, [postId, 100, replyText]);
+
+                  if (botReplyRows.length > 0) {
+                    await pool.query(`
+                      INSERT INTO bot_reply_log (trigger_comment_id, bot_reply_comment_id, trigger_username, reply_content, api_source)
+                      VALUES ($1, $2, $3, $4, $5)
+                      ON CONFLICT DO NOTHING
+                    `, [comment.id, botReplyRows[0].id, user.username, replyText, 'friendly_fallback']);
+                  }
+                }
+              }
+            }
+          } else {
+            // No crypto found, use friendly tone
+            const replyText = selectRandomFriendlyReply();
+            const { rows: botReplyRows } = await pool.query(`
+              INSERT INTO feed_comments (post_id, user_id, content, created_at, updated_at)
+              VALUES ($1, $2, $3, NOW(), NOW())
+              RETURNING id
+            `, [postId, 100, replyText]);
+
+            if (botReplyRows.length > 0) {
+              await pool.query(`
+                INSERT INTO bot_reply_log (trigger_comment_id, bot_reply_comment_id, trigger_username, reply_content, api_source)
+                VALUES ($1, $2, $3, $4, $5)
+                ON CONFLICT DO NOTHING
+              `, [comment.id, botReplyRows[0].id, user.username, replyText, 'friendly']);
+            }
+          }
+        } catch (err) {
+          // Log bot errors but don't fail the user's comment
+          console.error('Error triggering bot reply:', err);
+        }
+      })();
+    }
+
     res.json({
       id: comment.id,
       userId: userId,
@@ -4170,6 +4475,18 @@ async function start() {
       ALTER TABLE users ALTER COLUMN avatar_url TYPE TEXT
     `);
 
+    // Add is_bot column to users table (idempotent migration)
+    try {
+      console.log('[Migration] Adding is_bot column to users table...');
+      await pool.query(`
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS is_bot BOOLEAN DEFAULT FALSE
+      `);
+      console.log('[Migration] ✅ is_bot column migration completed');
+    } catch (err) {
+      console.error('[Migration] ❌ ERROR adding is_bot column:', err.message);
+      throw err;
+    }
+
     // Create conversations table (marked private)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS conversations (
@@ -4469,6 +4786,26 @@ async function start() {
     await pool.query(`
       ALTER TABLE feed_posts
       ADD COLUMN IF NOT EXISTS on_chain BOOLEAN DEFAULT FALSE
+    `);
+
+    // Create bot_reply_log table for tracking bot replies
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS bot_reply_log (
+        id BIGSERIAL PRIMARY KEY,
+        trigger_comment_id BIGINT NOT NULL REFERENCES feed_comments(id) ON DELETE CASCADE,
+        bot_reply_comment_id BIGINT NOT NULL REFERENCES feed_comments(id) ON DELETE CASCADE,
+        trigger_username VARCHAR(255),
+        reply_content TEXT,
+        crypto_ticker VARCHAR(20),
+        crypto_price NUMERIC,
+        price_change_24h NUMERIC,
+        api_source VARCHAR(50),
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_bot_reply_log_trigger
+        ON bot_reply_log(trigger_comment_id)
     `);
 
     // Create peers table (public - peer foreground hours data)
@@ -5481,6 +5818,123 @@ async function start() {
         username = EXCLUDED.username,
         usernode_pubkey = EXCLUDED.usernode_pubkey
     `, [-1, 'Usernode Network Updates', 'ut1-network-system']);
+
+    // Create GuardiAI bot account in all environments
+    try {
+      console.log('[GuardiAI Seed] Starting GuardiAI user account creation...');
+
+      const guardianResult = await pool.query(`
+        INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at, is_bot)
+        VALUES (100, 'GuardiAI', 'ut1-guardiAI-bot', NOW(), NOW(), true)
+        ON CONFLICT (id) DO UPDATE SET
+          username = EXCLUDED.username,
+          is_bot = EXCLUDED.is_bot
+      `);
+
+      console.log('[GuardiAI Seed] GuardiAI user insert/upsert completed', { rowCount: guardianResult.rowCount });
+
+      // Verify the user was created
+      const verifyResult = await pool.query(`
+        SELECT id, username, is_bot, usernode_pubkey, created_at
+        FROM users
+        WHERE id = 100
+      `);
+
+      if (verifyResult.rows.length > 0) {
+        const guardianUser = verifyResult.rows[0];
+        console.log('[GuardiAI Seed] ✅ GuardiAI user verified in database:', {
+          id: guardianUser.id,
+          username: guardianUser.username,
+          is_bot: guardianUser.is_bot,
+          usernode_pubkey: guardianUser.usernode_pubkey,
+          created_at: guardianUser.created_at
+        });
+      } else {
+        console.error('[GuardiAI Seed] ❌ ERROR: GuardiAI user NOT found in database after insert!');
+      }
+    } catch (err) {
+      console.error('[GuardiAI Seed] ❌ ERROR creating/upserting GuardiAI user:', err.message);
+      throw err;
+    }
+
+    // Seed GuardiAI bot demo data in staging
+    if (IS_STAGING) {
+      console.log('[GuardiAI Seed] Starting staging demo data seed...');
+
+      // Seed a crypto-mention post and demo replies
+      const cryptoPostRes = await pool.query(`
+        INSERT INTO feed_posts (user_id, content, created_at)
+        VALUES (1, $1, NOW() - INTERVAL '2 hours')
+        ON CONFLICT DO NOTHING
+        RETURNING id
+      `, [JSON.stringify({ text: 'Staging demo: Market analysis - checking BTC and ETH movements today' })]);
+
+      if (cryptoPostRes.rows.length > 0) {
+        const postId = cryptoPostRes.rows[0].id;
+        console.log('[GuardiAI Seed] Created staging crypto demo post:', { postId });
+
+        // Seed a comment with crypto mention
+        await pool.query(`
+          INSERT INTO feed_comments (post_id, user_id, content, created_at)
+          VALUES ($1, $2, $3, NOW() - INTERVAL '90 minutes')
+          ON CONFLICT DO NOTHING
+        `, [postId, 2, '@GuardiAI whats the price on BTC and ethereum right now?']);
+
+        // Seed bot replies with sample crypto data
+        const btcReply = await pool.query(`
+          INSERT INTO feed_comments (post_id, user_id, content, created_at)
+          VALUES ($1, $2, $3, NOW() - INTERVAL '89 minutes')
+          ON CONFLICT DO NOTHING
+          RETURNING id
+        `, [postId, 100, 'BTC: $45230.00 📈 +3.2% (24h) | Strong momentum here!']);
+
+        const ethReply = await pool.query(`
+          INSERT INTO feed_comments (post_id, user_id, content, created_at)
+          VALUES ($1, $2, $3, NOW() - INTERVAL '88 minutes')
+          ON CONFLICT DO NOTHING
+          RETURNING id
+        `, [postId, 100, 'ETH: $2340.00 📉 -1.8% (24h) | Could be interesting!']);
+
+        console.log('[GuardiAI Seed] Created staging crypto demo replies:', {
+          btcReplyId: btcReply.rows[0]?.id,
+          ethReplyId: ethReply.rows[0]?.id
+        });
+      }
+
+      // Seed a friendly-reply post (no crypto mention)
+      const friendlyPostRes = await pool.query(`
+        INSERT INTO feed_posts (user_id, content, created_at)
+        VALUES (1, $1, NOW() - INTERVAL '1 hour')
+        ON CONFLICT DO NOTHING
+        RETURNING id
+      `, [JSON.stringify({ text: 'Staging demo: Just shipped a major update to the protocol!' })]);
+
+      if (friendlyPostRes.rows.length > 0) {
+        const postId = friendlyPostRes.rows[0].id;
+        console.log('[GuardiAI Seed] Created staging friendly demo post:', { postId });
+
+        // Seed a comment with @GuardiAI mention but no crypto
+        await pool.query(`
+          INSERT INTO feed_comments (post_id, user_id, content, created_at)
+          VALUES ($1, $2, $3, NOW() - INTERVAL '50 minutes')
+          ON CONFLICT DO NOTHING
+        `, [postId, 3, '@GuardiAI what do you think of this update?']);
+
+        // Seed a friendly bot reply
+        const friendlyReply = await pool.query(`
+          INSERT INTO feed_comments (post_id, user_id, content, created_at)
+          VALUES ($1, $2, $3, NOW() - INTERVAL '49 minutes')
+          ON CONFLICT DO NOTHING
+          RETURNING id
+        `, [postId, 100, 'Yooo that\'s fire! 🔥 Love the energy! Can\'t wait to see what you build next.']);
+
+        console.log('[GuardiAI Seed] Created staging friendly demo reply:', {
+          friendlyReplyId: friendlyReply.rows[0]?.id
+        });
+      }
+
+      console.log('[GuardiAI Seed] ✅ Staging demo data seed completed');
+    }
 
     // Create reserved system user for Crypto Daily bot (all environments)
     await pool.query(`
