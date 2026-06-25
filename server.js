@@ -1545,7 +1545,7 @@ app.get('/api/contacts', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
     const { rows } = await pool.query(`
-      SELECT uc.id, u.id as user_id, u.username, u.usernode_pubkey, u.verified_at, u.avatar_url, uc.nickname
+      SELECT uc.id, u.id as user_id, u.username, u.usernode_pubkey, u.verified_at, u.avatar_url, uc.nickname, uc.archived_by, uc.muted_by
       FROM user_contacts uc
       JOIN users u ON uc.contact_user_id = u.id
       WHERE uc.user_id = $1
@@ -1560,6 +1560,8 @@ app.get('/api/contacts', async (req, res) => {
       nickname: r.nickname,
       verified: !!r.verified_at,
       avatar_url: r.avatar_url || null,
+      archived_by: r.archived_by || [],
+      muted_by: r.muted_by || [],
     }));
 
     res.json({ contacts });
@@ -1786,6 +1788,74 @@ app.delete('/api/contacts/:contactId', async (req, res) => {
     res.json({ ok: true, deletedConversations });
   } catch (err) {
     console.error('Error deleting contact:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/contacts/:contactId/archive', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { contactId } = req.params;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    const result = await pool.query(`
+      UPDATE user_contacts
+      SET archived_by = CASE
+        WHEN archived_by @> ARRAY[$1]::integer[] THEN array_remove(archived_by, $1)
+        ELSE CASE WHEN archived_by IS NULL THEN ARRAY[$1] ELSE array_append(archived_by, $1) END
+      END
+      WHERE id = $2 AND user_id = $3
+      RETURNING archived_by
+    `, [userId, contactId, userId]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    const isArchived = result.rows[0].archived_by && result.rows[0].archived_by.includes(userId);
+    res.json({ ok: true, archived: isArchived });
+  } catch (err) {
+    console.error('Error archiving contact:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/contacts/:contactId/mute', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { contactId } = req.params;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    const result = await pool.query(`
+      UPDATE user_contacts
+      SET muted_by = CASE
+        WHEN muted_by @> ARRAY[$1]::integer[] THEN array_remove(muted_by, $1)
+        ELSE CASE WHEN muted_by IS NULL THEN ARRAY[$1] ELSE array_append(muted_by, $1) END
+      END
+      WHERE id = $2 AND user_id = $3
+      RETURNING muted_by
+    `, [userId, contactId, userId]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    const isMuted = result.rows[0].muted_by && result.rows[0].muted_by.includes(userId);
+    res.json({ ok: true, muted: isMuted });
+  } catch (err) {
+    console.error('Error muting contact:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -4022,12 +4092,24 @@ async function start() {
         contact_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         nickname VARCHAR(255),
         created_at TIMESTAMPTZ DEFAULT NOW(),
+        archived_by INTEGER[],
+        muted_by INTEGER[],
         UNIQUE(user_id, contact_user_id)
       )
     `);
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_user_contacts_user_id
         ON user_contacts(user_id)
+    `);
+
+    // Add archived_by column if it doesn't exist (idempotent migration)
+    await pool.query(`
+      ALTER TABLE user_contacts ADD COLUMN IF NOT EXISTS archived_by INTEGER[]
+    `);
+
+    // Add muted_by column if it doesn't exist (idempotent migration)
+    await pool.query(`
+      ALTER TABLE user_contacts ADD COLUMN IF NOT EXISTS muted_by INTEGER[]
     `);
 
     // Create blockchain_audit_logs table (marked private)
@@ -4585,6 +4667,34 @@ async function start() {
         VALUES ($1, $2, NULL, NOW()), ($1, $3, NULL, NOW())
         ON CONFLICT (user_id, contact_user_id) DO NOTHING
       `, [alice, david, emma]);
+
+      // Seed archived, muted, and archived+muted contacts for testing contact options menu
+      const { rows: archiveRows } = await pool.query(`
+        SELECT id FROM user_contacts WHERE user_id = $1 AND contact_user_id = $2
+      `, [alice, bob]);
+      if (archiveRows.length > 0) {
+        await pool.query(`
+          UPDATE user_contacts SET muted_by = ARRAY[$1]::integer[] WHERE id = $2
+        `, [alice, archiveRows[0].id]);
+      }
+
+      const { rows: archiveRows2 } = await pool.query(`
+        SELECT id FROM user_contacts WHERE user_id = $1 AND contact_user_id = $2
+      `, [alice, charlie]);
+      if (archiveRows2.length > 0) {
+        await pool.query(`
+          UPDATE user_contacts SET archived_by = ARRAY[$1]::integer[] WHERE id = $2
+        `, [alice, archiveRows2[0].id]);
+      }
+
+      const { rows: archiveRows3 } = await pool.query(`
+        SELECT id FROM user_contacts WHERE user_id = $1 AND contact_user_id = $2
+      `, [alice, david]);
+      if (archiveRows3.length > 0) {
+        await pool.query(`
+          UPDATE user_contacts SET archived_by = ARRAY[$1]::integer[], muted_by = ARRAY[$1]::integer[] WHERE id = $2
+        `, [alice, archiveRows3[0].id]);
+      }
 
       // Seed a clearly-labelled test post for edit/delete feature testing
       const { rows: editTestRows } = await pool.query(`
