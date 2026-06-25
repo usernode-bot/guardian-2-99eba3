@@ -3796,14 +3796,16 @@ app.post('/api/feed/posts/:postId/comments', async (req, res) => {
       return res.status(400).json({ error: 'Comment content is required' });
     }
 
-    // Verify post exists
+    // Verify post exists and get owner
     const { rows: postRows } = await pool.query(`
-      SELECT id FROM feed_posts WHERE id = $1
+      SELECT id, user_id FROM feed_posts WHERE id = $1
     `, [postId]);
 
     if (postRows.length === 0) {
       return res.status(404).json({ error: 'Post not found' });
     }
+
+    const postOwnerUserId = postRows[0].user_id;
 
     // Create comment
     const { rows: commentRows } = await pool.query(`
@@ -3820,6 +3822,33 @@ app.post('/api/feed/posts/:postId/comments', async (req, res) => {
     `, [userId]);
 
     const user = userRows[0];
+
+    // Trigger GuardiAI auto-reply on any comment to GuardiAI's posts
+    if (postOwnerUserId === 100) {
+      await (async () => {
+        try {
+          const delayMs = Math.random() * 5000 + 5000;
+          setTimeout(async () => {
+            try {
+              const replyText = generateGuardiAIContent();
+              const { rows: botReplyRows } = await pool.query(`
+                INSERT INTO feed_comments (post_id, user_id, content, created_at, updated_at)
+                VALUES ($1, $2, $3, NOW(), NOW())
+                RETURNING id
+              `, [postId, 100, replyText]);
+
+              if (botReplyRows.length > 0) {
+                console.log(`[GUARDIAI-COMMENT-REPLY] Created auto-reply #${botReplyRows[0].id} to comment #${comment.id}`);
+              }
+            } catch (err) {
+              console.error('[GUARDIAI-COMMENT-REPLY] Error creating auto-reply:', err);
+            }
+          }, delayMs);
+        } catch (err) {
+          console.error('[GUARDIAI-COMMENT-REPLY] Error scheduling auto-reply:', err);
+        }
+      })();
+    }
 
     // Trigger GuardiAI bot reply if @GuardiAI is mentioned
     if (/@guardiAI/i.test(content)) {
@@ -6020,7 +6049,17 @@ async function start() {
       `, [JSON.stringify({ type: 'text', text: 'Hey everyone!' })]);
 
       if (guardiAIPost1Res.rows.length > 0) {
-        console.log('[GuardiAI Seed] Created GuardiAI demo post 1:', { postId: guardiAIPost1Res.rows[0].id });
+        const guardiAIPostId = guardiAIPost1Res.rows[0].id;
+        console.log('[GuardiAI Seed] Created GuardiAI demo post 1:', { postId: guardiAIPostId });
+
+        // Seed a demo comment to test auto-reply functionality
+        await pool.query(`
+          INSERT INTO feed_comments (post_id, user_id, content, created_at)
+          VALUES ($1, $2, $3, NOW() - INTERVAL '5 minutes')
+          ON CONFLICT DO NOTHING
+        `, [guardiAIPostId, 2, 'Great energy!']);
+
+        console.log('[GuardiAI Seed] Created demo comment for auto-reply testing');
       }
 
       // Seed an older GuardiAI friendly post (14 hours ago to trigger new post creation)
