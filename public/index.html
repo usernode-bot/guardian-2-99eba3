@@ -1532,24 +1532,6 @@
       return String(text).replace(/[&<>"']/g, m => map[m]);
     }
 
-    function showToast(message, type = 'success') {
-      const container = document.getElementById('toastContainer');
-      const toast = document.createElement('div');
-      const bgColor = type === 'success' ? 'bg-green-600' : type === 'error' ? 'bg-red-600' : 'bg-blue-600';
-      const icon = type === 'success' ? '✓' : type === 'error' ? '✕' : 'ℹ';
-
-      toast.className = `${bgColor} text-white px-4 py-3 rounded-lg shadow-lg pointer-events-auto animate-in fade-in slide-in-from-right-4 duration-300`;
-      toast.innerHTML = `<span class="flex items-center gap-2"><span>${icon}</span><span>${message}</span></span>`;
-
-      container.appendChild(toast);
-
-      setTimeout(() => {
-        toast.classList.remove('animate-in');
-        toast.classList.add('animate-out', 'fade-out', 'slide-out-to-right-4', 'duration-300');
-        setTimeout(() => toast.remove(), 300);
-      }, 3000);
-    }
-
     function showPersistentNotification(type, data) {
       const container = document.getElementById('persistentNotificationContainer');
       const notification = document.createElement('div');
@@ -2556,7 +2538,13 @@
       const unmuteBtn = document.getElementById('unmuteContactBtn');
 
       if (!archiveBtn || !unarchiveBtn || !muteBtn || !unmuteBtn) {
-        console.error('Contact menu buttons not found');
+        console.error('Contact menu buttons not found in DOM', {
+          archiveBtn: !!archiveBtn,
+          unarchiveBtn: !!unarchiveBtn,
+          muteBtn: !!muteBtn,
+          unmuteBtn: !!unmuteBtn
+        });
+        showToast('Error: contact menu unavailable', 'error');
         return;
       }
 
@@ -2567,8 +2555,8 @@
       console.log('Contact data:', contact);
 
       const userId = currentUser ? parseInt(currentUser.id, 10) : null;
-      const isArchived = contact && contact.archived_by && contact.archived_by.length > 0 && contact.archived_by.includes(userId);
-      const isMuted = contact && contact.muted_by && contact.muted_by.length > 0 && contact.muted_by.includes(userId);
+      const isArchived = contact && contact.archived_by?.length && contact.archived_by.includes(userId);
+      const isMuted = contact && contact.muted_by?.length && contact.muted_by.includes(userId);
 
       console.log('State check:', {userId, isArchived, isMuted, archived_by: contact?.archived_by, muted_by: contact?.muted_by});
 
@@ -2759,7 +2747,7 @@
     function toggleArchivedContactsSection() {
       const list = document.getElementById('archivedContactsList');
       const arrow = document.getElementById('archivedContactsArrow');
-      const userId = currentUser ? currentUser.id : null;
+      const userId = currentUser ? parseInt(currentUser.id, 10) : null;
 
       if (!list || !arrow) {
         console.warn('Archived contacts list or arrow not found');
@@ -4982,14 +4970,14 @@
       }
 
       // Separate active and archived contacts
-      const activeContacts = contacts.filter(c => !c.archived_by || c.archived_by.length === 0 || !c.archived_by.includes(userId));
-      const archivedContacts = contacts.filter(c => c.archived_by && c.archived_by.length > 0 && c.archived_by.includes(userId));
+      const activeContacts = contacts.filter(c => !c.archived_by?.length || !c.archived_by.includes(userId));
+      const archivedContacts = contacts.filter(c => c.archived_by?.length && c.archived_by.includes(userId));
 
       let html = '';
 
       // Render active contacts
       html += activeContacts.map(contact => {
-        const isMuted = contact.muted_by && contact.muted_by.length > 0 && contact.muted_by.includes(userId);
+        const isMuted = contact.muted_by?.length && contact.muted_by.includes(userId);
         const muteIndicator = isMuted ? '<span class="text-xs mr-1">🔇</span>' : '';
         return `
           <div class="p-3 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition cursor-pointer" onclick="startConversationWithContact(${contact.userId}, '${contact.username}')">
@@ -5018,7 +5006,7 @@
             </div>
             <div id="archivedContactsList" class="${listHiddenClass} space-y-1">
               ${archivedContacts.map(contact => {
-                const isMuted = contact.muted_by && contact.muted_by.length > 0 && contact.muted_by.includes(userId);
+                const isMuted = contact.muted_by?.length && contact.muted_by.includes(userId);
                 const muteIndicator = isMuted ? '<span class="text-xs mr-1">🔇</span>' : '';
                 return `
                   <div class="p-3 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition cursor-pointer opacity-75" onclick="startConversationWithContact(${contact.userId}, '${contact.username}')">
