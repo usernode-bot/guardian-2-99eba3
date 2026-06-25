@@ -3,6 +3,7 @@ const path = require('path');
 const { Pool } = require('pg');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const https = require('https');
 
 // Guardian 2 - Build PR #147: Modal dialogs for group management
 const app = express();
@@ -204,7 +205,7 @@ function parseCryptoCurrencies(text) {
 
   // Check for ticker symbols (case-insensitive, word boundaries)
   for (const [ticker, geckoId] of Object.entries(CRYPTO_MAPPING)) {
-    const regex = new RegExp(`\\b${ticker.toLowerCase()}\\b`, 'gi');
+    const regex = new RegExp(`\\b${ticker.toLowerCase()}\\b`, 'i');
     if (regex.test(lowerText)) {
       found.add(geckoId);
     }
@@ -212,7 +213,7 @@ function parseCryptoCurrencies(text) {
 
   // Check for full names (case-insensitive, word boundaries)
   for (const [name, geckoId] of Object.entries(CRYPTO_NAME_MAPPING)) {
-    const regex = new RegExp(`\\b${name}\\b`, 'gi');
+    const regex = new RegExp(`\\b${name.replace(/\\s+/g, '\\s+')}\\b`, 'i');
     if (regex.test(lowerText)) {
       found.add(geckoId);
     }
@@ -223,42 +224,58 @@ function parseCryptoCurrencies(text) {
 
 // Fetch crypto price data from CoinGecko
 async function fetchCryptoPrice(geckoId) {
-  try {
-    const response = await Promise.race([
-      fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${geckoId}&vs_currencies=usd&include_24hr_change=true`),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('TIMEOUT')), 5000)
-      )
-    ]);
+  return new Promise((resolve, reject) => {
+    let httpRequest;
+    const timeoutHandle = setTimeout(() => {
+      if (httpRequest) httpRequest.destroy();
+      reject(new Error('API_TIMEOUT'));
+    }, 5000);
 
-    if (response.status === 429) {
-      throw new Error('RATE_LIMIT');
-    }
+    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${geckoId}&vs_currencies=usd&include_24hr_change=true`;
 
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
-    }
+    httpRequest = https.get(url, (res) => {
+      clearTimeout(timeoutHandle);
 
-    const data = await response.json();
-    const priceData = data[geckoId];
+      if (res.statusCode === 429) {
+        res.destroy();
+        reject(new Error('RATE_LIMIT'));
+        return;
+      }
 
-    if (!priceData || !priceData.usd) {
-      throw new Error('No price data');
-    }
+      if (res.statusCode !== 200) {
+        res.destroy();
+        reject(new Error(`API error: ${res.statusCode}`));
+        return;
+      }
 
-    return {
-      price: priceData.usd,
-      change24h: priceData.usd_24h_change || 0
-    };
-  } catch (err) {
-    if (err.message === 'RATE_LIMIT') {
-      throw err;
-    }
-    if (err.message === 'TIMEOUT') {
-      throw new Error('API_TIMEOUT');
-    }
-    throw err;
-  }
+      let data = '';
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          const priceData = parsed[geckoId];
+
+          if (!priceData || !priceData.usd) {
+            reject(new Error('No price data'));
+            return;
+          }
+
+          resolve({
+            price: priceData.usd,
+            change24h: priceData.usd_24h_change || 0
+          });
+        } catch (err) {
+          reject(new Error(`JSON parse error: ${err.message}`));
+        }
+      });
+    }).on('error', (err) => {
+      clearTimeout(timeoutHandle);
+      reject(new Error(`Network error: ${err.message}`));
+    });
+  });
 }
 
 // Format crypto reply text
