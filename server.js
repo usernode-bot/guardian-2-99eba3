@@ -640,6 +640,74 @@ app.post('/api/conversations', async (req, res) => {
   }
 });
 
+app.get('/api/conversations/pending', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    const convQuery = `
+      SELECT
+        c.id,
+        c.participant_a_id,
+        c.participant_b_id,
+        c.status_a,
+        c.status_b,
+        c.created_at,
+        u.username,
+        u.usernode_pubkey,
+        u.verified_at,
+        u.avatar_url,
+        uc.id as contact_id
+      FROM conversations c
+      JOIN users u ON u.id = CASE WHEN c.participant_a_id = $1 THEN c.participant_b_id ELSE c.participant_a_id END
+      LEFT JOIN user_contacts uc ON uc.user_id = $1 AND uc.contact_user_id = u.id
+      WHERE (c.participant_a_id = $1 OR c.participant_b_id = $1)
+      AND uc.id IS NULL
+      AND c.archived_by IS NULL OR NOT (c.archived_by @> ARRAY[$1]::integer[])
+      ORDER BY c.created_at DESC
+    `;
+
+    const { rows: allConversations } = await pool.query(convQuery, [userId]);
+
+    // Filter to only pending requests where current user is participant_b (recipient)
+    const pending = [];
+    for (const conv of allConversations) {
+      const myStatus = conv.participant_a_id === userId ? conv.status_a : conv.status_b;
+      const isIgnored = myStatus === 'ignored';
+      const isArchived = conv.archived_by && conv.archived_by.includes(userId);
+
+      // Skip ignored and archived conversations
+      if (isIgnored || isArchived) continue;
+
+      // Only show to recipient (participant_b)
+      const isRecipient = userId === conv.participant_b_id;
+      if (!isRecipient) continue;
+
+      const otherId = conv.participant_a_id === userId ? conv.participant_b_id : conv.participant_a_id;
+
+      pending.push({
+        id: conv.id,
+        otherId,
+        username: conv.username || 'Unknown',
+        usernode_pubkey: conv.usernode_pubkey || null,
+        verified: !!conv.verified_at,
+        avatar_url: conv.avatar_url || null,
+      });
+    }
+
+    res.json({ pending });
+  } catch (err) {
+    console.error('Error fetching pending conversations:', err);
+    res.status(500).json({ error: 'Failed to fetch pending conversations' });
+  }
+});
+
 app.get('/api/conversations/:convId', async (req, res) => {
   try {
     if (!req.user) {

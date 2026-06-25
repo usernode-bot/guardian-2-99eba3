@@ -896,6 +896,18 @@
             <h2 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Find Contacts</h2>
             <input id="contactsSearchInput" type="text" placeholder="Search by wallet address" oninput="handleContactSearch(event)" class="w-full px-3 py-2 bg-white dark:bg-zinc-700 border border-zinc-300 dark:border-zinc-600 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition text-sm">
           </div>
+          <!-- Pending Requests Section -->
+          <div id="pendingRequestsSection" class="bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700">
+            <div class="px-4 py-2 space-y-2">
+              <div class="flex items-center justify-between cursor-pointer" onclick="togglePendingRequestsSection()">
+                <h3 class="text-xs font-semibold text-zinc-600 dark:text-zinc-400 uppercase tracking-wide">Pending Requests (<span id="pendingRequestsCount">0</span>)</h3>
+                <span id="pendingRequestsArrow" class="text-zinc-500 text-sm">▼</span>
+              </div>
+              <div id="pendingRequestsList" class="space-y-1">
+                <!-- Filled by renderPendingRequests -->
+              </div>
+            </div>
+          </div>
           <!-- Your Contacts Submenu -->
           <div id="yourContactsSection" class="bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700">
             <div class="px-4 py-2 space-y-2">
@@ -1663,8 +1675,6 @@
     let pendingDeleteContactId = null;
     let isDeleteContactInProgress = false;
     let currentActiveView = 'messages';
-    let pendingConvIds = new Set();
-    let pendingConversationData = {}; // Maps convId to full conversation object for recipient check
 
     // Guardian's tab caching
     let cachedGuardiansData = null;
@@ -2741,14 +2751,7 @@
 
       const { active = [], pending = [], archived = [] } = data.conversations;
 
-      // Track pending conversations and their full data so openConversation can verify current user is the recipient
-      pendingConvIds = new Set(pending.map(c => c.id));
-      pendingConversationData = {};
-      pending.forEach(c => {
-        pendingConversationData[c.id] = c;
-      });
-
-      if (active.length === 0 && pending.length === 0 && archived.length === 0) {
+      if (active.length === 0 && archived.length === 0) {
         list.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">No conversations yet. <br>Tap "Contacts" to search for users and start a conversation.</div>';
         return;
       }
@@ -2825,9 +2828,6 @@
       // Render sections in order
       if (active.length > 0) {
         html += renderSection('Your Active Chats', active);
-      }
-      if (pending.length > 0) {
-        html += renderSection('Pending Requests', pending);
       }
       if (archived.length > 0) {
         html += renderSection('Archived', archived);
@@ -3899,80 +3899,11 @@
       // Fetch and show contact menu
       await fetchAndShowContactMenu(otherId, username);
 
-      // Inject or remove the pending-request banner based on current pending status
-      renderPendingBanner(convId);
-
       showChatView();
       loadMessages();
 
       if (pollInterval) clearInterval(pollInterval);
       pollInterval = setInterval(loadMessages, 2000);
-    }
-
-    function renderPendingBanner(convId) {
-      const existingBanner = document.getElementById('pendingRequestBanner');
-      if (existingBanner) existingBanner.remove();
-
-      if (!pendingConvIds.has(convId)) return;
-
-      // Only show banner to the recipient (participant_b), not the sender (participant_a)
-      const conv = pendingConversationData[convId];
-      if (!conv) return;
-
-      const isRecipient = currentUser && (currentUser.id === conv.participant_b_id);
-      if (!isRecipient) return;
-
-      const chatView = document.getElementById('chatView');
-      const banner = document.createElement('div');
-      banner.id = 'pendingRequestBanner';
-      banner.className = 'flex items-center justify-between gap-3 px-4 py-3 bg-amber-50 dark:bg-amber-900/30 border-b border-amber-200 dark:border-amber-700 text-sm';
-      banner.innerHTML = `
-        <span class="text-amber-800 dark:text-amber-200 flex-1">This person is not in your contacts. Accept their message request?</span>
-        <div class="flex gap-2 flex-shrink-0">
-          <button onclick="acceptPendingConversation(${convId})" class="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-xs font-medium transition">Accept</button>
-          <button onclick="ignorePendingConversation(${convId})" class="px-3 py-1.5 bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-200 rounded text-xs font-medium transition">Ignore</button>
-        </div>
-      `;
-      // Insert before messageList so it sits above the messages
-      const messageList = document.getElementById('messageList');
-      chatView.insertBefore(banner, messageList);
-    }
-
-    async function acceptPendingConversation(convId) {
-      const data = await apiCall(`/api/conversations/${convId}/accept`, {
-        method: 'POST',
-        body: JSON.stringify({})
-      });
-
-      if (data && data.ok) {
-        pendingConvIds.delete(convId);
-        const banner = document.getElementById('pendingRequestBanner');
-        if (banner) banner.remove();
-        showToast('Contact accepted', 'success');
-        await loadConversations();
-        await loadContactsList();
-      } else {
-        alert('Failed to accept: ' + (data?.error || 'Unknown error'));
-      }
-    }
-
-    async function ignorePendingConversation(convId) {
-      const data = await apiCall(`/api/conversations/${convId}/ignore`, {
-        method: 'POST',
-        body: JSON.stringify({})
-      });
-
-      if (data && data.ok) {
-        pendingConvIds.delete(convId);
-        const banner = document.getElementById('pendingRequestBanner');
-        if (banner) banner.remove();
-        showToast('Request ignored', 'success');
-        // Go back to conversations list since this conversation is now hidden
-        showConversationsView();
-        await loadConversations();
-      } else {
-        alert('Failed to ignore: ' + (data?.error || 'Unknown error'));
-      }
     }
 
     async function loadMessages() {
@@ -4467,6 +4398,7 @@
       if (pollInterval) clearInterval(pollInterval);
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
       if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
+      if (pendingRequestsPollInterval) clearInterval(pendingRequestsPollInterval);
 
       // Clear modals/menus when returning to messages view
       closeManageGroupMembersModal();
@@ -4490,12 +4422,17 @@
     }
 
     let allContacts = [];
+    let pendingRequests = [];
+    let pendingRequestsPollInterval = null;
 
     async function loadContactsList() {
       const data = await apiCall('/api/contacts');
       if (!data) return;
 
       allContacts = data.contacts || [];
+
+      // Fetch pending requests
+      await loadPendingRequests();
 
       // Always render the "Your Contacts" submenu section
       renderYourContactsSection(allContacts);
@@ -4508,6 +4445,60 @@
         // Clear the main list when not searching (submenu is the primary view)
         list.innerHTML = '<div class="text-center py-8 text-zinc-500 dark:text-zinc-400 text-sm">Type to search for more contacts</div>';
       }
+    }
+
+    async function loadPendingRequests() {
+      const data = await apiCall('/api/conversations/pending');
+      if (!data) return;
+
+      pendingRequests = data.pending || [];
+      renderPendingRequests(pendingRequests);
+    }
+
+    function renderPendingRequests(requests) {
+      if (!requests) requests = [];
+      const list = document.getElementById('pendingRequestsList');
+      const count = document.getElementById('pendingRequestsCount');
+      const section = document.getElementById('pendingRequestsSection');
+
+      // Dedup by conversation ID
+      const deduped = Array.from(new Map(requests.map(r => [r.id, r])).values());
+      pendingRequests = deduped;
+
+      count.textContent = deduped.length;
+
+      if (deduped.length === 0) {
+        list.innerHTML = '<div class="text-xs text-zinc-500 dark:text-zinc-400 py-2">No pending requests.</div>';
+        return;
+      }
+
+      list.innerHTML = deduped.map(req => {
+        const displayName = req.username;
+        const walletShort = req.usernode_pubkey ? req.usernode_pubkey.substring(0, 14) + '…' : 'No wallet';
+        const verifiedBadge = req.verified ? '<span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span>' : '';
+        const avatarInitial = req.username ? req.username.charAt(0).toUpperCase() : '?';
+        const avatarHtml = req.avatar_url
+          ? `<img src="${escapeHtml(req.avatar_url)}" alt="${escapeHtml(req.username)}" class="w-8 h-8 rounded-full object-cover flex-shrink-0 cursor-pointer hover:opacity-80 transition" onclick="event.stopPropagation(); showUserProfileModal(${req.otherId})" onerror="this.style.display='none'">`
+          : `<div class="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0 cursor-pointer hover:opacity-80 transition" onclick="event.stopPropagation(); showUserProfileModal(${req.otherId})">${avatarInitial}</div>`;
+
+        return `
+          <div class="p-3 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition">
+            <div class="flex justify-between items-start gap-2">
+              <div class="flex-1 min-w-0 flex items-start gap-2">
+                ${avatarHtml}
+                <div class="flex-1 min-w-0">
+                  <div class="font-medium truncate text-sm text-zinc-900 dark:text-zinc-100">${displayName} ${verifiedBadge}</div>
+                  <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${walletShort}</div>
+                </div>
+              </div>
+              <div class="flex gap-1 flex-shrink-0">
+                <button onclick="acceptContactRequest(${req.id}, ${req.otherId}, '${displayName.replace(/'/g, "\\'")}')" class="text-xs px-2 py-1 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded transition">✓</button>
+                <button onclick="declineContactRequest(${req.id})" class="text-xs px-2 py-1 bg-zinc-300 hover:bg-zinc-400 dark:bg-zinc-600 dark:hover:bg-zinc-500 text-zinc-700 dark:text-zinc-200 rounded transition">✗</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
     }
 
     function renderContactsList(contacts) {
@@ -4695,6 +4686,69 @@
         // Refresh conversation list after creating/opening conversation
         loadConversations();
         openConversation(data.id, userId, username);
+      }
+    }
+
+    async function acceptContactRequest(conversationId, otherId, username) {
+      const data = await apiCall(`/api/conversations/${conversationId}/accept`, {
+        method: 'POST',
+        body: JSON.stringify({})
+      });
+
+      if (data && data.ok) {
+        // Remove from pending list
+        pendingRequests = pendingRequests.filter(r => r.id !== conversationId);
+        renderPendingRequests(pendingRequests);
+
+        // Update contacts list
+        await loadContactsList();
+
+        showToast('Contact accepted', 'success');
+
+        // Auto-open the conversation
+        openConversation(conversationId, otherId, username);
+      } else {
+        alert('Failed to accept: ' + (data?.error || 'Unknown error'));
+      }
+    }
+
+    async function declineContactRequest(conversationId) {
+      const data = await apiCall(`/api/conversations/${conversationId}/ignore`, {
+        method: 'POST',
+        body: JSON.stringify({})
+      });
+
+      if (data && data.ok) {
+        // Remove from pending list
+        pendingRequests = pendingRequests.filter(r => r.id !== conversationId);
+        renderPendingRequests(pendingRequests);
+
+        // Update conversations view
+        await loadConversations();
+
+        showToast('Request declined', 'success');
+      } else {
+        alert('Failed to decline: ' + (data?.error || 'Unknown error'));
+      }
+    }
+
+    function togglePendingRequestsSection() {
+      const list = document.getElementById('pendingRequestsList');
+      const arrow = document.getElementById('pendingRequestsArrow');
+      const isHidden = list.classList.contains('hidden');
+
+      if (isHidden) {
+        list.classList.remove('hidden');
+        arrow.textContent = '▲';
+        if (currentUser) {
+          localStorage.setItem(`guardian_pending_open_${currentUser.id}`, 'true');
+        }
+      } else {
+        list.classList.add('hidden');
+        arrow.textContent = '▼';
+        if (currentUser) {
+          localStorage.setItem(`guardian_pending_open_${currentUser.id}`, 'false');
+        }
       }
     }
 
@@ -4986,6 +5040,7 @@
       document.getElementById('inputFooter').classList.add('footer-in-view');
       document.getElementById('header').classList.add('header-chat-fixed');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
+      if (pendingRequestsPollInterval) clearInterval(pendingRequestsPollInterval);
     }
 
     function showContactsView() {
@@ -5010,8 +5065,30 @@
       document.getElementById('conversationMenuBtn').classList.add('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
       if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
+      if (pendingRequestsPollInterval) clearInterval(pendingRequestsPollInterval);
       document.getElementById('contactsSearchInput').value = '';
       loadContactsList();
+
+      // Restore pending requests section visibility from localStorage
+      const pendingSection = document.getElementById('pendingRequestsSection');
+      const pendingList = document.getElementById('pendingRequestsList');
+      const arrow = document.getElementById('pendingRequestsArrow');
+      if (currentUser && pendingSection && pendingList && arrow) {
+        const isOpen = localStorage.getItem(`guardian_pending_open_${currentUser.id}`) !== 'false';
+        if (isOpen) {
+          pendingList.classList.remove('hidden');
+          arrow.textContent = '▲';
+        } else {
+          pendingList.classList.add('hidden');
+          arrow.textContent = '▼';
+        }
+      }
+
+      // Start auto-refresh polling for pending requests
+      if (pendingRequestsPollInterval) clearInterval(pendingRequestsPollInterval);
+      pendingRequestsPollInterval = setInterval(async () => {
+        await loadPendingRequests();
+      }, 4000); // 4 seconds, within the 3-5 second range
     }
 
     function showFeedView() {
@@ -5036,6 +5113,7 @@
       document.getElementById('conversationMenuBtn').classList.add('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
       if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
+      if (pendingRequestsPollInterval) clearInterval(pendingRequestsPollInterval);
       loadUserLikes();
       loadFeedPosts(0);
     }
@@ -5060,6 +5138,7 @@
       document.getElementById('menuBtn').classList.add('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
+      if (pendingRequestsPollInterval) clearInterval(pendingRequestsPollInterval);
 
       // Load profile data and switch to identity tab by default
       const savedTab = localStorage.getItem(`guardian_profile_tab_${currentUser?.id}`) || 'identity';
