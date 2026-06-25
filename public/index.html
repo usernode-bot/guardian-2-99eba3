@@ -6565,8 +6565,21 @@
 
     function renderMentions(rawText) {
       if (!rawText) return '';
-      const parts = rawText.split(/(@[a-zA-Z0-9_]{1,50})/g);
-      return parts.map(part => {
+
+      // First, parse bold markdown syntax: **text** -> <bold>text</bold>
+      // Using [\s\S] to match any character including newlines
+      let withBold = rawText.replace(/\*\*([\s\S]*?)\*\*/g, (match, text) => {
+        return `<bold>${escapeHtml(text)}</bold>`;
+      });
+
+      // Then handle mentions
+      const parts = withBold.split(/(@[a-zA-Z0-9_]{1,50})/g);
+      const result = parts.map(part => {
+        // Skip if part is inside a bold tag
+        if (part.includes('<bold>') || part.includes('</bold>')) {
+          return part;
+        }
+
         const m = part.match(/^@([a-zA-Z0-9_]{1,50})$/);
         if (m) {
           const uname = m[1];
@@ -6574,6 +6587,9 @@
         }
         return escapeHtml(part);
       }).join('');
+
+      // Replace placeholder tags with actual bold tags
+      return result.replace(/<bold>([\s\S]*?)<\/bold>/g, '<strong class="font-bold">$1</strong>');
     }
 
     // ===== FEED COMMENTS FUNCTIONS =====
