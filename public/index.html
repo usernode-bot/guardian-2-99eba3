@@ -5040,6 +5040,7 @@
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
       if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
       loadUserLikes();
+      loadNetworkStats();
       loadFeedPosts(0);
     }
 
@@ -6227,6 +6228,104 @@
       } catch (err) {
         console.error('Error loading feed:', err);
         document.getElementById('feedList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Error loading feed</div>';
+      }
+    }
+
+    let networkStatsRefreshInterval = null;
+
+    async function loadNetworkStats() {
+      try {
+        const response = await fetch('/api/network/stats');
+        if (!response.ok) {
+          renderNetworkStatsCardError();
+          return;
+        }
+        const data = await response.json();
+        renderNetworkStatsCard(data);
+
+        // Start periodic refresh interval if not already running
+        if (!networkStatsRefreshInterval) {
+          networkStatsRefreshInterval = setInterval(() => {
+            loadNetworkStats();
+          }, 120000); // 2 minutes
+        }
+      } catch (err) {
+        console.error('Error loading network stats:', err);
+        renderNetworkStatsCardError();
+      }
+    }
+
+    function renderNetworkStatsCard(data) {
+      const feedList = document.getElementById('feedList');
+      if (!feedList) return;
+
+      // Remove existing card if present
+      const existingCard = document.getElementById('networkStatsCard');
+      if (existingCard) {
+        existingCard.remove();
+      }
+
+      // Create card element
+      const cardEl = document.createElement('div');
+      cardEl.id = 'networkStatsCard';
+      cardEl.className = 'p-4 bg-white dark:bg-zinc-800/50 rounded-lg mb-3 border border-zinc-200 dark:border-zinc-700';
+
+      const activeNodes = data.activeNodes || 0;
+      const uptime = data.uptime || 0;
+      const validators = data.validators || 0;
+
+      cardEl.innerHTML = `
+        <div class="grid grid-cols-3 gap-4">
+          <div class="text-center">
+            <div class="text-2xl font-bold text-cyan-600 dark:text-cyan-400">${activeNodes.toLocaleString()}</div>
+            <div class="text-xs font-medium text-zinc-600 dark:text-zinc-400 mt-1">Active Nodes</div>
+          </div>
+          <div class="text-center">
+            <div class="text-2xl font-bold text-cyan-600 dark:text-cyan-400">${uptime}%</div>
+            <div class="text-xs font-medium text-zinc-600 dark:text-zinc-400 mt-1">Network Uptime</div>
+          </div>
+          <div class="text-center">
+            <div class="text-2xl font-bold text-cyan-600 dark:text-cyan-400">${validators}</div>
+            <div class="text-xs font-medium text-zinc-600 dark:text-zinc-400 mt-1">Validators</div>
+          </div>
+        </div>
+      `;
+
+      // Insert at the top of feedList
+      if (feedList.firstChild) {
+        feedList.insertBefore(cardEl, feedList.firstChild);
+      } else {
+        feedList.appendChild(cardEl);
+      }
+    }
+
+    function renderNetworkStatsCardError() {
+      const feedList = document.getElementById('feedList');
+      if (!feedList) return;
+
+      // Remove existing card if present
+      const existingCard = document.getElementById('networkStatsCard');
+      if (existingCard) {
+        existingCard.remove();
+      }
+
+      // Create error card element
+      const cardEl = document.createElement('div');
+      cardEl.id = 'networkStatsCard';
+      cardEl.className = 'p-4 bg-white dark:bg-zinc-800/50 rounded-lg mb-3 border border-zinc-200 dark:border-zinc-700';
+
+      cardEl.innerHTML = `
+        <div class="text-center">
+          <div class="text-sm text-zinc-600 dark:text-zinc-400">Network stats unavailable</div>
+          <button onclick="loadNetworkStats()" class="text-xs text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 mt-2 transition">Retry</button>
+        </div>
+      `;
+
+      // Insert at the top of feedList
+      if (feedList.firstChild) {
+        feedList.insertBefore(cardEl, feedList.firstChild);
+      } else {
+        feedList.appendChild(cardEl);
       }
     }
 
