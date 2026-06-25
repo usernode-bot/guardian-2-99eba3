@@ -3815,6 +3815,90 @@ async function createMilestonePost() {
   }
 }
 
+// Helper function to fetch crypto data from CoinGecko API
+async function fetchCryptoDailyData() {
+  try {
+    const cacheResult = await pool.query(`
+      SELECT data FROM crypto_data_cache
+      WHERE last_fetched_at > NOW() - INTERVAL '25 seconds'
+      ORDER BY last_fetched_at DESC
+      LIMIT 1
+    `);
+
+    if (cacheResult.rows.length > 0) {
+      console.log('[CRYPTO] Using cached data');
+      return cacheResult.rows[0].data;
+    }
+
+    console.log('[CRYPTO] Fetching fresh data from CoinGecko');
+    const response = await fetch(
+      'https://api.coingecko.com/api/v3/coins/markets?' +
+      'vs_currency=usd&order=market_cap_desc&per_page=10&sparkline=false'
+    );
+
+    if (!response.ok) {
+      throw new Error(`CoinGecko API error: ${response.status}`);
+    }
+
+    const coins = await response.json();
+    const cryptoData = coins.map((coin, index) => ({
+      rank: index + 1,
+      name: coin.name,
+      symbol: coin.symbol.toUpperCase(),
+      market_cap: coin.market_cap ? `$${coin.market_cap.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : 'N/A',
+      price_change_24h: coin.price_change_percentage_24h ? `${coin.price_change_percentage_24h.toFixed(2)}%` : 'N/A'
+    }));
+
+    await pool.query(`
+      INSERT INTO crypto_data_cache (data, last_fetched_at, created_at)
+      VALUES ($1, NOW(), NOW())
+    `, [JSON.stringify(cryptoData)]);
+
+    return cryptoData;
+  } catch (err) {
+    console.error('[CRYPTO] Error fetching crypto data:', err);
+    return null;
+  }
+}
+
+// Helper function to create a Crypto Daily post
+async function createCryptoDailyPost() {
+  try {
+    const cryptoData = await fetchCryptoDailyData();
+
+    if (!cryptoData || cryptoData.length === 0) {
+      console.log('[CRYPTO] No data available, skipping post creation');
+      return;
+    }
+
+    // Format as monospace table
+    const tableHeader = 'Rank  Coin                    Symbol  Market Cap              24h Change\n' +
+                        '====  =====================  ======  ======================  ===========';
+    const tableRows = cryptoData.map(coin => {
+      const rankStr = String(coin.rank).padEnd(4);
+      const nameStr = coin.name.padEnd(23);
+      const symbolStr = coin.symbol.padEnd(6);
+      const marketCapStr = coin.market_cap.padEnd(22);
+      const changeStr = coin.price_change_24h;
+      return `${rankStr}  ${nameStr}  ${symbolStr}  ${marketCapStr}  ${changeStr}`;
+    }).join('\n');
+
+    const timestamp = new Date().toISOString();
+    const tableText = `${tableHeader}\n${tableRows}\n\nLast updated: ${timestamp}`;
+
+    const { rows } = await pool.query(`
+      INSERT INTO feed_posts (user_id, content, created_at)
+      VALUES ($1, $2, NOW())
+      RETURNING id, created_at
+    `, [-2, JSON.stringify({ type: 'text', text: tableText })]);
+
+    console.log(`[CRYPTO] Created Crypto Daily post #${rows[0].id} at ${timestamp}`);
+    return rows[0];
+  } catch (err) {
+    console.error('[CRYPTO] Error creating crypto daily post:', err);
+  }
+}
+
 // POST /api/feed/milestones/refresh - Refresh network milestone data on-demand
 app.post('/api/feed/milestones/refresh', async (req, res) => {
   try {
@@ -4261,6 +4345,20 @@ async function start() {
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_network_milestones_key
         ON network_milestones(key)
+    `);
+
+    // Create crypto_data_cache table (public - cached CoinGecko data for Crypto Daily bot)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS crypto_data_cache (
+        id SERIAL PRIMARY KEY,
+        data JSONB NOT NULL,
+        last_fetched_at TIMESTAMPTZ DEFAULT NOW(),
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_crypto_data_cache_fetched
+        ON crypto_data_cache(last_fetched_at DESC)
     `);
 
     // Mark tables as private
@@ -5199,6 +5297,15 @@ async function start() {
         usernode_pubkey = EXCLUDED.usernode_pubkey
     `, [-1, 'Usernode Network Updates', 'ut1-network-system']);
 
+    // Create reserved system user for Crypto Daily bot (all environments)
+    await pool.query(`
+      INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at)
+      VALUES ($1, $2, $3, NOW(), NOW())
+      ON CONFLICT (id) DO UPDATE SET
+        username = EXCLUDED.username,
+        usernode_pubkey = EXCLUDED.usernode_pubkey
+    `, [-2, 'Crypto Daily', 'ut1-crypto-daily-system']);
+
     // Seed network milestones in production (hardcoded values for now)
     if (!IS_STAGING) {
       const milestones = [
@@ -5230,6 +5337,15 @@ async function start() {
     setInterval(async () => {
       await createMilestonePost();
     }, 3600000);
+
+    // Start Crypto Daily bot (runs every 2 hours)
+    // Create initial post on startup
+    await createCryptoDailyPost();
+
+    // Set interval to create a new Crypto Daily post every 2 hours (7200000 ms)
+    setInterval(async () => {
+      await createCryptoDailyPost();
+    }, 7200000);
 
     app.listen(port, () => console.log(`Listening on :${port}`));
   } catch (err) {

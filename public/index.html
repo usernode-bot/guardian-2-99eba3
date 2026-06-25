@@ -6490,9 +6490,10 @@
 
       let content = '';
       if (post.content.text) {
-        if (post.username === 'Usernode Network Updates') {
-          // Milestone posts: render metrics in monospace for proper alignment
-          content += `<pre class="bg-purple-900 dark:bg-purple-950 text-zinc-100 dark:text-zinc-200 p-3 rounded font-mono text-xs overflow-x-auto mb-2"><code>${renderMentions(post.content.text)}</code></pre>`;
+        if (post.username === 'Usernode Network Updates' || post.username === 'Crypto Daily') {
+          // Milestone and Crypto Daily posts: render metrics in monospace for proper alignment
+          const bgColor = post.username === 'Crypto Daily' ? 'bg-amber-900 dark:bg-amber-950' : 'bg-purple-900 dark:bg-purple-950';
+          content += `<pre class="${bgColor} text-zinc-100 dark:text-zinc-200 p-3 rounded font-mono text-xs overflow-x-auto mb-2"><code>${renderMentions(post.content.text)}</code></pre>`;
         } else {
           // Regular posts: render with proportional font
           content += `<p class="text-zinc-900 dark:text-zinc-100 mb-2 text-sm" style="white-space: pre-wrap;">${renderMentions(post.content.text)}</p>`;
@@ -6519,10 +6520,15 @@
 
       const onChainBadge = post.onChain ? '<span class="inline-block ml-1 px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-xs rounded font-medium">✓ On-Chain</span>' : '';
 
-      // Format username with bold and globe icon for milestone posts
-      const usernameDisplay = post.username === 'Usernode Network Updates'
-        ? `<span class="font-bold text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username)} 🌐</span>`
-        : `<span class="font-medium text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username)}</span>`;
+      // Format username with bold and icon for system bot posts
+      let usernameDisplay;
+      if (post.username === 'Usernode Network Updates') {
+        usernameDisplay = `<span class="font-bold text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username)} 🌐</span>`;
+      } else if (post.username === 'Crypto Daily') {
+        usernameDisplay = `<span class="font-bold text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username)} 🪙</span>`;
+      } else {
+        usernameDisplay = `<span class="font-medium text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username)}</span>`;
+      }
 
       const ownerMenu = isOwner ? `
         <div class="relative ml-auto flex-shrink-0">
