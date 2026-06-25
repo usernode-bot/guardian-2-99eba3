@@ -3184,11 +3184,6 @@
 
       const { active = [], archived = [] } = data.groups;
 
-      if (active.length === 0 && archived.length === 0) {
-        list.innerHTML = '<div class="sticky top-0 z-10 bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 p-4">' + createGroupButtonHtml + '</div><div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No groups yet.<br><button onclick="openCreateGroupModal()" class="mt-2 text-cyan-600 dark:text-cyan-400 hover:underline">Create Group</button></div>';
-        return;
-      }
-
       const renderGroupsList = (groups) => {
         return groups.map(group => {
           const isActive = currentGroupId === group.id;
@@ -3218,6 +3213,12 @@
       const createButtonHtml = '<div class="sticky top-0 z-10 bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 p-4">' + createGroupButtonHtml + '</div>';
 
       let html = createButtonHtml;
+
+      if (active.length === 0 && archived.length === 0) {
+        html += '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No groups yet.</div>';
+        list.innerHTML = html;
+        return;
+      }
 
       // Render active groups
       if (active.length > 0) {
