@@ -4514,13 +4514,14 @@ async function start() {
       `, [charlieAliceA, charlieAliceB]);
 
       if (convCharlieAliceRows.length === 0) {
+        const charlieIsA = charlie === charlieAliceA;
         const result = await pool.query(`
           INSERT INTO conversations (participant_a_id, participant_b_id, status_a, status_b, created_at, updated_at)
           VALUES ($1, $2, $3, $4, NOW(), NOW())
           RETURNING id
         `, [charlieAliceA, charlieAliceB,
-            charlie < alice ? 'accepted' : 'pending',
-            charlie < alice ? 'pending' : 'accepted']);
+            charlieIsA ? 'accepted' : 'pending',
+            charlieIsA ? 'pending' : 'accepted']);
         const convCharlieAliceId = result.rows[0].id;
 
         // Add a test message from Charlie to Alice
@@ -4538,13 +4539,14 @@ async function start() {
       `, [davidBobA2, davidBobB2]);
 
       if (convDavidBob2Rows.length === 0) {
+        const davidIsA = david === davidBobA2;
         const result = await pool.query(`
           INSERT INTO conversations (participant_a_id, participant_b_id, status_a, status_b, created_at, updated_at)
           VALUES ($1, $2, $3, $4, NOW(), NOW())
           RETURNING id
         `, [davidBobA2, davidBobB2,
-            david < bob ? 'accepted' : 'pending',
-            david < bob ? 'pending' : 'accepted']);
+            davidIsA ? 'accepted' : 'pending',
+            davidIsA ? 'pending' : 'accepted']);
         const convDavidBob2Id = result.rows[0].id;
 
         // Add a test message from David to Bob
