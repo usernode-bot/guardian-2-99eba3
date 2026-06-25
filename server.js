@@ -1419,6 +1419,13 @@ app.post('/api/conversations/:convId/accept', async (req, res) => {
       ON CONFLICT (user_id, contact_user_id) DO NOTHING
     `, [userId, otherUserId]);
 
+    // Create reciprocal contact record for the other participant (symmetric experience)
+    await pool.query(`
+      INSERT INTO user_contacts (user_id, contact_user_id, created_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (user_id, contact_user_id) DO NOTHING
+    `, [otherUserId, userId]);
+
     res.json({ ok: true });
   } catch (err) {
     console.error(err);
@@ -4488,6 +4495,57 @@ async function start() {
           ($1, $2, 'text', '{"text": "[Staging] Let me know if you want to catch up sometime."}', NOW() - INTERVAL '3 days' + INTERVAL '10 minutes')
         ON CONFLICT DO NOTHING
       `, [convAliceCharlieId, charlie, alice]);
+
+      // Seed pending contact request conversations for Alice (from Charlie and David)
+      // Charlie → Alice: pending request (Alice hasn't accepted or declined yet)
+      const [charliAliceA, charliAliceB] = [alice, charlie].sort((x, y) => x - y);
+      const { rows: convCharliAliceRows } = await pool.query(`
+        SELECT id FROM conversations WHERE participant_a_id = $1 AND participant_b_id = $2
+      `, [charliAliceA, charliAliceB]);
+
+      let convCharliAliceId;
+      if (convCharliAliceRows.length === 0) {
+        const result = await pool.query(`
+          INSERT INTO conversations (participant_a_id, participant_b_id, created_at, updated_at)
+          VALUES ($1, $2, NOW() - INTERVAL '2 hours', NOW() - INTERVAL '2 hours')
+          RETURNING id
+        `, [charliAliceA, charliAliceB]);
+        convCharliAliceId = result.rows[0].id;
+      } else {
+        convCharliAliceId = convCharliAliceRows[0].id;
+      }
+
+      // Add a message from Charlie to Alice (pending request)
+      await pool.query(`
+        INSERT INTO messages (conversation_id, sender_id, type, content, created_at)
+        VALUES ($1, $2, 'text', '{"text": "[Staging] Hey Alice! Would love to chat with you."}', NOW() - INTERVAL '2 hours')
+        ON CONFLICT DO NOTHING
+      `, [convCharliAliceId, charlie]);
+
+      // David → Alice: another pending request (Alice hasn't accepted or declined yet)
+      const [davidAliceA, davidAliceB] = [alice, david].sort((x, y) => x - y);
+      const { rows: convDavidAliceRows } = await pool.query(`
+        SELECT id FROM conversations WHERE participant_a_id = $1 AND participant_b_id = $2
+      `, [davidAliceA, davidAliceB]);
+
+      let convDavidAliceId;
+      if (convDavidAliceRows.length === 0) {
+        const result = await pool.query(`
+          INSERT INTO conversations (participant_a_id, participant_b_id, created_at, updated_at)
+          VALUES ($1, $2, NOW() - INTERVAL '1 hour', NOW() - INTERVAL '1 hour')
+          RETURNING id
+        `, [davidAliceA, davidAliceB]);
+        convDavidAliceId = result.rows[0].id;
+      } else {
+        convDavidAliceId = convDavidAliceRows[0].id;
+      }
+
+      // Add a message from David to Alice (pending request)
+      await pool.query(`
+        INSERT INTO messages (conversation_id, sender_id, type, content, created_at)
+        VALUES ($1, $2, 'text', '{"text": "[Staging] Hi Alice! Interested in connecting?"}', NOW() - INTERVAL '1 hour')
+        ON CONFLICT DO NOTHING
+      `, [convDavidAliceId, david]);
 
       // Seed sample contact relationships for testing "Add Contact" feature
       // Alice has Bob as a saved contact
