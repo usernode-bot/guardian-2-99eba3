@@ -4562,19 +4562,12 @@ async function start() {
         ON CONFLICT (user_id, contact_user_id) DO NOTHING
       `, [bob, alice]);
 
-      // Alice also has Charlie as a contact for testing wallet address search with saved contacts
+      // Alice has Emma as an additional contact (Charlie and David are pending requests, not contacts)
       await pool.query(`
         INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
         VALUES ($1, $2, NULL, NOW())
         ON CONFLICT (user_id, contact_user_id) DO NOTHING
-      `, [alice, charlie]);
-
-      // Alice has David and Emma as additional contacts
-      await pool.query(`
-        INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
-        VALUES ($1, $2, NULL, NOW()), ($1, $3, NULL, NOW())
-        ON CONFLICT (user_id, contact_user_id) DO NOTHING
-      `, [alice, david, emma]);
+      `, [alice, emma]);
 
       // Seed a clearly-labelled test post for edit/delete feature testing
       const { rows: editTestRows } = await pool.query(`
