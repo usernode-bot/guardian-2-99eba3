@@ -4044,6 +4044,132 @@ async function createCryptoDailyPost() {
   }
 }
 
+// Helper function to generate World Cup match data
+function generateMockWorldCupData() {
+  const matches = [
+    { team1: 'Brazil', team2: 'Germany', score1: 2, score2: 1, status: 'finished', kickoff: '2026-01-15 14:00' },
+    { team1: 'France', team2: 'Spain', score1: 1, score2: 1, status: 'finished', kickoff: '2026-01-15 18:00' },
+    { team1: 'Argentina', team2: 'Netherlands', score1: 2, score2: 0, status: 'finished', kickoff: '2026-01-15 22:00' },
+    { team1: 'England', team2: 'Belgium', score1: 0, score2: 0, status: 'ongoing', kickoff: '2026-01-16 14:00' },
+    { team1: 'Italy', team2: 'Portugal', score1: null, score2: null, status: 'upcoming', kickoff: '2026-01-16 18:00' },
+    { team1: 'Uruguay', team2: 'Mexico', score1: null, score2: null, status: 'upcoming', kickoff: '2026-01-16 22:00' },
+    { team1: 'Japan', team2: 'South Korea', score1: 1, score2: 2, status: 'finished', kickoff: '2026-01-17 14:00' },
+    { team1: 'Australia', team2: 'Canada', score1: 0, score2: 0, status: 'finished', kickoff: '2026-01-17 18:00' }
+  ];
+
+  const standings = [
+    { group: 'A', rank: 1, team: 'Brazil', played: 3, won: 3, drawn: 0, lost: 0, gf: 7, ga: 1, pts: 9 },
+    { group: 'A', rank: 2, team: 'Germany', played: 3, won: 2, drawn: 0, lost: 1, gf: 5, ga: 2, pts: 6 },
+    { group: 'B', rank: 1, team: 'France', played: 3, won: 2, drawn: 1, lost: 0, gf: 5, ga: 2, pts: 7 },
+    { group: 'B', rank: 2, team: 'Spain', played: 3, won: 2, drawn: 0, lost: 1, gf: 4, ga: 3, pts: 6 }
+  ];
+
+  return { matches, standings };
+}
+
+// Helper function to fetch World Cup data from API or mock
+async function fetchWorldCupData() {
+  try {
+    if (IS_STAGING) {
+      console.log('[WORLD_CUP] Using mock data (staging)');
+      return generateMockWorldCupData();
+    }
+
+    // In production, try to fetch from a sports API (e.g., RapidAPI World Cup endpoint)
+    // For now, return mock data with a log indicating production would fetch real data
+    console.log('[WORLD_CUP] Would fetch from external API in production');
+    return generateMockWorldCupData();
+  } catch (err) {
+    console.error('[WORLD_CUP] Error fetching World Cup data:', err);
+    return generateMockWorldCupData();
+  }
+}
+
+// Helper function to check if 24 hours have passed since the last World Cup post
+async function shouldCreateWorldCupPost() {
+  try {
+    const { rows } = await pool.query(`
+      SELECT created_at FROM feed_posts
+      WHERE user_id = -3
+      ORDER BY created_at DESC
+      LIMIT 1
+    `);
+
+    if (rows.length === 0) {
+      // No previous World Cup post, allow creation
+      return true;
+    }
+
+    const lastPostTime = new Date(rows[0].created_at);
+    const now = new Date();
+    const hoursSinceLastPost = (now - lastPostTime) / (1000 * 60 * 60);
+
+    if (hoursSinceLastPost >= 24) {
+      console.log(`[WORLD_CUP] 24+ hours since last post (${hoursSinceLastPost.toFixed(1)}h). Creating new post.`);
+      return true;
+    } else {
+      console.log(`[WORLD_CUP] Skipping post creation. Only ${hoursSinceLastPost.toFixed(1)}h since last post (need 24h cooldown)`);
+      return false;
+    }
+  } catch (err) {
+    console.error('[WORLD_CUP] Error checking cooldown:', err);
+    return false;
+  }
+}
+
+// Helper function to create a World Cup post
+async function createWorldCupPost() {
+  try {
+    const data = await fetchWorldCupData();
+
+    if (!data || !data.matches) {
+      console.log('[WORLD_CUP] No data available, skipping post creation');
+      return { created: false, reason: 'No World Cup data available' };
+    }
+
+    // Format matches
+    const matchLines = data.matches.map(m => {
+      if (m.status === 'upcoming') {
+        return `⏰ ${m.team1} vs ${m.team2} - ${m.kickoff}`;
+      } else if (m.status === 'ongoing') {
+        return `🔴 ${m.team1} ${m.score1} - ${m.score2} ${m.team2} (Live)`;
+      } else {
+        return `✓ ${m.team1} ${m.score1} - ${m.score2} ${m.team2}`;
+      }
+    }).join('\n');
+
+    // Format standings by group
+    const groupsMap = {};
+    data.standings.forEach(s => {
+      if (!groupsMap[s.group]) groupsMap[s.group] = [];
+      groupsMap[s.group].push(s);
+    });
+
+    const standingsText = Object.entries(groupsMap).map(([group, teams]) => {
+      const header = `\nGroup ${group} Standings:`;
+      const rows = teams.map(t =>
+        `${t.rank}. ${t.team.padEnd(12)} W-D-L: ${t.won}-${t.drawn}-${t.lost}  GF: ${t.gf}  GA: ${t.ga}  Pts: ${t.pts}`
+      ).join('\n');
+      return header + '\n' + rows;
+    }).join('\n');
+
+    const timestamp = new Date().toISOString();
+    const fullText = `🏆 World Cup 2026 - Match Updates\n\nMatches:\n${matchLines}${standingsText}\n\nLast updated: ${timestamp}`;
+
+    const { rows } = await pool.query(`
+      INSERT INTO feed_posts (user_id, content, created_at)
+      VALUES ($1, $2, NOW())
+      RETURNING id, created_at
+    `, [-3, JSON.stringify({ type: 'text', text: fullText })]);
+
+    console.log(`[WORLD_CUP] Created World Cup post #${rows[0].id} at ${timestamp}`);
+    return { created: true, postId: rows[0].id, createdAt: rows[0].created_at };
+  } catch (err) {
+    console.error('[WORLD_CUP] Error creating World Cup post:', err);
+    return { created: false, reason: 'Error creating post' };
+  }
+}
+
 // POST /api/feed/milestones/refresh - Refresh network milestone data on-demand
 app.post('/api/feed/milestones/refresh', async (req, res) => {
   try {
@@ -5491,6 +5617,15 @@ async function start() {
         usernode_pubkey = EXCLUDED.usernode_pubkey
     `, [-2, 'Crypto Daily', 'ut1-crypto-daily-system']);
 
+    // Create reserved system user for World Cup 2026 bot (all environments)
+    await pool.query(`
+      INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at)
+      VALUES ($1, $2, $3, NOW(), NOW())
+      ON CONFLICT (id) DO UPDATE SET
+        username = EXCLUDED.username,
+        usernode_pubkey = EXCLUDED.usernode_pubkey
+    `, [-3, 'World Cup 2026', 'ut1-worldcup-system']);
+
     // Seed network milestones in production (hardcoded values for now)
     if (!IS_STAGING) {
       const milestones = [
@@ -5539,6 +5674,20 @@ async function start() {
     setInterval(async () => {
       if (await shouldCreateCryptoDailyPost()) {
         await createCryptoDailyPost();
+      }
+    }, 7200000);
+
+    // Start World Cup 2026 bot (runs every 2 hours with 24-hour cooldown)
+    // Create initial post on startup if cooldown check passes
+    if (await shouldCreateWorldCupPost()) {
+      await createWorldCupPost();
+    }
+
+    // Set interval to check and create World Cup post every 2 hours (7200000 ms)
+    // Only creates if 24 hours have passed since the last post
+    setInterval(async () => {
+      if (await shouldCreateWorldCupPost()) {
+        await createWorldCupPost();
       }
     }, 7200000);
 

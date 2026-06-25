@@ -6786,9 +6786,16 @@
 
       let content = '';
       if (post.content.text) {
-        if (post.username === 'Usernode Network Updates' || post.username === 'Crypto Daily') {
-          // Milestone and Crypto Daily posts: render metrics in monospace for proper alignment
-          const bgColor = post.username === 'Crypto Daily' ? 'bg-amber-900 dark:bg-amber-950' : 'bg-purple-900 dark:bg-purple-950';
+        if (post.username === 'Usernode Network Updates' || post.username === 'Crypto Daily' || post.username === 'World Cup 2026') {
+          // System posts: render metrics in monospace for proper alignment
+          let bgColor;
+          if (post.username === 'Crypto Daily') {
+            bgColor = 'bg-amber-900 dark:bg-amber-950';
+          } else if (post.username === 'World Cup 2026') {
+            bgColor = 'bg-blue-900 dark:bg-blue-950';
+          } else {
+            bgColor = 'bg-purple-900 dark:bg-purple-950';
+          }
           content += `<pre class="${bgColor} text-zinc-100 dark:text-zinc-200 p-3 rounded font-mono text-xs overflow-x-auto mb-2"><code>${renderMentions(post.content.text)}</code></pre>`;
         } else {
           // Regular posts: render with proportional font
@@ -6822,6 +6829,8 @@
         usernameDisplay = `<span class="font-bold text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username)} 🌐</span>`;
       } else if (post.username === 'Crypto Daily') {
         usernameDisplay = `<span class="font-bold text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username)} 🪙</span>`;
+      } else if (post.username === 'World Cup 2026') {
+        usernameDisplay = `<span class="font-bold text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username)} ⚽</span>`;
       } else {
         usernameDisplay = `<span class="font-medium text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username)}</span>`;
       }
