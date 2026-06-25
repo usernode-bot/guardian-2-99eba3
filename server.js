@@ -353,7 +353,7 @@ app.get('/api/debug/guardiAI', async (_req, res) => {
     const result = await pool.query(`
       SELECT id, username, is_bot, usernode_pubkey, created_at, avatar_url
       FROM users
-      WHERE id = 100 OR username = 'GuardiAI'
+      WHERE id = 100 OR username LIKE 'GuardiAI%'
       LIMIT 1
     `);
 
@@ -3796,14 +3796,16 @@ app.post('/api/feed/posts/:postId/comments', async (req, res) => {
       return res.status(400).json({ error: 'Comment content is required' });
     }
 
-    // Verify post exists
+    // Verify post exists and get owner
     const { rows: postRows } = await pool.query(`
-      SELECT id FROM feed_posts WHERE id = $1
+      SELECT id, user_id FROM feed_posts WHERE id = $1
     `, [postId]);
 
     if (postRows.length === 0) {
       return res.status(404).json({ error: 'Post not found' });
     }
+
+    const postOwnerUserId = postRows[0].user_id;
 
     // Create comment
     const { rows: commentRows } = await pool.query(`
@@ -3820,6 +3822,33 @@ app.post('/api/feed/posts/:postId/comments', async (req, res) => {
     `, [userId]);
 
     const user = userRows[0];
+
+    // Trigger GuardiAI auto-reply on any comment to GuardiAI's posts
+    if (postOwnerUserId === 100) {
+      await (async () => {
+        try {
+          const delayMs = Math.random() * 5000 + 5000;
+          setTimeout(async () => {
+            try {
+              const replyText = generateGuardiAIContent();
+              const { rows: botReplyRows } = await pool.query(`
+                INSERT INTO feed_comments (post_id, user_id, content, created_at, updated_at)
+                VALUES ($1, $2, $3, NOW(), NOW())
+                RETURNING id
+              `, [postId, 100, replyText]);
+
+              if (botReplyRows.length > 0) {
+                console.log(`[GUARDIAI-COMMENT-REPLY] Created auto-reply #${botReplyRows[0].id} to comment #${comment.id}`);
+              }
+            } catch (err) {
+              console.error('[GUARDIAI-COMMENT-REPLY] Error creating auto-reply:', err);
+            }
+          }, delayMs);
+        } catch (err) {
+          console.error('[GUARDIAI-COMMENT-REPLY] Error scheduling auto-reply:', err);
+        }
+      })();
+    }
 
     // Trigger GuardiAI bot reply if @GuardiAI is mentioned
     if (/@guardiAI/i.test(content)) {
@@ -4345,6 +4374,81 @@ async function createCryptoDailyPost() {
     return { created: true, postId: rows[0].id, createdAt: rows[0].created_at };
   } catch (err) {
     console.error('[CRYPTO] Error creating crypto daily post:', err);
+    return { created: false, reason: 'Error creating post' };
+  }
+}
+
+// Helper function to generate GuardiAI friendly content
+function generateGuardiAIContent() {
+  const friendlyMessages = [
+    "Wassup bro?",
+    "Hey everyone!",
+    "What's up folks?",
+    "Yo, what's good?",
+    "What's happening out there?",
+    "How's it going?",
+    "Heyyy friends!",
+    "Good vibes only 🤙",
+    "Let's goooo!",
+    "Just checking in on y'all",
+    "What's good in the hood?",
+    "Keeping it real with y'all",
+    "Vibing with this community",
+    "Yo, let's make it happen",
+    "Stay blessed out there"
+  ];
+
+  const randomIndex = Math.floor(Math.random() * friendlyMessages.length);
+  return friendlyMessages[randomIndex];
+}
+
+// Helper function to check if 12 hours have passed since the last GuardiAI auto-post
+async function shouldCreateGuardiAIPost() {
+  try {
+    const { rows } = await pool.query(`
+      SELECT created_at FROM feed_posts
+      WHERE user_id = 100
+      ORDER BY created_at DESC
+      LIMIT 1
+    `);
+
+    if (rows.length === 0) {
+      // No previous GuardiAI post, allow creation
+      return true;
+    }
+
+    const lastPostTime = new Date(rows[0].created_at);
+    const now = new Date();
+    const hoursSinceLastPost = (now - lastPostTime) / (1000 * 60 * 60);
+
+    if (hoursSinceLastPost >= 12) {
+      console.log(`[GUARDIAI] 12+ hours since last post (${hoursSinceLastPost.toFixed(1)}h). Creating new post.`);
+      return true;
+    } else {
+      console.log(`[GUARDIAI] Skipping post creation. Only ${hoursSinceLastPost.toFixed(1)}h since last post (need 12h cooldown)`);
+      return false;
+    }
+  } catch (err) {
+    console.error('[GUARDIAI] Error checking cooldown:', err);
+    return false;
+  }
+}
+
+// Helper function to create a GuardiAI auto-post
+async function createGuardiAIPost() {
+  try {
+    const content = generateGuardiAIContent();
+
+    const { rows } = await pool.query(`
+      INSERT INTO feed_posts (user_id, content, created_at)
+      VALUES ($1, $2, NOW())
+      RETURNING id, created_at
+    `, [100, JSON.stringify({ type: 'text', text: content })]);
+
+    console.log(`[GUARDIAI] Created GuardiAI auto-post #${rows[0].id} at ${new Date().toISOString()}`);
+    return { created: true, postId: rows[0].id, createdAt: rows[0].created_at };
+  } catch (err) {
+    console.error('[GUARDIAI] Error creating GuardiAI post:', err);
     return { created: false, reason: 'Error creating post' };
   }
 }
@@ -5825,7 +5929,7 @@ async function start() {
 
       const guardianResult = await pool.query(`
         INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at, is_bot)
-        VALUES (100, 'GuardiAI', 'ut1-guardiAI-bot', NOW(), NOW(), true)
+        VALUES (100, 'GuardiAI 🤖', 'ut1-guardiAI-bot', NOW(), NOW(), true)
         ON CONFLICT (id) DO UPDATE SET
           username = EXCLUDED.username,
           is_bot = EXCLUDED.is_bot
@@ -5933,6 +6037,43 @@ async function start() {
         });
       }
 
+      // Seed GuardiAI auto-post demo data
+      console.log('[GuardiAI Seed] Starting GuardiAI auto-post demo data seed...');
+
+      // Seed a recent GuardiAI friendly post
+      const guardiAIPost1Res = await pool.query(`
+        INSERT INTO feed_posts (user_id, content, created_at)
+        VALUES (100, $1, NOW())
+        ON CONFLICT DO NOTHING
+        RETURNING id
+      `, [JSON.stringify({ type: 'text', text: 'Hey everyone!' })]);
+
+      if (guardiAIPost1Res.rows.length > 0) {
+        const guardiAIPostId = guardiAIPost1Res.rows[0].id;
+        console.log('[GuardiAI Seed] Created GuardiAI demo post 1:', { postId: guardiAIPostId });
+
+        // Seed a demo comment to test auto-reply functionality
+        await pool.query(`
+          INSERT INTO feed_comments (post_id, user_id, content, created_at)
+          VALUES ($1, $2, $3, NOW() - INTERVAL '5 minutes')
+          ON CONFLICT DO NOTHING
+        `, [guardiAIPostId, 2, 'Great energy!']);
+
+        console.log('[GuardiAI Seed] Created demo comment for auto-reply testing');
+      }
+
+      // Seed an older GuardiAI friendly post (14 hours ago to trigger new post creation)
+      const guardiAIPost2Res = await pool.query(`
+        INSERT INTO feed_posts (user_id, content, created_at)
+        VALUES (100, $1, NOW() - INTERVAL '14 hours')
+        ON CONFLICT DO NOTHING
+        RETURNING id
+      `, [JSON.stringify({ type: 'text', text: 'What\'s up folks?' })]);
+
+      if (guardiAIPost2Res.rows.length > 0) {
+        console.log('[GuardiAI Seed] Created GuardiAI demo post 2:', { postId: guardiAIPost2Res.rows[0].id });
+      }
+
       console.log('[GuardiAI Seed] ✅ Staging demo data seed completed');
     }
 
@@ -5995,6 +6136,20 @@ async function start() {
         await createCryptoDailyPost();
       }
     }, 7200000);
+
+    // Start GuardiAI bot (runs every 12 hours)
+    // Create initial post on startup if cooldown check passes
+    if (await shouldCreateGuardiAIPost()) {
+      await createGuardiAIPost();
+    }
+
+    // Set interval to create a new GuardiAI post every 12 hours (43200000 ms)
+    // Conditionally create posts only when cooldown criteria are met
+    setInterval(async () => {
+      if (await shouldCreateGuardiAIPost()) {
+        await createGuardiAIPost();
+      }
+    }, 43200000);
 
     app.listen(port, () => console.log(`Listening on :${port}`));
   } catch (err) {
