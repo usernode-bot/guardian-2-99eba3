@@ -6258,7 +6258,13 @@
 
       let content = '';
       if (post.content.text) {
-        content += `<p class="text-zinc-900 dark:text-zinc-100 mb-2 text-sm">${renderMentions(post.content.text)}</p>`;
+        if (post.username === 'Usernode Network Updates') {
+          // Milestone posts: render metrics in monospace for proper alignment
+          content += `<pre class="bg-purple-900 dark:bg-purple-950 text-zinc-100 dark:text-zinc-200 p-3 rounded font-mono text-xs overflow-x-auto mb-2"><code>${renderMentions(post.content.text)}</code></pre>`;
+        } else {
+          // Regular posts: render with proportional font
+          content += `<p class="text-zinc-900 dark:text-zinc-100 mb-2 text-sm" style="white-space: pre-wrap;">${renderMentions(post.content.text)}</p>`;
+        }
       }
 
       if (post.content.link) {
@@ -6281,6 +6287,11 @@
 
       const onChainBadge = post.onChain ? '<span class="inline-block ml-1 px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-xs rounded font-medium">✓ On-Chain</span>' : '';
 
+      // Format username with bold and globe icon for milestone posts
+      const usernameDisplay = post.username === 'Usernode Network Updates'
+        ? `<span class="font-bold text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username)} 🌐</span>`
+        : `<span class="font-medium text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username)}</span>`;
+
       const ownerMenu = isOwner ? `
         <div class="relative ml-auto flex-shrink-0">
           <button onclick="openPostMenu(${post.id}, event)" class="post-menu-btn opacity-0 group-hover:opacity-100 transition p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 rounded leading-none" title="Post options">⋯</button>
@@ -6297,7 +6308,7 @@
           <div class="flex-1 min-w-0">
             <div class="flex items-start gap-1 mb-1">
               <div class="flex items-center gap-1 flex-wrap flex-1">
-                <span class="font-medium text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username)}</span>
+                ${usernameDisplay}
                 ${post.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs">✓</span>' : ''}
                 <span class="text-xs text-zinc-500 dark:text-zinc-400">${timestamp}</span>
                 <span id="postEditedLabel-${post.id}" class="text-xs text-zinc-400 dark:text-zinc-500 italic ${isEdited ? '' : 'hidden'}">(edited)</span>
@@ -6560,8 +6571,21 @@
 
     function renderMentions(rawText) {
       if (!rawText) return '';
-      const parts = rawText.split(/(@[a-zA-Z0-9_]{1,50})/g);
-      return parts.map(part => {
+
+      // First, parse bold markdown syntax: **text** -> <bold>text</bold>
+      // Using [\s\S] to match any character including newlines
+      let withBold = rawText.replace(/\*\*([\s\S]*?)\*\*/g, (match, text) => {
+        return `<bold>${escapeHtml(text)}</bold>`;
+      });
+
+      // Then handle mentions
+      const parts = withBold.split(/(@[a-zA-Z0-9_]{1,50})/g);
+      const result = parts.map(part => {
+        // Skip if part is inside a bold tag
+        if (part.includes('<bold>') || part.includes('</bold>')) {
+          return part;
+        }
+
         const m = part.match(/^@([a-zA-Z0-9_]{1,50})$/);
         if (m) {
           const uname = m[1];
@@ -6569,6 +6593,9 @@
         }
         return escapeHtml(part);
       }).join('');
+
+      // Replace placeholder tags with actual bold tags
+      return result.replace(/<bold>([\s\S]*?)<\/bold>/g, '<strong class="font-bold">$1</strong>');
     }
 
     // ===== FEED COMMENTS FUNCTIONS =====
