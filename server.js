@@ -3180,7 +3180,7 @@ async function fetchLinkPreview(url) {
   }
 }
 
-// GET /api/feed/posts - Fetch paginated feed posts
+// GET /api/feed/posts - Fetch paginated feed posts with milestone posts mixed in
 app.get('/api/feed/posts', async (req, res) => {
   try {
     if (!req.user) {
@@ -3209,6 +3209,68 @@ app.get('/api/feed/posts', async (req, res) => {
       LIMIT $1 OFFSET $2
     `, [limit, offset]);
 
+    // Fetch network milestones
+    const { rows: milestones } = await pool.query(`
+      SELECT id, key, label, value, unit, category, last_refreshed_at, updated_at
+      FROM network_milestones
+      ORDER BY last_refreshed_at DESC
+    `);
+
+    // Convert milestones to post format
+    const milestonePosts = milestones.map(m => ({
+      id: 'milestone_' + m.key,
+      userId: -1,
+      username: 'Usernode Network Updates',
+      verified: true,
+      avatarUrl: null,
+      content: { type: 'milestone', text: m.label, metrics: { key: m.key, value: m.value, unit: m.unit } },
+      createdAt: m.last_refreshed_at,
+      updatedAt: m.updated_at,
+      isEdited: false,
+      onChain: false,
+      likeCount: 0,
+      commentCount: 0,
+      isMilestone: true
+    }));
+
+    // Merge posts and milestones with deterministic strategy (one milestone every 7 posts)
+    const mergedPosts = [];
+    const milestonesPerPage = Math.max(1, Math.floor(limit / 7));
+    const milestoneInsertInterval = Math.max(7, Math.floor(limit / milestonesPerPage));
+
+    for (let i = 0; i < posts.length; i++) {
+      mergedPosts.push({
+        id: posts[i].id,
+        userId: posts[i].user_id,
+        username: posts[i].username,
+        verified: !!posts[i].verified_at,
+        avatarUrl: posts[i].avatar_url,
+        content: posts[i].content,
+        createdAt: posts[i].created_at,
+        updatedAt: posts[i].updated_at,
+        isEdited: posts[i].updated_at && posts[i].created_at && (new Date(posts[i].updated_at) - new Date(posts[i].created_at)) > 1000,
+        onChain: posts[i].on_chain,
+        likeCount: posts[i].like_count || 0,
+        commentCount: posts[i].comment_count || 0,
+        isMilestone: false
+      });
+
+      // Insert a milestone post after every N regular posts
+      if (milestonePosts.length > 0 && (i + 1) % milestoneInsertInterval === 0 && milestonePosts.length > 0) {
+        const milestone = milestonePosts.shift();
+        mergedPosts.push(milestone);
+      }
+    }
+
+    // Append any remaining milestones
+    mergedPosts.push(...milestonePosts);
+
+    // Sort by createdAt descending
+    mergedPosts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    // Slice to ensure we don't exceed limit plus some milestones
+    const resultPosts = mergedPosts.slice(0, limit + 5);
+
     const { rows: countResult } = await pool.query(`
       SELECT COUNT(*) as count FROM feed_posts
     `);
@@ -3217,20 +3279,7 @@ app.get('/api/feed/posts', async (req, res) => {
     const hasMore = offset + limit < total;
 
     res.json({
-      posts: posts.map(p => ({
-        id: p.id,
-        userId: p.user_id,
-        username: p.username,
-        verified: !!p.verified_at,
-        avatarUrl: p.avatar_url,
-        content: p.content,
-        createdAt: p.created_at,
-        updatedAt: p.updated_at,
-        isEdited: p.updated_at && p.created_at && (new Date(p.updated_at) - new Date(p.created_at)) > 1000,
-        onChain: p.on_chain,
-        likeCount: p.like_count || 0,
-        commentCount: p.comment_count || 0
-      })),
+      posts: resultPosts,
       hasMore
     });
   } catch (err) {
@@ -3677,6 +3726,52 @@ app.put('/api/feed/posts/:postId', async (req, res) => {
   }
 });
 
+// POST /api/feed/milestones/refresh - Refresh network milestone data on-demand
+app.post('/api/feed/milestones/refresh', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    // Update last_refreshed_at for all milestones
+    await pool.query(`
+      UPDATE network_milestones
+      SET last_refreshed_at = NOW(), updated_at = NOW()
+    `);
+
+    // Return refreshed milestones
+    const { rows: milestones } = await pool.query(`
+      SELECT id, key, label, value, unit, category, last_refreshed_at, updated_at
+      FROM network_milestones
+      ORDER BY last_refreshed_at DESC
+    `);
+
+    const milestonePosts = milestones.map(m => ({
+      id: 'milestone_' + m.key,
+      userId: -1,
+      username: 'Usernode Network Updates',
+      verified: true,
+      avatarUrl: null,
+      content: { type: 'milestone', text: m.label, metrics: { key: m.key, value: m.value, unit: m.unit } },
+      createdAt: m.last_refreshed_at,
+      updatedAt: m.updated_at,
+      isEdited: false,
+      onChain: false,
+      likeCount: 0,
+      commentCount: 0,
+      isMilestone: true
+    }));
+
+    res.json({
+      milestones: milestonePosts,
+      refreshedAt: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('Error refreshing milestones:', err);
+    res.status(500).json({ error: 'Failed to refresh milestones' });
+  }
+});
+
 // Simple proxy for explorer API to avoid CORS issues
 app.use('/explorer-api', (req, res) => {
   // Forward requests to testnet explorer
@@ -4048,6 +4143,25 @@ async function start() {
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_peers_peer_id
         ON peers(peer_id)
+    `);
+
+    // Create network_milestones table (public - Usernode network statistics)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS network_milestones (
+        id SERIAL PRIMARY KEY,
+        key VARCHAR(50) UNIQUE NOT NULL,
+        label VARCHAR(255) NOT NULL,
+        value TEXT NOT NULL,
+        unit VARCHAR(50),
+        category VARCHAR(50),
+        last_refreshed_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_network_milestones_key
+        ON network_milestones(key)
     `);
 
     // Mark tables as private
@@ -4825,6 +4939,59 @@ async function start() {
         VALUES ($1, $2, NOW()), ($3, $2, NOW())
         ON CONFLICT (user_id, group_id) DO NOTHING
       `, [alice, testGroupId, david]);
+
+      // Seed network milestone posts for staging
+      const milestones = [
+        { key: 'active_nodes', label: 'Active Nodes', value: '42', unit: 'nodes', category: 'network' },
+        { key: 'network_throughput', label: 'Network Throughput', value: '2.5', unit: 'Gbps', category: 'network' },
+        { key: 'transactions_24h', label: 'Transactions (24h)', value: '187,432', unit: 'tx', category: 'activity' },
+        { key: 'avg_latency', label: 'Avg Latency', value: '125', unit: 'ms', category: 'performance' }
+      ];
+
+      for (const m of milestones) {
+        await pool.query(`
+          INSERT INTO network_milestones (key, label, value, unit, category, last_refreshed_at)
+          VALUES ($1, $2, $3, $4, $5, NOW())
+          ON CONFLICT (key) DO UPDATE SET
+            label = EXCLUDED.label,
+            value = EXCLUDED.value,
+            unit = EXCLUDED.unit,
+            category = EXCLUDED.category,
+            updated_at = NOW()
+        `, [m.key, m.label, m.value, m.unit, m.category]);
+      }
+    }
+
+    // Create reserved system user for network milestones (all environments)
+    await pool.query(`
+      INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at)
+      VALUES ($1, $2, $3, NOW(), NOW())
+      ON CONFLICT (id) DO UPDATE SET
+        username = EXCLUDED.username,
+        usernode_pubkey = EXCLUDED.usernode_pubkey
+    `, [-1, 'Usernode Network Updates', 'ut1-network-system']);
+
+    // Seed network milestones in production (hardcoded values for now)
+    if (!IS_STAGING) {
+      const milestones = [
+        { key: 'active_nodes', label: 'Active Nodes', value: '42', unit: 'nodes', category: 'network' },
+        { key: 'network_throughput', label: 'Network Throughput', value: '2.5', unit: 'Gbps', category: 'network' },
+        { key: 'transactions_24h', label: 'Transactions (24h)', value: '187,432', unit: 'tx', category: 'activity' },
+        { key: 'avg_latency', label: 'Avg Latency', value: '125', unit: 'ms', category: 'performance' }
+      ];
+
+      for (const m of milestones) {
+        await pool.query(`
+          INSERT INTO network_milestones (key, label, value, unit, category, last_refreshed_at)
+          VALUES ($1, $2, $3, $4, $5, NOW())
+          ON CONFLICT (key) DO UPDATE SET
+            label = EXCLUDED.label,
+            value = EXCLUDED.value,
+            unit = EXCLUDED.unit,
+            category = EXCLUDED.category,
+            updated_at = NOW()
+        `, [m.key, m.label, m.value, m.unit, m.category]);
+      }
     }
 
     app.listen(port, () => console.log(`Listening on :${port}`));
