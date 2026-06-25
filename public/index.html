@@ -2536,34 +2536,41 @@
 
     function openContactOptionsMenu(event, contactId, contactUserId, contactName) {
       event.preventDefault();
+      event.stopPropagation();
+
+      console.log('Opening menu for contact:', {contactId, contactUserId, contactName});
+
       currentContactContextMenuId = contactId;
       currentContactContextMenuUserId = contactUserId;
       currentContactContextMenuName = contactName;
 
-      console.log('Opening menu for contact:', {contactId, contactUserId, contactName});
-
-      // Find the contact data to check archive/mute states
-      const contact = allContacts.find(c => c.id === contactId);
-      currentContactContextData = contact;
-
-      console.log('Contact data:', contact);
-
-      if (!contact) {
-        console.error('Contact not found in allContacts');
+      const menu = document.getElementById('contactContextMenu');
+      if (!menu) {
+        console.error('Contact context menu not found in DOM');
         return;
       }
 
-      const menu = document.getElementById('contactContextMenu');
       const archiveBtn = document.getElementById('archiveContactBtn');
       const unarchiveBtn = document.getElementById('unarchiveContactBtn');
       const muteBtn = document.getElementById('muteContactBtn');
       const unmuteBtn = document.getElementById('unmuteContactBtn');
 
+      if (!archiveBtn || !unarchiveBtn || !muteBtn || !unmuteBtn) {
+        console.error('Contact menu buttons not found');
+        return;
+      }
+
+      // Find the contact data to check archive/mute states
+      const contact = allContacts && allContacts.length > 0 ? allContacts.find(c => c.id === contactId) : null;
+      currentContactContextData = contact;
+
+      console.log('Contact data:', contact);
+
       const userId = currentUser ? parseInt(currentUser.id, 10) : null;
       const isArchived = contact && contact.archived_by && contact.archived_by.length > 0 && contact.archived_by.includes(userId);
       const isMuted = contact && contact.muted_by && contact.muted_by.length > 0 && contact.muted_by.includes(userId);
 
-      console.log('State check:', {userId, isArchived, isMuted, archived_by: contact.archived_by, muted_by: contact.muted_by});
+      console.log('State check:', {userId, isArchived, isMuted, archived_by: contact?.archived_by, muted_by: contact?.muted_by});
 
       // Pre-configure button visibility before showing menu
       archiveBtn.style.display = isArchived ? 'none' : 'block';
@@ -2575,18 +2582,28 @@
       let x = event.clientX;
       let y = event.clientY;
 
+      console.log('Positioning menu at:', {x, y});
+
       menu.classList.remove('hidden');
       menu.style.left = x + 'px';
       menu.style.top = y + 'px';
+      menu.style.position = 'fixed';
+
+      console.log('Menu should now be visible');
 
       // Check if menu goes off-screen and adjust
       setTimeout(() => {
         const rect = menu.getBoundingClientRect();
+        console.log('Menu bounds:', {left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height});
         if (rect.right > window.innerWidth) {
-          menu.style.left = (x - rect.width) + 'px';
+          const newLeft = x - rect.width;
+          console.log('Adjusting left from', x, 'to', newLeft);
+          menu.style.left = newLeft + 'px';
         }
         if (rect.bottom > window.innerHeight) {
-          menu.style.top = (y - rect.height) + 'px';
+          const newTop = y - rect.height;
+          console.log('Adjusting top from', y, 'to', newTop);
+          menu.style.top = newTop + 'px';
         }
       }, 0);
     }
