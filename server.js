@@ -1713,7 +1713,11 @@ app.get('/api/contacts/:contactId/conversation-count', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const { contactId } = req.params;
+    const contactId = parseInt(req.params.contactId, 10);
+    if (isNaN(contactId)) {
+      return res.status(400).json({ error: 'Invalid contact ID' });
+    }
+
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
@@ -1752,7 +1756,11 @@ app.delete('/api/contacts/:contactId', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const { contactId } = req.params;
+    const contactId = parseInt(req.params.contactId, 10);
+    if (isNaN(contactId)) {
+      return res.status(400).json({ error: 'Invalid contact ID' });
+    }
+
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
