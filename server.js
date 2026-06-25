@@ -3180,7 +3180,7 @@ async function fetchLinkPreview(url) {
   }
 }
 
-// GET /api/feed/posts - Fetch paginated feed posts with milestone posts mixed in
+// GET /api/feed/posts - Fetch paginated feed posts with all milestones in a single post
 app.get('/api/feed/posts', async (req, res) => {
   try {
     if (!req.user) {
@@ -3213,63 +3213,69 @@ app.get('/api/feed/posts', async (req, res) => {
     const { rows: milestones } = await pool.query(`
       SELECT id, key, label, value, unit, category, last_refreshed_at, updated_at
       FROM network_milestones
-      ORDER BY last_refreshed_at DESC
+      ORDER BY key ASC
     `);
 
-    // Convert milestones to post format
-    const milestonePosts = milestones.map(m => ({
-      id: 'milestone_' + m.key,
-      userId: -1,
-      username: 'Usernode Network Updates',
-      verified: true,
-      avatarUrl: null,
-      content: { type: 'milestone', text: m.label, metrics: { key: m.key, value: m.value, unit: m.unit } },
-      createdAt: m.last_refreshed_at,
-      updatedAt: m.updated_at,
-      isEdited: false,
-      onChain: false,
-      likeCount: 0,
-      commentCount: 0,
-      isMilestone: true
-    }));
+    // Create single milestone post with all metrics
+    const resultPosts = [];
 
-    // Merge posts and milestones with deterministic strategy (one milestone every 7 posts)
-    const mergedPosts = [];
-    const milestonesPerPage = Math.max(1, Math.floor(limit / 7));
-    const milestoneInsertInterval = Math.max(7, Math.floor(limit / milestonesPerPage));
+    if (milestones.length > 0) {
+      // Get the most recent refresh time from all milestones
+      const mostRecentRefresh = milestones.reduce((max, m) => {
+        const mTime = new Date(m.last_refreshed_at).getTime();
+        const maxTime = new Date(max).getTime();
+        return mTime > maxTime ? m.last_refreshed_at : max;
+      }, milestones[0].last_refreshed_at);
 
-    for (let i = 0; i < posts.length; i++) {
-      mergedPosts.push({
-        id: posts[i].id,
-        userId: posts[i].user_id,
-        username: posts[i].username,
-        verified: !!posts[i].verified_at,
-        avatarUrl: posts[i].avatar_url,
-        content: posts[i].content,
-        createdAt: posts[i].created_at,
-        updatedAt: posts[i].updated_at,
-        isEdited: posts[i].updated_at && posts[i].created_at && (new Date(posts[i].updated_at) - new Date(posts[i].created_at)) > 1000,
-        onChain: posts[i].on_chain,
-        likeCount: posts[i].like_count || 0,
-        commentCount: posts[i].comment_count || 0,
+      // Build metrics text for all milestones
+      const metricsText = milestones
+        .map(m => `${m.label}: ${m.value} ${m.unit}`)
+        .join('\n');
+
+      // Create single milestone post
+      const milestonePost = {
+        id: 'milestone_network_updates',
+        userId: -1,
+        username: 'Usernode Network Updates',
+        verified: true,
+        avatarUrl: null,
+        content: {
+          type: 'text',
+          text: metricsText
+        },
+        createdAt: mostRecentRefresh,
+        updatedAt: mostRecentRefresh,
+        isEdited: false,
+        onChain: false,
+        likeCount: 0,
+        commentCount: 0,
         isMilestone: false
-      });
+      };
 
-      // Insert a milestone post after every N regular posts
-      if (milestonePosts.length > 0 && (i + 1) % milestoneInsertInterval === 0 && milestonePosts.length > 0) {
-        const milestone = milestonePosts.shift();
-        mergedPosts.push(milestone);
-      }
+      resultPosts.push(milestonePost);
     }
 
-    // Append any remaining milestones
-    mergedPosts.push(...milestonePosts);
+    // Add regular posts
+    for (const post of posts) {
+      resultPosts.push({
+        id: post.id,
+        userId: post.user_id,
+        username: post.username,
+        verified: !!post.verified_at,
+        avatarUrl: post.avatar_url,
+        content: post.content,
+        createdAt: post.created_at,
+        updatedAt: post.updated_at,
+        isEdited: post.updated_at && post.created_at && (new Date(post.updated_at) - new Date(post.created_at)) > 1000,
+        onChain: post.on_chain,
+        likeCount: post.like_count || 0,
+        commentCount: post.comment_count || 0,
+        isMilestone: false
+      });
+    }
 
     // Sort by createdAt descending
-    mergedPosts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-    // Slice to ensure we don't exceed limit plus some milestones
-    const resultPosts = mergedPosts.slice(0, limit + 5);
+    resultPosts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
     const { rows: countResult } = await pool.query(`
       SELECT COUNT(*) as count FROM feed_posts
