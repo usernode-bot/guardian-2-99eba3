@@ -21,6 +21,13 @@
       "required": true,
       "private": true,
       "staging_default": "guardian_sk_mqudwes5_ae613cf56214808e"
+    },
+    {
+      "key": "NODE_RPC_URL",
+      "description": "Usernode blockchain RPC endpoint for testnet transaction submission. Defaults to local testnet node or platform-managed testnet endpoint.",
+      "required": false,
+      "private": false,
+      "default": "http://localhost:3001"
     }
   ],
   "tests": [
