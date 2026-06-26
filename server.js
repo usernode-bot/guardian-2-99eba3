@@ -13,6 +13,7 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const JWT_SECRET = process.env.JWT_SECRET;
 const IS_STAGING = process.env.USERNODE_ENV === 'staging';
 let ENABLE_DEMO_MODE = false;
+const pollingState = new Map(); // Track polling state per txHash to prevent infinite loops
 
 // Usernode blockchain configuration
 const APP_PUBKEY = process.env.APP_PUBKEY || 'ut1Fww7onqF9LsRSb6d6BozgQWtjNYqQJghYxXmBc8foncb';
@@ -32,6 +33,13 @@ const CHAIN_CONFIG = {
     rpcUrl: NODE_RPC_URL
   }
 };
+
+// Validate network is testnet
+function validateTestnetNetwork(nodeRpcUrl) {
+  const isTestnet = !nodeRpcUrl || nodeRpcUrl.includes('localhost') || nodeRpcUrl.includes('testnet');
+  return isTestnet;
+}
+
 
 // Rate limit tracking (in-memory; could use Redis for production)
 const rateLimits = new Map();
@@ -351,6 +359,22 @@ async function sendOutgoingPayment(recipient, amount, memo) {
 
 // Send transaction to blockchain via bridge
 async function sendTransactionToBridge(payload, txHashFromFrontend, network = 'testnet') {
+  // Validate network is testnet
+  if (!validateTestnetNetwork(NODE_RPC_URL)) {
+    throw new Error('Only testnet transactions are supported in this environment');
+  }
+  
+  // Require real transaction hash from frontend
+  if (!txHashFromFrontend) {
+    throw new Error('Transaction hash from wallet signature is required - no fallback mock hashes allowed');
+  }
+  
+  console.log('[sendTransactionToBridge] Processing transaction:', {
+    txHash: txHashFromFrontend,
+    network: network,
+    sender: payload.sender || 'unknown',
+    type: payload.type || 'unknown'
+  });
   try {
     console.log(`[BLOCKCHAIN-SUBMIT] sendTransactionToBridge called: type=${payload.type}, network=${network}, txHashFromFrontend=${txHashFromFrontend ? 'provided' : 'none'}`);
     console.log(`[BLOCKCHAIN-SUBMIT] Payload: ${JSON.stringify(payload)}`);
@@ -369,6 +393,21 @@ async function sendTransactionToBridge(payload, txHashFromFrontend, network = 't
 
 // Monitor blockchain transaction status
 async function monitorBlockchainStatus(auditLogId, txHash) {
+  const MAX_RETRIES = 10;
+  const TIMEOUT = 30000; // 30 seconds
+  const startTime = Date.now();
+  let retries = 0;
+  
+  // Check if already polling this transaction
+  if (pollingState.has(txHash)) {
+    console.log('[monitorBlockchainStatus] Already polling txHash:', txHash);
+    return;
+  }
+  
+  // Mark as polling to prevent concurrent polling
+  pollingState.set(txHash, { startTime, retries: 0 });
+  
+  try {
   try {
     // Start chain poller to poll explorer until confirmed or timeout
     startChainPoller('testnet', txHash, auditLogId).catch(err => {
@@ -381,6 +420,10 @@ async function monitorBlockchainStatus(auditLogId, txHash) {
       SET status = 'failed', error_message = $1, updated_at = NOW()
       WHERE id = $2
     `, [err.message, auditLogId]);
+  }
+  } finally {
+    // Clean up polling state
+    pollingState.delete(txHash);
   }
 }
 
@@ -552,9 +595,16 @@ function selectRandomFriendlyReply() {
 app.use(express.json());
 app.use(async (req, res, next) => {
   const token = req.query.token || req.headers['x-usernode-token'];
+  let userVerified = false;
+  
   if (token && JWT_SECRET) {
-    try { req.user = jwt.verify(token, JWT_SECRET); } catch (e) {
-      console.error('JWT verification failed:', e.message);
+    try {
+      req.user = jwt.verify(token, JWT_SECRET);
+      userVerified = true;
+      console.log('[Auth] Token verified for user:', req.user.id, 'pubkey:', req.user.usernode_pubkey);
+    } catch (e) {
+      console.error('[Auth] JWT verification failed:', e.message);
+      req.user = null;
     }
   }
 
@@ -573,14 +623,18 @@ app.use(async (req, res, next) => {
           END
       `, [req.user.id, req.user.username, req.user.usernode_pubkey || null, req.user.verified_at || null]);
     } catch (err) {
-      console.error('Error upserting user:', err);
+      console.error('[Auth] Error upserting user:', err.message);
     }
   }
 
+  // Enforce authentication for protected endpoints
   if (req.method !== 'GET' || req.path.startsWith('/api/')) {
     if (PUBLIC_API_PATHS.has(req.path)) return next();
     if (PUBLIC_PREFIXES.some((p) => req.path.startsWith(p))) return next();
-    if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+    if (!req.user) {
+      console.warn('[Auth] Unauthorized request to', req.method, req.path);
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
   }
   next();
 });

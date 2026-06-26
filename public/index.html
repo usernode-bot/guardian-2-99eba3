@@ -1710,7 +1710,6 @@
     }
 
     let currentUser = null;
-    let isDemoMode = false;
     let currentConvId = null;
     let currentOtherId = null;
     let currentContactId = null;
@@ -2013,10 +2012,7 @@
         if (config && !config.error) {
           const checkbox = document.getElementById('demModeToggle');
           const noPermission = document.getElementById('configNoPermission');
-          const accordion = document.getElementById('configAccordion');
-
-          checkbox.checked = config.isDemoMode;
-          checkbox.disabled = !config.canEdit;
+          const accordion = document.getElementById('configAccordion');          checkbox.disabled = !config.canEdit;
 
           if (!config.canEdit) {
             noPermission.classList.remove('hidden');
@@ -2025,10 +2021,6 @@
             noPermission.classList.add('hidden');
             accordion.classList.remove('opacity-60');
           }
-
-          // Update dot color based on demo mode state
-          updateConfigDotColor(config.isDemoMode);
-
           // Render secrets display
           renderSecretsDisplay(config.secrets);
 
@@ -2103,17 +2095,6 @@
         showToast('Failed to copy', 'error');
       });
     }
-
-    function updateConfigDotColor(isDemoMode) {
-      const systemDot = document.getElementById('systemHeaderDot');
-      const configDot = document.getElementById('configHeaderDot');
-      const dotClassName = isDemoMode
-        ? 'inline-block w-2.5 h-2.5 rounded-full bg-cyan-500 transition-colors'
-        : 'inline-block w-2.5 h-2.5 rounded-full bg-gray-400 transition-colors';
-
-      if (systemDot) {
-        systemDot.className = dotClassName;
-      }
       if (configDot) {
         configDot.className = dotClassName;
       }
@@ -2908,7 +2889,7 @@
 
     // Helper function to check if wallet is available
     function isWalletAvailable() {
-      return isDemoMode || (
+      return (
         typeof window.usernode !== 'undefined' &&
         typeof window.usernode.sendTransaction === 'function'
       );
@@ -2935,6 +2916,29 @@
       if (timeoutMs === undefined) {
         timeoutMs = network === 'testnet' ? 5000 : 3000;
       }
+
+    // Initialize wallet bridge after DOM is ready
+    function initializeBridge() {
+      // Bridge script loads automatically from CDN
+      // Wait for it to be available before using it
+      waitForBridge(5000, 'testnet').then(loaded => {
+        if (loaded) {
+          console.log('[Bridge Init] Wallet bridge loaded successfully');
+        } else {
+          console.warn('[Bridge Init] Wallet bridge failed to load within timeout');
+        }
+      }).catch(err => {
+        console.error('[Bridge Init] Error waiting for bridge:', err);
+      });
+    }
+
+    // Ensure DOM is ready before using bridge
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initializeBridge);
+    } else {
+      initializeBridge();
+    }
+
       const startTime = Date.now();
       while (!isWalletAvailable() && (Date.now() - startTime) < timeoutMs) {
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -3058,15 +3062,10 @@
         return;
       }
       currentUser = user;
-      isDemoMode = user.isDemoMode ?? false;
-
       // Log demo mode detection prominently
       console.log('\n╔════════════════════════════════════════════════════════════════╗');
       console.log('║              DEMO MODE INITIALIZATION DETECTED                 ║');
       console.log('╚════════════════════════════════════════════════════════════════╝');
-      console.log('isDemoMode from API response:', isDemoMode);
-      console.log('user.isDemoMode raw value:', user.isDemoMode);
-      console.log('USERNODE_ENV at server time:', user.isDemoMode ? 'staging' : 'production');
 
       // Validate and log wallet address information
       console.log('\n--- User Profile & Wallet Address Validation ---');
@@ -3689,11 +3688,6 @@
         console.log('Action:', pendingWalletAction.action);
         console.log('Network:', currentNetwork || 'testnet');
         console.log('User wallet address:', currentUser?.usernode_pubkey || 'Not available');
-        console.log('\n⚠ CRITICAL: isDemoMode variable state:');
-        console.log('  isDemoMode:', isDemoMode);
-        console.log('  typeof isDemoMode:', typeof isDemoMode);
-        console.log('  isDemoMode === true:', isDemoMode === true);
-        console.log('  isDemoMode truthy:', !!isDemoMode);
 
         console.log('\n--- Bridge Availability Check ---');
         console.log('window.usernode exists:', typeof window.usernode !== 'undefined');
@@ -3721,44 +3715,8 @@
         console.log('window.solana:', typeof window.solana);
         console.log('window.phantom:', typeof window.phantom);
         console.log('window.metaMask:', typeof window.metaMask);
-
-        // Handle demo mode - bypass wallet entirely
-        console.log('\n--- DEMO MODE CHECK POINT ---');
-        console.log('About to check: if (isDemoMode) where isDemoMode =', isDemoMode);
-        if (isDemoMode) {
-          console.log('\n--- DEMO MODE DETECTED - Bypassing Wallet Interaction ---');
-          console.log('isDemoMode:', isDemoMode);
-          console.log('Generating mock transaction hash...');
-
-          // Generate mock tx hash in format: ut1staging-testnet-action-<timestamp>
-          const mockTxHash = 'ut1staging-' + (currentNetwork || 'testnet') + '-action-' + Date.now();
-          console.log('Mock transaction hash:', mockTxHash);
-          console.log('Calling action handler immediately with mock hash...');
-
-          try {
-            const result = await pendingWalletAction.onApprove(mockTxHash);
-            console.log('✓ Demo action completed successfully');
-            console.log('Result:', result);
-
-            if (walletConfirmResolver) {
-              walletConfirmResolver.resolve(result);
-              walletConfirmResolver = null;
-            }
-            closeWalletConfirm();
-            confirmBtn.disabled = false;
-            confirmBtn.textContent = originalText;
-          } catch (err) {
-            console.error('Demo action failed:', err);
-            showToast('Demo action failed: ' + err.message, 'error');
-            if (walletConfirmResolver) {
-              walletConfirmResolver.reject(err);
-              walletConfirmResolver = null;
-            }
-            confirmBtn.disabled = false;
-            confirmBtn.textContent = originalText;
-          }
-          return;
-        }
+        // Demo mode removed - all transactions require real wallet signature
+      }
 
         // Check wallet availability using qualified reference (window.usernode)
         let retryCount = 0;
@@ -3885,6 +3843,13 @@
         }
 
         console.log('\n--- Wallet Available - Preparing Transaction ---');
+        // Network validation - ensure testnet is being used
+        const networkToUse = currentNetwork || 'testnet';
+        if (networkToUse !== 'testnet') {
+          throw new Error('Only testnet transactions are supported. Current network: ' + networkToUse);
+        }
+        console.log('[Network Validation] Network confirmed as testnet');
+
         const txPayload = {
           type: 'application',
           actionType: pendingWalletAction.action,
@@ -3898,7 +3863,45 @@
         let txResult;
         try {
           console.log(`[${currentNetwork || 'testnet'}] Invoking wallet signing...`);
-          txResult = await window.usernode.sendTransaction(txPayload);
+          try {
+            if (typeof window.usernode === 'undefined') {
+              throw new Error('Wallet bridge not loaded. Please refresh the page.');
+            }
+            if (typeof window.usernode.sendTransaction !== 'function') {
+              throw new Error('Wallet sendTransaction method not available. Please check your wallet provider.');
+            }
+            console.log('\n[sendTransaction] Sending with:', {
+              sender: currentUser?.usernode_pubkey || 'unknown',
+              network: currentNetwork || 'testnet',
+              actionType: pendingWalletAction.action,
+              payload: txPayload
+            });
+            txResult = await window.usernode.sendTransaction(txPayload);
+            if (txResult && txResult.txHash) {
+              console.log('[sendTransaction] Success - txHash:', txResult.txHash);
+            }
+          } catch (txError) {
+            if (typeof window.usernode === 'undefined') {
+              // Show modal for bridge loading failure
+              const overlay = document.createElement('div');
+              overlay.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50';
+              const dialog = document.createElement('div');
+              dialog.className = 'bg-white dark:bg-zinc-800 rounded-lg shadow-xl p-6 max-w-sm';
+              dialog.innerHTML = `
+                <h2 class="text-lg font-bold text-zinc-900 dark:text-white mb-2">Wallet Bridge Not Loaded</h2>
+                <p class="text-sm text-zinc-600 dark:text-zinc-300 mb-4">
+                  The Usernode wallet provider failed to load. Please refresh the page to try again.
+                </p>
+                <button onclick="location.reload()" class="w-full px-4 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg font-medium">
+                  Refresh Page
+                </button>
+              `;
+              overlay.appendChild(dialog);
+              document.body.appendChild(overlay);
+              throw new Error('Wallet bridge not loaded. Please refresh.');
+            }
+            throw new Error('Transaction signing failed: ' + txError.message);
+          }
           console.log(`✓ [${currentNetwork || 'testnet'}] sendTransaction returned successfully`);
         } catch (signErr) {
           console.log('\n--- Wallet Signature Error ---');
@@ -4889,25 +4892,7 @@
         const imageSizeKb = Math.round(dataUri.length / 1024);
 
         try {
-          const endpoint = currentGroupId ? `/api/groups/${currentGroupId}/messages` : `/api/conversations/${currentConvId}/messages`;
-
-          if (isDemoMode) {
-            // Show wallet confirmation modal in demo mode
-            await showWalletConfirm('Send Image', { imageSize: imageSizeKb + ' KB' }, async (txHash) => {
-              showToast('Image sent successfully', 'success');
-              const data = await apiCall(endpoint, {
-                method: 'POST',
-                body: JSON.stringify({ type: 'image', content: { imageUrl: dataUri } })
-              });
-
-              if (data && !data.error) {
-                if (data.blockchainRecordingId) {
-                  showPersistentNotification('image', {
-                    blockchainRecordingId: data.blockchainRecordingId,
-                    recipient: currentGroupId ? 'group' : currentContactName
-                  });
-                }
-                if (currentGroupId) {
+          const endpoint = currentGroupId ? `/api/groups/${currentGroupId}/messages` : `/api/conversations/${currentConvId}/messages`;                if (currentGroupId) {
                   loadGroupMessages(currentGroupId);
                 } else {
                   loadMessages();
