@@ -241,6 +241,34 @@ function signTransactionMemo(payload) {
   }
 }
 
+// Helper: Validate and resolve numeric user IDs to wallet addresses (bech32m format)
+// Returns array of {userId, pubkey} or throws 400 error if any user lacks wallet
+async function validateAndResolvePubkeys(userIds) {
+  const ids = Array.isArray(userIds) ? userIds : [userIds];
+  const resolved = [];
+
+  for (const userId of ids) {
+    const res = await pool.query(`SELECT usernode_pubkey FROM users WHERE id = $1`, [userId]);
+    const pubkey = res.rows[0]?.usernode_pubkey;
+
+    if (!pubkey) {
+      const err = new Error(`User ${userId} has not linked a wallet address`);
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (!pubkey.startsWith('ut1')) {
+      const err = new Error(`Invalid wallet address format for user ${userId}`);
+      err.statusCode = 400;
+      throw err;
+    }
+
+    resolved.push({ userId, pubkey });
+  }
+
+  return Array.isArray(userIds) ? resolved : resolved[0];
+}
+
 // Send outgoing payment via Usernode RPC (for token transfers)
 // Pattern: follows Last One Wins game-logic.js wallet/send implementation
 async function sendOutgoingPayment(recipient, amount, memo) {
@@ -1427,14 +1455,23 @@ app.post('/api/tokens/send', async (req, res) => {
     const userRes = await pool.query(`SELECT network FROM users WHERE id = $1`, [userId]);
     const network = userRes.rows[0]?.network || 'testnet';
 
+    // Validate and resolve recipient wallet address
+    let recipientPubkey;
+    try {
+      const resolved = await validateAndResolvePubkeys(recipientId);
+      recipientPubkey = resolved.pubkey;
+    } catch (err) {
+      return res.status(err.statusCode || 400).json({ error: err.message });
+    }
+
     // Use frontend-provided content hash or compute it
-    const contentHash = frontendContentHash || computeContentHash(recipientId + amount);
+    const contentHash = frontendContentHash || computeContentHash(recipientPubkey + amount);
 
     // Prepare transaction payload (Usernode chain format)
     const transactionPayload = {
       type: 'token_transfer',
-      sender: userId,
-      recipient: recipientId,
+      sender: req.user.usernode_pubkey || APP_PUBKEY,
+      recipient: recipientPubkey,
       amount: parseInt(amount),
       memo: memo || '',
       contentHash: contentHash,
@@ -1464,9 +1501,8 @@ app.post('/api/tokens/send', async (req, res) => {
       (async () => {
         try {
           // First try sidecar RPC for actual token transfer
-          const userPubkey = req.user.usernode_pubkey || APP_PUBKEY;
           const sidecarResult = await sendOutgoingPayment(
-            recipientId,
+            recipientPubkey,
             parseInt(amount),
             JSON.stringify(transactionPayload)
           );
@@ -2735,8 +2771,19 @@ app.post('/api/groups', async (req, res) => {
     console.log(`[POST /api/groups::DB] Creator member insert: rowCount=${creatorMemberRes.rowCount}`);
 
     // Database: Add initial members if provided
+    let memberPubkeys = [];
     if (initialMemberIds && Array.isArray(initialMemberIds) && initialMemberIds.length > 0) {
       console.log(`[POST /api/groups::DB] Processing ${initialMemberIds.length} initial member(s)`);
+      // Validate and resolve all member wallet addresses
+      try {
+        const resolved = await validateAndResolvePubkeys(initialMemberIds);
+        memberPubkeys = resolved.map(r => r.pubkey);
+        console.log(`[POST /api/groups::DB] Resolved ${memberPubkeys.length} member wallet addresses`);
+      } catch (err) {
+        console.error(`[POST /api/groups::BLOCKCHAIN] Member address resolution failed: ${err.message}`);
+        return res.status(err.statusCode || 400).json({ error: err.message });
+      }
+
       for (let idx = 0; idx < initialMemberIds.length; idx++) {
         const memberId = initialMemberIds[idx];
         if (memberId !== userId) {
@@ -2769,9 +2816,8 @@ app.post('/api/groups', async (req, res) => {
       type: 'group_create',
       groupId: groupId,
       groupName: name.trim(),
-      creatorId: userId,
-      memberIds: initialMemberIds && initialMemberIds.length > 0 ? initialMemberIds : [userId],
-      userPubkey: req.user.usernode_pubkey,
+      creatorPubkey: req.user.usernode_pubkey || APP_PUBKEY,
+      memberPubkeys: memberPubkeys.length > 0 ? memberPubkeys : [req.user.usernode_pubkey || APP_PUBKEY],
       contentHash: contentHash,
       timestamp: now.toISOString(),
       network: network
@@ -3302,6 +3348,18 @@ app.post('/api/groups/:groupId/members', async (req, res) => {
     const network = userRes.rows[0]?.network || 'testnet';
     const now = new Date();
 
+    // Validate and resolve member wallet addresses
+    const filterredUserIds = userIds.filter(id => id !== userId);
+    let memberPubkeys = [];
+    if (filterredUserIds.length > 0) {
+      try {
+        const resolved = await validateAndResolvePubkeys(filterredUserIds);
+        memberPubkeys = resolved.map(r => r.pubkey);
+      } catch (err) {
+        return res.status(err.statusCode || 400).json({ error: err.message });
+      }
+    }
+
     // Add members
     const addedMembers = [];
     for (const memberId of userIds) {
@@ -3344,7 +3402,7 @@ app.post('/api/groups/:groupId/members', async (req, res) => {
     const transactionPayload = {
       type: 'group_add_members',
       groupId: groupId,
-      addedMemberIds: userIds.filter(id => id !== userId),
+      addedMemberPubkeys: memberPubkeys,
       network: network
     };
 
@@ -3422,6 +3480,15 @@ app.delete('/api/groups/:groupId/members/:userId', async (req, res) => {
     const userRes = await pool.query(`SELECT network FROM users WHERE id = $1`, [userId]);
     const network = userRes.rows[0]?.network || 'testnet';
 
+    // Validate and resolve target user wallet address
+    let targetUserPubkey;
+    try {
+      const resolved = await validateAndResolvePubkeys(targetId);
+      targetUserPubkey = resolved.pubkey;
+    } catch (err) {
+      return res.status(err.statusCode || 400).json({ error: err.message });
+    }
+
     // Remove member
     await pool.query(`
       DELETE FROM group_members WHERE group_id = $1 AND user_id = $2
@@ -3431,7 +3498,7 @@ app.delete('/api/groups/:groupId/members/:userId', async (req, res) => {
     const transactionPayload = {
       type: 'group_remove_member',
       groupId: groupId,
-      removedUserId: targetId,
+      removedUserPubkey: targetUserPubkey,
       network: network
     };
 
