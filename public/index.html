@@ -1766,18 +1766,32 @@
       document.getElementById('themeSelect').value = settings.theme;
       updateLayoutButtons(settings.layout);
       updateViewModeButtons(settings.view_mode);
+
+      // Start transaction history polling
+      pollTransactionHistory();
+      if (transactionHistoryIntervalId) clearInterval(transactionHistoryIntervalId);
+      transactionHistoryIntervalId = setInterval(pollTransactionHistory, 2000);
+
       loadConfigState();
     }
 
-    function updateHeaderStatusDisplay() {
+    function updateHeaderStatusDisplay(isConnected, latency) {
       const headerDot = document.getElementById('headerStatusDot');
       const headerTooltip = document.getElementById('headerStatusTooltip');
 
       if (!headerDot) return;
 
-      headerDot.className = `inline-block w-2.5 h-2.5 rounded-full transition-colors bg-green-500`;
-      if (headerTooltip) {
-        headerTooltip.textContent = 'Connected';
+      if (isConnected) {
+        headerDot.className = `inline-block w-2 h-2 rounded-full transition-colors bg-green-500`;
+        if (headerTooltip) {
+          const latencyText = latency !== null && latency !== undefined ? ` | ${latency}ms latency` : '';
+          headerTooltip.textContent = `Connected${latencyText}`;
+        }
+      } else {
+        headerDot.className = `inline-block w-2 h-2 rounded-full transition-colors bg-gray-400`;
+        if (headerTooltip) {
+          headerTooltip.textContent = 'Disconnected';
+        }
       }
     }
 
@@ -1943,6 +1957,24 @@
     }
 
     let transactionHistoryIntervalId = null;
+    let networkStatusIntervalId = null;
+
+    async function pollNetworkStatus() {
+      try {
+        const response = await apiCall('/api/usernode/status');
+        if (!response || response.error) {
+          updateHeaderStatusDisplay(false);
+          return;
+        }
+
+        const isConnected = response.status === 'connected';
+        const latency = response.latency;
+        updateHeaderStatusDisplay(isConnected, latency);
+      } catch (err) {
+        console.error('Error polling network status:', err);
+        updateHeaderStatusDisplay(false);
+      }
+    }
 
     async function updateDemoMode(enabled) {
       const checkbox = document.getElementById('demModeToggle');
@@ -2065,9 +2097,19 @@
         const list = document.getElementById('transactionHistoryList');
         if (!list) return;
 
-        if (response.transactions.length === 0) {
+        const transactionCount = response.transactions.length;
+        const transactionHeaderDot = document.getElementById('transactionHeaderDot');
+
+        if (transactionCount === 0) {
           list.innerHTML = '<div class="text-center py-4 text-zinc-500 dark:text-zinc-400">No transactions yet</div>';
+          if (transactionHeaderDot) {
+            transactionHeaderDot.className = 'inline-block w-2.5 h-2.5 rounded-full bg-gray-400 transition-colors';
+          }
           return;
+        }
+
+        if (transactionHeaderDot) {
+          transactionHeaderDot.className = 'inline-block w-2.5 h-2.5 rounded-full bg-green-500 transition-colors';
         }
 
         let html = '';
@@ -2888,6 +2930,12 @@
       document.getElementById('sidebarWallet').textContent = user.usernode_pubkey || 'No wallet linked';
       initSettings();
       updateSettingsFooter();
+
+      // Start network status polling
+      pollNetworkStatus();
+      if (networkStatusIntervalId) clearInterval(networkStatusIntervalId);
+      networkStatusIntervalId = setInterval(pollNetworkStatus, 2000);
+
       // Ensure currentUser is set before showing conversations view (which may load groups)
       await showConversationsView();
       setupEventListeners();
