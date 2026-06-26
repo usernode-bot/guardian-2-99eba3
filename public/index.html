@@ -3675,13 +3675,22 @@
 
         // Check wallet availability using qualified reference (window.usernode)
         if (!isWalletAvailable()) {
-          console.log('\n--- Wallet Availability Check FAILED ---');
-          console.error('Wallet not available:');
-          console.error('- typeof window.usernode:', typeof window.usernode);
-          console.error('- window.usernode value:', window.usernode);
-          console.error('- window.usernode.sendTransaction:', window.usernode?.sendTransaction);
-          console.error('- isWalletAvailable() result:', isWalletAvailable());
-          throw new Error('Bridge not loaded - wallet provider unavailable');
+          console.log('\n--- Wallet Availability Check FAILED on First Attempt ---');
+          console.log('Bridge may still be loading. Waiting up to 2 seconds for bridge...');
+          const bridgeLoadedOnRetry = await waitForBridge(2000);
+
+          if (bridgeLoadedOnRetry) {
+            console.log('✓ Bridge loaded successfully on retry');
+            console.log('Available methods:', Object.keys(window.usernode));
+          } else {
+            console.log('\n--- Wallet Availability Check FAILED After Retry ---');
+            console.error('Wallet not available after waiting:');
+            console.error('- typeof window.usernode:', typeof window.usernode);
+            console.error('- window.usernode value:', window.usernode);
+            console.error('- window.usernode.sendTransaction:', window.usernode?.sendTransaction);
+            console.error('- isWalletAvailable() result:', isWalletAvailable());
+            throw new Error('Wallet provider is taking longer than expected. Please check your internet connection and try again.');
+          }
         }
 
         console.log('\n--- Wallet Available - Preparing Transaction ---');
