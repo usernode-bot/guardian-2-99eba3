@@ -2290,8 +2290,8 @@ app.get('/api/contacts/:contactId/conversation-count', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const contactId = parseInt(req.params.contactId, 10);
-    if (isNaN(contactId)) {
+    const contactId = req.params.contactId;
+    if (!contactId || !/^\d+$/.test(contactId)) {
       return res.status(400).json({ error: 'Invalid contact ID' });
     }
 
@@ -2333,8 +2333,8 @@ app.delete('/api/contacts/:contactId', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const contactId = parseInt(req.params.contactId, 10);
-    if (isNaN(contactId)) {
+    const contactId = req.params.contactId;
+    if (!contactId || !/^\d+$/.test(contactId)) {
       return res.status(400).json({ error: 'Invalid contact ID' });
     }
 
@@ -2383,8 +2383,8 @@ app.post('/api/contacts/:contactId/archive', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const contactId = parseInt(req.params.contactId, 10);
-    if (isNaN(contactId)) {
+    const contactId = req.params.contactId;
+    if (!contactId || !/^\d+$/.test(contactId)) {
       return res.status(400).json({ error: 'Invalid contact ID' });
     }
 
@@ -2421,8 +2421,8 @@ app.put('/api/contacts/:contactId/mute', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const contactId = parseInt(req.params.contactId, 10);
-    if (isNaN(contactId)) {
+    const contactId = req.params.contactId;
+    if (!contactId || !/^\d+$/.test(contactId)) {
       return res.status(400).json({ error: 'Invalid contact ID' });
     }
 
