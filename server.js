@@ -12,7 +12,7 @@ const port = process.env.PORT || 3000;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const JWT_SECRET = process.env.JWT_SECRET;
 const IS_STAGING = process.env.USERNODE_ENV === 'staging';
-let ENABLE_DEMO_MODE = process.env.ENABLE_DEMO_MODE === 'true' || IS_STAGING;
+let ENABLE_DEMO_MODE = false;
 
 // Usernode blockchain configuration
 const APP_PUBKEY = process.env.APP_PUBKEY || 'ut1Fww7onqF9LsRSb6d6BozgQWtjNYqQJghYxXmBc8foncb';
@@ -275,13 +275,11 @@ async function sendOutgoingPayment(recipient, amount, memo) {
   try {
     console.log(`[BLOCKCHAIN-SUBMIT] sendOutgoingPayment: recipient=${recipient}, amount=${amount}, memo=${memo ? 'provided' : 'none'}`);
 
-    // In staging or without RPC URL, return demo transaction
-    if (IS_STAGING || !NODE_RPC_URL) {
-      console.log(`[BLOCKCHAIN-SUBMIT] Demo/staging mode: would send ${amount} to ${recipient}`);
-      return { success: true, transactionHash: 'ut1staging-token-demo-' + Date.now() };
+    if (!NODE_RPC_URL) {
+      throw new Error('NODE_RPC_URL is not configured');
     }
 
-    // In production: POST to NODE_RPC_URL /wallet/send
+    // POST to NODE_RPC_URL /wallet/send
     // Pattern: Last One Wins wallet_send RPC format
     const rpcPayload = {
       method: 'wallet_send',
@@ -357,27 +355,12 @@ async function sendTransactionToBridge(payload, txHashFromFrontend, network = 't
     console.log(`[BLOCKCHAIN-SUBMIT] sendTransactionToBridge called: type=${payload.type}, network=${network}, txHashFromFrontend=${txHashFromFrontend ? 'provided' : 'none'}`);
     console.log(`[BLOCKCHAIN-SUBMIT] Payload: ${JSON.stringify(payload)}`);
 
-    if (IS_STAGING) {
-      // Mock implementation: return immediate confirmation with network prefix
-      // In staging, txHashFromFrontend comes from frontend simulation
-      const networkPrefix = network === 'mainnet' ? 'ut1staging-mainnet-tx-' : 'ut1staging-testnet-tx-';
-      const txHash = txHashFromFrontend || networkPrefix + Date.now();
-      console.log(`[BLOCKCHAIN-SUBMIT] Staging mode: returning mock txHash=${txHash}`);
-      return { txHash, status: 'pending' };
+    if (!txHashFromFrontend) {
+      throw new Error('Real testnet mode requires txHash from wallet frontend submission');
     }
 
-    // In production: use the real tx hash from frontend (submitted via usernode.sendTransaction)
-    // If frontend provided a tx hash, it's already been submitted on-chain
-    if (txHashFromFrontend) {
-      console.log(`[BLOCKCHAIN-SUBMIT] Production mode: using submitted tx hash from frontend: ${txHashFromFrontend}`);
-      return { txHash: txHashFromFrontend, status: 'pending' };
-    }
-
-    // Fallback: generate a placeholder (should not reach here in production)
-    const networkPrefix = network === 'mainnet' ? 'ut1mainnet-tx-' : 'ut1testnet-tx-';
-    const txHash = networkPrefix + Math.random().toString(36).substr(2, 9);
-    console.log(`[BLOCKCHAIN-SUBMIT] WARNING: No txHash from frontend, generating placeholder: ${txHash}`);
-    return { txHash, status: 'pending' };
+    console.log(`[BLOCKCHAIN-SUBMIT] Using real tx hash from frontend: ${txHashFromFrontend}`);
+    return { txHash: txHashFromFrontend, status: 'pending' };
   } catch (err) {
     console.error(`[BLOCKCHAIN-SUBMIT] Error sending transaction to bridge: ${err.message}`, err);
     throw err;
@@ -387,25 +370,10 @@ async function sendTransactionToBridge(payload, txHashFromFrontend, network = 't
 // Monitor blockchain transaction status
 async function monitorBlockchainStatus(auditLogId, txHash) {
   try {
-    // In staging, instantly confirm after a delay
-    if (IS_STAGING) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      await pool.query(`
-        UPDATE blockchain_audit_logs
-        SET status = 'confirmed', confirmed_at = NOW(), updated_at = NOW()
-        WHERE id = $1
-      `, [auditLogId]);
-      return;
-    }
-
-    // In production: would poll explorer API via /explorer-api/* proxy
-    // For now, simulate confirmation after delay
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    await pool.query(`
-      UPDATE blockchain_audit_logs
-      SET status = 'confirmed', confirmed_at = NOW(), updated_at = NOW()
-      WHERE id = $1
-    `, [auditLogId]);
+    // Start chain poller to poll explorer until confirmed or timeout
+    startChainPoller('testnet', txHash, auditLogId).catch(err => {
+      console.error('Error starting chain poller:', err);
+    });
   } catch (err) {
     console.error('Error monitoring blockchain status:', err);
     await pool.query(`
@@ -1278,9 +1246,12 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
     // Sign memo following Last One Wins pattern
     const memo = signTransactionMemo(transactionPayload);
 
-    // Use real tx hash from frontend if provided, otherwise generate placeholder
-    const actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-message-' + messageId + '-' + Date.now() : 'ut1-' + network + '-tx-msg-' + Math.random().toString(36).substr(2, 9));
-    const auditStatus = txHash ? 'pending' : (ENABLE_DEMO_MODE ? 'confirmed' : 'pending');
+    // Real testnet mode: require tx hash from frontend
+    if (!txHash) {
+      return res.status(400).json({ error: 'txHash is required for real testnet transactions' });
+    }
+    const actualTxHash = txHash;
+    const auditStatus = 'pending';
     const auditRes = await pool.query(`
       INSERT INTO blockchain_audit_logs (user_id, message_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
@@ -1303,32 +1274,10 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       UPDATE conversations SET archived_by = array_remove(archived_by, $1) WHERE id = $2 AND archived_by @> ARRAY[$1]::integer[]
     `, [otherId, convId]);
 
-    // If real tx hash provided from frontend, start polling immediately
-    if (txHash) {
-      startChainPoller(network, txHash, blockchainRecordingId).catch(err => {
-        console.error('Error starting chain poller:', err);
-      });
-    } else if (!ENABLE_DEMO_MODE) {
-      // Async: submit to blockchain in the background (production only, no frontend tx hash)
-      (async () => {
-        try {
-          const result = await sendTransactionToBridge(transactionPayload, network);
-          // Update audit log with real tx hash
-          await pool.query(`
-            UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
-          `, [result.txHash, blockchainRecordingId]);
-          // Start monitoring
-          monitorBlockchainStatus(blockchainRecordingId, result.txHash).catch(err => {
-            console.error('Error monitoring blockchain status:', err);
-          });
-        } catch (err) {
-          console.error('Background blockchain submission error:', err);
-          await pool.query(`
-            UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
-          `, [err.message, blockchainRecordingId]);
-        }
-      })();
-    }
+    // Start chain poller to monitor explorer for confirmation
+    startChainPoller(network, txHash, blockchainRecordingId).catch(err => {
+      console.error('Error starting chain poller:', err);
+    });
 
     res.json({
       id: messageId,
@@ -1518,61 +1467,23 @@ app.post('/api/tokens/send', async (req, res) => {
     // Sign memo following Last One Wins pattern
     const txMemo = signTransactionMemo(transactionPayload);
 
-    // Use real tx hash from frontend if provided, otherwise generate placeholder
-    const actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-token-' + Date.now() : 'ut1-' + network + '-tx-token-' + Math.random().toString(36).substr(2, 9));
-    const auditStatus = txHash ? 'pending' : (ENABLE_DEMO_MODE ? 'confirmed' : 'pending');
+    // Real testnet mode: require tx hash from frontend
+    if (!txHash) {
+      return res.status(400).json({ error: 'txHash is required for real testnet transactions' });
+    }
+    const actualTxHash = txHash;
+    const auditStatus = 'pending';
     const auditRes = await pool.query(`
       INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
       RETURNING id
-    `, [userId, 'token_transfer', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, req.user.usernode_pubkey || null, now, now]);
+    `, [userId, 'token_transfer', actualTxHash, JSON.stringify(transactionPayload), auditStatus, null, contentHash, req.user.usernode_pubkey || null, now, now]);
     const blockchainRecordingId = auditRes.rows[0].id;
 
-    // If real tx hash provided from frontend, start polling immediately
-    if (txHash) {
-      startChainPoller(network, txHash, blockchainRecordingId).catch(err => {
-        console.error('Error starting chain poller:', err);
-      });
-    } else if (!ENABLE_DEMO_MODE) {
-      // Async: try to call sidecar for real token transfer (production only)
-      (async () => {
-        try {
-          // First try sidecar RPC for actual token transfer
-          const sidecarResult = await sendOutgoingPayment(
-            recipientPubkey,
-            parseInt(amount),
-            JSON.stringify(transactionPayload)
-          );
-          if (sidecarResult && sidecarResult.transactionHash) {
-            // Update audit log with real tx hash from sidecar
-            await pool.query(`
-              UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
-            `, [sidecarResult.transactionHash, blockchainRecordingId]);
-            // Start monitoring with real tx hash
-            pollTransactionStatus(blockchainRecordingId, sidecarResult.transactionHash).catch(err => {
-              console.error('Error polling transaction status:', err);
-            });
-          }
-        } catch (err) {
-          console.error('Sidecar token transfer error:', err);
-          // Fall back to bridge approach
-          try {
-            const result = await sendTransactionToBridge(transactionPayload, network);
-            await pool.query(`
-              UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
-            `, [result.txHash, blockchainRecordingId]);
-            monitorBlockchainStatus(blockchainRecordingId, result.txHash).catch(err => {
-              console.error('Error monitoring blockchain status:', err);
-            });
-          } catch (bridgeErr) {
-            console.error('Bridge fallback error:', bridgeErr);
-            await pool.query(`
-              UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
-            `, [bridgeErr.message, blockchainRecordingId]);
-          }
-        }
-      })();
-    }
+    // Start chain poller to monitor explorer for confirmation
+    startChainPoller(network, txHash, blockchainRecordingId).catch(err => {
+      console.error('Error starting chain poller:', err);
+    });
 
     res.json({
       blockchainRecordingId: blockchainRecordingId,
@@ -2526,22 +2437,10 @@ app.get('/api/search/users', async (req, res) => {
       `, ['%' + q + '%', '%' + q + '%', q, q, q + '%', q + '%', userId], 2000);
       rows = result.rows;
     } catch (timeoutErr) {
-      // On timeout, return demo fallback users
+      // On timeout, return empty results (no fallback users in real testnet mode)
       if (timeoutErr.message === 'QUERY_TIMEOUT') {
-        console.info('Search query timeout after 2000ms, returning demo fallback');
-        const demoUsers = [
-          { id: 1, username: 'staging-demo-alice', usernode_pubkey: 'ut1staging-alice-001', verified_at: new Date() },
-          { id: 2, username: 'staging-demo-bob', usernode_pubkey: 'ut1staging-bob-001', verified_at: new Date() },
-          { id: 3, username: 'staging-demo-charlie', usernode_pubkey: 'ut1staging-charlie-001', verified_at: null }
-        ];
-        const filteredUsers = demoUsers.filter(u => u.id !== userId).map(u => ({
-          id: u.id,
-          username: u.username,
-          usernode_pubkey: u.usernode_pubkey,
-          verified: !!u.verified_at,
-          mutualCount: 0,
-        }));
-        return res.json({ users: filteredUsers });
+        console.info('Search query timeout after 2000ms, returning empty results');
+        return res.json({ users: [] });
       }
       // For non-timeout errors, re-throw to be caught by outer catch
       throw timeoutErr;
@@ -2871,16 +2770,19 @@ app.post('/api/groups', async (req, res) => {
     // Sign memo following Last One Wins pattern
     const memo = signTransactionMemo(transactionPayload);
 
-    // Blockchain: Create audit log entry - use real tx hash from frontend if provided
-    const actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-group-create-' + groupId + '-' + Date.now() : 'ut1-' + network + '-tx-group-' + Math.random().toString(36).substr(2, 9));
-    const auditStatus = txHash ? 'pending' : (ENABLE_DEMO_MODE ? 'confirmed' : 'pending');
-    console.log(`[POST /api/groups::BLOCKCHAIN] Creating audit log: txHash=${actualTxHash}, status=${auditStatus}, env=${IS_STAGING ? 'staging' : 'production'}, demoMode=${ENABLE_DEMO_MODE}`);
+    // Real testnet mode: require tx hash from frontend
+    if (!txHash) {
+      return res.status(400).json({ error: 'txHash is required for real testnet transactions' });
+    }
+    const actualTxHash = txHash;
+    const auditStatus = 'pending';
+    console.log(`[POST /api/groups::BLOCKCHAIN] Creating audit log: txHash=${actualTxHash}, status=${auditStatus}`);
 
     const auditRes = await pool.query(`
       INSERT INTO blockchain_audit_logs (user_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
       RETURNING id
-    `, [userId, groupId, 'group_create', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, req.user.usernode_pubkey || null, now, now]);
+    `, [userId, groupId, 'group_create', actualTxHash, JSON.stringify(transactionPayload), auditStatus, null, contentHash, req.user.usernode_pubkey || null, now, now]);
 
     if (auditRes.rows.length === 0) {
       console.error(`[POST /api/groups::BLOCKCHAIN] Audit log insert returned no rows`);
@@ -2889,45 +2791,11 @@ app.post('/api/groups', async (req, res) => {
     const blockchainRecordingId = auditRes.rows[0].id;
     console.log(`[POST /api/groups::BLOCKCHAIN] Audit log created: id=${blockchainRecordingId}, rowCount=${auditRes.rowCount}`);
 
-    // Blockchain: If real tx hash provided from frontend, start polling immediately
-    if (txHash) {
-      console.log(`[POST /api/groups::BLOCKCHAIN] Real txHash provided from frontend, starting polling`);
-      (async () => {
-        try {
-          await pollTransactionStatus(blockchainRecordingId, txHash);
-        } catch (err) {
-          console.error('Error polling transaction status:', err);
-        }
-      })();
-    } else if (!ENABLE_DEMO_MODE) {
-      console.log(`[POST /api/groups::BLOCKCHAIN] Spawning background blockchain submission task (production only)`);
-      (async () => {
-        try {
-          console.log(`[POST /api/groups::BLOCKCHAIN::ASYNC] Background task started for auditId=${blockchainRecordingId}`);
-          const result = await sendTransactionToBridge(transactionPayload, network);
-          console.log(`[POST /api/groups::BLOCKCHAIN::ASYNC] Bridge returned txHash=${result.txHash}, status=${result.status}`);
-
-          // Update audit log with real tx hash
-          const updateRes = await pool.query(`
-            UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
-          `, [result.txHash, blockchainRecordingId]);
-          console.log(`[POST /api/groups::BLOCKCHAIN::ASYNC] Audit log updated with real txHash, rowCount=${updateRes.rowCount}`);
-
-          // Start monitoring
-          console.log(`[POST /api/groups::BLOCKCHAIN::ASYNC] Starting blockchain status monitoring`);
-          monitorBlockchainStatus(blockchainRecordingId, result.txHash).catch(err => {
-            console.error(`[POST /api/groups::BLOCKCHAIN::ASYNC] Error monitoring blockchain status: ${err.message}`, err);
-          });
-        } catch (err) {
-          console.error(`[POST /api/groups::BLOCKCHAIN::ASYNC] Background blockchain submission error: ${err.message}`, err);
-          await pool.query(`
-            UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
-          `, [err.message, blockchainRecordingId]);
-        }
-      })();
-    } else {
-      console.log(`[POST /api/groups::BLOCKCHAIN] Background blockchain submission skipped (demo mode enabled)`);
-    }
+    // Start chain poller to monitor explorer for confirmation
+    console.log(`[POST /api/groups::BLOCKCHAIN] Starting chain poller for txHash=${txHash}`);
+    startChainPoller(network, txHash, blockchainRecordingId).catch(err => {
+      console.error('Error starting chain poller:', err);
+    });
 
     // Database: Get members for response
     console.log(`[POST /api/groups::DB] Fetching members for response: groupId=${groupId}`);
@@ -3244,14 +3112,17 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
       network: network
     };
 
-    // Use real tx hash from frontend if provided, otherwise generate placeholder
-    const actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-message-' + messageId + '-' + Date.now() : 'ut1-' + network + '-tx-msg-' + Math.random().toString(36).substr(2, 9));
-    const auditStatus = txHash ? 'pending' : (ENABLE_DEMO_MODE ? 'confirmed' : 'pending');
+    // Real testnet mode: require tx hash from frontend
+    if (!txHash) {
+      return res.status(400).json({ error: 'txHash is required for real testnet transactions' });
+    }
+    const actualTxHash = txHash;
+    const auditStatus = 'pending';
     const auditRes = await pool.query(`
       INSERT INTO blockchain_audit_logs (user_id, message_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
       RETURNING id
-    `, [userId, messageId, groupId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, now]);
+    `, [userId, messageId, groupId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, null, contentHash, userPubkey, now, now]);
     const blockchainRecordingId = auditRes.rows[0].id;
 
     // Update message with audit log reference
@@ -3264,32 +3135,10 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
       UPDATE groups SET updated_at = NOW() WHERE id = $1
     `, [groupId]);
 
-    // If real tx hash provided from frontend, start polling immediately
-    if (txHash) {
-      startChainPoller(network, txHash, blockchainRecordingId).catch(err => {
-        console.error('Error starting chain poller:', err);
-      });
-    } else if (!ENABLE_DEMO_MODE) {
-      // Async: submit to blockchain in the background (production only)
-      (async () => {
-        try {
-          const result = await sendTransactionToBridge(transactionPayload, network);
-          // Update audit log with real tx hash
-          await pool.query(`
-            UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
-          `, [result.txHash, blockchainRecordingId]);
-          // Start monitoring
-          monitorBlockchainStatus(blockchainRecordingId, result.txHash).catch(err => {
-            console.error('Error monitoring blockchain status:', err);
-          });
-        } catch (err) {
-          console.error('Background blockchain submission error:', err);
-          await pool.query(`
-            UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
-          `, [err.message, blockchainRecordingId]);
-        }
-      })();
-    }
+    // Start chain poller to monitor explorer for confirmation
+    startChainPoller(network, txHash, blockchainRecordingId).catch(err => {
+      console.error('Error starting chain poller:', err);
+    });
 
     res.json({
       id: messageId,
@@ -3381,6 +3230,14 @@ app.post('/api/groups/:groupId/members', async (req, res) => {
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    // Validate wallet connection before proceeding
+    if (!req.user.usernode_pubkey) {
+      return res.status(400).json({ error: 'Must be connected to Usernode wallet to add members' });
+    }
+    if (!req.user.usernode_pubkey.startsWith('ut1')) {
+      return res.status(400).json({ error: 'Invalid wallet address format' });
     }
 
     // Verify user is creator
@@ -5747,322 +5604,8 @@ async function start() {
     await pool.query(`COMMENT ON TABLE group_messages IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE group_read_receipts IS 'staging:private'`);
 
-    // Seed staging data
-    // Seed mock testnet users (grace, henry, iris, jack) in all environments for user search testing
-    const grace = 11, henry = 12, iris = 13, jack = 14;
-    await pool.query(`
-      INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at, bio, avatar_url) VALUES
-        ($1, 'test-user-grace', 'ut1staging-grace-001', NOW(), NOW() - INTERVAL '5 days', 'Test user - DevOps engineer', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2310b981%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EG%3C/text%3E%3C/svg%3E'),
-        ($2, 'test-user-henry', 'ut1staging-henry-001', NOW(), NOW() - INTERVAL '3 days', 'Test user - Frontend specialist', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%238b5cf6%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EH%3C/text%3E%3C/svg%3E'),
-        ($3, 'test-user-iris', 'ut1staging-iris-001', null, NOW() - INTERVAL '1 day', 'Test user - Data scientist', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%23f59e0b%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EI%3C/text%3E%3C/svg%3E'),
-        ($4, 'test-user-jack', 'ut1staging-jack-001', NOW(), NOW(), 'Test user - QA engineer', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%23ef4444%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EJ%3C/text%3E%3C/svg%3E')
-      ON CONFLICT (id) DO UPDATE SET
-        username = EXCLUDED.username,
-        usernode_pubkey = EXCLUDED.usernode_pubkey,
-        verified_at = EXCLUDED.verified_at,
-        bio = EXCLUDED.bio,
-        avatar_url = EXCLUDED.avatar_url
-    `, [grace, henry, iris, jack]);
-
+    // All staging data seeding is now disabled - real testnet mode only
     if (IS_STAGING) {
-      const alice = 1, bob = 2, charlie = 3, david = 4, emma = 5, frank = 10;
-      // Note: User 10 will map to 10 % 10 = 0 -> 5 hours (New Guardian)
-      // User 1 -> 25 hours (Active Guardian)
-      // User 2 -> 100 hours (Trusted Guardian)
-      // User 3 -> 300 hours (Elite Guardian)
-      // User 4 -> 15 hours (Active Guardian)
-      // User 5 -> 50 hours (Trusted Guardian)
-      // User 11 -> 1 % 10 = 1 -> 25 hours (Active Guardian)
-      // User 12 -> 2 % 10 = 2 -> 100 hours (Trusted Guardian)
-      // User 13 -> 3 % 10 = 3 -> 300 hours (Elite Guardian)
-      // User 14 -> 4 % 10 = 4 -> 15 hours (Active Guardian)
-
-      // Create staging demo users with wallet addresses
-      await pool.query(`
-        INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at, bio, avatar_url) VALUES
-          ($1, 'staging-demo-alice', 'ut1staging-alice-001', NOW(), NOW() - INTERVAL '6 months', 'Staging demo user - Cloud architect | Web3 enthusiast', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EA%3C/text%3E%3C/svg%3E'),
-          ($2, 'staging-demo-bob', 'ut1staging-bob-001', NOW(), NOW() - INTERVAL '4 months', 'Staging demo user - Blockchain developer', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EB%3C/text%3E%3C/svg%3E'),
-          ($3, 'staging-demo-charlie', 'ut1staging-charlie-001', null, NOW() - INTERVAL '3 months', 'Staging demo user - Designer', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EC%3C/text%3E%3C/svg%3E'),
-          ($4, 'staging-demo-david', 'ut1staging-david-001', NOW(), NOW() - INTERVAL '2 months', 'Staging demo user - Product Manager', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3ED%3C/text%3E%3C/svg%3E'),
-          ($5, 'staging-demo-emma', 'ut1staging-emma-001', NOW(), NOW() - INTERVAL '1 month', 'Staging demo user - Security researcher', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EE%3C/text%3E%3C/svg%3E'),
-          ($6, 'staging-demo-frank', 'ut1staging-frank-001', NOW(), NOW() - INTERVAL '7 days', 'Staging demo user - Just joined!', null)
-        ON CONFLICT (id) DO UPDATE SET
-          username = EXCLUDED.username,
-          usernode_pubkey = EXCLUDED.usernode_pubkey,
-          verified_at = EXCLUDED.verified_at,
-          bio = EXCLUDED.bio,
-          avatar_url = EXCLUDED.avatar_url
-      `, [alice, bob, charlie, david, emma, frank]);
-
-      // Create conversation
-      const { rows: convRows } = await pool.query(`
-        SELECT id FROM conversations WHERE participant_a_id = $1 AND participant_b_id = $2
-      `, [alice, bob]);
-
-      let convId;
-      if (convRows.length === 0) {
-        const result = await pool.query(`
-          INSERT INTO conversations (participant_a_id, participant_b_id, created_at)
-          VALUES ($1, $2, NOW())
-          RETURNING id
-        `, [alice, bob]);
-        convId = result.rows[0].id;
-      } else {
-        convId = convRows[0].id;
-      }
-
-      // Fetch user pubkeys for direct messages
-      const { rows: dmUserRows } = await pool.query(`
-        SELECT id, usernode_pubkey FROM users WHERE id IN ($1, $2)
-      `, [alice, bob]);
-      const dmUserPubkeyMap = {};
-      dmUserRows.forEach(row => {
-        dmUserPubkeyMap[row.id] = row.usernode_pubkey;
-      });
-
-      // Seed messages
-      const baseTime = new Date(Date.now() - 3600000);
-      const messages = [
-        { offset: 0, sender: alice, type: 'text', content: { text: '[Staging] Hey Bob!' }, blockchain: true },
-        { offset: 60000, sender: bob, type: 'text', content: { text: '[Staging] Hi Alice! How are you?' }, blockchain: false },
-        { offset: 120000, sender: alice, type: 'text', content: { text: '[Staging] Doing great, thanks!' }, blockchain: false },
-        { offset: 180000, sender: alice, type: 'image', content: { imageUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mP8z8DwHwMxxGAIwAAADkkBkMTjF4UAAAAASUVORK5CYII=' }, blockchain: false },
-        { offset: 240000, sender: bob, type: 'text', content: { text: '[Staging] Nice photo!' }, blockchain: false },
-        { offset: 300000, sender: alice, type: 'token', content: { recipientId: bob, amount: 100, memo: '[Staging] Here is a gift', txHash: 'staging-tx-001', status: 'confirmed' }, blockchain: true },
-        { offset: 360000, sender: bob, type: 'text', content: { text: '[Staging] Thanks for the tokens!' }, blockchain: false },
-        { offset: 420000, sender: bob, type: 'image', content: { imageUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mNkYPhfwcDAwMjIyMjIyAgAEq4DBaIjqKQAAAAASUVORK5CYII=' }, blockchain: false },
-        { offset: 480000, sender: alice, type: 'token', content: { recipientId: bob, amount: 50, memo: '[Staging] bonus', txHash: 'staging-tx-002', status: 'confirmed' }, blockchain: false },
-        { offset: 540000, sender: bob, type: 'text', content: { text: '[Staging] This is awesome!' }, blockchain: false },
-      ];
-
-      for (const msg of messages) {
-        const msgTime = new Date(baseTime.getTime() + msg.offset);
-        const result = await pool.query(`
-          INSERT INTO messages (conversation_id, sender_id, type, content, blockchain_recorded, created_at)
-          VALUES ($1, $2, $3, $4, $5, $6)
-          ON CONFLICT DO NOTHING
-          RETURNING id
-        `, [convId, msg.sender, msg.type, JSON.stringify(msg.content), msg.blockchain, msgTime]);
-
-        // Seed blockchain audit log for messages that have blockchain recording
-        if (msg.blockchain && result.rows.length > 0) {
-          const messageId = result.rows[0].id;
-          const contentHash = computeContentHash(msg.content);
-          const txHash = 'ut1staging-testnet-message-' + messageId + '-' + msgTime.getTime();
-          const messageType = msg.type === 'token' ? 'token_transfer' : 'message';
-          const transactionPayload = msg.type === 'token'
-            ? {
-                type: 'token_transfer',
-                messageId: messageId,
-                sender: msg.sender,
-                recipient: msg.content.recipientId,
-                amount: msg.content.amount,
-                memo: msg.content.memo,
-                userPubkey: dmUserPubkeyMap[msg.sender],
-                contentHash: contentHash,
-                timestamp: msgTime.toISOString()
-              }
-            : {
-                type: 'message',
-                messageId: messageId,
-                senderId: msg.sender,
-                userPubkey: dmUserPubkeyMap[msg.sender],
-                contentHash: contentHash,
-                timestamp: msgTime.toISOString()
-              };
-
-          const auditResult = await pool.query(`
-            INSERT INTO blockchain_audit_logs (user_id, message_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, 'confirmed', $6, $7, $8, $9, $10, $10)
-            ON CONFLICT DO NOTHING
-            RETURNING id
-          `, [msg.sender, messageId, messageType, txHash, JSON.stringify(transactionPayload), msgTime, contentHash, dmUserPubkeyMap[msg.sender], msgTime, msgTime]);
-
-          // Update message with audit log reference
-          if (auditResult.rows.length > 0) {
-            await pool.query(`
-              UPDATE messages SET blockchain_audit_log_id = $1 WHERE id = $2
-            `, [auditResult.rows[0].id, messageId]);
-          }
-        }
-      }
-
-      // Initialize read receipts
-      await pool.query(`
-        INSERT INTO read_receipts (user_id, conversation_id, last_read_at)
-        VALUES ($1, $2, NOW()), ($3, $2, NOW())
-        ON CONFLICT DO NOTHING
-      `, [alice, convId, bob]);
-
-
-      // Seed sample conversations with different statuses to demonstrate incoming message controls
-      // Emma → Alice: unaccepted incoming message (Alice will see "New Message" badge)
-      const [emmaAliceA, emmaAliceB] = [alice, emma].sort((x, y) => x - y);
-      const { rows: convEmmAliceRows } = await pool.query(`
-        SELECT id FROM conversations WHERE participant_a_id = $1 AND participant_b_id = $2
-      `, [emmaAliceA, emmaAliceB]);
-
-      let convEmmAliceId;
-      if (convEmmAliceRows.length === 0) {
-        const result = await pool.query(`
-          INSERT INTO conversations (participant_a_id, participant_b_id, status_a, status_b, created_at, updated_at)
-          VALUES ($1, $2, 'accepted', 'ignored', NOW(), NOW())
-          RETURNING id
-        `, [emmaAliceA, emmaAliceB]);
-        convEmmAliceId = result.rows[0].id;
-      } else {
-        convEmmAliceId = convEmmAliceRows[0].id;
-      }
-
-      // Add a test message from Emma to Alice
-      await pool.query(`
-        INSERT INTO messages (conversation_id, sender_id, type, content, created_at)
-        VALUES ($1, $2, 'text', '{"text": "[Staging] Hi Alice, just reaching out!"}', NOW())
-        ON CONFLICT DO NOTHING
-      `, [convEmmAliceId, emma]);
-
-      // David → Bob: muted incoming message
-      const [davidBobA, davidBobB] = [bob, david].sort((x, y) => x - y);
-      const { rows: convDavidBobRows } = await pool.query(`
-        SELECT id FROM conversations WHERE participant_a_id = $1 AND participant_b_id = $2
-      `, [davidBobA, davidBobB]);
-
-      let convDavidBobId;
-      if (convDavidBobRows.length === 0) {
-        const result = await pool.query(`
-          INSERT INTO conversations (participant_a_id, participant_b_id, status_a, status_b, created_at, updated_at)
-          VALUES ($1, $2, 'accepted', 'muted', NOW(), NOW())
-          RETURNING id
-        `, [davidBobA, davidBobB]);
-        convDavidBobId = result.rows[0].id;
-      } else {
-        convDavidBobId = convDavidBobRows[0].id;
-      }
-
-      // Add a test message from David to Bob
-      await pool.query(`
-        INSERT INTO messages (conversation_id, sender_id, type, content, created_at)
-        VALUES ($1, $2, 'text', '{"text": "[Staging] Hi Bob! Check this out"}', NOW())
-        ON CONFLICT DO NOTHING
-      `, [convDavidBobId, david]);
-
-      // Seed archived alice-charlie conversation (archived by alice) for testing archive/unarchive UI
-      const { rows: convAliceCharlieRows } = await pool.query(`
-        SELECT id FROM conversations
-        WHERE (participant_a_id = $1 AND participant_b_id = $2)
-           OR (participant_a_id = $2 AND participant_b_id = $1)
-      `, [alice, charlie]);
-
-      let convAliceCharlieId;
-      if (convAliceCharlieRows.length === 0) {
-        const result = await pool.query(`
-          INSERT INTO conversations (participant_a_id, participant_b_id, status_a, status_b, archived_by, created_at, updated_at)
-          VALUES ($1, $2, 'accepted', 'accepted', ARRAY[$1]::integer[], NOW(), NOW())
-          RETURNING id
-        `, [alice, charlie]);
-        convAliceCharlieId = result.rows[0].id;
-      } else {
-        convAliceCharlieId = convAliceCharlieRows[0].id;
-        // Ensure alice is in archived_by
-        await pool.query(`
-          UPDATE conversations SET archived_by = array_append(archived_by, $1)
-          WHERE id = $2 AND NOT (archived_by @> ARRAY[$1]::integer[])
-        `, [alice, convAliceCharlieId]);
-      }
-
-      await pool.query(`
-        INSERT INTO messages (conversation_id, sender_id, type, content, created_at)
-        VALUES
-          ($1, $2, 'text', '{"text": "[Staging] Hey Alice, long time no chat!"}', NOW() - INTERVAL '3 days'),
-          ($1, $3, 'text', '{"text": "[Staging] Hi Charlie! Yeah it has been a while."}', NOW() - INTERVAL '3 days' + INTERVAL '5 minutes'),
-          ($1, $2, 'text', '{"text": "[Staging] Let me know if you want to catch up sometime."}', NOW() - INTERVAL '3 days' + INTERVAL '10 minutes')
-        ON CONFLICT DO NOTHING
-      `, [convAliceCharlieId, charlie, alice]);
-
-      // Seed pending contact requests for testing "Pending Requests" feature
-      // Charlie → Alice: Charlie sends a pending request to Alice
-      const [charlieAliceA, charlieAliceB] = [alice, charlie].sort((x, y) => x - y);
-      const { rows: convCharlieAliceRows } = await pool.query(`
-        SELECT id FROM conversations WHERE participant_a_id = $1 AND participant_b_id = $2
-      `, [charlieAliceA, charlieAliceB]);
-
-      if (convCharlieAliceRows.length === 0) {
-        const charlieIsA = charlie === charlieAliceA;
-        const result = await pool.query(`
-          INSERT INTO conversations (participant_a_id, participant_b_id, status_a, status_b, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, NOW(), NOW())
-          RETURNING id
-        `, [charlieAliceA, charlieAliceB,
-            charlieIsA ? 'accepted' : 'pending',
-            charlieIsA ? 'pending' : 'accepted']);
-        const convCharlieAliceId = result.rows[0].id;
-
-        // Add a test message from Charlie to Alice
-        await pool.query(`
-          INSERT INTO messages (conversation_id, sender_id, type, content, created_at)
-          VALUES ($1, $2, 'text', '{"text": "[Staging] Hey Alice, want to connect?"}', NOW() - INTERVAL '2 hours')
-          ON CONFLICT DO NOTHING
-        `, [convCharlieAliceId, charlie]);
-      }
-
-      // David → Bob: David sends a pending request to Bob
-      const [davidBobA2, davidBobB2] = [bob, david].sort((x, y) => x - y);
-      const { rows: convDavidBob2Rows } = await pool.query(`
-        SELECT id FROM conversations WHERE participant_a_id = $1 AND participant_b_id = $2
-      `, [davidBobA2, davidBobB2]);
-
-      if (convDavidBob2Rows.length === 0) {
-        const davidIsA = david === davidBobA2;
-        const result = await pool.query(`
-          INSERT INTO conversations (participant_a_id, participant_b_id, status_a, status_b, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, NOW(), NOW())
-          RETURNING id
-        `, [davidBobA2, davidBobB2,
-            davidIsA ? 'accepted' : 'pending',
-            davidIsA ? 'pending' : 'accepted']);
-        const convDavidBob2Id = result.rows[0].id;
-
-        // Add a test message from David to Bob
-        await pool.query(`
-          INSERT INTO messages (conversation_id, sender_id, type, content, created_at)
-          VALUES ($1, $2, 'text', '{"text": "[Staging] Hi Bob, I have something interesting to share!"}', NOW() - INTERVAL '1 hour')
-          ON CONFLICT DO NOTHING
-        `, [convDavidBob2Id, david]);
-      }
-
-      // Seed sample contact relationships for testing "Add Contact" feature
-      // Alice has Bob as a saved contact
-      await pool.query(`
-        INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
-        VALUES ($1, $2, NULL, NOW())
-        ON CONFLICT (user_id, contact_user_id) DO NOTHING
-      `, [alice, bob]);
-
-      // Bob has Alice as a saved contact
-      await pool.query(`
-        INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
-        VALUES ($1, $2, NULL, NOW())
-        ON CONFLICT (user_id, contact_user_id) DO NOTHING
-      `, [bob, alice]);
-
-      // Alice also has Charlie as a contact for testing wallet address search with saved contacts
-      await pool.query(`
-        INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
-        VALUES ($1, $2, NULL, NOW())
-        ON CONFLICT (user_id, contact_user_id) DO NOTHING
-      `, [alice, charlie]);
-
-      // Alice has David and Emma as additional contacts
-      await pool.query(`
-        INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
-        VALUES ($1, $2, NULL, NOW()), ($1, $3, NULL, NOW())
-        ON CONFLICT (user_id, contact_user_id) DO NOTHING
-      `, [alice, david, emma]);
-
-      // Seed archived, muted, and archived+muted contacts for testing contact options menu
-      const { rows: archiveRows } = await pool.query(`
-        SELECT id FROM user_contacts WHERE user_id = $1 AND contact_user_id = $2
-      `, [alice, bob]);
       if (archiveRows.length > 0) {
         await pool.query(`
           UPDATE user_contacts SET muted_by = ARRAY[$1]::integer[] WHERE id = $2

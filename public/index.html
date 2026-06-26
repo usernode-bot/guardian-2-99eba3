@@ -800,6 +800,28 @@
               </div>
             </div>
 
+            <!-- Wallet Diagnostics -->
+            <div id="walletDiagnosticsAccordion" class="space-y-1">
+              <button id="walletDiagnosticsToggle" onclick="toggleWalletDiagnosticsAccordion()" class="w-full flex items-center justify-between px-0 py-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
+                <span class="flex items-center gap-2">
+                  <span id="walletStatusDot" class="inline-block w-2.5 h-2.5 rounded-full bg-red-500 transition-colors"></span>
+                  Wallet Status
+                </span>
+                <svg id="walletDiagnosticsArrow" class="w-5 h-5 transition-transform duration-200 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path>
+                </svg>
+              </button>
+              <div id="walletDiagnosticsContent" class="hidden pt-2 space-y-2">
+                <div class="space-y-1 text-xs text-zinc-600 dark:text-zinc-400">
+                  <div><span id="walletBridgeStatus">Bridge Loaded: —</span></div>
+                  <div><span id="walletProviderStatus">Provider Found: —</span></div>
+                  <div><span id="walletAddressStatus">Connected Address: —</span></div>
+                  <div><span id="walletNetworkStatus">Current Network: —</span></div>
+                  <div><span id="walletSignerStatus">Signer Available: —</span></div>
+                </div>
+              </div>
+            </div>
+
             <!-- Secrets UI (Sub-Accordion) -->
             <div id="configAccordion" class="space-y-1">
               <button id="configToggle" onclick="toggleConfigAccordion()" class="w-full flex items-center justify-between px-0 py-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
@@ -1887,14 +1909,22 @@
       }
     }
 
+    let walletStatusPollInterval = null;
+
     function startNetworkStatusPolling() {
       if (networkStatusPollInterval) clearInterval(networkStatusPollInterval);
       pollNetworkStatus();
       networkStatusPollInterval = setInterval(pollNetworkStatus, 5000);
+
+      // Also start wallet diagnostics polling
+      if (walletStatusPollInterval) clearInterval(walletStatusPollInterval);
+      updateWalletDiagnostics();
+      walletStatusPollInterval = setInterval(updateWalletDiagnostics, 5000);
     }
 
     function stopNetworkStatusPolling() {
       if (networkStatusPollInterval) clearInterval(networkStatusPollInterval);
+      if (walletStatusPollInterval) clearInterval(walletStatusPollInterval);
     }
 
     function toggleSystemAccordion() {
@@ -1937,6 +1967,44 @@
         content.classList.add('hidden');
         arrow.style.transform = 'rotate(0deg)';
       }
+    }
+
+    function toggleWalletDiagnosticsAccordion() {
+      const content = document.getElementById('walletDiagnosticsContent');
+      const arrow = document.getElementById('walletDiagnosticsArrow');
+      const isHidden = content.classList.contains('hidden');
+
+      if (isHidden) {
+        content.classList.remove('hidden');
+        arrow.style.transform = 'rotate(180deg)';
+      } else {
+        content.classList.add('hidden');
+        arrow.style.transform = 'rotate(0deg)';
+      }
+    }
+
+    function updateWalletDiagnostics() {
+      const bridgeLoaded = window.usernode !== undefined && typeof window.usernode.sendTransaction === 'function';
+      const walletAddress = currentUser?.usernode_pubkey || null;
+      const walletValid = walletAddress && /^ut1[a-zA-Z0-9]{40,}$/.test(walletAddress);
+      const signerAvailable = bridgeLoaded && walletValid;
+
+      const bridgeStatus = bridgeLoaded ? '✓ Loaded' : '✗ Not loaded';
+      const providerStatus = bridgeLoaded ? '✓ Available' : '✗ Unavailable';
+      const addressStatus = walletValid ? walletAddress.substring(0, 18) + '…' : '❌ Not linked';
+      const networkStatus = 'Testnet (only)';
+      const signerStatus = signerAvailable ? '✓ Ready' : '✗ Not ready';
+
+      document.getElementById('walletBridgeStatus').textContent = bridgeStatus;
+      document.getElementById('walletProviderStatus').textContent = providerStatus;
+      document.getElementById('walletAddressStatus').textContent = addressStatus;
+      document.getElementById('walletNetworkStatus').textContent = networkStatus;
+      document.getElementById('walletSignerStatus').textContent = signerStatus;
+
+      const dotColor = signerAvailable ? 'bg-green-500' : 'bg-red-500';
+      document.getElementById('walletStatusDot').className = `inline-block w-2.5 h-2.5 rounded-full transition-colors ${dotColor}`;
+
+      console.log('[WALLET-STATUS]', { bridgeLoaded, walletValid, signerAvailable });
     }
 
     async function loadConfigState() {
@@ -3027,6 +3095,7 @@
       document.getElementById('sidebarWallet').textContent = user.usernode_pubkey || 'No wallet linked';
       initSettings();
       startNetworkStatusPolling();
+      updateWalletDiagnostics();
       // Ensure currentUser is set before showing conversations view (which may load groups)
       await showConversationsView();
       setupEventListeners();
