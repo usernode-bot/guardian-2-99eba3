@@ -10,14 +10,14 @@
     },
     {
       "key": "APP_PUBKEY",
-      "description": "Guardian app's Usernode public key (ut1...) for on-chain transaction signing and identification. Generated ED25519 keypair for Guardian.",
+      "description": "Guardian app's isolated Usernode pot address (ut1...) for blockchain transactions. This is Guardian's own ED25519 public key, separate from any shared pot address. Used for transaction signing and app identification.",
       "required": true,
       "private": false,
       "default": "ut1Fww7onqF9LsRSb6d6BozgQWtjNYqQJghYxXmBc8foncb"
     },
     {
       "key": "APP_SECRET_KEY",
-      "description": "Guardian app's ED25519 secret key seed for signing transactions on Usernode blockchain (64 hex chars, production only)",
+      "description": "Guardian app's ED25519 private key seed (64 hex characters) for cryptographic signing of transaction memos on Usernode blockchain. Production value: 19f0d93396a451665783ea26cc1bc65e6bb0fd33a5d1d8662ca0ca15478429e3",
       "required": true,
       "private": true,
       "staging_default": "guardian_sk_mqudwes5_ae613cf56214808e"
