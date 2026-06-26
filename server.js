@@ -904,7 +904,27 @@ app.get('/api/config', async (req, res) => {
     res.json({
       isDemoMode: ENABLE_DEMO_MODE,
       canEdit: canEdit,
-      description: 'When enabled, all blockchain transactions use fake tx hashes and audit logs are immediately confirmed. When disabled, real wallet interaction is required and audit logs are pending until blockchain confirmation.'
+      description: 'When enabled, all blockchain transactions use fake tx hashes and audit logs are immediately confirmed. When disabled, real wallet interaction is required and audit logs are pending until blockchain confirmation.',
+      secrets: [
+        {
+          key: 'APP_PUBKEY',
+          value: APP_PUBKEY,
+          required: true,
+          private: false
+        },
+        {
+          key: 'APP_SECRET_KEY',
+          value: 'configured',
+          required: true,
+          private: true
+        },
+        {
+          key: 'NODE_RPC_URL',
+          value: NODE_RPC_URL,
+          required: false,
+          private: false
+        }
+      ]
     });
   } catch (err) {
     console.error('Error fetching config:', err);
