@@ -7,6 +7,20 @@
       "required": false,
       "private": false,
       "default": "false"
+    },
+    {
+      "key": "APP_PUBKEY",
+      "description": "Guardian app's Usernode public key (ut1...) for on-chain transaction signing and identification",
+      "required": true,
+      "private": false,
+      "default": "ut1guardian"
+    },
+    {
+      "key": "APP_SECRET_KEY",
+      "description": "Guardian app's secret key for signing transactions on Usernode blockchain (used in production only)",
+      "required": true,
+      "private": true,
+      "staging_default": "staging_secret_key_guardian_demo"
     }
   ],
   "tests": [
