@@ -4,6 +4,7 @@ const { Pool } = require('pg');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const https = require('https');
+const http = require('http');
 
 // Guardian 2 - Build PR #147: Modal dialogs for group management
 const app = express();
@@ -85,19 +86,140 @@ function getForegroundHours(userId) {
   }
 }
 
+// Chain poller for transaction status (models Last One Wins pattern)
+const chainPollers = new Map();
+const CHAIN_IDS = {
+  'testnet': 'testnet',
+  'mainnet': 'mainnet'
+};
+
+async function pollTransactionStatus(chainId, txHash, auditLogId) {
+  try {
+    // In demo/staging mode, immediately confirm via our mock explorer endpoint
+    // In production, this would call the real blockchain explorer via /explorer-api proxy
+
+    // Call our local explorer API proxy endpoint
+    const explorerPath = `/explorer-api/${chainId}/transactions/${txHash}`;
+
+    // Use a simple HTTP request locally
+    return new Promise((resolve, reject) => {
+      const options = {
+        hostname: 'localhost',
+        port: port || 3000,
+        path: explorerPath,
+        method: 'GET',
+        timeout: 5000
+      };
+
+      const req = http.request(options, (res) => {
+        let data = '';
+        res.on('data', chunk => { data += chunk; });
+        res.on('end', async () => {
+          try {
+            const txData = JSON.parse(data);
+            const isConfirmed = txData.status === 'confirmed' || txData.status === 'success' || txData.blockNumber;
+
+            if (isConfirmed) {
+              // Update audit log to confirmed
+              await pool.query(`
+                UPDATE blockchain_audit_logs
+                SET status = 'confirmed', confirmed_at = NOW(), updated_at = NOW()
+                WHERE id = $1
+              `, [auditLogId]);
+              console.log(`[Chain Poller] Transaction ${txHash} confirmed for audit log ${auditLogId}`);
+              resolve(true);
+            } else {
+              resolve(false);
+            }
+          } catch (err) {
+            console.error(`[Chain Poller] Error parsing explorer response:`, err);
+            resolve(null);
+          }
+        });
+      });
+
+      req.on('error', (err) => {
+        console.warn(`[Chain Poller] Explorer unreachable for tx ${txHash}:`, err.message);
+        resolve(null);
+      });
+
+      req.on('timeout', () => {
+        req.destroy();
+        resolve(null);
+      });
+
+      req.end();
+    });
+  } catch (err) {
+    console.error(`[Chain Poller] Error polling tx ${txHash}:`, err);
+    return null;
+  }
+}
+
+async function startChainPoller(chainId, txHash, auditLogId) {
+  const pollerId = `${chainId}:${txHash}`;
+
+  // Skip if already polling this transaction
+  if (chainPollers.has(pollerId)) {
+    return;
+  }
+
+  // Poll up to 20 times with exponential backoff (starting at 5s, capping at 60s)
+  let pollCount = 0;
+  const maxPolls = 20;
+  let backoffMs = 5000;
+
+  const pollInterval = setInterval(async () => {
+    try {
+      pollCount++;
+      const isConfirmed = await pollTransactionStatus(chainId, txHash, auditLogId);
+
+      if (isConfirmed || pollCount >= maxPolls) {
+        clearInterval(pollInterval);
+        chainPollers.delete(pollerId);
+        if (!isConfirmed && pollCount >= maxPolls) {
+          console.warn(`[Chain Poller] Max polls reached for ${txHash}, marking as failed`);
+          await pool.query(`
+            UPDATE blockchain_audit_logs
+            SET status = 'failed', error_message = $1, updated_at = NOW()
+            WHERE id = $2
+          `, ['Transaction not confirmed after 20 polls', auditLogId]);
+        }
+      } else {
+        backoffMs = Math.min(backoffMs * 1.5, 60000);
+        // Reschedule with new backoff
+        clearInterval(pollInterval);
+        setTimeout(() => startChainPoller(chainId, txHash, auditLogId), backoffMs);
+      }
+    } catch (err) {
+      console.error(`[Chain Poller] Unexpected error:`, err);
+      clearInterval(pollInterval);
+      chainPollers.delete(pollerId);
+    }
+  }, backoffMs);
+
+  chainPollers.set(pollerId, { interval: pollInterval, startTime: Date.now() });
+}
+
 // Send transaction to blockchain via bridge
-async function sendTransactionToBridge(payload, network = 'testnet') {
+async function sendTransactionToBridge(payload, txHashFromFrontend, network = 'testnet') {
   try {
     if (IS_STAGING) {
       // Mock implementation: return immediate confirmation with network prefix
+      // In staging, txHashFromFrontend comes from frontend simulation
       const networkPrefix = network === 'mainnet' ? 'ut1staging-mainnet-tx-' : 'ut1staging-testnet-tx-';
-      const txHash = networkPrefix + Date.now();
+      const txHash = txHashFromFrontend || networkPrefix + Date.now();
       return { txHash, status: 'pending' };
     }
 
-    // In production: call the real bridge sendTransaction
-    // This would integrate with usernode-bridge.js with network parameter
-    // For now, simulate with a unique tx hash including network
+    // In production: use the real tx hash from frontend (submitted via usernode.sendTransaction)
+    // If frontend provided a tx hash, it's already been submitted on-chain
+    if (txHashFromFrontend) {
+      console.log(`[Bridge] Using submitted tx hash from frontend: ${txHashFromFrontend}`);
+      return { txHash: txHashFromFrontend, status: 'pending' };
+    }
+
+    // Fallback: generate a placeholder (should not reach here in production)
     const networkPrefix = network === 'mainnet' ? 'ut1mainnet-tx-' : 'ut1testnet-tx-';
     const txHash = networkPrefix + Math.random().toString(36).substr(2, 9);
     return { txHash, status: 'pending' };
@@ -1345,6 +1467,54 @@ app.post('/api/blockchain-audit/:auditLogId/retry', async (req, res) => {
     })();
 
     res.json({ ok: true, auditLogId });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Register a submitted tx hash from frontend and start polling (real blockchain integration)
+app.post('/api/blockchain-audit/:auditLogId/register-tx', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { auditLogId } = req.params;
+    const { txHash, chainId } = req.body;
+    const userId = parseInt(req.user.id, 10);
+
+    if (!txHash || !chainId) {
+      return res.status(400).json({ error: 'txHash and chainId required' });
+    }
+
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    // Fetch and verify ownership of audit log
+    const { rows } = await pool.query(`
+      SELECT id, status, transaction_payload FROM blockchain_audit_logs
+      WHERE id = $1 AND user_id = $2
+    `, [auditLogId, userId]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Audit log not found' });
+    }
+
+    const auditLog = rows[0];
+
+    // Update audit log with real tx hash from frontend submission
+    await pool.query(`
+      UPDATE blockchain_audit_logs
+      SET tx_hash = $1, status = 'pending', updated_at = NOW()
+      WHERE id = $2
+    `, [txHash, auditLogId]);
+
+    // Start chain polling to monitor confirmation
+    startChainPoller(chainId, txHash, auditLogId);
+
+    res.json({ ok: true, auditLogId, txHash, status: 'pending' });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -4503,12 +4673,42 @@ app.post('/api/feed/milestones/refresh', async (req, res) => {
   }
 });
 
-// Simple proxy for explorer API to avoid CORS issues
-app.use('/explorer-api', (req, res) => {
-  // Forward requests to testnet explorer
-  // This is a no-op in staging (explorer-api not actively used since mock returns status instantly)
-  // In production, this could be used to verify transaction status independently
-  res.status(501).json({ error: 'Explorer API proxy not yet fully configured' });
+// Explorer API proxy for transaction status polling (modeled after Last One Wins)
+// This endpoint is called by the chain poller to check transaction confirmation status
+app.get('/explorer-api/:chainId/transactions/:txHash', async (req, res) => {
+  try {
+    const { chainId, txHash } = req.params;
+
+    // In staging/demo mode, return confirmed status immediately
+    if (IS_STAGING) {
+      return res.json({
+        txHash: txHash,
+        status: 'confirmed',
+        blockNumber: 12345,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // In production: would call actual blockchain explorer API
+    // For now, return pending status (chain poller will retry)
+    // Real implementation would call something like:
+    // const explorerUrl = chainId === 'mainnet'
+    //   ? `https://explorer.mainnet.com/tx/${txHash}`
+    //   : `https://explorer.testnet.com/tx/${txHash}`;
+    // const response = await fetch(explorerUrl);
+    // const data = await response.json();
+    // return res.json({ txHash, status: data.status, blockNumber: data.blockNumber, ... });
+
+    res.json({
+      txHash: txHash,
+      status: 'pending',
+      blockNumber: null,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('Explorer API error:', err);
+    res.status(500).json({ error: 'Explorer API error' });
+  }
 });
 
 // ===== STATIC & FALLBACK =====

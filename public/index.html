@@ -3438,6 +3438,15 @@
           if (data && !data.error) {
             showToast('Group created successfully', 'success');
             if (data.blockchainRecordingId) {
+              // Register the real tx hash from wallet and start chain polling
+              await apiCall(`/api/blockchain-audit/${data.blockchainRecordingId}/register-tx`, {
+                method: 'POST',
+                body: JSON.stringify({
+                  txHash: txHash,
+                  chainId: currentNetwork || 'testnet'
+                })
+              }).catch(err => console.warn('Failed to register tx hash:', err));
+
               showPersistentNotification('group_create', {
                 blockchainRecordingId: data.blockchainRecordingId,
                 groupName: data.name,
@@ -4563,6 +4572,15 @@
 
             if (data && !data.error) {
               if (data.blockchainRecordingId) {
+                // Register the tx hash from wallet and start polling
+                await apiCall(`/api/blockchain-audit/${data.blockchainRecordingId}/register-tx`, {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    txHash: txHash,
+                    chainId: currentNetwork || 'testnet'
+                  })
+                }).catch(err => console.warn('Failed to register tx hash:', err));
+
                 showPersistentNotification('message', {
                   blockchainRecordingId: data.blockchainRecordingId,
                   recipient: currentGroupId ? 'group' : currentContactName
@@ -4579,25 +4597,40 @@
             }
           });
         } else {
-          // Non-demo mode: send directly without confirmation
-          const data = await apiCall(endpoint, {
-            method: 'POST',
-            body: JSON.stringify({ type: 'text', content: { text } })
-          });
+          // Non-demo mode: show wallet confirmation and send with real tx
+          await showWalletConfirm('Send Message', { text }, async (txHash) => {
+            showToast('Message sent successfully', 'success');
+            const data = await apiCall(endpoint, {
+              method: 'POST',
+              body: JSON.stringify({ type: 'text', content: { text } })
+            });
 
-          if (data) {
-            if (data.blockchainRecordingId) {
-              showPersistentNotification('message', {
-                blockchainRecordingId: data.blockchainRecordingId,
-                recipient: currentGroupId ? 'group' : currentContactName
-              });
-            }
-            if (currentGroupId) {
-              loadGroupMessages(currentGroupId);
+            if (data && !data.error) {
+              if (data.blockchainRecordingId) {
+                // Register the real tx hash from wallet and start chain polling
+                await apiCall(`/api/blockchain-audit/${data.blockchainRecordingId}/register-tx`, {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    txHash: txHash,
+                    chainId: currentNetwork || 'testnet'
+                  })
+                }).catch(err => console.warn('Failed to register tx hash:', err));
+
+                showPersistentNotification('message', {
+                  blockchainRecordingId: data.blockchainRecordingId,
+                  recipient: currentGroupId ? 'group' : currentContactName
+                });
+              }
+              if (currentGroupId) {
+                loadGroupMessages(currentGroupId);
+              } else {
+                loadMessages();
+              }
+              return data;
             } else {
-              loadMessages();
+              throw new Error(data?.error || 'Failed to send message');
             }
-          }
+          });
         }
       } catch (err) {
         if (err.message !== 'User cancelled wallet confirmation') {
@@ -4714,6 +4747,15 @@
 
             if (data && !data.error) {
               if (data.blockchainRecordingId) {
+                // Register the real tx hash from wallet and start chain polling
+                await apiCall(`/api/blockchain-audit/${data.blockchainRecordingId}/register-tx`, {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    txHash: txHash,
+                    chainId: currentNetwork || 'testnet'
+                  })
+                }).catch(err => console.warn('Failed to register tx hash:', err));
+
                 showPersistentNotification('token_transfer', {
                   blockchainRecordingId: data.blockchainRecordingId,
                   amount: parseInt(amount),
