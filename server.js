@@ -408,7 +408,6 @@ async function monitorBlockchainStatus(auditLogId, txHash) {
   pollingState.set(txHash, { startTime, retries: 0 });
   
   try {
-  try {
     // Start chain poller to poll explorer until confirmed or timeout
     startChainPoller('testnet', txHash, auditLogId).catch(err => {
       console.error('Error starting chain poller:', err);
@@ -420,7 +419,6 @@ async function monitorBlockchainStatus(auditLogId, txHash) {
       SET status = 'failed', error_message = $1, updated_at = NOW()
       WHERE id = $2
     `, [err.message, auditLogId]);
-  }
   } finally {
     // Clean up polling state
     pollingState.delete(txHash);

@@ -1556,8 +1556,14 @@
   <script src="https://social-vibecoding.usernodelabs.org/usernode-bridge/v1/bridge.js"></script>
 
   <script>
-    const params = new URLSearchParams(window.location.search);
+        const params = new URLSearchParams(window.location.search);
     const token = params.get('token') || '';
+    
+    // Store token in sessionStorage for persistence across navigations
+    if (token) {
+      sessionStorage.setItem('usernode_token', token);
+    }
+    
     const headers = token ? { 'x-usernode-token': token } : {};
 
     function escapeHtml(text) {
@@ -2911,11 +2917,17 @@
     }
 
     // Wait for bridge to load with timeout (network-aware)
-    async function waitForBridge(timeoutMs, network = currentNetwork || 'testnet') {
+        async function waitForBridge(timeoutMs, network = currentNetwork || 'testnet') {
       // Use network-aware default timeout if not specified
       if (timeoutMs === undefined) {
         timeoutMs = network === 'testnet' ? 5000 : 3000;
       }
+      const startTime = Date.now();
+      while (!isWalletAvailable() && (Date.now() - startTime) < timeoutMs) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      return isWalletAvailable();
+    }
 
     // Initialize wallet bridge after DOM is ready
     function initializeBridge() {
@@ -2937,13 +2949,6 @@
       document.addEventListener('DOMContentLoaded', initializeBridge);
     } else {
       initializeBridge();
-    }
-
-      const startTime = Date.now();
-      while (!isWalletAvailable() && (Date.now() - startTime) < timeoutMs) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-      return isWalletAvailable();
     }
 
     // Comprehensive bridge diagnostic function for platform maintainers
