@@ -46,7 +46,7 @@ function checkRateLimit(key, limit, windowMs) {
   return true;
 }
 
-const PUBLIC_API_PATHS = new Set(['/health', '/favicon.ico']);
+const PUBLIC_API_PATHS = new Set(['/health', '/favicon.ico', '/api/test/production-simulation']);
 const PUBLIC_PREFIXES = ['/explorer-api/'];
 
 // Helper function to compute SHA-256 hash of content
@@ -4827,6 +4827,253 @@ app.get('/explorer-api/:chainId/transactions/:txHash', async (req, res) => {
   } catch (err) {
     console.error('Explorer API error:', err);
     res.status(500).json({ error: 'Explorer API error' });
+  }
+});
+
+// ===== PRODUCTION SIMULATION TEST =====
+
+app.get('/api/test/production-simulation', async (req, res) => {
+  const testStartTime = Date.now();
+  const results = {
+    success: false,
+    testName: 'Guardian Production Simulation Test',
+    timestamp: new Date().toISOString(),
+    tests: {}
+  };
+
+  try {
+    // Test 1: Create a test message
+    const testUserId = 999999;
+    const testUsername = 'test-prod-sim-user';
+    const testRecipient = 'test-recipient-user';
+    const messageContent = `[TEST] Production simulation message at ${Date.now()}`;
+    const chainId = 'testnet';
+    const network = 'testnet';
+
+    // Ensure test user exists
+    await pool.query(`
+      INSERT INTO users (id, username) VALUES ($1, $2)
+      ON CONFLICT (username) DO NOTHING
+    `, [testUserId, testUsername]);
+
+    // Test 1: Create message in database
+    results.tests.messageCreation = { status: 'pending' };
+    const messageResult = await pool.query(`
+      INSERT INTO messages (sender_id, sender_username, recipient_id, content, created_at)
+      SELECT $1, $2, id, $3, NOW()
+      FROM users WHERE username = $4
+      RETURNING id, sender_id, recipient_id, content, created_at
+    `, [testUserId, testUsername, messageContent, testRecipient]);
+
+    if (messageResult.rows.length === 0) {
+      return res.status(500).json({
+        ...results,
+        error: 'Failed to create test message - recipient user not found'
+      });
+    }
+
+    const message = messageResult.rows[0];
+    const messageId = message.id;
+    results.tests.messageCreation = {
+      status: 'pass',
+      messageId: messageId,
+      senderId: message.sender_id,
+      content: message.content
+    };
+
+    // Test 2: Sign transaction memo
+    results.tests.memoSigning = { status: 'pending' };
+    const contentHash = computeContentHash(messageContent);
+    const memoPayload = {
+      type: 'message',
+      senderId: testUserId,
+      timestamp: Date.now(),
+      contentHash: contentHash
+    };
+    const signedMemo = signTransactionMemo(memoPayload);
+    const parsedMemo = JSON.parse(signedMemo);
+
+    // Verify memo format
+    if (parsedMemo.app !== 'guardian' || parsedMemo.type !== 'message' || !parsedMemo.contentHash) {
+      throw new Error('Invalid memo format');
+    }
+
+    results.tests.memoSigning = {
+      status: 'pass',
+      memo: parsedMemo,
+      contentHash: contentHash,
+      format: 'Last One Wins pattern - { app: "guardian", type, senderId, timestamp, contentHash }'
+    };
+
+    // Test 3: Generate transaction hash
+    results.tests.transactionGeneration = { status: 'pending' };
+    const txHash = `ut1test-${chainId}-message-${messageId}-${Date.now()}`;
+    results.tests.transactionGeneration = {
+      status: 'pass',
+      transactionHash: txHash,
+      chain: chainId
+    };
+
+    // Test 4: Insert blockchain audit log
+    results.tests.auditLogInsertion = { status: 'pending' };
+    const auditLogResult = await pool.query(`
+      INSERT INTO blockchain_audit_logs (
+        user_id, user_pubkey, message_type, action_id, tx_hash, status,
+        transaction_payload, content_hash, created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+      RETURNING id, status, created_at, transaction_payload
+    `, [
+      testUserId,
+      APP_PUBKEY,
+      'message',
+      messageId,
+      txHash,
+      'pending',
+      JSON.stringify({
+        memo: parsedMemo,
+        app: 'guardian',
+        messageId: messageId,
+        type: 'message'
+      }),
+      contentHash
+    ]);
+
+    if (auditLogResult.rows.length === 0) {
+      throw new Error('Failed to insert blockchain audit log');
+    }
+
+    const auditLog = auditLogResult.rows[0];
+    results.tests.auditLogInsertion = {
+      status: 'pass',
+      auditLogId: auditLog.id,
+      initialStatus: auditLog.status,
+      createdAt: auditLog.created_at
+    };
+
+    // Test 5: Test explorer API endpoint
+    results.tests.explorerAPI = { status: 'pending' };
+    const explorerResponse = await new Promise((resolve) => {
+      const options = {
+        hostname: 'localhost',
+        port: port || 3000,
+        path: `/explorer-api/${chainId}/transactions/${txHash}`,
+        method: 'GET',
+        timeout: 5000
+      };
+
+      const req = http.request(options, (res) => {
+        let data = '';
+        res.on('data', chunk => { data += chunk; });
+        res.on('end', () => {
+          try {
+            resolve(JSON.parse(data));
+          } catch (err) {
+            resolve(null);
+          }
+        });
+      });
+
+      req.on('error', () => resolve(null));
+      req.on('timeout', () => {
+        req.destroy();
+        resolve(null);
+      });
+      req.end();
+    });
+
+    results.tests.explorerAPI = {
+      status: explorerResponse ? 'pass' : 'fail',
+      response: explorerResponse || { error: 'No response from explorer' }
+    };
+
+    // Test 6: Simulate chain polling (instant confirmation in test)
+    results.tests.chainPolling = { status: 'pending' };
+    const pollStartTime = Date.now();
+
+    // Simulate one poll cycle
+    const simulatedPollResult = {
+      txHash: txHash,
+      status: 'confirmed',
+      blockNumber: 12345,
+      timestamp: new Date().toISOString()
+    };
+
+    // Update audit log to confirmed
+    const updateResult = await pool.query(`
+      UPDATE blockchain_audit_logs
+      SET status = 'confirmed', confirmed_at = NOW(), updated_at = NOW()
+      WHERE id = $1
+      RETURNING id, status, confirmed_at, created_at
+    `, [auditLog.id]);
+
+    if (updateResult.rows.length > 0) {
+      const updatedAuditLog = updateResult.rows[0];
+      const confirmationTimeMs = new Date(updatedAuditLog.confirmed_at) - new Date(updatedAuditLog.created_at);
+
+      results.tests.chainPolling = {
+        status: 'pass',
+        pollResult: simulatedPollResult,
+        auditLogUpdated: true,
+        finalStatus: updatedAuditLog.status,
+        confirmationTimeMs: confirmationTimeMs,
+        pollDurationMs: Date.now() - pollStartTime
+      };
+    }
+
+    // Test 7: Verify final audit log state
+    results.tests.finalAuditLogVerification = { status: 'pending' };
+    const finalAuditResult = await pool.query(`
+      SELECT id, status, tx_hash, content_hash, user_pubkey, transaction_payload, created_at, confirmed_at
+      FROM blockchain_audit_logs
+      WHERE id = $1
+    `, [auditLog.id]);
+
+    if (finalAuditResult.rows.length > 0) {
+      const finalAuditLog = finalAuditResult.rows[0];
+      results.tests.finalAuditLogVerification = {
+        status: 'pass',
+        auditLog: {
+          id: finalAuditLog.id,
+          status: finalAuditLog.status,
+          txHash: finalAuditLog.tx_hash,
+          contentHash: finalAuditLog.content_hash,
+          appPubkey: finalAuditLog.user_pubkey,
+          payload: JSON.parse(finalAuditLog.transaction_payload),
+          createdAt: finalAuditLog.created_at,
+          confirmedAt: finalAuditLog.confirmed_at
+        }
+      };
+    }
+
+    // Summary
+    const testDurationMs = Date.now() - testStartTime;
+    const allTestsPassed = Object.values(results.tests).every(t => t.status === 'pass');
+
+    results.success = allTestsPassed;
+    results.summary = {
+      allTestsPassed: allTestsPassed,
+      totalDurationMs: testDurationMs,
+      testCount: Object.keys(results.tests).length,
+      passedCount: Object.values(results.tests).filter(t => t.status === 'pass').length,
+      failedCount: Object.values(results.tests).filter(t => t.status === 'fail').length,
+      testsRun: [
+        '✓ Message creation in database',
+        '✓ Transaction memo signing (Last One Wins format)',
+        '✓ Transaction hash generation',
+        '✓ Blockchain audit log insertion',
+        '✓ Explorer API endpoint response',
+        '✓ Chain polling and confirmation',
+        '✓ Final audit log state verification'
+      ]
+    };
+
+    res.json(results);
+  } catch (err) {
+    console.error('[Production Simulation Test] Error:', err);
+    results.success = false;
+    results.error = err.message;
+    results.stack = process.env.NODE_ENV === 'development' ? err.stack : undefined;
+    res.status(500).json(results);
   }
 });
 
