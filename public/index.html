@@ -1433,38 +1433,6 @@
     </div>
   </div>
 
-  <!-- Wallet Confirmation Modal -->
-  <div id="walletConfirmModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-md shadow-lg">
-      <div class="p-6 border-b border-zinc-300 dark:border-zinc-700">
-        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Confirm On-Chain Action</h2>
-      </div>
-      <div class="p-6 space-y-4">
-        <div class="bg-zinc-100 dark:bg-zinc-800 p-4 rounded-lg space-y-3 text-sm">
-          <div>
-            <div class="text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">Action</div>
-            <div id="walletConfirmAction" class="text-zinc-900 dark:text-zinc-100 font-medium"></div>
-          </div>
-          <div>
-            <div class="text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">Network</div>
-            <div id="walletConfirmNetwork" class="text-zinc-900 dark:text-zinc-100 font-medium capitalize"></div>
-          </div>
-          <div>
-            <div class="text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">Wallet Address</div>
-            <div id="walletConfirmWallet" class="text-zinc-900 dark:text-zinc-100 font-mono text-xs break-all"></div>
-          </div>
-          <div id="walletConfirmDetails" class="pt-2 border-t border-zinc-300 dark:border-zinc-700"></div>
-        </div>
-        <p class="text-xs text-zinc-600 dark:text-zinc-400">
-          Your wallet will be prompted to sign this transaction. This action cannot be undone.
-        </p>
-      </div>
-      <div class="p-6 border-t border-zinc-300 dark:border-zinc-700 flex gap-3">
-        <button onclick="closeWalletConfirm()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100 font-medium text-sm">Cancel</button>
-        <button id="walletConfirmBtn" onclick="submitWalletConfirm()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg transition font-medium text-sm">Sign & Send</button>
-      </div>
-    </div>
-  </div>
 
   <!-- Feed Compose Modal -->
   <div id="feedComposeModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 transition-opacity duration-300 ease-out opacity-0" onclick="if(event.target.id==='feedComposeModal')closeFeedComposeModal()">
@@ -1701,12 +1669,21 @@
 
     // Settings functions
 
-    // Wallet confirmation state
-    let pendingWalletAction = null;
-    let walletConfirmResolver = null;
+    // Signature state tracking
+    let signatureState = {
+      requested: false,
+      completed: false,
+      callbackReceived: false,
+      timedOut: false,
+      txHash: null,
+      startTime: null,
+      completionTime: null,
+      callbackTime: null,
+      timeoutTime: null
+    };
 
-    // Wallet signature timeout in milliseconds (60 seconds for slower networks)
-    const WALLET_SIGNATURE_TIMEOUT_MS = 60000;
+    // Wallet signature timeout in milliseconds (90 seconds for slower networks and relay latency)
+    const WALLET_SIGNATURE_TIMEOUT_MS = 90000;
 
     // Splash screen initialization
     function initSplashScreen() {
@@ -2771,16 +2748,60 @@
       return validation;
     }
 
-    // Wrap a promise with a timeout deadline
+    // Wrap a promise with a timeout deadline and comprehensive logging
     async function withTimeout(promise, timeoutMs, label = 'Operation') {
+      const startTime = Date.now();
+      console.log(`[Timeout] Starting ${label} with ${timeoutMs}ms deadline at T=${startTime}`);
+
+      let promiseResolved = false;
+      let promiseResult = null;
+      let promiseError = null;
+
       return Promise.race([
-        promise,
-        new Promise((_, reject) =>
-          setTimeout(
-            () => reject(new Error(`${label} timed out after ${timeoutMs}ms. Bridge relay did not respond.`)),
-            timeoutMs
-          )
-        )
+        promise.then(result => {
+          promiseResolved = true;
+          promiseResult = result;
+          const elapsed = Date.now() - startTime;
+          console.log(`[Timeout] ${label} resolved successfully in ${elapsed}ms`);
+          console.log(`[Timeout] Result received:`, result);
+          lastWalletResponse = { result, timestamp: Date.now(), elapsed };
+
+          // Update signature state if this is wallet signature operation
+          if (label.includes('Wallet')) {
+            signatureState.completed = true;
+            signatureState.completionTime = Date.now();
+            signatureState.txHash = result?.txHash || null;
+          }
+
+          return result;
+        }).catch(err => {
+          promiseError = err;
+          const elapsed = Date.now() - startTime;
+          console.log(`[Timeout] ${label} promise rejected after ${elapsed}ms:`, err.message);
+          throw err;
+        }),
+        new Promise((_, reject) => {
+          const timeoutHandle = setTimeout(() => {
+            const elapsed = Date.now() - startTime;
+            console.log(`[Timeout] ${label} deadline reached at ${elapsed}ms (limit: ${timeoutMs}ms)`);
+            console.log(`[Timeout] Promise resolved before timeout: ${promiseResolved}`);
+
+            const err = new Error(`${label} timed out after ${timeoutMs}ms. Bridge relay did not respond.`);
+            err.isTimeout = true;
+            err.elapsed = elapsed;
+            err.promiseResolvedBeforeTimeout = promiseResolved;
+            err.promiseResult = promiseResult;
+
+            // Update signature state
+            if (label.includes('Wallet')) {
+              signatureState.timedOut = true;
+              signatureState.timeoutTime = Date.now();
+              console.log(`[Timeout] Wallet signature state at timeout:`, signatureState);
+            }
+
+            reject(err);
+          }, timeoutMs);
+        })
       ]);
     }
 
@@ -3444,37 +3465,34 @@
       if (!name) return alert('Group name is required');
 
       try {
-        // Show wallet confirmation modal
-        await showWalletConfirm('Create Group', { name, description: desc || '(none)' }, async (txHash) => {
-          // After wallet confirms, submit the group creation with tx hash
-          const data = await apiCall('/api/groups', {
-            method: 'POST',
-            body: JSON.stringify({
-              name,
-              description: desc || null,
-              txHash: txHash
-            })
-          });
+        const txHash = await requestWalletSignature('Create Group', { name, description: desc || '(none)' });
 
-          if (data && !data.error) {
-            showToast('Group created successfully', 'success');
-            if (data.blockchainRecordingId) {
-              showPersistentNotification('group_create', {
-                blockchainRecordingId: data.blockchainRecordingId,
-                groupName: data.name,
-                memberCount: data.members ? data.members.length : 0
-              });
-            }
-            closeCreateGroupModal();
-            loadGroups();
-            return data;
-          } else if (data && data.error) {
-            showToast(`Failed to create group: ${data.error}`, 'error');
-            throw new Error(data.error);
-          }
+        const data = await apiCall('/api/groups', {
+          method: 'POST',
+          body: JSON.stringify({
+            name,
+            description: desc || null,
+            txHash: txHash
+          })
         });
+
+        if (data && !data.error) {
+          showToast('Group created successfully', 'success');
+          if (data.blockchainRecordingId) {
+            showPersistentNotification('group_create', {
+              blockchainRecordingId: data.blockchainRecordingId,
+              groupName: data.name,
+              memberCount: data.members ? data.members.length : 0
+            });
+          }
+          closeCreateGroupModal();
+          loadGroups();
+        } else if (data && data.error) {
+          showToast(`Failed to create group: ${data.error}`, 'error');
+          throw new Error(data.error);
+        }
       } catch (err) {
-        if (err.message !== 'User cancelled wallet confirmation') {
+        if (!err.message.includes('User cancelled') && !err.message.includes('cancelled')) {
           console.error('Create group error:', err);
           showToast(`Error: ${err.message}`, 'error');
         }
@@ -3495,258 +3513,33 @@
       document.getElementById('groupDescInput').value = '';
     }
 
-    // Wallet confirmation modal functions
-    async function showWalletConfirm(action, details, onApprove) {
-      // Validate wallet connection before showing confirmation
+    // Unified wallet signature flow - single dialog, direct to wallet
+    async function requestWalletSignature(action, details) {
+      // Validate wallet connection
       if (!currentUser || !currentUser.usernode_pubkey) {
         console.error('Wallet not connected: currentUser=', currentUser);
         throw new Error('You must be connected to Usernode wallet to perform this action. Please refresh your browser.');
       }
 
-      pendingWalletAction = { action, details, onApprove };
+      // Show loading toast
+      showToast('Requesting wallet signature...', 'info');
 
-      // Update modal with action details
-      document.getElementById('walletConfirmAction').textContent = action;
-      document.getElementById('walletConfirmNetwork').textContent = 'testnet';
-      document.getElementById('walletConfirmWallet').textContent = currentUser.usernode_pubkey;
-
-      // Show action-specific details
-      const detailsHtml = Object.entries(details)
-        .map(([key, value]) => {
-          const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1');
-          return `<div><span class="text-xs text-zinc-600 dark:text-zinc-400">${label}</span><div class="text-zinc-900 dark:text-zinc-100 font-medium">${value}</div></div>`;
-        })
-        .join('');
-      document.getElementById('walletConfirmDetails').innerHTML = detailsHtml;
-
-      // Show modal
-      document.getElementById('walletConfirmModal').classList.remove('hidden');
-
-      // Return a promise that resolves when user confirms
-      return new Promise((resolve, reject) => {
-        walletConfirmResolver = { resolve, reject };
-      });
+      // Call wallet signature directly
+      return await executeWalletSignature(action, details);
     }
 
-    function closeWalletConfirm() {
-      document.getElementById('walletConfirmModal').classList.add('hidden');
-      if (walletConfirmResolver) {
-        walletConfirmResolver.reject(new Error('User cancelled wallet confirmation'));
-        walletConfirmResolver = null;
-      }
-      pendingWalletAction = null;
-    }
-
-    async function submitWalletConfirm() {
-      if (!pendingWalletAction) return;
-
-      const confirmBtn = document.getElementById('walletConfirmBtn');
-      const originalText = confirmBtn.textContent;
-      confirmBtn.disabled = true;
-      confirmBtn.textContent = 'Signing...';
-
+    async function executeWalletSignature(action, details) {
       try {
-        // Call usernode bridge to request wallet signature
-        console.log('╔════════════════════════════════════════════════════════════════╗');
-        console.log('║     Wallet Confirmation Submission - Full Diagnostic Log        ║');
-        console.log('╚════════════════════════════════════════════════════════════════╝');
-        console.log('Timestamp:', new Date().toISOString());
-        console.log('Action:', pendingWalletAction.action);
-        console.log('Network:', 'testnet');
-        console.log('User wallet address:', currentUser?.usernode_pubkey || 'Not available');
-        console.log('\n⚠ CRITICAL: isDemoMode variable state:');
-        console.log('  isDemoMode:', isDemoMode);
-        console.log('  typeof isDemoMode:', typeof isDemoMode);
-        console.log('  isDemoMode === true:', isDemoMode === true);
-        console.log('  isDemoMode truthy:', !!isDemoMode);
-
-        console.log('\n--- Bridge Availability Check ---');
-        console.log('window.sendTransaction exists:', typeof window.sendTransaction !== 'undefined');
-        console.log('window.sendTransaction callable:', typeof window.sendTransaction === 'function');
-
-        if (typeof window.usernode !== 'undefined') {
-          console.log('window.usernode object available:', typeof window.usernode);
-          const methods = Object.keys(window.usernode);
-          console.log('Available usernode methods:', methods);
-        } else {
-          console.warn('window.usernode not available (this is normal - the bridge may use other export patterns)');
+        // Validate bridge availability
+        if (typeof window.sendTransaction !== 'function') {
+          throw new Error('Wallet bridge is not available. Please ensure your wallet extension is enabled.');
         }
 
-        console.log('\n--- Wallet Provider Detection ---');
-        console.log('window.ethereum:', typeof window.ethereum);
-        console.log('window.web3:', typeof window.web3);
-        console.log('window.solana:', typeof window.solana);
-        console.log('window.phantom:', typeof window.phantom);
-        console.log('window.metaMask:', typeof window.metaMask);
-
-        // Handle demo mode - bypass wallet entirely
-        console.log('\n--- DEMO MODE CHECK POINT ---');
-        console.log('About to check: if (isDemoMode) where isDemoMode =', isDemoMode);
-        if (isDemoMode) {
-          console.log('\n--- DEMO MODE DETECTED - Bypassing Wallet Interaction ---');
-          console.log('isDemoMode:', isDemoMode);
-          console.log('Generating mock transaction hash...');
-
-          // Generate mock tx hash in format: ut1staging-testnet-action-<timestamp>
-          const mockTxHash = 'ut1staging-' + ('testnet') + '-action-' + Date.now();
-          console.log('Mock transaction hash:', mockTxHash);
-          console.log('Calling action handler immediately with mock hash...');
-
-          try {
-            const result = await pendingWalletAction.onApprove(mockTxHash);
-            console.log('✓ Demo action completed successfully');
-            console.log('Result:', result);
-
-            if (walletConfirmResolver) {
-              walletConfirmResolver.resolve(result);
-              walletConfirmResolver = null;
-            }
-            closeWalletConfirm();
-            confirmBtn.disabled = false;
-            confirmBtn.textContent = originalText;
-          } catch (err) {
-            console.error('Demo action failed:', err);
-            showToast('Demo action failed: ' + err.message, 'error');
-            if (walletConfirmResolver) {
-              walletConfirmResolver.reject(err);
-              walletConfirmResolver = null;
-            }
-            confirmBtn.disabled = false;
-            confirmBtn.textContent = originalText;
-          }
-          return;
-        }
-
-        // Check wallet availability using qualified reference (window.usernode)
-        let retryCount = 0;
-        const maxRetries = 3;
-
-        while (retryCount < maxRetries) {
-          if (!isWalletAvailable()) {
-            retryCount++;
-            console.log(`\n--- Wallet Availability Check FAILED on Attempt ${retryCount} ---`);
-            console.log(`[${'testnet'}] Bridge timeout on attempt ${retryCount}. Network: ${'testnet'}. Retrying...`);
-            console.log('Available methods on window.usernode:', Object.keys(window.usernode || {}));
-
-            console.log('Bridge may still be loading. Waiting up to 2 seconds for bridge...');
-            const bridgeLoadedOnRetry = await waitForBridge(2000, 'testnet');
-
-            if (bridgeLoadedOnRetry) {
-              console.log('✓ Bridge loaded successfully on retry');
-              console.log('Available methods:', Object.keys(window.usernode));
-              break;
-            } else if (retryCount < maxRetries) {
-              // Show retry dialog instead of throwing immediately
-              console.log(`Bridge not available after attempt ${retryCount}. Showing retry dialog...`);
-
-              // Create and show retry dialog
-              const shouldRetry = await new Promise((resolve) => {
-                // Create modal overlay and dialog
-                const overlay = document.createElement('div');
-                overlay.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50';
-                overlay.id = 'bridgeRetryDialog';
-
-                const dialog = document.createElement('div');
-                dialog.className = 'bg-white dark:bg-zinc-800 rounded-lg shadow-xl p-6 max-w-sm mx-auto';
-
-                const title = document.createElement('h2');
-                title.className = 'text-lg font-bold text-zinc-900 dark:text-white mb-2';
-                title.textContent = 'Wallet Connection Failed';
-
-                const message = document.createElement('p');
-                message.className = 'text-sm text-zinc-600 dark:text-zinc-300 mb-4';
-                message.innerHTML = `Usernode wallet provider is not available for network <strong>${'testnet'}</strong>. This might be a temporary issue.`;
-
-                const details = document.createElement('p');
-                details.className = 'text-xs text-zinc-500 dark:text-zinc-400 mb-4 font-mono';
-                details.innerHTML = `Attempt ${retryCount} of ${maxRetries}`;
-
-                const buttonContainer = document.createElement('div');
-                buttonContainer.className = 'flex gap-3';
-
-                const retryBtn = document.createElement('button');
-                retryBtn.className = 'flex-1 px-4 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg font-medium transition';
-                retryBtn.textContent = 'Retry';
-                retryBtn.onclick = () => {
-                  overlay.remove();
-                  resolve(true);
-                };
-
-                const cancelBtn = document.createElement('button');
-                cancelBtn.className = 'flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-600 hover:bg-zinc-400 dark:hover:bg-zinc-700 text-zinc-900 dark:text-white rounded-lg font-medium transition';
-                cancelBtn.textContent = 'Cancel';
-                cancelBtn.onclick = () => {
-                  overlay.remove();
-                  resolve(false);
-                };
-
-                buttonContainer.appendChild(retryBtn);
-                buttonContainer.appendChild(cancelBtn);
-
-                dialog.appendChild(title);
-                dialog.appendChild(message);
-                dialog.appendChild(details);
-                dialog.appendChild(buttonContainer);
-                overlay.appendChild(dialog);
-                document.body.appendChild(overlay);
-              });
-
-              if (!shouldRetry) {
-                console.log('User cancelled wallet retry');
-                console.log('\n--- Bridge State at Cancellation ---');
-                console.log('window.usernode exists:', typeof window.usernode !== 'undefined');
-                if (typeof window.usernode !== 'undefined') {
-                  console.log('Available methods:', Object.keys(window.usernode));
-                }
-                // Retrieve and log stored diagnostics
-                try {
-                  const storedDiag = sessionStorage.getItem('bridgeDiagnostics');
-                  if (storedDiag) {
-                    console.log('Stored Bridge Diagnostics:', JSON.parse(storedDiag));
-                  }
-                } catch (e) {
-                  console.warn('Could not retrieve stored diagnostics:', e.message);
-                }
-                throw new Error(`Wallet provider unavailable for network "${'testnet'}". Please check your internet connection and refresh the page to ensure Usernode bridge is loaded.`);
-              }
-              // Continue loop to retry
-            } else {
-              // Max retries exceeded
-              console.log('\n--- Wallet Availability Check FAILED After All Retries ---');
-              console.error('Wallet not available after all retry attempts:');
-              console.error('- typeof window.sendTransaction:', typeof window.sendTransaction);
-              console.error('- window.sendTransaction is function:', typeof window.sendTransaction === 'function');
-              console.error('- isWalletAvailable() result:', isWalletAvailable());
-
-              // Retrieve and log stored diagnostics
-              try {
-                const storedDiag = sessionStorage.getItem('bridgeDiagnostics');
-                if (storedDiag) {
-                  console.log('Stored Bridge Diagnostics:', JSON.parse(storedDiag));
-                }
-              } catch (e) {
-                console.warn('Could not retrieve stored diagnostics:', e.message);
-              }
-
-              throw new Error(`Wallet provider unavailable for network "${'testnet'}". Please check your internet connection and refresh the page to ensure Usernode bridge is loaded.`);
-            }
-          } else {
-            // Wallet is available, break out of loop
-            break;
-          }
-        }
-
-        if (isWalletAvailable()) {
-          console.log(`[${'testnet'}] Bridge available - proceeding with transaction`);
-        }
-
-        console.log('\n--- Wallet Available - Preparing Transaction ---');
-
-        // Build memo from action and details using the Last One Wins pattern
+        // Build memo from action and details
         const memo = JSON.stringify({
           app: 'guardian',
-          action: pendingWalletAction.action,
-          details: pendingWalletAction.details
+          action: action,
+          details: details
         });
 
         // Validate memo size (bridge has 1024 byte limit)
@@ -3754,11 +3547,24 @@
           throw new Error(`Transaction memo too large (${memo.length} > 1024 bytes)`);
         }
 
-        console.log(`[${'testnet'}] Transaction memo:`, memo);
-        console.log(`[${'testnet'}] Calling window.sendTransaction()...`);
+        console.log('Requesting wallet signature for action:', action);
+        console.log('Memo:', memo);
 
-        // Send transaction to wallet using the correct bridge API signature
-        // The bridge exports window.sendTransaction(destination_pubkey, amount, memo, opts)
+        // Reset signature state
+        signatureState = {
+          requested: false,
+          completed: false,
+          callbackReceived: false,
+          timedOut: false,
+          txHash: null,
+          startTime: Date.now(),
+          completionTime: null,
+          callbackTime: null,
+          timeoutTime: null
+        };
+        signatureState.requested = true;
+
+        // Retry logic for signature
         let txResult;
         let signatureAttempt = 0;
         const maxSignatureAttempts = 2;
@@ -3766,12 +3572,11 @@
         while (signatureAttempt < maxSignatureAttempts) {
           signatureAttempt++;
           try {
-            console.log(`[${'testnet'}] Invoking wallet signing (attempt ${signatureAttempt}/${maxSignatureAttempts})...`);
-            // Use app pubkey from current user data (set from server response)
+            console.log(`Invoking wallet signing (attempt ${signatureAttempt}/${maxSignatureAttempts})...`);
             const appPubkey = currentUser?.appPubkey || 'ut1Fww7onqF9LsRSb6d6BozgQWtjNYqQJghYxXmBc8foncb';
-            const confirmTitle = pendingWalletAction.action.charAt(0).toUpperCase() + pendingWalletAction.action.slice(1);
+            const confirmTitle = action.charAt(0).toUpperCase() + action.slice(1);
 
-            // Wrap sendTransaction with timeout to prevent infinite hangs
+            // Call wallet with timeout
             txResult = await withTimeout(
               window.sendTransaction(
                 appPubkey,
@@ -3782,24 +3587,14 @@
               WALLET_SIGNATURE_TIMEOUT_MS,
               'Wallet signature'
             );
-            console.log(`✓ [${'testnet'}] sendTransaction returned successfully`);
+            console.log('✓ Wallet signature obtained:', txResult.txHash);
             break; // Success, exit retry loop
           } catch (signErr) {
-            console.log('\n--- Wallet Signature Error ---');
-            console.error('Wallet signature failed:', signErr);
-            console.error('Error details:', {
-              message: signErr.message,
-              name: signErr.name,
-              code: signErr.code,
-              stack: signErr.stack
-            });
+            console.error('Wallet signature error:', signErr.message);
 
-            // Distinguish between timeout, cancelled, and other failures
             if (signErr.message && signErr.message.includes('timed out')) {
-              // Timeout error - may be transient, offer retry
               if (signatureAttempt < maxSignatureAttempts) {
-                console.log(`Signature timeout on attempt ${signatureAttempt}. Offering retry...`);
-                const shouldRetrySignature = await new Promise((resolve) => {
+                const shouldRetry = await new Promise((resolve) => {
                   const overlay = document.createElement('div');
                   overlay.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50';
 
@@ -3848,13 +3643,12 @@
                   document.body.appendChild(overlay);
                 });
 
-                if (!shouldRetrySignature) {
+                if (!shouldRetry) {
                   throw new Error('User cancelled wallet signature retry');
                 }
-                // Continue loop to retry
                 continue;
               } else {
-                throw new Error('Wallet signature timed out after 60 seconds on both attempts. Please refresh the page and try again, or check if your wallet extension needs attention.');
+                throw new Error(`Wallet signature timed out after ${WALLET_SIGNATURE_TIMEOUT_MS/1000} seconds on both attempts. Please refresh the page and try again, or check if your wallet extension needs attention.`);
               }
             } else if (signErr.message && signErr.message.includes('cancelled')) {
               throw new Error('User cancelled wallet signature');
@@ -3866,71 +3660,22 @@
           }
         }
 
-        console.log('\n--- Transaction Result Processing ---');
-        console.log('Transaction result:', txResult);
-        console.log('Has txHash:', txResult && 'txHash' in txResult);
-        console.log('txHash value:', txResult?.txHash);
-
-        if (txResult && txResult.txHash) {
-          console.log(`✓ [${'testnet'}] Transaction hash obtained:`, txResult.txHash);
-          console.log(`[${'testnet'}] Calling action handler...`);
-          // User approved - call the action handler
-          const result = await pendingWalletAction.onApprove(txResult.txHash);
-          console.log(`✓ [${'testnet'}] Action handler completed successfully`);
-          console.log(`[${'testnet'}] Result:`, result);
-          if (walletConfirmResolver) {
-            walletConfirmResolver.resolve(result);
-            walletConfirmResolver = null;
-          }
-          closeWalletConfirm();
-        } else {
-          console.error('Transaction result missing txHash:', txResult);
+        if (!txResult || !txResult.txHash) {
           throw new Error('Wallet did not return transaction hash');
         }
+
+        signatureState.callbackReceived = true;
+        signatureState.callbackTime = Date.now();
+        signatureState.txHash = txResult.txHash;
+
+        console.log('✓ Wallet signature completed:', txResult.txHash);
+        return txResult.txHash;
       } catch (err) {
-        console.log('\n╔════════════════════════════════════════════════════════════════╗');
-        console.log('║          Wallet Confirmation Error - Full Context              ║');
-        console.log('╚════════════════════════════════════════════════════════════════╝');
-        console.error(`[${'testnet'}] Error message:`, err.message);
-        console.error('Error name:', err.name);
-        console.error('Error code:', err.code);
-        console.error('Error stack:', err.stack);
-        console.error('Full error object:', err);
-
-        console.log('\n--- Bridge State at Error Time ---');
-        console.log(`[${'testnet'}] window.sendTransaction exists:`, typeof window.sendTransaction !== 'undefined');
-        console.log(`[${'testnet'}] window.sendTransaction callable:`, typeof window.sendTransaction === 'function');
-        if (typeof window.usernode !== 'undefined') {
-          console.log(`[${'testnet'}] Available usernode methods:`, Object.keys(window.usernode));
-        }
-
-        // Retrieve and log stored diagnostics if available
-        try {
-          const storedDiag = sessionStorage.getItem('bridgeDiagnostics');
-          if (storedDiag) {
-            console.log(`[${'testnet'}] Stored Bridge Diagnostics:`, JSON.parse(storedDiag));
-          }
-        } catch (e) {
-          console.warn('Could not retrieve stored diagnostics:', e.message);
-        }
-
-        // Provide clearer error messages to user
-        let userMessage = err.message || 'Failed to sign transaction';
-        if (userMessage.includes('usernode is not defined')) {
-          userMessage = `Wallet provider not available for network "${'testnet'}" - bridge failed to load`;
-        } else if (!userMessage.startsWith('Wallet') && !userMessage.startsWith('Bridge')) {
-          userMessage = 'Wallet error: ' + userMessage;
-        }
-
-        showToast(userMessage, 'error');
-        if (walletConfirmResolver) {
-          walletConfirmResolver.reject(err);
-          walletConfirmResolver = null;
-        }
-        confirmBtn.disabled = false;
-        confirmBtn.textContent = originalText;
+        console.error('Wallet signature failed:', err.message);
+        throw err;
       }
     }
+
 
     // View group info
     async function viewGroupInfo() {
@@ -4785,41 +4530,36 @@
       try {
         const endpoint = currentGroupId ? `/api/groups/${currentGroupId}/messages` : `/api/conversations/${currentConvId}/messages`;
 
-        // Build transaction details for wallet confirmation
         const txDetails = { message: text.substring(0, 50) + (text.length > 50 ? '...' : '') };
+        const txHash = await requestWalletSignature('Send Message', txDetails);
 
-        // Show wallet confirmation and get tx hash from bridge
-        await showWalletConfirm('Send Message', txDetails, async (txHash) => {
-          // Send message with tx hash to backend
-          const data = await apiCall(endpoint, {
-            method: 'POST',
-            body: JSON.stringify({
-              type: 'text',
-              content: { text },
-              txHash: txHash
-            })
-          });
-
-          if (data && !data.error) {
-            showToast('Message sent successfully', 'success');
-            if (data.blockchainRecordingId) {
-              showPersistentNotification('message', {
-                blockchainRecordingId: data.blockchainRecordingId,
-                recipient: currentGroupId ? 'group' : currentContactName
-              });
-            }
-            if (currentGroupId) {
-              loadGroupMessages(currentGroupId);
-            } else {
-              loadMessages();
-            }
-            return data;
-          } else {
-            throw new Error(data?.error || 'Failed to send message');
-          }
+        const data = await apiCall(endpoint, {
+          method: 'POST',
+          body: JSON.stringify({
+            type: 'text',
+            content: { text },
+            txHash: txHash
+          })
         });
+
+        if (data && !data.error) {
+          showToast('Message sent successfully', 'success');
+          if (data.blockchainRecordingId) {
+            showPersistentNotification('message', {
+              blockchainRecordingId: data.blockchainRecordingId,
+              recipient: currentGroupId ? 'group' : currentContactName
+            });
+          }
+          if (currentGroupId) {
+            loadGroupMessages(currentGroupId);
+          } else {
+            loadMessages();
+          }
+        } else {
+          throw new Error(data?.error || 'Failed to send message');
+        }
       } catch (err) {
-        if (err.message !== 'User cancelled wallet confirmation') {
+        if (!err.message.includes('User cancelled') && !err.message.includes('cancelled')) {
           console.error('Send message error:', err);
           showToast(`Error: ${err.message}`, 'error');
           document.getElementById('msgInput').value = text; // Restore input on error
@@ -4839,54 +4579,30 @@
         try {
           const endpoint = currentGroupId ? `/api/groups/${currentGroupId}/messages` : `/api/conversations/${currentConvId}/messages`;
 
-          if (isDemoMode) {
-            // Show wallet confirmation modal in demo mode
-            await showWalletConfirm('Send Image', { imageSize: imageSizeKb + ' KB' }, async (txHash) => {
-              showToast('Image sent successfully', 'success');
-              const data = await apiCall(endpoint, {
-                method: 'POST',
-                body: JSON.stringify({ type: 'image', content: { imageUrl: dataUri }, txHash: txHash })
-              });
+          const txHash = await requestWalletSignature('Send Image', { imageSize: imageSizeKb + ' KB' });
+          showToast('Image sent successfully', 'success');
+          const data = await apiCall(endpoint, {
+            method: 'POST',
+            body: JSON.stringify({ type: 'image', content: { imageUrl: dataUri }, txHash: txHash })
+          });
 
-              if (data && !data.error) {
-                if (data.blockchainRecordingId) {
-                  showPersistentNotification('image', {
-                    blockchainRecordingId: data.blockchainRecordingId,
-                    recipient: currentGroupId ? 'group' : currentContactName
-                  });
-                }
-                if (currentGroupId) {
-                  loadGroupMessages(currentGroupId);
-                } else {
-                  loadMessages();
-                }
-                return data;
-              } else {
-                throw new Error(data?.error || 'Failed to send image');
-              }
-            });
-          } else {
-            // Non-demo mode: send directly without confirmation
-            const data = await apiCall(endpoint, {
-              method: 'POST',
-              body: JSON.stringify({ type: 'image', content: { imageUrl: dataUri } })
-            });
-            if (data) {
-              if (data.blockchainRecordingId) {
-                showPersistentNotification('image', {
-                  blockchainRecordingId: data.blockchainRecordingId,
-                  recipient: currentGroupId ? 'group' : currentContactName
-                });
-              }
-              if (currentGroupId) {
-                loadGroupMessages(currentGroupId);
-              } else {
-                loadMessages();
-              }
+          if (data && !data.error) {
+            if (data.blockchainRecordingId) {
+              showPersistentNotification('image', {
+                blockchainRecordingId: data.blockchainRecordingId,
+                recipient: currentGroupId ? 'group' : currentContactName
+              });
             }
+            if (currentGroupId) {
+              loadGroupMessages(currentGroupId);
+            } else {
+              loadMessages();
+            }
+          } else {
+            throw new Error(data?.error || 'Failed to send image');
           }
         } catch (err) {
-          if (err.message !== 'User cancelled wallet confirmation') {
+          if (!err.message.includes('User cancelled') && !err.message.includes('cancelled')) {
             console.error('Image upload error:', err);
             showToast(`Error: ${err.message}`, 'error');
           }
@@ -4919,55 +4635,53 @@
       const originalText = sendBtn.textContent;
 
       try {
-        // Show wallet confirmation modal with amount
-        await showWalletConfirm('Send Tokens', { recipient: 'selected contact', amount: `${amount} tokens`, memo: memo || '(none)' }, async (txHash) => {
-          sendBtn.disabled = true;
-          sendBtn.textContent = 'Sending...';
+        sendBtn.disabled = true;
+        sendBtn.textContent = 'Sending...';
 
-          try {
-            const data = await apiCall('/api/tokens/send', {
+        try {
+          const txHash = await requestWalletSignature('Send Tokens', { recipient: 'selected contact', amount: `${amount} tokens`, memo: memo || '(none)' });
+
+          const data = await apiCall('/api/tokens/send', {
+            method: 'POST',
+            body: JSON.stringify({
+              recipientId: currentOtherId,
+              amount: parseInt(amount),
+              memo,
+              txHash: txHash
+            })
+          });
+
+          if (data && !data.error) {
+            showToast('Token sent successfully', 'success');
+            if (data.blockchainRecordingId) {
+              showPersistentNotification('token_transfer', {
+                blockchainRecordingId: data.blockchainRecordingId,
+                amount: parseInt(amount),
+                recipient: currentContactName
+              });
+            }
+            const msgData = await apiCall(`/api/conversations/${currentConvId}/messages`, {
               method: 'POST',
               body: JSON.stringify({
-                recipientId: currentOtherId,
-                amount: parseInt(amount),
-                memo,
-                txHash: txHash
+                type: 'token',
+                content: { recipientId: currentOtherId, amount: parseInt(amount), memo, txHash: data.txHash, status: data.status }
               })
             });
-
-            if (data && !data.error) {
-              showToast('Token sent successfully', 'success');
-              if (data.blockchainRecordingId) {
-                showPersistentNotification('token_transfer', {
-                  blockchainRecordingId: data.blockchainRecordingId,
-                  amount: parseInt(amount),
-                  recipient: currentContactName
-                });
-              }
-              const msgData = await apiCall(`/api/conversations/${currentConvId}/messages`, {
-                method: 'POST',
-                body: JSON.stringify({
-                  type: 'token',
-                  content: { recipientId: currentOtherId, amount: parseInt(amount), memo, txHash: data.txHash, status: data.status }
-                })
-              });
-              if (msgData && data.blockchainRecordingId) {
-                pollBlockchainStatus(data.blockchainRecordingId, msgData.id);
-              }
-              hideTokenModal();
-              loadMessages();
-              return data;
-            } else if (data && data.error) {
-              showToast(`Failed to send tokens: ${data.error}`, 'error');
-              throw new Error(data.error);
+            if (msgData && data.blockchainRecordingId) {
+              pollBlockchainStatus(data.blockchainRecordingId, msgData.id);
             }
-          } finally {
-            sendBtn.disabled = false;
-            sendBtn.textContent = originalText;
+            hideTokenModal();
+            loadMessages();
+          } else if (data && data.error) {
+            showToast(`Failed to send tokens: ${data.error}`, 'error');
+            throw new Error(data.error);
           }
-        });
+        } finally {
+          sendBtn.disabled = false;
+          sendBtn.textContent = originalText;
+        }
       } catch (err) {
-        if (err.message !== 'User cancelled wallet confirmation') {
+        if (!err.message.includes('User cancelled') && !err.message.includes('cancelled')) {
           console.error('Send token error:', err);
           showToast(`Error: ${err.message}`, 'error');
         }
@@ -7729,3 +7443,4 @@
   <div id="toastContainer" class="fixed bottom-4 right-4 space-y-2 z-50"></div>
 </body>
 </html>
+
