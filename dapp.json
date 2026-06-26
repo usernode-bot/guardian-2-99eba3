@@ -2,32 +2,25 @@
   "name": "Guardian",
   "secrets": [
     {
-      "key": "ENABLE_DEMO_MODE",
-      "description": "Enable demo mode in this environment (bypasses wallet confirmation, creates fake blockchain transactions). Defaults to staging environment behavior.",
-      "required": false,
-      "private": false,
-      "default": "false"
-    },
-    {
       "key": "APP_PUBKEY",
-      "description": "Guardian app's isolated Usernode pot address (ut1...) for blockchain transactions. This is Guardian's own ED25519 public key, separate from any shared pot address. Used for transaction signing and app identification.",
+      "description": "Guardian app's ED25519 public key address (ut1...) for blockchain transactions. Used for transaction signing and app identification on Usernode testnet.",
       "required": true,
       "private": false,
       "default": "ut1Fww7onqF9LsRSb6d6BozgQWtjNYqQJghYxXmBc8foncb"
     },
     {
       "key": "APP_SECRET_KEY",
-      "description": "Guardian app's ED25519 private key seed (64 hex characters) for cryptographic signing of transaction memos on Usernode blockchain. Production value: 19f0d93396a451665783ea26cc1bc65e6bb0fd33a5d1d8662ca0ca15478429e3",
+      "description": "Guardian app's ED25519 private key seed for cryptographic signing of transaction memos on Usernode blockchain. 64 hex characters. Encrypted at rest.",
       "required": true,
       "private": true,
       "staging_default": "guardian_sk_mqudwes5_ae613cf56214808e"
     },
     {
       "key": "NODE_RPC_URL",
-      "description": "Usernode blockchain RPC endpoint for testnet transaction submission. Defaults to local testnet node or platform-managed testnet endpoint.",
+      "description": "Usernode blockchain RPC endpoint for transaction submission. Platform provides in-network default; override for custom endpoints.",
       "required": false,
       "private": false,
-      "default": "http://localhost:3001"
+      "default": "http://usernode-node:3000"
     }
   ],
   "tests": [
