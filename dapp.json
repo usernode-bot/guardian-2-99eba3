@@ -10,10 +10,10 @@
     },
     {
       "key": "APP_PUBKEY",
-      "description": "Guardian app's Usernode public key (ut1...) for on-chain transaction signing and identification",
+      "description": "Guardian app's Usernode public key (ut1...) for on-chain transaction signing and identification. Shared pot address across Usernode dapps.",
       "required": true,
       "private": false,
-      "default": "ut1guardian"
+      "default": "ut1pot"
     },
     {
       "key": "APP_SECRET_KEY",
