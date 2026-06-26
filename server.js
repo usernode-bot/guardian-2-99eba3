@@ -15,8 +15,8 @@ const IS_STAGING = process.env.USERNODE_ENV === 'staging';
 let ENABLE_DEMO_MODE = process.env.ENABLE_DEMO_MODE === 'true' || IS_STAGING;
 
 // Usernode blockchain configuration
-const APP_PUBKEY = process.env.APP_PUBKEY || 'ut1pot';
-const APP_SECRET_KEY = process.env.APP_SECRET_KEY || 'staging_secret_key_guardian_demo';
+const APP_PUBKEY = process.env.APP_PUBKEY || 'ut1Fww7onqF9LsRSb6d6BozgQWtjNYqQJghYxXmBc8foncb';
+const APP_SECRET_KEY = process.env.APP_SECRET_KEY || 'guardian_sk_mqudwes5_ae613cf56214808e';
 const NODE_RPC_URL = process.env.NODE_RPC_URL || 'http://localhost:3001';
 
 // Usernode chain configuration
