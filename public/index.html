@@ -2766,17 +2766,35 @@
       return validation;
     }
 
+    // Wrap a promise with a timeout deadline
+    async function withTimeout(promise, timeoutMs, label = 'Operation') {
+      return Promise.race([
+        promise,
+        new Promise((_, reject) =>
+          setTimeout(
+            () => reject(new Error(`${label} timed out after ${timeoutMs}ms. Bridge relay did not respond.`)),
+            timeoutMs
+          )
+        )
+      ]);
+    }
+
     // Wait for bridge to load with timeout (network-aware)
+    // Verifies bridge is fully initialized, not just that function exists
     async function waitForBridge(timeoutMs, network = 'testnet') {
       // Use network-aware default timeout if not specified
       if (timeoutMs === undefined) {
         timeoutMs = network === 'testnet' ? 5000 : 3000;
       }
       const startTime = Date.now();
-      while (!isWalletAvailable() && (Date.now() - startTime) < timeoutMs) {
+      while ((Date.now() - startTime) < timeoutMs) {
+        // Check both function existence AND window.usernode object presence
+        if (typeof window.sendTransaction === 'function' && typeof window.usernode === 'object' && window.usernode !== null) {
+          return true;
+        }
         await new Promise(resolve => setTimeout(resolve, 100));
       }
-      return isWalletAvailable();
+      return typeof window.sendTransaction === 'function' && typeof window.usernode === 'object' && window.usernode !== null;
     }
 
     // Comprehensive bridge diagnostic function for platform maintainers
@@ -3737,34 +3755,109 @@
         // Send transaction to wallet using the correct bridge API signature
         // The bridge exports window.sendTransaction(destination_pubkey, amount, memo, opts)
         let txResult;
-        try {
-          console.log(`[${'testnet'}] Invoking wallet signing...`);
-          // Use app pubkey from current user data (set from server response)
-          const appPubkey = currentUser?.appPubkey || 'ut1Fww7onqF9LsRSb6d6BozgQWtjNYqQJghYxXmBc8foncb';
-          const confirmTitle = pendingWalletAction.action.charAt(0).toUpperCase() + pendingWalletAction.action.slice(1);
-          txResult = await window.sendTransaction(
-            appPubkey,
-            1,
-            memo,
-            { confirmTitle: confirmTitle }
-          );
-          console.log(`✓ [${'testnet'}] sendTransaction returned successfully`);
-        } catch (signErr) {
-          console.log('\n--- Wallet Signature Error ---');
-          console.error('Wallet signature failed:', signErr);
-          console.error('Error details:', {
-            message: signErr.message,
-            name: signErr.name,
-            code: signErr.code,
-            stack: signErr.stack
-          });
-          // Distinguish between cancelled and failed
-          if (signErr.message && signErr.message.includes('cancelled')) {
-            throw new Error('User cancelled wallet signature');
-          } else if (signErr.message && signErr.message.includes('not signed in')) {
-            throw new Error('Wallet not signed in - please log in to your wallet');
-          } else {
-            throw new Error(`Wallet signature failed: ${signErr.message || 'Unknown error'}`);
+        let signatureAttempt = 0;
+        const maxSignatureAttempts = 2;
+
+        while (signatureAttempt < maxSignatureAttempts) {
+          signatureAttempt++;
+          try {
+            console.log(`[${'testnet'}] Invoking wallet signing (attempt ${signatureAttempt}/${maxSignatureAttempts})...`);
+            // Use app pubkey from current user data (set from server response)
+            const appPubkey = currentUser?.appPubkey || 'ut1Fww7onqF9LsRSb6d6BozgQWtjNYqQJghYxXmBc8foncb';
+            const confirmTitle = pendingWalletAction.action.charAt(0).toUpperCase() + pendingWalletAction.action.slice(1);
+
+            // Wrap sendTransaction with 30-second timeout to prevent infinite hangs
+            txResult = await withTimeout(
+              window.sendTransaction(
+                appPubkey,
+                1,
+                memo,
+                { confirmTitle: confirmTitle }
+              ),
+              30000,
+              'Wallet signature'
+            );
+            console.log(`✓ [${'testnet'}] sendTransaction returned successfully`);
+            break; // Success, exit retry loop
+          } catch (signErr) {
+            console.log('\n--- Wallet Signature Error ---');
+            console.error('Wallet signature failed:', signErr);
+            console.error('Error details:', {
+              message: signErr.message,
+              name: signErr.name,
+              code: signErr.code,
+              stack: signErr.stack
+            });
+
+            // Distinguish between timeout, cancelled, and other failures
+            if (signErr.message && signErr.message.includes('timed out')) {
+              // Timeout error - may be transient, offer retry
+              if (signatureAttempt < maxSignatureAttempts) {
+                console.log(`Signature timeout on attempt ${signatureAttempt}. Offering retry...`);
+                const shouldRetrySignature = await new Promise((resolve) => {
+                  const overlay = document.createElement('div');
+                  overlay.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50';
+
+                  const dialog = document.createElement('div');
+                  dialog.className = 'bg-white dark:bg-zinc-800 rounded-lg shadow-xl p-6 max-w-sm mx-auto';
+
+                  const title = document.createElement('h2');
+                  title.className = 'text-lg font-bold text-zinc-900 dark:text-white mb-2';
+                  title.textContent = 'Wallet Signature Timeout';
+
+                  const message = document.createElement('p');
+                  message.className = 'text-sm text-zinc-600 dark:text-zinc-300 mb-4';
+                  message.innerHTML = 'The wallet signing took too long to respond. This might be a temporary network issue.';
+
+                  const details = document.createElement('p');
+                  details.className = 'text-xs text-zinc-500 dark:text-zinc-400 mb-4 font-mono';
+                  details.innerHTML = `Attempt ${signatureAttempt} of ${maxSignatureAttempts}`;
+
+                  const buttonContainer = document.createElement('div');
+                  buttonContainer.className = 'flex gap-3';
+
+                  const retryBtn = document.createElement('button');
+                  retryBtn.className = 'flex-1 px-4 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg font-medium transition';
+                  retryBtn.textContent = 'Retry Signature';
+                  retryBtn.onclick = () => {
+                    overlay.remove();
+                    resolve(true);
+                  };
+
+                  const cancelBtn = document.createElement('button');
+                  cancelBtn.className = 'flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-600 hover:bg-zinc-400 dark:hover:bg-zinc-700 text-zinc-900 dark:text-white rounded-lg font-medium transition';
+                  cancelBtn.textContent = 'Cancel';
+                  cancelBtn.onclick = () => {
+                    overlay.remove();
+                    resolve(false);
+                  };
+
+                  buttonContainer.appendChild(retryBtn);
+                  buttonContainer.appendChild(cancelBtn);
+
+                  dialog.appendChild(title);
+                  dialog.appendChild(message);
+                  dialog.appendChild(details);
+                  dialog.appendChild(buttonContainer);
+                  overlay.appendChild(dialog);
+                  document.body.appendChild(overlay);
+                });
+
+                if (!shouldRetrySignature) {
+                  throw new Error('User cancelled wallet signature retry');
+                }
+                // Continue loop to retry
+                continue;
+              } else {
+                throw new Error('Wallet signature timed out after multiple attempts. Please check your network connection and try again.');
+              }
+            } else if (signErr.message && signErr.message.includes('cancelled')) {
+              throw new Error('User cancelled wallet signature');
+            } else if (signErr.message && signErr.message.includes('not signed in')) {
+              throw new Error('Wallet not signed in - please log in to your wallet');
+            } else {
+              throw new Error(`Wallet signature failed: ${signErr.message || 'Unknown error'}`);
+            }
           }
         }
 
