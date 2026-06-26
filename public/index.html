@@ -2747,7 +2747,9 @@
     // not as window.usernode.sendTransaction(). This is the canonical bridge API.
     function isWalletAvailable() {
       return isDemoMode || (
-        typeof window.sendTransaction === 'function'
+        typeof window.sendTransaction === 'function' &&
+        typeof window.usernode === 'object' &&
+        window.usernode !== null
       );
     }
 
@@ -4840,7 +4842,7 @@
               showToast('Image sent successfully', 'success');
               const data = await apiCall(endpoint, {
                 method: 'POST',
-                body: JSON.stringify({ type: 'image', content: { imageUrl: dataUri } })
+                body: JSON.stringify({ type: 'image', content: { imageUrl: dataUri }, txHash: txHash })
               });
 
               if (data && !data.error) {
