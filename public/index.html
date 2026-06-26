@@ -1705,6 +1705,9 @@
     let pendingWalletAction = null;
     let walletConfirmResolver = null;
 
+    // Wallet signature timeout in milliseconds (60 seconds for slower networks)
+    const WALLET_SIGNATURE_TIMEOUT_MS = 60000;
+
     // Splash screen initialization
     function initSplashScreen() {
       const splashScreen = document.getElementById('splashScreen');
@@ -3766,7 +3769,7 @@
             const appPubkey = currentUser?.appPubkey || 'ut1Fww7onqF9LsRSb6d6BozgQWtjNYqQJghYxXmBc8foncb';
             const confirmTitle = pendingWalletAction.action.charAt(0).toUpperCase() + pendingWalletAction.action.slice(1);
 
-            // Wrap sendTransaction with 30-second timeout to prevent infinite hangs
+            // Wrap sendTransaction with timeout to prevent infinite hangs
             txResult = await withTimeout(
               window.sendTransaction(
                 appPubkey,
@@ -3774,7 +3777,7 @@
                 memo,
                 { confirmTitle: confirmTitle }
               ),
-              30000,
+              WALLET_SIGNATURE_TIMEOUT_MS,
               'Wallet signature'
             );
             console.log(`✓ [${'testnet'}] sendTransaction returned successfully`);
@@ -3807,7 +3810,7 @@
 
                   const message = document.createElement('p');
                   message.className = 'text-sm text-zinc-600 dark:text-zinc-300 mb-4';
-                  message.innerHTML = 'The wallet signing took too long to respond. This might be a temporary network issue.';
+                  message.innerHTML = 'The wallet signature took too long to respond. We\'ll try again — check that your network connection is working and your wallet extension is enabled.';
 
                   const details = document.createElement('p');
                   details.className = 'text-xs text-zinc-500 dark:text-zinc-400 mb-4 font-mono';
@@ -3849,14 +3852,14 @@
                 // Continue loop to retry
                 continue;
               } else {
-                throw new Error('Wallet signature timed out after multiple attempts. Please check your network connection and try again.');
+                throw new Error('Wallet signature timed out after 60 seconds on both attempts. Please refresh the page and try again, or check if your wallet extension needs attention.');
               }
             } else if (signErr.message && signErr.message.includes('cancelled')) {
               throw new Error('User cancelled wallet signature');
             } else if (signErr.message && signErr.message.includes('not signed in')) {
               throw new Error('Wallet not signed in - please log in to your wallet');
             } else {
-              throw new Error(`Wallet signature failed: ${signErr.message || 'Unknown error'}`);
+              throw new Error(`Wallet error: ${signErr.message || 'Signature failed'}`);
             }
           }
         }
