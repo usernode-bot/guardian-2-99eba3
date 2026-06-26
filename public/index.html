@@ -3429,24 +3429,19 @@
       try {
         // Show wallet confirmation modal
         await showWalletConfirm('Create Group', { name, description: desc || '(none)' }, async (txHash) => {
-          // After wallet confirms, submit the group creation
+          // After wallet confirms, submit the group creation with tx hash
           const data = await apiCall('/api/groups', {
             method: 'POST',
-            body: JSON.stringify({ name, description: desc || null })
+            body: JSON.stringify({
+              name,
+              description: desc || null,
+              txHash: txHash
+            })
           });
 
           if (data && !data.error) {
             showToast('Group created successfully', 'success');
             if (data.blockchainRecordingId) {
-              // Register the real tx hash from wallet and start chain polling
-              await apiCall(`/api/blockchain-audit/${data.blockchainRecordingId}/register-tx`, {
-                method: 'POST',
-                body: JSON.stringify({
-                  txHash: txHash,
-                  chainId: currentNetwork || 'testnet'
-                })
-              }).catch(err => console.warn('Failed to register tx hash:', err));
-
               showPersistentNotification('group_create', {
                 blockchainRecordingId: data.blockchainRecordingId,
                 groupName: data.name,
@@ -4561,77 +4556,39 @@
       try {
         const endpoint = currentGroupId ? `/api/groups/${currentGroupId}/messages` : `/api/conversations/${currentConvId}/messages`;
 
-        if (isDemoMode) {
-          // Show wallet confirmation modal in demo mode
-          await showWalletConfirm('Send Message', { text }, async (txHash) => {
-            showToast('Message sent successfully', 'success');
-            const data = await apiCall(endpoint, {
-              method: 'POST',
-              body: JSON.stringify({ type: 'text', content: { text } })
-            });
+        // Build transaction details for wallet confirmation
+        const txDetails = { message: text.substring(0, 50) + (text.length > 50 ? '...' : '') };
 
-            if (data && !data.error) {
-              if (data.blockchainRecordingId) {
-                // Register the tx hash from wallet and start polling
-                await apiCall(`/api/blockchain-audit/${data.blockchainRecordingId}/register-tx`, {
-                  method: 'POST',
-                  body: JSON.stringify({
-                    txHash: txHash,
-                    chainId: currentNetwork || 'testnet'
-                  })
-                }).catch(err => console.warn('Failed to register tx hash:', err));
-
-                showPersistentNotification('message', {
-                  blockchainRecordingId: data.blockchainRecordingId,
-                  recipient: currentGroupId ? 'group' : currentContactName
-                });
-              }
-              if (currentGroupId) {
-                loadGroupMessages(currentGroupId);
-              } else {
-                loadMessages();
-              }
-              return data;
-            } else {
-              throw new Error(data?.error || 'Failed to send message');
-            }
+        // Show wallet confirmation and get tx hash from bridge
+        await showWalletConfirm('Send Message', txDetails, async (txHash) => {
+          // Send message with tx hash to backend
+          const data = await apiCall(endpoint, {
+            method: 'POST',
+            body: JSON.stringify({
+              type: 'text',
+              content: { text },
+              txHash: txHash
+            })
           });
-        } else {
-          // Non-demo mode: show wallet confirmation and send with real tx
-          await showWalletConfirm('Send Message', { text }, async (txHash) => {
+
+          if (data && !data.error) {
             showToast('Message sent successfully', 'success');
-            const data = await apiCall(endpoint, {
-              method: 'POST',
-              body: JSON.stringify({ type: 'text', content: { text } })
-            });
-
-            if (data && !data.error) {
-              if (data.blockchainRecordingId) {
-                // Register the real tx hash from wallet and start chain polling
-                await apiCall(`/api/blockchain-audit/${data.blockchainRecordingId}/register-tx`, {
-                  method: 'POST',
-                  body: JSON.stringify({
-                    txHash: txHash,
-                    chainId: currentNetwork || 'testnet'
-                  })
-                }).catch(err => console.warn('Failed to register tx hash:', err));
-
-                showPersistentNotification('message', {
-                  blockchainRecordingId: data.blockchainRecordingId,
-                  recipient: currentGroupId ? 'group' : currentContactName
-                });
-              }
-              if (currentGroupId) {
-                loadGroupMessages(currentGroupId);
-              } else {
-                loadMessages();
-              }
-              return data;
-            } else {
-              throw new Error(data?.error || 'Failed to send message');
+            if (data.blockchainRecordingId) {
+              showPersistentNotification('message', {
+                blockchainRecordingId: data.blockchainRecordingId,
+                recipient: currentGroupId ? 'group' : currentContactName
+              });
             }
-          });
-        }
+            if (currentGroupId) {
+              loadGroupMessages(currentGroupId);
+            } else {
+              loadMessages();
+            }
+            return data;
+          } else {
+            throw new Error(data?.error || 'Failed to send message');
+          }
+        });
       } catch (err) {
         if (err.message !== 'User cancelled wallet confirmation') {
           console.error('Send message error:', err);
@@ -4733,29 +4690,25 @@
       const originalText = sendBtn.textContent;
 
       try {
-        // Show wallet confirmation modal
+        // Show wallet confirmation modal with amount
         await showWalletConfirm('Send Tokens', { recipient: 'selected contact', amount: `${amount} tokens`, memo: memo || '(none)' }, async (txHash) => {
           sendBtn.disabled = true;
           sendBtn.textContent = 'Sending...';
-          showToast('Token sent successfully', 'success');
 
           try {
             const data = await apiCall('/api/tokens/send', {
               method: 'POST',
-              body: JSON.stringify({ recipientId: currentOtherId, amount: parseInt(amount), memo })
+              body: JSON.stringify({
+                recipientId: currentOtherId,
+                amount: parseInt(amount),
+                memo,
+                txHash: txHash
+              })
             });
 
             if (data && !data.error) {
+              showToast('Token sent successfully', 'success');
               if (data.blockchainRecordingId) {
-                // Register the real tx hash from wallet and start chain polling
-                await apiCall(`/api/blockchain-audit/${data.blockchainRecordingId}/register-tx`, {
-                  method: 'POST',
-                  body: JSON.stringify({
-                    txHash: txHash,
-                    chainId: currentNetwork || 'testnet'
-                  })
-                }).catch(err => console.warn('Failed to register tx hash:', err));
-
                 showPersistentNotification('token_transfer', {
                   blockchainRecordingId: data.blockchainRecordingId,
                   amount: parseInt(amount),
