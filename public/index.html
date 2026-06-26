@@ -744,6 +744,25 @@
           </button>
           <div id="systemContent" class="hidden pt-2 space-y-2">
             <!-- Network (Sub-Accordion) -->
+            <div id="networkAccordion" class="space-y-1">
+              <button id="networkToggle" onclick="toggleNetworkAccordion()" class="w-full flex items-center justify-between px-0 py-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
+                <div class="flex items-center gap-2">
+                  <span>Network</span>
+                  <span id="networkHeaderDot" class="inline-block w-2.5 h-2.5 rounded-full bg-gray-400 transition-colors"></span>
+                </div>
+                <svg id="networkArrow" class="w-5 h-5 transition-transform duration-200 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                </svg>
+              </button>
+              <div id="networkContent" class="hidden pt-2 space-y-2">
+                <!-- Network Selector (Disabled) -->
+                <select id="networkSelect" disabled class="w-full px-2 py-2 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed">
+                  <option value="testnet" selected>Testnet</option>
+                  <option value="mainnet">Mainnet</option>
+                </select>
+              </div>
+            </div>
+
             <!-- On-Chain Activity (Sub-Accordion) -->
             <div id="transactionHistoryAccordion" class="space-y-1">
               <button id="transactionToggle" onclick="toggleTransactionAccordion()" class="w-full flex items-center justify-between px-0 py-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
@@ -1772,6 +1791,20 @@
     function toggleSystemAccordion() {
       const content = document.getElementById('systemContent');
       const arrow = document.getElementById('systemArrow');
+      const isHidden = content.classList.contains('hidden');
+
+      if (isHidden) {
+        content.classList.remove('hidden');
+        arrow.style.transform = 'rotate(180deg)';
+      } else {
+        content.classList.add('hidden');
+        arrow.style.transform = 'rotate(0deg)';
+      }
+    }
+
+    function toggleNetworkAccordion() {
+      const content = document.getElementById('networkContent');
+      const arrow = document.getElementById('networkArrow');
       const isHidden = content.classList.contains('hidden');
 
       if (isHidden) {
