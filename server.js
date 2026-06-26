@@ -2822,7 +2822,7 @@ app.post('/api/groups', async (req, res) => {
       timestamp: now.toISOString(),
       network: network
     };
-    console.log(`[POST /api/groups::BLOCKCHAIN] Transaction payload prepared: type=${transactionPayload.type}, groupId=${transactionPayload.groupId}, memberCount=${transactionPayload.memberIds.length}, network=${transactionPayload.network}, userPubkeyPresent=${!!transactionPayload.userPubkey}`);
+    console.log(`[POST /api/groups::BLOCKCHAIN] Transaction payload prepared: type=${transactionPayload.type}, groupId=${transactionPayload.groupId}, memberCount=${transactionPayload.memberPubkeys.length}, network=${transactionPayload.network}, creatorPubkeyPresent=${!!transactionPayload.creatorPubkey}`);
 
     // Sign memo following Last One Wins pattern
     const memo = signTransactionMemo(transactionPayload);
@@ -6117,9 +6117,8 @@ async function start() {
           type: 'group_create',
           groupId: designGroupId,
           groupName: 'Staging Design Feedback',
-          creatorId: alice,
-          memberIds: [alice, bob, charlie],
-          userPubkey: userPubkeyMap[alice],
+          creatorPubkey: userPubkeyMap[alice],
+          memberPubkeys: [userPubkeyMap[alice], userPubkeyMap[bob], userPubkeyMap[charlie]],
           timestamp: groupCreateTime ? new Date(groupCreateTime).toISOString() : new Date().toISOString()
         };
         await pool.query(`
@@ -6146,8 +6145,7 @@ async function start() {
             type: 'message',
             messageId: messageId,
             groupId: designGroupId,
-            senderId: msg.sender,
-            userPubkey: userPubkeyMap[msg.sender],
+            senderPubkey: userPubkeyMap[msg.sender],
             contentHash: contentHash,
             timestamp: msgTime.toISOString()
           };
