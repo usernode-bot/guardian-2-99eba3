@@ -3551,12 +3551,18 @@
 
     // Wallet confirmation modal functions
     async function showWalletConfirm(action, details, onApprove) {
+      // Validate wallet connection before showing confirmation
+      if (!currentUser || !currentUser.usernode_pubkey) {
+        console.error('Wallet not connected: currentUser=', currentUser);
+        throw new Error('You must be connected to Usernode wallet to perform this action. Please refresh your browser.');
+      }
+
       pendingWalletAction = { action, details, onApprove };
 
       // Update modal with action details
       document.getElementById('walletConfirmAction').textContent = action;
       document.getElementById('walletConfirmNetwork').textContent = currentNetwork || 'testnet';
-      document.getElementById('walletConfirmWallet').textContent = currentUser.usernode_pubkey || 'Not connected';
+      document.getElementById('walletConfirmWallet').textContent = currentUser.usernode_pubkey;
 
       // Show action-specific details
       const detailsHtml = Object.entries(details)
@@ -3689,7 +3695,7 @@
             console.error('- window.usernode value:', window.usernode);
             console.error('- window.usernode.sendTransaction:', window.usernode?.sendTransaction);
             console.error('- isWalletAvailable() result:', isWalletAvailable());
-            throw new Error('Wallet provider is taking longer than expected. Please check your internet connection and try again.');
+            throw new Error('Wallet provider unavailable. Please check your internet connection and refresh the page to ensure Usernode bridge is loaded.');
           }
         }
 
