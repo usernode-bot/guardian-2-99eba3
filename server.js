@@ -273,9 +273,11 @@ async function validateAndResolvePubkeys(userIds) {
 // Pattern: follows Last One Wins game-logic.js wallet/send implementation
 async function sendOutgoingPayment(recipient, amount, memo) {
   try {
+    console.log(`[BLOCKCHAIN-SUBMIT] sendOutgoingPayment: recipient=${recipient}, amount=${amount}, memo=${memo ? 'provided' : 'none'}`);
+
     // In staging or without RPC URL, return demo transaction
     if (IS_STAGING || !NODE_RPC_URL) {
-      console.log(`[Sidecar] Demo mode: would send ${amount} to ${recipient} with memo`);
+      console.log(`[BLOCKCHAIN-SUBMIT] Demo/staging mode: would send ${amount} to ${recipient}`);
       return { success: true, transactionHash: 'ut1staging-token-demo-' + Date.now() };
     }
 
@@ -291,7 +293,7 @@ async function sendOutgoingPayment(recipient, amount, memo) {
       }
     };
 
-    console.log(`[Sidecar] Submitting real payment tx to ${NODE_RPC_URL}/wallet/send`);
+    console.log(`[BLOCKCHAIN-SUBMIT] Submitting real payment tx to ${NODE_RPC_URL}/wallet/send with payload: ${JSON.stringify(rpcPayload)}`);
 
     return new Promise((resolve, reject) => {
       const url = new URL('/wallet/send', NODE_RPC_URL);
@@ -317,15 +319,18 @@ async function sendOutgoingPayment(recipient, amount, memo) {
           try {
             const response = JSON.parse(data);
             if (res.statusCode >= 200 && res.statusCode < 300) {
-              console.log(`[Sidecar] Payment submitted successfully: txHash=${response.txHash || response.hash}`);
+              const txHash = response.txHash || response.hash || 'ut1-tx-' + Math.random().toString(36).substr(2, 9);
+              console.log(`[BLOCKCHAIN-SUBMIT] Payment submitted successfully: statusCode=${res.statusCode}, txHash=${txHash}, response=${JSON.stringify(response)}`);
               resolve({
                 success: true,
-                transactionHash: response.txHash || response.hash || 'ut1-tx-' + Math.random().toString(36).substr(2, 9)
+                transactionHash: txHash
               });
             } else {
+              console.error(`[BLOCKCHAIN-SUBMIT] RPC error: statusCode=${res.statusCode}, response=${JSON.stringify(response)}`);
               reject(new Error(`RPC error: ${response.error || res.statusCode}`));
             }
           } catch (err) {
+            console.error(`[BLOCKCHAIN-SUBMIT] Failed to parse RPC response: ${err.message}`);
             reject(new Error(`Failed to parse RPC response: ${err.message}`));
           }
         });
@@ -349,27 +354,32 @@ async function sendOutgoingPayment(recipient, amount, memo) {
 // Send transaction to blockchain via bridge
 async function sendTransactionToBridge(payload, txHashFromFrontend, network = 'testnet') {
   try {
+    console.log(`[BLOCKCHAIN-SUBMIT] sendTransactionToBridge called: type=${payload.type}, network=${network}, txHashFromFrontend=${txHashFromFrontend ? 'provided' : 'none'}`);
+    console.log(`[BLOCKCHAIN-SUBMIT] Payload: ${JSON.stringify(payload)}`);
+
     if (IS_STAGING) {
       // Mock implementation: return immediate confirmation with network prefix
       // In staging, txHashFromFrontend comes from frontend simulation
       const networkPrefix = network === 'mainnet' ? 'ut1staging-mainnet-tx-' : 'ut1staging-testnet-tx-';
       const txHash = txHashFromFrontend || networkPrefix + Date.now();
+      console.log(`[BLOCKCHAIN-SUBMIT] Staging mode: returning mock txHash=${txHash}`);
       return { txHash, status: 'pending' };
     }
 
     // In production: use the real tx hash from frontend (submitted via usernode.sendTransaction)
     // If frontend provided a tx hash, it's already been submitted on-chain
     if (txHashFromFrontend) {
-      console.log(`[Bridge] Using submitted tx hash from frontend: ${txHashFromFrontend}`);
+      console.log(`[BLOCKCHAIN-SUBMIT] Production mode: using submitted tx hash from frontend: ${txHashFromFrontend}`);
       return { txHash: txHashFromFrontend, status: 'pending' };
     }
 
     // Fallback: generate a placeholder (should not reach here in production)
     const networkPrefix = network === 'mainnet' ? 'ut1mainnet-tx-' : 'ut1testnet-tx-';
     const txHash = networkPrefix + Math.random().toString(36).substr(2, 9);
+    console.log(`[BLOCKCHAIN-SUBMIT] WARNING: No txHash from frontend, generating placeholder: ${txHash}`);
     return { txHash, status: 'pending' };
   } catch (err) {
-    console.error('Error sending transaction to bridge:', err);
+    console.error(`[BLOCKCHAIN-SUBMIT] Error sending transaction to bridge: ${err.message}`, err);
     throw err;
   }
 }
@@ -578,11 +588,6 @@ app.use(async (req, res, next) => {
     try { req.user = jwt.verify(token, JWT_SECRET); } catch (e) {
       console.error('JWT verification failed:', e.message);
     }
-  }
-
-  // Provide a default test user if no valid token (staging + production for testing)
-  if (!req.user) {
-    req.user = { id: 1, username: 'staging-demo-alice', usernode_pubkey: 'ut1staging-alice-001', verified_at: new Date() };
   }
 
   // Upsert user on first request: ensure user exists in DB with wallet identity
@@ -1208,6 +1213,12 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
+
+    // Validate wallet connection before proceeding with message transaction
+    if (!req.user.usernode_pubkey) {
+      return res.status(401).json({ error: 'Must be connected to Usernode wallet to send messages' });
+    }
+
     const now = new Date();
 
     if (!checkRateLimit(`msg:${userId}`, 100, 60000)) {
@@ -1242,7 +1253,7 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
     // Fetch user's network preference and pubkey
     const userRes = await pool.query(`SELECT network, usernode_pubkey FROM users WHERE id = $1`, [userId]);
     const network = userRes.rows[0]?.network || 'testnet';
-    const userPubkey = userRes.rows[0]?.usernode_pubkey || null;
+    const userPubkey = req.user.usernode_pubkey;
 
     // Use frontend-provided content hash or compute it
     const contentHash = frontendContentHash || computeContentHash(content);
@@ -1461,6 +1472,12 @@ app.post('/api/tokens/send', async (req, res) => {
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
+
+    // Validate wallet connection before proceeding with transaction
+    if (!req.user.usernode_pubkey) {
+      return res.status(401).json({ error: 'Must be connected to Usernode wallet to send tokens' });
+    }
+
     const now = new Date();
 
     if (!recipientId || !amount) {
@@ -2747,6 +2764,13 @@ app.post('/api/groups', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
+    // Validation: check wallet connection before proceeding with group creation
+    console.log(`[POST /api/groups::VALIDATE] Checking wallet connection: usernode_pubkey=${req.user.usernode_pubkey ? 'present' : 'missing'}`);
+    if (!req.user.usernode_pubkey) {
+      console.error(`[POST /api/groups::VALIDATE] Wallet not connected - usernode_pubkey is missing`);
+      return res.status(401).json({ error: 'Must be connected to Usernode wallet to create groups' });
+    }
+
     // Validation: check group name
     console.log(`[POST /api/groups::VALIDATE] Group name validation: provided="${name}", trimmed="${name ? name.trim() : '(null)'}", length=${name ? name.trim().length : 0}`);
     if (!name || name.trim().length === 0) {
@@ -3026,6 +3050,12 @@ app.put('/api/groups/:groupId', async (req, res) => {
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
+
+    // Validate wallet connection before proceeding with group update
+    if (!req.user.usernode_pubkey) {
+      return res.status(401).json({ error: 'Must be connected to Usernode wallet to update groups' });
+    }
+
     const now = new Date();
 
     // Verify user is creator
@@ -3055,6 +3085,7 @@ app.put('/api/groups/:groupId', async (req, res) => {
       type: 'group_update',
       groupId: groupId,
       groupName: name || groupRows[0].name,
+      creatorPubkey: req.user.usernode_pubkey,
       network: network
     };
 
@@ -3162,6 +3193,12 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
+
+    // Validate wallet connection before proceeding with group message transaction
+    if (!req.user.usernode_pubkey) {
+      return res.status(401).json({ error: 'Must be connected to Usernode wallet to send group messages' });
+    }
+
     const now = new Date();
 
     if (!checkRateLimit(`gmsg:${userId}`, 100, 60000)) {
@@ -3184,7 +3221,7 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
     // Fetch user's network preference and pubkey
     const userRes = await pool.query(`SELECT network, usernode_pubkey FROM users WHERE id = $1`, [userId]);
     const network = userRes.rows[0]?.network || 'testnet';
-    const userPubkey = userRes.rows[0]?.usernode_pubkey || null;
+    const userPubkey = req.user.usernode_pubkey;
 
     // Create message with blockchain recording enabled
     const contentHash = computeContentHash(content);
