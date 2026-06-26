@@ -614,12 +614,6 @@
       </div>
       <div id="headerRight" class="text-sm text-zinc-600 dark:text-zinc-500 relative flex flex-1 justify-end items-center gap-2">
         <button id="messageHistoryBtn" class="hidden text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare mr-3" title="Message history" onclick="openMessageHistory()">📜</button>
-        <button id="conversationMenuBtn" class="hidden text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare" title="Conversation options" onclick="toggleConversationMenu(event)">⋯</button>
-        <div id="conversationMenuDropdown" class="hidden absolute right-0 mt-2 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg shadow-lg z-50 min-w-40">
-          <button onclick="openContactProfile()" class="menu-item text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 w-full text-left">Profile</button>
-          <button id="addContactMenuBtn" onclick="toggleAddContactButton()" class="menu-item text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 w-full text-left">Add Contact</button>
-          <button onclick="openArchiveConversationModal()" class="menu-item text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 w-full text-left">Archive conversation</button>
-        </div>
       </div>
     </div>
 
@@ -1227,6 +1221,8 @@
   <!-- Contact Options Menu -->
   <div id="contactContextMenu" class="hidden fixed z-50 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg shadow-lg min-w-40">
     <button id="viewContactProfileBtn" onclick="event.stopPropagation(); viewContactProfileFromMenu()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">View Profile</button>
+    <button id="removeContactMenuBtn" onclick="event.stopPropagation(); toggleRemoveContactFromMenu()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">Remove Contact</button>
+    <button id="archiveConvMenuBtn" onclick="event.stopPropagation(); archiveConversationFromContactMenu()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">Archive Conversation</button>
   </div>
 
   <!-- Message Options Menu -->
@@ -2264,7 +2260,6 @@
       document.getElementById('headerPageLabel').textContent = 'Settings';
       document.getElementById('backBtnContainer').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
-      document.getElementById('conversationMenuBtn').classList.add('hidden');
       sidebarOpen = false;
     }
 
@@ -2391,19 +2386,23 @@
       }
     }
 
-    // Contact options menu variables
-    let currentContactContextMenuUserId = null;
-
     function openContactOptionsMenu(event, contactId, contactUserId, contactName) {
       event.preventDefault();
       event.stopPropagation();
 
+      currentContactContextMenuId = contactId;
       currentContactContextMenuUserId = contactUserId;
 
       const menu = document.getElementById('contactContextMenu');
       if (!menu) {
         console.error('Contact context menu not found in DOM');
         return;
+      }
+
+      // Update button text based on contact state
+      const removeBtn = document.getElementById('removeContactMenuBtn');
+      if (removeBtn) {
+        removeBtn.textContent = contactId ? 'Remove Contact' : 'Add Contact';
       }
 
       // Position menu, accounting for viewport
@@ -2431,6 +2430,7 @@
 
     function closeContactContextMenu() {
       document.getElementById('contactContextMenu').classList.add('hidden');
+      currentContactContextMenuId = null;
       currentContactContextMenuUserId = null;
     }
 
@@ -2442,6 +2442,101 @@
       console.log('Viewing profile for user:', currentContactContextMenuUserId);
       closeContactContextMenu();
       await showUserProfileModal(currentContactContextMenuUserId);
+    }
+
+    async function toggleRemoveContactFromMenu() {
+      if (!currentContactContextMenuUserId) {
+        alert('Contact not found');
+        return;
+      }
+
+      if (isContactActionInProgress) {
+        console.warn('Contact action already in progress');
+        return;
+      }
+
+      isContactActionInProgress = true;
+      const btn = document.getElementById('removeContactMenuBtn');
+      if (btn) btn.disabled = true;
+
+      try {
+        if (currentContactContextMenuId) {
+          // Contact is already added, remove it
+          console.log('Removing contact:', currentContactContextMenuId, 'for user:', currentContactContextMenuUserId);
+          const data = await apiCall(`/api/contacts/${currentContactContextMenuId}`, {
+            method: 'DELETE',
+            body: JSON.stringify({})
+          });
+
+          if (data && data.ok) {
+            closeContactContextMenu();
+            showToast('Contact removed', 'success');
+            await loadContactsList();
+          } else {
+            const errorMsg = 'Failed to remove contact' + (data?.status ? ' (HTTP ' + data.status + ')' : '') + ': ' + (data?.error || 'Unknown error');
+            alert(errorMsg);
+            console.error(errorMsg, data);
+          }
+        } else {
+          // Contact is not added, add it
+          console.log('Adding contact for user:', currentContactContextMenuUserId);
+          const data = await apiCall('/api/contacts/by-id', {
+            method: 'POST',
+            body: JSON.stringify({ user_id: currentContactContextMenuUserId, nickname: null })
+          });
+
+          if (data && !data.error) {
+            currentContactContextMenuId = data.id;
+            closeContactContextMenu();
+            showToast('Contact added', 'success');
+            await loadContactsList();
+          } else {
+            const errorMsg = 'Failed to add contact (HTTP ' + (data?.status || '?') + '): ' + (data?.error || 'Unknown error');
+            alert(errorMsg);
+            console.error(errorMsg, data);
+          }
+        }
+      } catch (err) {
+        console.error('Error toggling contact:', err);
+        alert('Failed to modify contact');
+      } finally {
+        isContactActionInProgress = false;
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    async function archiveConversationFromContactMenu() {
+      if (!currentContactContextMenuUserId) {
+        alert('Contact not found');
+        return;
+      }
+
+      // Find the conversation with this contact
+      const convId = findConversationWithUser(currentContactContextMenuUserId);
+      if (!convId) {
+        alert('No conversation found with this contact');
+        return;
+      }
+
+      closeContactContextMenu();
+
+      // Set currentConvId temporarily for the archive function
+      const tempConvId = currentConvId;
+      currentConvId = convId;
+      currentContactName = currentContactName || 'this contact';
+
+      openArchiveConversationModal();
+
+      // Restore in case we need it later
+      currentConvId = tempConvId;
+    }
+
+    function findConversationWithUser(userId) {
+      if (typeof allConversations === 'undefined' || !Array.isArray(allConversations)) {
+        return null;
+      }
+      const conv = allConversations.find(c => c.participant_a_id === userId || c.participant_b_id === userId);
+      return conv ? conv.id : null;
     }
 
 function toggleArchivedContactsSection() {
@@ -3013,7 +3108,6 @@ document.getElementById('deleteConversationCancel').addEventListener('click', hi
 
       document.getElementById('backBtnContainer').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
-      document.getElementById('conversationMenuBtn').classList.add('hidden');
 
       showChatView();
       loadGroupMessages(groupId);
@@ -4259,9 +4353,6 @@ document.getElementById('deleteConversationCancel').addEventListener('click', hi
       document.getElementById('menuBtn').classList.add('hidden');
       document.getElementById('messageHistoryBtn').classList.add('hidden');
 
-      // Close conversation menu dropdown
-      document.getElementById('conversationMenuDropdown').classList.add('hidden');
-
       // Fetch and show contact menu
       await fetchAndShowContactMenu(otherId, username);
 
@@ -4818,7 +4909,6 @@ document.getElementById('deleteConversationCancel').addEventListener('click', hi
       document.getElementById('headerPageLabel').textContent = 'Messages';
       document.getElementById('backBtnContainer').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
-      document.getElementById('conversationMenuBtn').classList.add('hidden');
 
       // Clear all polling intervals when returning to messages view
       if (pollInterval) clearInterval(pollInterval);
@@ -5249,36 +5339,14 @@ document.getElementById('deleteConversationCancel').addEventListener('click', hi
       console.log('Contact ID after fetch:', currentContactId, '(otherId:', otherId, ')');
 
       // Update menu button label based on contact status
-      await updateContactMenuLabel();
-
-      // Show the conversation menu button (name and address already in header title)
-      document.getElementById('conversationMenuBtn').classList.remove('hidden');
     }
 
-    // ===== CONVERSATION MENU FUNCTIONS =====
+    // ===== CONTACT MENU FUNCTIONS =====
 
     let isContactActionInProgress = false;
     let isDeleteConvInProgress = false;
-
-    function openContactProfile() {
-      // Close the dropdown menu
-      document.getElementById('conversationMenuDropdown').classList.add('hidden');
-
-      if (!currentOtherId) {
-        alert('User not found');
-        return;
-      }
-
-      // TODO: Implement profile view navigation
-      // For now, show a placeholder - can be replaced with actual profile view
-      alert(`View profile for ${currentContactName || 'this user'}`);
-    }
-
-    function toggleConversationMenu(event) {
-      event.stopPropagation();
-      const dropdown = document.getElementById('conversationMenuDropdown');
-      dropdown.classList.toggle('hidden');
-    }
+    let currentContactContextMenuId = null;
+    let currentContactContextMenuUserId = null;
 
     async function toggleAddContactButton() {
       if (!currentOtherId) {
@@ -5294,8 +5362,6 @@ document.getElementById('deleteConversationCancel').addEventListener('click', hi
 
       isContactActionInProgress = true;
 
-      // Close the dropdown menu
-      document.getElementById('conversationMenuDropdown').classList.add('hidden');
       const btn = document.getElementById('addContactMenuBtn');
       if (btn) btn.disabled = true;
 
@@ -5310,8 +5376,7 @@ document.getElementById('deleteConversationCancel').addEventListener('click', hi
 
           if (data && data.ok) {
             currentContactId = null;
-            await updateContactMenuLabel();
-            showToast('Contact removed', 'success');
+                  showToast('Contact removed', 'success');
             // Refresh conversation list to move conversation from Your Active Chats to Pending Requests
             await loadConversations();
           } else {
@@ -5330,8 +5395,7 @@ document.getElementById('deleteConversationCancel').addEventListener('click', hi
           if (data && !data.error) {
             currentContactId = data.id;
             console.log('Contact added with ID:', currentContactId);
-            await updateContactMenuLabel();
-            showToast('Contact added', 'success');
+                  showToast('Contact added', 'success');
             // Refresh conversation list to move conversation from Pending Requests to Your Active Chats
             await loadConversations();
           } else {
@@ -5346,21 +5410,7 @@ document.getElementById('deleteConversationCancel').addEventListener('click', hi
       }
     }
 
-    async function updateContactMenuLabel() {
-      const btn = document.getElementById('addContactMenuBtn');
-      if (!btn) return;
-
-      if (currentContactId) {
-        btn.textContent = 'Remove Contact';
-      } else {
-        btn.textContent = 'Add Contact';
-      }
-    }
-
     function openDeleteConversationModal() {
-      // Close the dropdown menu
-      document.getElementById('conversationMenuDropdown').classList.add('hidden');
-
       // Update modal title
       document.getElementById('deleteConversationTitle').textContent = `Delete ${currentContactName}?`;
 
@@ -5369,7 +5419,6 @@ document.getElementById('deleteConversationCancel').addEventListener('click', hi
     }
 
     function openArchiveConversationModal() {
-      document.getElementById('conversationMenuDropdown').classList.add('hidden');
       document.getElementById('deleteConversationTitle').textContent = `Archive conversation with ${currentContactName}?`;
       document.getElementById('deleteConversationModal').classList.remove('hidden');
     }
@@ -5479,7 +5528,6 @@ document.getElementById('deleteConversationCancel').addEventListener('click', hi
       document.getElementById('headerPageLabel').textContent = 'Contacts';
       document.getElementById('backBtnContainer').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
-      document.getElementById('conversationMenuBtn').classList.add('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
       if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
       document.getElementById('contactsSearchInput').value = '';
@@ -5505,7 +5553,6 @@ document.getElementById('deleteConversationCancel').addEventListener('click', hi
       document.getElementById('headerPageLabel').textContent = 'Feed';
       document.getElementById('backBtnContainer').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
-      document.getElementById('conversationMenuBtn').classList.add('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
       if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
       loadUserLikes();
@@ -5530,7 +5577,6 @@ document.getElementById('deleteConversationCancel').addEventListener('click', hi
       document.getElementById('headerBranding').textContent = 'Guardian';
       document.getElementById('headerPageLabel').textContent = 'Profile';
       document.getElementById('menuBtn').classList.add('hidden');
-      document.getElementById('conversationMenuBtn').classList.add('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
 
       // Load profile data and switch to identity tab by default
@@ -7418,14 +7464,6 @@ document.getElementById('deleteConversationCancel').addEventListener('click', hi
     });
 
     // Close conversation menu when clicking outside
-    document.addEventListener('click', (e) => {
-      const menuBtn = document.getElementById('conversationMenuBtn');
-      const dropdown = document.getElementById('conversationMenuDropdown');
-      if (menuBtn && dropdown && !e.target.closest('#conversationMenuBtn') && !e.target.closest('#conversationMenuDropdown')) {
-        dropdown.classList.add('hidden');
-      }
-    });
-
     // Close contact context menu when clicking outside
     document.addEventListener('click', (e) => {
       const menu = document.getElementById('contactContextMenu');
