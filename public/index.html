@@ -755,29 +755,11 @@
                 </svg>
               </button>
               <div id="networkContent" class="hidden pt-2 space-y-2">
-                <!-- Network Selector -->
-                <select id="networkSelect" onchange="applyNetwork(this.value)" class="w-full px-2 py-2 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500">
-                  <option value="testnet">Testnet</option>
+                <!-- Network Selector (Disabled) -->
+                <select id="networkSelect" disabled class="w-full px-2 py-2 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed">
+                  <option value="testnet" selected>Testnet</option>
                   <option value="mainnet">Mainnet</option>
                 </select>
-
-                <!-- Network Status Details -->
-                <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-xs text-zinc-700 dark:text-zinc-400">
-                  <span class="text-left font-medium text-zinc-600 dark:text-zinc-500">Status</span>
-                  <div class="flex items-center gap-2 text-zinc-900 dark:text-zinc-100">
-                    <span id="networkStatusDot" class="inline-block w-2 h-2 rounded-full bg-gray-400"></span>
-                    <span id="networkStatusText">—</span>
-                  </div>
-
-                  <span class="text-left font-medium text-zinc-600 dark:text-zinc-500">Node</span>
-                  <span id="networkNodeText" class="text-zinc-900 dark:text-zinc-100">—</span>
-
-                  <span class="text-left font-medium text-zinc-600 dark:text-zinc-500">Latency</span>
-                  <span id="networkLatencyText" class="text-zinc-900 dark:text-zinc-100">—</span>
-
-                  <span class="text-left font-medium text-zinc-600 dark:text-zinc-500">Last Sync</span>
-                  <span id="networkLastSyncText" class="text-zinc-900 dark:text-zinc-100">—</span>
-                </div>
               </div>
             </div>
 
@@ -1745,11 +1727,6 @@
     let messageHistoryHasMore = true;
 
     // Settings functions
-    let currentNetwork = 'testnet';
-
-    // Network status polling
-    let networkStatusPollInterval = null;
-    let networkStatus = { status: 'unknown', node: null, latency: null, lastSyncAt: null };
 
     // Wallet confirmation state
     let pendingWalletAction = null;
@@ -1805,7 +1782,7 @@
     }
 
     function getCurrentNetwork() {
-      return currentNetwork;
+      return 'testnet';
     }
 
     function initSettings() {
@@ -1813,103 +1790,34 @@
       applyTheme(settings.theme);
       applyLayout(settings.layout);
       applyViewMode(settings.view_mode);
-      currentNetwork = settings.network;
       document.getElementById('themeSelect').value = settings.theme;
-      document.getElementById('networkSelect').value = settings.network;
       updateLayoutButtons(settings.layout);
       updateViewModeButtons(settings.view_mode);
+
+      // Start transaction history polling
+      pollTransactionHistory();
+      if (transactionHistoryIntervalId) clearInterval(transactionHistoryIntervalId);
+      transactionHistoryIntervalId = setInterval(pollTransactionHistory, 2000);
+
       loadConfigState();
     }
 
-    async function pollNetworkStatus() {
-      try {
-        const data = await apiCall('/api/usernode/status');
-        if (!data || data.error) {
-          networkStatus = { status: 'disconnected', node: null, latency: null, lastSyncAt: null, error: data?.error };
-        } else {
-          networkStatus = data;
-        }
-        updateNetworkStatusDisplay();
-      } catch (err) {
-        console.error('Error polling network status:', err);
-        networkStatus = { status: 'disconnected', error: err.message };
-      }
-    }
-
-    function updateNetworkStatusDisplay() {
-      const statusDot = document.getElementById('networkStatusDot');
-      const statusText = document.getElementById('networkStatusText');
-      const nodeText = document.getElementById('networkNodeText');
-      const latencyText = document.getElementById('networkLatencyText');
-      const lastSyncText = document.getElementById('networkLastSyncText');
-
+    function updateHeaderStatusDisplay(isConnected, latency) {
       const headerDot = document.getElementById('headerStatusDot');
       const headerTooltip = document.getElementById('headerStatusTooltip');
-      const networkHeaderDot = document.getElementById('networkHeaderDot');
 
-      if (!statusDot || !headerDot) return;
+      if (!headerDot) return;
 
-      let dotColor = 'bg-gray-400';
-      let statusDisplay = '—';
-
-      if (networkStatus.status === 'connected') {
-        dotColor = 'bg-green-500';
-        statusDisplay = 'Connected';
-      } else if (networkStatus.status === 'connecting') {
-        dotColor = 'bg-yellow-500 animate-pulse';
-        statusDisplay = 'Connecting...';
-      } else if (networkStatus.status === 'disconnected') {
-        dotColor = 'bg-red-500';
-        statusDisplay = 'Disconnected';
-      }
-
-      statusDot.className = `inline-block w-2 h-2 rounded-full transition-colors ${dotColor}`;
-      headerDot.className = `inline-block w-2.5 h-2.5 rounded-full transition-colors ${dotColor}`;
-      if (networkHeaderDot) {
-        networkHeaderDot.className = `inline-block w-2.5 h-2.5 rounded-full transition-colors ${dotColor}`;
-      }
-
-      statusText.textContent = statusDisplay;
-      nodeText.textContent = networkStatus.node || '—';
-      latencyText.textContent = networkStatus.latency ? `${networkStatus.latency}ms` : '—';
-
-      if (networkStatus.lastSyncAt) {
-        const lastSyncDate = new Date(networkStatus.lastSyncAt);
-        const nowDate = new Date();
-        const diffMs = nowDate - lastSyncDate;
-        const diffSec = Math.floor(diffMs / 1000);
-
-        if (diffSec < 5) {
-          lastSyncText.textContent = 'just now';
-        } else if (diffSec < 60) {
-          lastSyncText.textContent = `${diffSec}s ago`;
-        } else if (diffSec < 3600) {
-          const diffMin = Math.floor(diffSec / 60);
-          lastSyncText.textContent = `${diffMin}m ago`;
-        } else {
-          lastSyncText.textContent = lastSyncDate.toLocaleTimeString();
+      if (isConnected) {
+        headerDot.className = `inline-block w-2 h-2 rounded-full transition-colors bg-green-500`;
+        if (headerTooltip) {
+          const latencyText = latency !== null && latency !== undefined ? ` | ${latency}ms latency` : '';
+          headerTooltip.textContent = `Connected${latencyText}`;
         }
       } else {
-        lastSyncText.textContent = '—';
-      }
-
-      let tooltipText = statusDisplay;
-      if (networkStatus.latency) tooltipText += ` • ${networkStatus.latency}ms`;
-      headerTooltip.textContent = tooltipText;
-
-      const settingsFooterNetwork = document.getElementById('settingsFooterNetwork');
-      if (settingsFooterNetwork) {
-        const networkName = currentNetwork === 'testnet' ? 'UserNode Testnet' : 'UserNode Mainnet';
-        settingsFooterNetwork.textContent = networkName;
-      }
-    }
-
-    function scrollToNetworkStatus() {
-      const settingsPanel = document.getElementById('settingsPanel');
-      if (settingsPanel && !settingsPanel.classList.contains('hidden')) {
-        const networkSection = document.getElementById('networkAccordion');
-        if (networkSection) {
-          networkSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        headerDot.className = `inline-block w-2 h-2 rounded-full transition-colors bg-gray-400`;
+        if (headerTooltip) {
+          headerTooltip.textContent = 'Disconnected';
         }
       }
     }
@@ -1930,6 +1838,13 @@
     function stopNetworkStatusPolling() {
       if (networkStatusPollInterval) clearInterval(networkStatusPollInterval);
       if (walletStatusPollInterval) clearInterval(walletStatusPollInterval);
+    }
+
+    function updateSettingsFooter() {
+      const settingsFooterNetwork = document.getElementById('settingsFooterNetwork');
+      if (settingsFooterNetwork) {
+        settingsFooterNetwork.textContent = 'UserNode Testnet';
+      }
     }
 
     function toggleSystemAccordion() {
@@ -2107,6 +2022,24 @@
     }
 
     let transactionHistoryIntervalId = null;
+    let networkStatusIntervalId = null;
+
+    async function pollNetworkStatus() {
+      try {
+        const response = await apiCall('/api/usernode/status');
+        if (!response || response.error) {
+          updateHeaderStatusDisplay(false);
+          return;
+        }
+
+        const isConnected = response.status === 'connected';
+        const latency = response.latency;
+        updateHeaderStatusDisplay(isConnected, latency);
+      } catch (err) {
+        console.error('Error polling network status:', err);
+        updateHeaderStatusDisplay(false);
+      }
+    }
 
     async function updateDemoMode(enabled) {
       const checkbox = document.getElementById('demModeToggle');
@@ -2229,9 +2162,19 @@
         const list = document.getElementById('transactionHistoryList');
         if (!list) return;
 
-        if (response.transactions.length === 0) {
+        const transactionCount = response.transactions.length;
+        const transactionHeaderDot = document.getElementById('transactionHeaderDot');
+
+        if (transactionCount === 0) {
           list.innerHTML = '<div class="text-center py-4 text-zinc-500 dark:text-zinc-400">No transactions yet</div>';
+          if (transactionHeaderDot) {
+            transactionHeaderDot.className = 'inline-block w-2.5 h-2.5 rounded-full bg-gray-400 transition-colors';
+          }
           return;
+        }
+
+        if (transactionHeaderDot) {
+          transactionHeaderDot.className = 'inline-block w-2.5 h-2.5 rounded-full bg-green-500 transition-colors';
         }
 
         let html = '';
@@ -2333,35 +2276,6 @@
         compact.classList.remove('border-transparent');
         comfortable.classList.remove('border-cyan-600', 'dark:border-cyan-500');
         comfortable.classList.add('border-transparent');
-      }
-    }
-
-    async function applyNetwork(network) {
-      if (!['testnet', 'mainnet'].includes(network)) {
-        console.error('Invalid network:', network);
-        return;
-      }
-
-      const previousNetwork = currentNetwork;
-      try {
-        const response = await apiCall('/api/user/network', {
-          method: 'PUT',
-          body: JSON.stringify({ network })
-        });
-
-        if (response && response.error) {
-          console.error('Failed to update network:', response.error);
-          document.getElementById('networkSelect').value = previousNetwork;
-          return;
-        }
-
-        currentNetwork = network;
-        const settings = loadSettings();
-        settings.network = network;
-        saveSettings(settings);
-      } catch (err) {
-        console.error('Error applying network:', err);
-        document.getElementById('networkSelect').value = previousNetwork;
       }
     }
 
@@ -2917,7 +2831,7 @@
     }
 
     // Wait for bridge to load with timeout (network-aware)
-        async function waitForBridge(timeoutMs, network = currentNetwork || 'testnet') {
+    async function waitForBridge(timeoutMs, network = currentNetwork || 'testnet') {
       // Use network-aware default timeout if not specified
       if (timeoutMs === undefined) {
         timeoutMs = network === 'testnet' ? 5000 : 3000;
@@ -3089,15 +3003,15 @@
         console.warn('⚠ No wallet address linked to this user');
       }
 
-      currentNetwork = user.network || 'testnet';
-      const viewMode = user.view_mode || 'web';
+            const viewMode = user.view_mode || 'web';
       const settings = loadSettings();
-      settings.network = currentNetwork;
+      settings.network = 'testnet';
       settings.view_mode = viewMode;
       saveSettings(settings);
       document.getElementById('sidebarUsername').textContent = user.username + (user.verified ? ' ✓' : '');
       document.getElementById('sidebarWallet').textContent = user.usernode_pubkey || 'No wallet linked';
       initSettings();
+      updateSettingsFooter();
       startNetworkStatusPolling();
       updateWalletDiagnostics();
       // Ensure currentUser is set before showing conversations view (which may load groups)
@@ -3150,7 +3064,6 @@
         }
       });
 
-      window.addEventListener('beforeunload', stopNetworkStatusPolling);
     }
 
     async function loadConversations() {
@@ -3646,7 +3559,7 @@
 
       // Update modal with action details
       document.getElementById('walletConfirmAction').textContent = action;
-      document.getElementById('walletConfirmNetwork').textContent = currentNetwork || 'testnet';
+      document.getElementById('walletConfirmNetwork').textContent = 'testnet';
       document.getElementById('walletConfirmWallet').textContent = currentUser.usernode_pubkey;
 
       // Show action-specific details
@@ -3691,7 +3604,7 @@
         console.log('╚════════════════════════════════════════════════════════════════╝');
         console.log('Timestamp:', new Date().toISOString());
         console.log('Action:', pendingWalletAction.action);
-        console.log('Network:', currentNetwork || 'testnet');
+        console.log('Network:', 'testnet');
         console.log('User wallet address:', currentUser?.usernode_pubkey || 'Not available');
 
         console.log('\n--- Bridge Availability Check ---');
@@ -3731,11 +3644,11 @@
           if (!isWalletAvailable()) {
             retryCount++;
             console.log(`\n--- Wallet Availability Check FAILED on Attempt ${retryCount} ---`);
-            console.log(`[${currentNetwork || 'testnet'}] Bridge timeout on attempt ${retryCount}. Network: ${currentNetwork || 'testnet'}. Retrying...`);
+            console.log(`[${'testnet'}] Bridge timeout on attempt ${retryCount}. Network: ${'testnet'}. Retrying...`);
             console.log('Available methods on window.usernode:', Object.keys(window.usernode || {}));
 
             console.log('Bridge may still be loading. Waiting up to 2 seconds for bridge...');
-            const bridgeLoadedOnRetry = await waitForBridge(2000, currentNetwork || 'testnet');
+            const bridgeLoadedOnRetry = await waitForBridge(2000, 'testnet');
 
             if (bridgeLoadedOnRetry) {
               console.log('✓ Bridge loaded successfully on retry');
@@ -3761,7 +3674,7 @@
 
                 const message = document.createElement('p');
                 message.className = 'text-sm text-zinc-600 dark:text-zinc-300 mb-4';
-                message.innerHTML = `Usernode wallet provider is not available for network <strong>${currentNetwork || 'testnet'}</strong>. This might be a temporary issue.`;
+                message.innerHTML = `Usernode wallet provider is not available for network <strong>${'testnet'}</strong>. This might be a temporary issue.`;
 
                 const details = document.createElement('p');
                 details.className = 'text-xs text-zinc-500 dark:text-zinc-400 mb-4 font-mono';
@@ -3813,7 +3726,7 @@
                 } catch (e) {
                   console.warn('Could not retrieve stored diagnostics:', e.message);
                 }
-                throw new Error(`Wallet provider unavailable for network "${currentNetwork || 'testnet'}". Please check your internet connection and refresh the page to ensure Usernode bridge is loaded.`);
+                throw new Error(`Wallet provider unavailable for network "${'testnet'}". Please check your internet connection and refresh the page to ensure Usernode bridge is loaded.`);
               }
               // Continue loop to retry
             } else {
@@ -3835,7 +3748,7 @@
                 console.warn('Could not retrieve stored diagnostics:', e.message);
               }
 
-              throw new Error(`Wallet provider unavailable for network "${currentNetwork || 'testnet'}". Please check your internet connection and refresh the page to ensure Usernode bridge is loaded.`);
+              throw new Error(`Wallet provider unavailable for network "${'testnet'}". Please check your internet connection and refresh the page to ensure Usernode bridge is loaded.`);
             }
           } else {
             // Wallet is available, break out of loop
@@ -3844,7 +3757,7 @@
         }
 
         if (isWalletAvailable()) {
-          console.log(`[${currentNetwork || 'testnet'}] Bridge available - proceeding with transaction`);
+          console.log(`[${'testnet'}] Bridge available - proceeding with transaction`);
         }
 
         console.log('\n--- Wallet Available - Preparing Transaction ---');
@@ -3859,10 +3772,10 @@
           type: 'application',
           actionType: pendingWalletAction.action,
           details: pendingWalletAction.details,
-          network: currentNetwork || 'testnet'
+          network: 'testnet'
         };
-        console.log(`[${currentNetwork || 'testnet'}] Transaction payload:`, txPayload);
-        console.log(`[${currentNetwork || 'testnet'}] Calling window.usernode.sendTransaction()...`);
+        console.log(`[${'testnet'}] Transaction payload:`, txPayload);
+        console.log(`[${'testnet'}] Calling window.usernode.sendTransaction()...`);
 
         // Send transaction to wallet using qualified reference
         let txResult;
@@ -3933,12 +3846,12 @@
         console.log('txHash value:', txResult?.txHash);
 
         if (txResult && txResult.txHash) {
-          console.log(`✓ [${currentNetwork || 'testnet'}] Transaction hash obtained:`, txResult.txHash);
-          console.log(`[${currentNetwork || 'testnet'}] Calling action handler...`);
+          console.log(`✓ [${'testnet'}] Transaction hash obtained:`, txResult.txHash);
+          console.log(`[${'testnet'}] Calling action handler...`);
           // User approved - call the action handler
           const result = await pendingWalletAction.onApprove(txResult.txHash);
-          console.log(`✓ [${currentNetwork || 'testnet'}] Action handler completed successfully`);
-          console.log(`[${currentNetwork || 'testnet'}] Result:`, result);
+          console.log(`✓ [${'testnet'}] Action handler completed successfully`);
+          console.log(`[${'testnet'}] Result:`, result);
           if (walletConfirmResolver) {
             walletConfirmResolver.resolve(result);
             walletConfirmResolver = null;
@@ -3952,23 +3865,23 @@
         console.log('\n╔════════════════════════════════════════════════════════════════╗');
         console.log('║          Wallet Confirmation Error - Full Context              ║');
         console.log('╚════════════════════════════════════════════════════════════════╝');
-        console.error(`[${currentNetwork || 'testnet'}] Error message:`, err.message);
+        console.error(`[${'testnet'}] Error message:`, err.message);
         console.error('Error name:', err.name);
         console.error('Error code:', err.code);
         console.error('Error stack:', err.stack);
         console.error('Full error object:', err);
 
         console.log('\n--- Bridge State at Error Time ---');
-        console.log(`[${currentNetwork || 'testnet'}] window.usernode exists:`, typeof window.usernode !== 'undefined');
+        console.log(`[${'testnet'}] window.usernode exists:`, typeof window.usernode !== 'undefined');
         if (typeof window.usernode !== 'undefined') {
-          console.log(`[${currentNetwork || 'testnet'}] Available methods:`, Object.keys(window.usernode));
+          console.log(`[${'testnet'}] Available methods:`, Object.keys(window.usernode));
         }
 
         // Retrieve and log stored diagnostics if available
         try {
           const storedDiag = sessionStorage.getItem('bridgeDiagnostics');
           if (storedDiag) {
-            console.log(`[${currentNetwork || 'testnet'}] Stored Bridge Diagnostics:`, JSON.parse(storedDiag));
+            console.log(`[${'testnet'}] Stored Bridge Diagnostics:`, JSON.parse(storedDiag));
           }
         } catch (e) {
           console.warn('Could not retrieve stored diagnostics:', e.message);
@@ -3977,7 +3890,7 @@
         // Provide clearer error messages to user
         let userMessage = err.message || 'Failed to sign transaction';
         if (userMessage.includes('usernode is not defined')) {
-          userMessage = `Wallet provider not available for network "${currentNetwork || 'testnet'}" - bridge failed to load`;
+          userMessage = `Wallet provider not available for network "${'testnet'}" - bridge failed to load`;
         } else if (!userMessage.startsWith('Wallet') && !userMessage.startsWith('Bridge')) {
           userMessage = 'Wallet error: ' + userMessage;
         }

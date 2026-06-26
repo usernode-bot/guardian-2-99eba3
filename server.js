@@ -688,8 +688,7 @@ app.get('/api/user', async (req, res) => {
     return res.status(401).json({ error: 'Not authenticated' });
   }
   try {
-    const userRes = await pool.query(`SELECT network, view_mode, avatar_url, created_at, bio FROM users WHERE id = $1`, [req.user.id]);
-    const network = userRes.rows[0]?.network || 'testnet';
+    const userRes = await pool.query(`SELECT view_mode, avatar_url, created_at, bio FROM users WHERE id = $1`, [req.user.id]);
     const view_mode = userRes.rows[0]?.view_mode || 'web';
     const avatar_url = userRes.rows[0]?.avatar_url || null;
     const created_at = userRes.rows[0]?.created_at || null;
@@ -699,7 +698,7 @@ app.get('/api/user', async (req, res) => {
       username: req.user.username,
       usernode_pubkey: req.user.usernode_pubkey || null,
       verified: !!req.user.verified_at,
-      network: network,
+      network: 'testnet',
       view_mode: view_mode,
       avatar_url: avatar_url,
       created_at: created_at,
@@ -709,25 +708,6 @@ app.get('/api/user', async (req, res) => {
   } catch (err) {
     console.error('Error fetching user:', err);
     res.status(500).json({ error: 'Failed to fetch user' });
-  }
-});
-
-app.put('/api/user/network', async (req, res) => {
-  try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const { network } = req.body;
-    if (!network || !['testnet', 'mainnet'].includes(network)) {
-      return res.status(400).json({ error: 'Invalid network. Must be "testnet" or "mainnet"' });
-    }
-
-    await pool.query(`UPDATE users SET network = $1 WHERE id = $2`, [network, req.user.id]);
-    res.json({ network: network, status: 'updated' });
-  } catch (err) {
-    console.error('Error updating network:', err);
-    res.status(500).json({ error: 'Failed to update network' });
   }
 });
 
@@ -862,9 +842,7 @@ app.get('/api/usernode/status', async (req, res) => {
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
-    const userRes = await pool.query(`SELECT network FROM users WHERE id = $1`, [userId]);
-    const network = userRes.rows[0]?.network || 'testnet';
-    const nodeId = network === 'mainnet' ? 'UserNode Mainnet' : 'UserNode Testnet';
+    const nodeId = 'UserNode Testnet';
 
     let status = 'connected';
     let latency = null;
@@ -901,7 +879,7 @@ app.get('/api/usernode/status', async (req, res) => {
       node: nodeId,
       latency,
       lastSyncAt,
-      nodeId: network,
+      nodeId: 'testnet',
       error
     });
   } catch (err) {
@@ -1270,10 +1248,9 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       return res.status(403).json({ error: 'You have been blocked by this user' });
     }
 
-    // Fetch user's network preference and pubkey
-    const userRes = await pool.query(`SELECT network, usernode_pubkey FROM users WHERE id = $1`, [userId]);
-    const network = userRes.rows[0]?.network || 'testnet';
+    // Fetch user's pubkey
     const userPubkey = req.user.usernode_pubkey;
+    const network = 'testnet';
 
     // Use frontend-provided content hash or compute it
     const contentHash = frontendContentHash || computeContentHash(content);
@@ -1490,8 +1467,7 @@ app.post('/api/tokens/send', async (req, res) => {
     }
 
     // Fetch user's network preference
-    const userRes = await pool.query(`SELECT network FROM users WHERE id = $1`, [userId]);
-    const network = userRes.rows[0]?.network || 'testnet';
+    const network = 'testnet';
 
     // Validate and resolve recipient wallet address
     let recipientPubkey;
@@ -2730,16 +2706,7 @@ app.post('/api/groups', async (req, res) => {
     }
     console.log(`[POST /api/groups::VALIDATE] All validations passed`);
 
-    // Database: Fetch user's network preference
-    console.log(`[POST /api/groups::DB] Fetching user network preference for userId=${userId}`);
-    const userRes = await pool.query(`SELECT network FROM users WHERE id = $1`, [userId]);
-    console.log(`[POST /api/groups::DB] User query returned ${userRes.rows.length} row(s)`);
-    if (userRes.rows.length === 0) {
-      console.warn(`[POST /api/groups::DB] User not found in database, using default network='testnet'`);
-    } else {
-      console.log(`[POST /api/groups::DB] User network from database: ${userRes.rows[0].network}`);
-    }
-    const network = userRes.rows[0]?.network || 'testnet';
+    const network = 'testnet';
     const now = new Date();
 
     // Database: Create group
@@ -2992,8 +2959,7 @@ app.put('/api/groups/:groupId', async (req, res) => {
     }
 
     // Fetch user's network preference
-    const userRes = await pool.query(`SELECT network FROM users WHERE id = $1`, [userId]);
-    const network = userRes.rows[0]?.network || 'testnet';
+    const network = 'testnet';
 
     // Update group
     await pool.query(`
@@ -3138,10 +3104,9 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
       return res.status(403).json({ error: 'Not a member of this group' });
     }
 
-    // Fetch user's network preference and pubkey
-    const userRes = await pool.query(`SELECT network, usernode_pubkey FROM users WHERE id = $1`, [userId]);
-    const network = userRes.rows[0]?.network || 'testnet';
+    // Fetch user's pubkey
     const userPubkey = req.user.usernode_pubkey;
+    const network = 'testnet';
 
     // Create message with blockchain recording enabled
     const contentHash = computeContentHash(content);
@@ -3310,8 +3275,7 @@ app.post('/api/groups/:groupId/members', async (req, res) => {
     }
 
     // Fetch user's network preference
-    const userRes = await pool.query(`SELECT network FROM users WHERE id = $1`, [userId]);
-    const network = userRes.rows[0]?.network || 'testnet';
+    const network = 'testnet';
     const now = new Date();
 
     // Validate and resolve member wallet addresses
@@ -3443,8 +3407,7 @@ app.delete('/api/groups/:groupId/members/:userId', async (req, res) => {
     }
 
     // Fetch user's network preference
-    const userRes = await pool.query(`SELECT network FROM users WHERE id = $1`, [userId]);
-    const network = userRes.rows[0]?.network || 'testnet';
+    const network = 'testnet';
 
     // Validate and resolve target user wallet address
     let targetUserPubkey;
@@ -3528,8 +3491,7 @@ app.post('/api/groups/:groupId/leave', async (req, res) => {
     }
 
     // Fetch user's network preference
-    const userRes = await pool.query(`SELECT network FROM users WHERE id = $1`, [userId]);
-    const network = userRes.rows[0]?.network || 'testnet';
+    const network = 'testnet';
 
     // Remove member
     await pool.query(`
@@ -3608,8 +3570,7 @@ app.delete('/api/groups/:groupId', async (req, res) => {
     }
 
     // Fetch user's network preference
-    const userRes = await pool.query(`SELECT network FROM users WHERE id = $1`, [userId]);
-    const network = userRes.rows[0]?.network || 'testnet';
+    const network = 'testnet';
 
     // Delete group (cascades to members and messages)
     await pool.query(`
