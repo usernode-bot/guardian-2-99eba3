@@ -684,6 +684,7 @@ app.get('/api/user', async (req, res) => {
       created_at: created_at,
       bio: bio,
       isDemoMode: ENABLE_DEMO_MODE,
+      appPubkey: APP_PUBKEY,
     });
   } catch (err) {
     console.error('Error fetching user:', err);

@@ -2743,10 +2743,11 @@
     }
 
     // Helper function to check if wallet is available
+    // The Usernode bridge exports window.sendTransaction() as a global function,
+    // not as window.usernode.sendTransaction(). This is the canonical bridge API.
     function isWalletAvailable() {
       return isDemoMode || (
-        typeof window.usernode !== 'undefined' &&
-        typeof window.usernode.sendTransaction === 'function'
+        typeof window.sendTransaction === 'function'
       );
     }
 
@@ -2866,20 +2867,22 @@
 
       // Log bridge availability on page load
       console.log('=== Page Load: Checking UserNode Bridge ===');
-      console.log('window.usernode exists:', typeof window.usernode !== 'undefined');
+      console.log('window.sendTransaction exists (main bridge API):', typeof window.sendTransaction === 'function');
+      console.log('window.usernode exists (supporting APIs):', typeof window.usernode !== 'undefined');
       if (typeof window.usernode !== 'undefined') {
-        console.log('window.usernode object:', window.usernode);
         console.log('Available methods on usernode:', Object.keys(window.usernode));
-        console.log('usernode.sendTransaction exists:', typeof window.usernode.sendTransaction !== 'undefined');
         console.log('usernode.getNodeAddress exists:', typeof window.usernode.getNodeAddress !== 'undefined');
         console.log('usernode.requestLlmAccess exists:', typeof window.usernode.requestLlmAccess !== 'undefined');
+      }
+      if (typeof window.sendTransaction === 'function') {
+        console.log('✓ Bridge wallet API (window.sendTransaction) is available');
       } else {
-        console.warn('UserNode bridge NOT available at startup - window.usernode is undefined');
+        console.warn('UserNode bridge NOT available at startup - window.sendTransaction is undefined');
         console.log(`[Testnet] Waiting for bridge to load with network-aware timeout...`);
         const bridgeLoaded = await waitForBridge(5000, 'testnet');
         if (bridgeLoaded) {
           console.log('✓ Bridge loaded successfully after waiting');
-          console.log('Available methods on usernode:', Object.keys(window.usernode));
+          console.log('window.sendTransaction available:', typeof window.sendTransaction === 'function');
           // Re-run diagnostics after bridge loads
           runBridgeDiagnostics();
         } else {
@@ -3535,23 +3538,15 @@
         console.log('  isDemoMode truthy:', !!isDemoMode);
 
         console.log('\n--- Bridge Availability Check ---');
-        console.log('window.usernode exists:', typeof window.usernode !== 'undefined');
+        console.log('window.sendTransaction exists:', typeof window.sendTransaction !== 'undefined');
+        console.log('window.sendTransaction callable:', typeof window.sendTransaction === 'function');
 
         if (typeof window.usernode !== 'undefined') {
-          console.log('window.usernode object:', window.usernode);
+          console.log('window.usernode object available:', typeof window.usernode);
           const methods = Object.keys(window.usernode);
-          console.log('Available bridge methods:', methods);
-          console.log('Number of methods:', methods.length);
-          console.log('Method details:');
-          methods.forEach(method => {
-            const type = typeof window.usernode[method];
-            const isFunc = type === 'function' ? '✓ FUNCTION' : type;
-            console.log(`  - ${method}: ${isFunc}`);
-          });
-          console.log('sendTransaction method:', typeof window.usernode.sendTransaction);
-          console.log('sendTransaction callable:', typeof window.usernode.sendTransaction === 'function');
+          console.log('Available usernode methods:', methods);
         } else {
-          console.error('CRITICAL: window.usernode is undefined - bridge not loaded');
+          console.warn('window.usernode not available (this is normal - the bridge may use other export patterns)');
         }
 
         console.log('\n--- Wallet Provider Detection ---');
@@ -3696,9 +3691,8 @@
               // Max retries exceeded
               console.log('\n--- Wallet Availability Check FAILED After All Retries ---');
               console.error('Wallet not available after all retry attempts:');
-              console.error('- typeof window.usernode:', typeof window.usernode);
-              console.error('- window.usernode value:', window.usernode);
-              console.error('- window.usernode.sendTransaction:', window.usernode?.sendTransaction);
+              console.error('- typeof window.sendTransaction:', typeof window.sendTransaction);
+              console.error('- window.sendTransaction is function:', typeof window.sendTransaction === 'function');
               console.error('- isWalletAvailable() result:', isWalletAvailable());
 
               // Retrieve and log stored diagnostics
@@ -3724,20 +3718,36 @@
         }
 
         console.log('\n--- Wallet Available - Preparing Transaction ---');
-        const txPayload = {
-          type: 'application',
-          actionType: pendingWalletAction.action,
-          details: pendingWalletAction.details,
-          network: 'testnet'
-        };
-        console.log(`[${'testnet'}] Transaction payload:`, txPayload);
-        console.log(`[${'testnet'}] Calling window.usernode.sendTransaction()...`);
 
-        // Send transaction to wallet using qualified reference
+        // Build memo from action and details using the Last One Wins pattern
+        const memo = JSON.stringify({
+          app: 'guardian',
+          action: pendingWalletAction.action,
+          details: pendingWalletAction.details
+        });
+
+        // Validate memo size (bridge has 1024 byte limit)
+        if (memo.length > 1024) {
+          throw new Error(`Transaction memo too large (${memo.length} > 1024 bytes)`);
+        }
+
+        console.log(`[${'testnet'}] Transaction memo:`, memo);
+        console.log(`[${'testnet'}] Calling window.sendTransaction()...`);
+
+        // Send transaction to wallet using the correct bridge API signature
+        // The bridge exports window.sendTransaction(destination_pubkey, amount, memo, opts)
         let txResult;
         try {
           console.log(`[${'testnet'}] Invoking wallet signing...`);
-          txResult = await window.usernode.sendTransaction(txPayload);
+          // Use app pubkey from current user data (set from server response)
+          const appPubkey = currentUser?.appPubkey || 'ut1Fww7onqF9LsRSb6d6BozgQWtjNYqQJghYxXmBc8foncb';
+          const confirmTitle = pendingWalletAction.action.charAt(0).toUpperCase() + pendingWalletAction.action.slice(1);
+          txResult = await window.sendTransaction(
+            appPubkey,
+            1,
+            memo,
+            { confirmTitle: confirmTitle }
+          );
           console.log(`✓ [${'testnet'}] sendTransaction returned successfully`);
         } catch (signErr) {
           console.log('\n--- Wallet Signature Error ---');
@@ -3790,9 +3800,10 @@
         console.error('Full error object:', err);
 
         console.log('\n--- Bridge State at Error Time ---');
-        console.log(`[${'testnet'}] window.usernode exists:`, typeof window.usernode !== 'undefined');
+        console.log(`[${'testnet'}] window.sendTransaction exists:`, typeof window.sendTransaction !== 'undefined');
+        console.log(`[${'testnet'}] window.sendTransaction callable:`, typeof window.sendTransaction === 'function');
         if (typeof window.usernode !== 'undefined') {
-          console.log(`[${'testnet'}] Available methods:`, Object.keys(window.usernode));
+          console.log(`[${'testnet'}] Available usernode methods:`, Object.keys(window.usernode));
         }
 
         // Retrieve and log stored diagnostics if available
