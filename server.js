@@ -1290,7 +1290,7 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       // Async: submit to blockchain in the background (production only, no frontend tx hash)
       (async () => {
         try {
-          const result = await sendTransactionToBridge(transactionPayload, network);
+          const result = await sendTransactionToBridge(transactionPayload, null, network);
           // Update audit log with real tx hash
           await pool.query(`
             UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
@@ -1534,7 +1534,7 @@ app.post('/api/tokens/send', async (req, res) => {
           console.error('Sidecar token transfer error:', err);
           // Fall back to bridge approach
           try {
-            const result = await sendTransactionToBridge(transactionPayload, network);
+            const result = await sendTransactionToBridge(transactionPayload, null, network);
             await pool.query(`
               UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
             `, [result.txHash, blockchainRecordingId]);
@@ -1652,7 +1652,7 @@ app.post('/api/blockchain-audit/:auditLogId/retry', async (req, res) => {
           ? JSON.parse(auditLog.transaction_payload)
           : (auditLog.transaction_payload || {});
         const network = payload.network || 'testnet';
-        const result = await sendTransactionToBridge(payload, network);
+        const result = await sendTransactionToBridge(payload, null, network);
         // Update audit log with new tx hash
         await pool.query(`
           UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
@@ -2872,7 +2872,7 @@ app.post('/api/groups', async (req, res) => {
       (async () => {
         try {
           console.log(`[POST /api/groups::BLOCKCHAIN::ASYNC] Background task started for auditId=${blockchainRecordingId}`);
-          const result = await sendTransactionToBridge(transactionPayload, network);
+          const result = await sendTransactionToBridge(transactionPayload, null, network);
           console.log(`[POST /api/groups::BLOCKCHAIN::ASYNC] Bridge returned txHash=${result.txHash}, status=${result.status}`);
 
           // Update audit log with real tx hash
@@ -3069,7 +3069,7 @@ app.put('/api/groups/:groupId', async (req, res) => {
     // Async: submit to blockchain in the background
     (async () => {
       try {
-        const result = await sendTransactionToBridge(transactionPayload, network);
+        const result = await sendTransactionToBridge(transactionPayload, null, network);
         // Update audit log with real tx hash
         await pool.query(`
           UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
@@ -3239,7 +3239,7 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
       // Async: submit to blockchain in the background (production only)
       (async () => {
         try {
-          const result = await sendTransactionToBridge(transactionPayload, network);
+          const result = await sendTransactionToBridge(transactionPayload, null, network);
           // Update audit log with real tx hash
           await pool.query(`
             UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
@@ -3441,7 +3441,7 @@ app.post('/api/groups/:groupId/members', async (req, res) => {
     // Async: submit to blockchain in the background
     (async () => {
       try {
-        const result = await sendTransactionToBridge(transactionPayload, network);
+        const result = await sendTransactionToBridge(transactionPayload, null, network);
         // Update audit log with real tx hash
         await pool.query(`
           UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
@@ -3536,7 +3536,7 @@ app.delete('/api/groups/:groupId/members/:userId', async (req, res) => {
     // Async: submit to blockchain in the background
     (async () => {
       try {
-        const result = await sendTransactionToBridge(transactionPayload, network);
+        const result = await sendTransactionToBridge(transactionPayload, null, network);
         // Update audit log with real tx hash
         await pool.query(`
           UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
@@ -3611,7 +3611,7 @@ app.post('/api/groups/:groupId/leave', async (req, res) => {
     // Async: submit to blockchain in the background
     (async () => {
       try {
-        const result = await sendTransactionToBridge(transactionPayload, network);
+        const result = await sendTransactionToBridge(transactionPayload, null, network);
         // Update audit log with real tx hash
         await pool.query(`
           UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
@@ -3689,7 +3689,7 @@ app.delete('/api/groups/:groupId', async (req, res) => {
     // Async: submit to blockchain in the background
     (async () => {
       try {
-        const result = await sendTransactionToBridge(transactionPayload, network);
+        const result = await sendTransactionToBridge(transactionPayload, null, network);
         // Update audit log with real tx hash
         await pool.query(`
           UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
