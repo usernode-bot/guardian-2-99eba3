@@ -1264,6 +1264,36 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
     // Sign memo following Last One Wins pattern
     const memo = signTransactionMemo(transactionPayload);
 
+    // Check for duplicate transactions (race condition detection)
+    // Same user + content_hash + message_type within 2 minutes = likely duplicate from retry
+    const duplicateCheck = await pool.query(`
+      SELECT id, tx_hash, created_at FROM blockchain_audit_logs
+      WHERE user_id = $1
+      AND message_type = $2
+      AND content_hash = $3
+      AND created_at > NOW() - INTERVAL '2 minutes'
+      ORDER BY created_at DESC
+      LIMIT 1
+    `, [userId, 'message', contentHash]);
+
+    if (duplicateCheck.rows.length > 0) {
+      const existingLog = duplicateCheck.rows[0];
+      const timeSincePrevious = Date.now() - new Date(existingLog.created_at).getTime();
+      console.log(`[MESSAGE] Duplicate transaction detected! Existing auditLogId=${existingLog.id}, txHash=${existingLog.tx_hash}, time since: ${timeSincePrevious}ms`);
+      console.log(`[MESSAGE] This indicates a race condition: wallet signed (${txHash}) but timeout fired before callback on previous attempt`);
+      // Return the existing audit log instead of creating a duplicate
+      const blockchainRecordingId = existingLog.id;
+      console.log(`[MESSAGE] Returning existing audit log to prevent duplicate submission`);
+      res.json({
+        id: messageId,
+        createdAt: new Date(now),
+        blockchainRecordingId: blockchainRecordingId,
+        isDuplicate: true,
+        note: 'Transaction already recorded - previous attempt succeeded despite timeout error'
+      });
+      return;
+    }
+
     // Use real tx hash from frontend if provided, otherwise generate placeholder
     const actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-message-' + messageId + '-' + Date.now() : 'ut1-' + network + '-tx-msg-' + Math.random().toString(36).substr(2, 9));
     const auditStatus = txHash ? 'pending' : (ENABLE_DEMO_MODE ? 'confirmed' : 'pending');
@@ -1513,6 +1543,40 @@ app.post('/api/tokens/send', async (req, res) => {
 
     // Sign memo following Last One Wins pattern
     const txMemo = signTransactionMemo(transactionPayload);
+
+    // Check for duplicate transactions (race condition detection)
+    // Same user + content_hash + message_type within 2 minutes = likely duplicate from retry
+    const tokenDuplicateCheck = await pool.query(`
+      SELECT id, tx_hash, created_at FROM blockchain_audit_logs
+      WHERE user_id = $1
+      AND message_type = $2
+      AND content_hash = $3
+      AND created_at > NOW() - INTERVAL '2 minutes'
+      ORDER BY created_at DESC
+      LIMIT 1
+    `, [userId, 'token_transfer', contentHash]);
+
+    if (tokenDuplicateCheck.rows.length > 0) {
+      const existingLog = tokenDuplicateCheck.rows[0];
+      const timeSincePrevious = Date.now() - new Date(existingLog.created_at).getTime();
+      console.log(`[TOKEN] Duplicate transaction detected! Existing auditLogId=${existingLog.id}, txHash=${existingLog.tx_hash}, time since: ${timeSincePrevious}ms`);
+      console.log(`[TOKEN] This indicates a race condition: wallet signed (${txHash}) but timeout fired before callback on previous attempt`);
+      // Return the existing audit log instead of creating a duplicate
+      const blockchainRecordingId = existingLog.id;
+      console.log(`[TOKEN] Returning existing audit log to prevent duplicate submission`);
+      res.json({
+        blockchainRecordingId: blockchainRecordingId,
+        txHash: existingLog.tx_hash,
+        status: 'pending',
+        sender: userId,
+        recipient: recipientId,
+        amount,
+        memo: memo || '',
+        isDuplicate: true,
+        note: 'Transaction already recorded - previous attempt succeeded despite timeout error'
+      });
+      return;
+    }
 
     // Use real tx hash from frontend if provided, otherwise generate placeholder
     const actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-token-' + Date.now() : 'ut1-' + network + '-tx-token-' + Math.random().toString(36).substr(2, 9));
