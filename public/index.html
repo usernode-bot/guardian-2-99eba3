@@ -2861,8 +2861,12 @@
       return validation;
     }
 
-    // Wait for bridge to load with timeout
-    async function waitForBridge(timeoutMs = 3000) {
+    // Wait for bridge to load with timeout (network-aware)
+    async function waitForBridge(timeoutMs, network = currentNetwork || 'testnet') {
+      // Use network-aware default timeout if not specified
+      if (timeoutMs === undefined) {
+        timeoutMs = network === 'testnet' ? 5000 : 3000;
+      }
       const startTime = Date.now();
       while (!isWalletAvailable() && (Date.now() - startTime) < timeoutMs) {
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -2940,6 +2944,14 @@
       window.__guardianBridgeDiagnostic = diagnostic;
       console.log('Diagnostic stored at window.__guardianBridgeDiagnostic');
 
+      // Store in sessionStorage for error context retrieval later
+      try {
+        sessionStorage.setItem('bridgeDiagnostics', JSON.stringify(diagnostic));
+        console.log('Diagnostic also stored to sessionStorage');
+      } catch (e) {
+        console.warn('Failed to store diagnostic to sessionStorage:', e.message);
+      }
+
       return diagnostic;
     }
 
@@ -2959,15 +2971,15 @@
         console.log('usernode.requestLlmAccess exists:', typeof window.usernode.requestLlmAccess !== 'undefined');
       } else {
         console.warn('UserNode bridge NOT available at startup - window.usernode is undefined');
-        console.log('Waiting for bridge to load...');
-        const bridgeLoaded = await waitForBridge(3000);
+        console.log(`[Testnet] Waiting for bridge to load with network-aware timeout...`);
+        const bridgeLoaded = await waitForBridge(5000, 'testnet');
         if (bridgeLoaded) {
-          console.log('Bridge loaded successfully after waiting');
+          console.log('✓ Bridge loaded successfully after waiting');
           console.log('Available methods on usernode:', Object.keys(window.usernode));
           // Re-run diagnostics after bridge loads
           runBridgeDiagnostics();
         } else {
-          console.error('CRITICAL: UserNode bridge failed to load after 3 second timeout');
+          console.error('CRITICAL: UserNode bridge failed to load after 5 second timeout');
           console.warn('Wallet features will not be available');
         }
       }
@@ -3680,23 +3692,127 @@
         }
 
         // Check wallet availability using qualified reference (window.usernode)
-        if (!isWalletAvailable()) {
-          console.log('\n--- Wallet Availability Check FAILED on First Attempt ---');
-          console.log('Bridge may still be loading. Waiting up to 2 seconds for bridge...');
-          const bridgeLoadedOnRetry = await waitForBridge(2000);
+        let retryCount = 0;
+        const maxRetries = 3;
 
-          if (bridgeLoadedOnRetry) {
-            console.log('✓ Bridge loaded successfully on retry');
-            console.log('Available methods:', Object.keys(window.usernode));
+        while (retryCount < maxRetries) {
+          if (!isWalletAvailable()) {
+            retryCount++;
+            console.log(`\n--- Wallet Availability Check FAILED on Attempt ${retryCount} ---`);
+            console.log(`[${currentNetwork || 'testnet'}] Bridge timeout on attempt ${retryCount}. Network: ${currentNetwork || 'testnet'}. Retrying...`);
+            console.log('Available methods on window.usernode:', Object.keys(window.usernode || {}));
+
+            console.log('Bridge may still be loading. Waiting up to 2 seconds for bridge...');
+            const bridgeLoadedOnRetry = await waitForBridge(2000, currentNetwork || 'testnet');
+
+            if (bridgeLoadedOnRetry) {
+              console.log('✓ Bridge loaded successfully on retry');
+              console.log('Available methods:', Object.keys(window.usernode));
+              break;
+            } else if (retryCount < maxRetries) {
+              // Show retry dialog instead of throwing immediately
+              console.log(`Bridge not available after attempt ${retryCount}. Showing retry dialog...`);
+
+              // Create and show retry dialog
+              const shouldRetry = await new Promise((resolve) => {
+                // Create modal overlay and dialog
+                const overlay = document.createElement('div');
+                overlay.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50';
+                overlay.id = 'bridgeRetryDialog';
+
+                const dialog = document.createElement('div');
+                dialog.className = 'bg-white dark:bg-zinc-800 rounded-lg shadow-xl p-6 max-w-sm mx-auto';
+
+                const title = document.createElement('h2');
+                title.className = 'text-lg font-bold text-zinc-900 dark:text-white mb-2';
+                title.textContent = 'Wallet Connection Failed';
+
+                const message = document.createElement('p');
+                message.className = 'text-sm text-zinc-600 dark:text-zinc-300 mb-4';
+                message.innerHTML = `Usernode wallet provider is not available for network <strong>${currentNetwork || 'testnet'}</strong>. This might be a temporary issue.`;
+
+                const details = document.createElement('p');
+                details.className = 'text-xs text-zinc-500 dark:text-zinc-400 mb-4 font-mono';
+                details.innerHTML = `Attempt ${retryCount} of ${maxRetries}`;
+
+                const buttonContainer = document.createElement('div');
+                buttonContainer.className = 'flex gap-3';
+
+                const retryBtn = document.createElement('button');
+                retryBtn.className = 'flex-1 px-4 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg font-medium transition';
+                retryBtn.textContent = 'Retry';
+                retryBtn.onclick = () => {
+                  overlay.remove();
+                  resolve(true);
+                };
+
+                const cancelBtn = document.createElement('button');
+                cancelBtn.className = 'flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-600 hover:bg-zinc-400 dark:hover:bg-zinc-700 text-zinc-900 dark:text-white rounded-lg font-medium transition';
+                cancelBtn.textContent = 'Cancel';
+                cancelBtn.onclick = () => {
+                  overlay.remove();
+                  resolve(false);
+                };
+
+                buttonContainer.appendChild(retryBtn);
+                buttonContainer.appendChild(cancelBtn);
+
+                dialog.appendChild(title);
+                dialog.appendChild(message);
+                dialog.appendChild(details);
+                dialog.appendChild(buttonContainer);
+                overlay.appendChild(dialog);
+                document.body.appendChild(overlay);
+              });
+
+              if (!shouldRetry) {
+                console.log('User cancelled wallet retry');
+                console.log('\n--- Bridge State at Cancellation ---');
+                console.log('window.usernode exists:', typeof window.usernode !== 'undefined');
+                if (typeof window.usernode !== 'undefined') {
+                  console.log('Available methods:', Object.keys(window.usernode));
+                }
+                // Retrieve and log stored diagnostics
+                try {
+                  const storedDiag = sessionStorage.getItem('bridgeDiagnostics');
+                  if (storedDiag) {
+                    console.log('Stored Bridge Diagnostics:', JSON.parse(storedDiag));
+                  }
+                } catch (e) {
+                  console.warn('Could not retrieve stored diagnostics:', e.message);
+                }
+                throw new Error(`Wallet provider unavailable for network "${currentNetwork || 'testnet'}". Please check your internet connection and refresh the page to ensure Usernode bridge is loaded.`);
+              }
+              // Continue loop to retry
+            } else {
+              // Max retries exceeded
+              console.log('\n--- Wallet Availability Check FAILED After All Retries ---');
+              console.error('Wallet not available after all retry attempts:');
+              console.error('- typeof window.usernode:', typeof window.usernode);
+              console.error('- window.usernode value:', window.usernode);
+              console.error('- window.usernode.sendTransaction:', window.usernode?.sendTransaction);
+              console.error('- isWalletAvailable() result:', isWalletAvailable());
+
+              // Retrieve and log stored diagnostics
+              try {
+                const storedDiag = sessionStorage.getItem('bridgeDiagnostics');
+                if (storedDiag) {
+                  console.log('Stored Bridge Diagnostics:', JSON.parse(storedDiag));
+                }
+              } catch (e) {
+                console.warn('Could not retrieve stored diagnostics:', e.message);
+              }
+
+              throw new Error(`Wallet provider unavailable for network "${currentNetwork || 'testnet'}". Please check your internet connection and refresh the page to ensure Usernode bridge is loaded.`);
+            }
           } else {
-            console.log('\n--- Wallet Availability Check FAILED After Retry ---');
-            console.error('Wallet not available after waiting:');
-            console.error('- typeof window.usernode:', typeof window.usernode);
-            console.error('- window.usernode value:', window.usernode);
-            console.error('- window.usernode.sendTransaction:', window.usernode?.sendTransaction);
-            console.error('- isWalletAvailable() result:', isWalletAvailable());
-            throw new Error('Wallet provider unavailable. Please check your internet connection and refresh the page to ensure Usernode bridge is loaded.');
+            // Wallet is available, break out of loop
+            break;
           }
+        }
+
+        if (isWalletAvailable()) {
+          console.log(`[${currentNetwork || 'testnet'}] Bridge available - proceeding with transaction`);
         }
 
         console.log('\n--- Wallet Available - Preparing Transaction ---');
@@ -3706,15 +3822,15 @@
           details: pendingWalletAction.details,
           network: currentNetwork || 'testnet'
         };
-        console.log('Transaction payload:', txPayload);
-        console.log('Calling window.usernode.sendTransaction()...');
+        console.log(`[${currentNetwork || 'testnet'}] Transaction payload:`, txPayload);
+        console.log(`[${currentNetwork || 'testnet'}] Calling window.usernode.sendTransaction()...`);
 
         // Send transaction to wallet using qualified reference
         let txResult;
         try {
-          console.log('Invoking wallet signing...');
+          console.log(`[${currentNetwork || 'testnet'}] Invoking wallet signing...`);
           txResult = await window.usernode.sendTransaction(txPayload);
-          console.log('✓ sendTransaction returned successfully');
+          console.log(`✓ [${currentNetwork || 'testnet'}] sendTransaction returned successfully`);
         } catch (signErr) {
           console.log('\n--- Wallet Signature Error ---');
           console.error('Wallet signature failed:', signErr);
@@ -3740,12 +3856,12 @@
         console.log('txHash value:', txResult?.txHash);
 
         if (txResult && txResult.txHash) {
-          console.log('✓ Transaction hash obtained:', txResult.txHash);
-          console.log('Calling action handler...');
+          console.log(`✓ [${currentNetwork || 'testnet'}] Transaction hash obtained:`, txResult.txHash);
+          console.log(`[${currentNetwork || 'testnet'}] Calling action handler...`);
           // User approved - call the action handler
           const result = await pendingWalletAction.onApprove(txResult.txHash);
-          console.log('✓ Action handler completed successfully');
-          console.log('Result:', result);
+          console.log(`✓ [${currentNetwork || 'testnet'}] Action handler completed successfully`);
+          console.log(`[${currentNetwork || 'testnet'}] Result:`, result);
           if (walletConfirmResolver) {
             walletConfirmResolver.resolve(result);
             walletConfirmResolver = null;
@@ -3759,22 +3875,32 @@
         console.log('\n╔════════════════════════════════════════════════════════════════╗');
         console.log('║          Wallet Confirmation Error - Full Context              ║');
         console.log('╚════════════════════════════════════════════════════════════════╝');
-        console.error('Error message:', err.message);
+        console.error(`[${currentNetwork || 'testnet'}] Error message:`, err.message);
         console.error('Error name:', err.name);
         console.error('Error code:', err.code);
         console.error('Error stack:', err.stack);
         console.error('Full error object:', err);
 
         console.log('\n--- Bridge State at Error Time ---');
-        console.log('window.usernode exists:', typeof window.usernode !== 'undefined');
+        console.log(`[${currentNetwork || 'testnet'}] window.usernode exists:`, typeof window.usernode !== 'undefined');
         if (typeof window.usernode !== 'undefined') {
-          console.log('Available methods:', Object.keys(window.usernode));
+          console.log(`[${currentNetwork || 'testnet'}] Available methods:`, Object.keys(window.usernode));
+        }
+
+        // Retrieve and log stored diagnostics if available
+        try {
+          const storedDiag = sessionStorage.getItem('bridgeDiagnostics');
+          if (storedDiag) {
+            console.log(`[${currentNetwork || 'testnet'}] Stored Bridge Diagnostics:`, JSON.parse(storedDiag));
+          }
+        } catch (e) {
+          console.warn('Could not retrieve stored diagnostics:', e.message);
         }
 
         // Provide clearer error messages to user
         let userMessage = err.message || 'Failed to sign transaction';
         if (userMessage.includes('usernode is not defined')) {
-          userMessage = 'Wallet provider not available - bridge failed to load';
+          userMessage = `Wallet provider not available for network "${currentNetwork || 'testnet'}" - bridge failed to load`;
         } else if (!userMessage.startsWith('Wallet') && !userMessage.startsWith('Bridge')) {
           userMessage = 'Wallet error: ' + userMessage;
         }
