@@ -140,12 +140,13 @@ async function pollTransactionStatus(chainId, txHash, auditLogId) {
 
             if (isConfirmed) {
               // Update audit log to confirmed
+              const confirmTime = new Date();
               await pool.query(`
                 UPDATE blockchain_audit_logs
-                SET status = 'confirmed', confirmed_at = NOW(), updated_at = NOW()
-                WHERE id = $1
-              `, [auditLogId]);
-              console.log(`[Chain Poller] Transaction ${txHash} confirmed for audit log ${auditLogId}`);
+                SET status = 'confirmed', confirmed_at = $1, updated_at = $1
+                WHERE id = $2
+              `, [confirmTime, auditLogId]);
+              console.log(`[Chain Poller] ✓ Transaction ${txHash} confirmed at ${confirmTime.toISOString()} for audit log ${auditLogId}`);
               resolve(true);
             } else {
               resolve(false);
@@ -178,8 +179,11 @@ async function pollTransactionStatus(chainId, txHash, auditLogId) {
 async function startChainPoller(chainId, txHash, auditLogId) {
   const pollerId = `${chainId}:${txHash}`;
 
+  console.log(`[Chain Poller] Starting poller for txHash=${txHash}, chainId=${chainId}, auditLogId=${auditLogId}`);
+
   // Skip if already polling this transaction
   if (chainPollers.has(pollerId)) {
+    console.log(`[Chain Poller] Already polling this transaction, skipping: ${pollerId}`);
     return;
   }
 
@@ -1193,6 +1197,10 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
+    console.log(`[MESSAGE] POST /api/conversations/${convId}/messages by user ${userId}`);
+    console.log(`[MESSAGE] txHash provided: ${txHash ? 'yes - ' + txHash : 'no'}`);
+    console.log(`[MESSAGE] Frontend content hash: ${frontendContentHash || 'none'}`);
+
     // Validate wallet connection before proceeding with message transaction
     if (!req.user.usernode_pubkey) {
       return res.status(401).json({ error: 'Must be connected to Usernode wallet to send messages' });
@@ -1259,12 +1267,17 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
     // Use real tx hash from frontend if provided, otherwise generate placeholder
     const actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-message-' + messageId + '-' + Date.now() : 'ut1-' + network + '-tx-msg-' + Math.random().toString(36).substr(2, 9));
     const auditStatus = txHash ? 'pending' : (ENABLE_DEMO_MODE ? 'confirmed' : 'pending');
+
+    console.log(`[MESSAGE] Recording blockchain audit log: messageId=${messageId}, txHash=${actualTxHash}, status=${auditStatus}, contentHash=${contentHash}`);
+
     const auditRes = await pool.query(`
       INSERT INTO blockchain_audit_logs (user_id, message_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
       RETURNING id
     `, [userId, messageId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, now]);
     const blockchainRecordingId = auditRes.rows[0].id;
+
+    console.log(`[MESSAGE] Blockchain audit log created: auditLogId=${blockchainRecordingId}`);
 
     // Update message with audit log reference
     await pool.query(`
@@ -1283,6 +1296,7 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
 
     // If real tx hash provided from frontend, start polling immediately
     if (txHash) {
+      console.log(`[MESSAGE] Real txHash from frontend - starting chain poller for txHash=${txHash}, auditLogId=${blockchainRecordingId}`);
       startChainPoller(network, txHash, blockchainRecordingId).catch(err => {
         console.error('Error starting chain poller:', err);
       });
@@ -1451,6 +1465,11 @@ app.post('/api/tokens/send', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
+    console.log(`[TOKEN] POST /api/tokens/send by user ${userId}`);
+    console.log(`[TOKEN] Recipient: ${recipientId}, Amount: ${amount}`);
+    console.log(`[TOKEN] txHash provided: ${txHash ? 'yes - ' + txHash : 'no'}`);
+    console.log(`[TOKEN] Frontend content hash: ${frontendContentHash || 'none'}`);
+
     // Validate wallet connection before proceeding with transaction
     if (!req.user.usernode_pubkey) {
       return res.status(401).json({ error: 'Must be connected to Usernode wallet to send tokens' });
@@ -1498,6 +1517,9 @@ app.post('/api/tokens/send', async (req, res) => {
     // Use real tx hash from frontend if provided, otherwise generate placeholder
     const actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-token-' + Date.now() : 'ut1-' + network + '-tx-token-' + Math.random().toString(36).substr(2, 9));
     const auditStatus = txHash ? 'pending' : (ENABLE_DEMO_MODE ? 'confirmed' : 'pending');
+
+    console.log(`[TOKEN] Recording blockchain audit log: txHash=${actualTxHash}, status=${auditStatus}, contentHash=${contentHash}`);
+
     const auditRes = await pool.query(`
       INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
@@ -1505,8 +1527,11 @@ app.post('/api/tokens/send', async (req, res) => {
     `, [userId, 'token_transfer', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, req.user.usernode_pubkey || null, now, now]);
     const blockchainRecordingId = auditRes.rows[0].id;
 
+    console.log(`[TOKEN] Blockchain audit log created: auditLogId=${blockchainRecordingId}`);
+
     // If real tx hash provided from frontend, start polling immediately
     if (txHash) {
+      console.log(`[TOKEN] Real txHash from frontend - starting chain poller for txHash=${txHash}, auditLogId=${blockchainRecordingId}`);
       startChainPoller(network, txHash, blockchainRecordingId).catch(err => {
         console.error('Error starting chain poller:', err);
       });

@@ -1704,9 +1704,11 @@
     // Wallet confirmation state
     let pendingWalletAction = null;
     let walletConfirmResolver = null;
+    let pendingSignatureTimestamp = null;
+    let lastWalletResponse = null;
 
-    // Wallet signature timeout in milliseconds (60 seconds for slower networks)
-    const WALLET_SIGNATURE_TIMEOUT_MS = 60000;
+    // Wallet signature timeout in milliseconds (90 seconds for slower networks and relay latency)
+    const WALLET_SIGNATURE_TIMEOUT_MS = 90000;
 
     // Splash screen initialization
     function initSplashScreen() {
@@ -2771,16 +2773,33 @@
       return validation;
     }
 
-    // Wrap a promise with a timeout deadline
+    // Wrap a promise with a timeout deadline and comprehensive logging
     async function withTimeout(promise, timeoutMs, label = 'Operation') {
+      const startTime = Date.now();
+      console.log(`[Timeout] Starting ${label} with ${timeoutMs}ms deadline at T=${startTime}`);
+
       return Promise.race([
-        promise,
-        new Promise((_, reject) =>
-          setTimeout(
-            () => reject(new Error(`${label} timed out after ${timeoutMs}ms. Bridge relay did not respond.`)),
-            timeoutMs
-          )
-        )
+        promise.then(result => {
+          const elapsed = Date.now() - startTime;
+          console.log(`[Timeout] ${label} resolved successfully in ${elapsed}ms`);
+          console.log(`[Timeout] Result received:`, result);
+          lastWalletResponse = { result, timestamp: Date.now(), elapsed };
+          return result;
+        }).catch(err => {
+          const elapsed = Date.now() - startTime;
+          console.log(`[Timeout] ${label} promise rejected after ${elapsed}ms:`, err.message);
+          throw err;
+        }),
+        new Promise((_, reject) => {
+          const timeoutHandle = setTimeout(() => {
+            const elapsed = Date.now() - startTime;
+            console.log(`[Timeout] ${label} deadline reached at ${elapsed}ms (limit: ${timeoutMs}ms)`);
+            const err = new Error(`${label} timed out after ${timeoutMs}ms. Bridge relay did not respond.`);
+            err.isTimeout = true;
+            err.elapsed = elapsed;
+            reject(err);
+          }, timeoutMs);
+        })
       ]);
     }
 
@@ -3854,7 +3873,7 @@
                 // Continue loop to retry
                 continue;
               } else {
-                throw new Error('Wallet signature timed out after 60 seconds on both attempts. Please refresh the page and try again, or check if your wallet extension needs attention.');
+                throw new Error(`Wallet signature timed out after ${WALLET_SIGNATURE_TIMEOUT_MS/1000} seconds on both attempts. Please refresh the page and try again, or check if your wallet extension needs attention.`);
               }
             } else if (signErr.message && signErr.message.includes('cancelled')) {
               throw new Error('User cancelled wallet signature');
@@ -3872,13 +3891,19 @@
         console.log('txHash value:', txResult?.txHash);
 
         if (txResult && txResult.txHash) {
+          const callbackStartTime = Date.now();
           console.log(`✓ [${'testnet'}] Transaction hash obtained:`, txResult.txHash);
-          console.log(`[${'testnet'}] Calling action handler...`);
+          console.log(`[Callback] Starting action handler at T=${callbackStartTime}`);
+          console.log(`[Callback] txHash value being passed:`, txResult.txHash);
+
           // User approved - call the action handler
           const result = await pendingWalletAction.onApprove(txResult.txHash);
-          console.log(`✓ [${'testnet'}] Action handler completed successfully`);
+
+          const callbackElapsed = Date.now() - callbackStartTime;
+          console.log(`✓ [${'testnet'}] Action handler completed successfully in ${callbackElapsed}ms`);
           console.log(`[${'testnet'}] Result:`, result);
           if (walletConfirmResolver) {
+            console.log(`[Callback] Resolving promise with result`);
             walletConfirmResolver.resolve(result);
             walletConfirmResolver = null;
           }
@@ -3914,10 +3939,19 @@
           console.warn('Could not retrieve stored diagnostics:', e.message);
         }
 
+        // Log last wallet response if timeout occurred
+        if (err.isTimeout && lastWalletResponse) {
+          console.log('\n--- Last Wallet Response Before Timeout ---');
+          console.log('Response received:', lastWalletResponse);
+          console.log('Note: Wallet may have successfully signed despite timeout error');
+        }
+
         // Provide clearer error messages to user
         let userMessage = err.message || 'Failed to sign transaction';
         if (userMessage.includes('usernode is not defined')) {
           userMessage = `Wallet provider not available for network "${'testnet'}" - bridge failed to load`;
+        } else if (err.isTimeout) {
+          userMessage = `Wallet signature did not respond within ${WALLET_SIGNATURE_TIMEOUT_MS}ms (${Math.round(WALLET_SIGNATURE_TIMEOUT_MS/1000)} seconds). This may be due to network latency or wallet processing delays. Check your network connection and try again.`;
         } else if (!userMessage.startsWith('Wallet') && !userMessage.startsWith('Bridge')) {
           userMessage = 'Wallet error: ' + userMessage;
         }
