@@ -4351,10 +4351,12 @@ app.post('/api/channels', async (req, res) => {
     if (auditLogId) {
       await pool.query(`
         UPDATE blockchain_audit_logs
-        SET tx_hash = $1, status = 'confirmed', confirmed_at = NOW()
+        SET tx_hash = $1, status = 'confirmed', confirmed_at = NOW(), message_type = 'channel_create', channel_name = $4
         WHERE id = $2 AND user_id = $3
-      `, [txHash, auditLogId, userId]);
+      `, [txHash, auditLogId, userId, name]);
     }
+
+    const blockchainRecordingId = auditLogId;
 
     res.status(201).json({
       id: channel.id,
@@ -4368,7 +4370,8 @@ app.post('/api/channels', async (req, res) => {
       isFeatured: channel.is_featured,
       isSystem: channel.is_system,
       createdAt: channel.created_at,
-      updatedAt: channel.updated_at
+      updatedAt: channel.updated_at,
+      blockchainRecordingId: blockchainRecordingId
     });
   } catch (err) {
     console.error('Error creating channel:', err);

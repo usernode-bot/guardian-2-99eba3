@@ -1547,6 +1547,9 @@
       } else if (type === 'group_create') {
         icon = '👥';
         description = `Created group '${escapeHtml(data.groupName || 'group')}'`;
+      } else if (type === 'channel_create') {
+        icon = '📢';
+        description = `Created channel '${escapeHtml(data.channelName || 'channel')}'`;
       }
 
       // Determine status badge based on confirmation status
@@ -1626,6 +1629,13 @@
           typeLabel = 'Group Created';
           details = `<div class="text-sm text-zinc-600 dark:text-zinc-400">
             <div>Group: <span class="font-medium text-zinc-900 dark:text-zinc-100">${escapeHtml(data.groupName || 'Unknown')}</span></div>
+          </div>`;
+        } else if (data.messageType === 'channel_create') {
+          typeIcon = '📢';
+          typeLabel = 'Channel Created';
+          details = `<div class="text-sm text-zinc-600 dark:text-zinc-400">
+            <div>Channel: <span class="font-medium text-zinc-900 dark:text-zinc-100">${escapeHtml(data.channelName || 'Unknown')}</span></div>
+            <div>Category: <span class="font-medium text-zinc-900 dark:text-zinc-100">${escapeHtml(payload.category || 'Unknown')}</span></div>
           </div>`;
         }
 
