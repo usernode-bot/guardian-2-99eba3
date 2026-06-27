@@ -2565,21 +2565,35 @@
     }
 
     async function showDeleteContactModal(contactId, username) {
-      pendingDeleteContactId = contactId;
-      document.getElementById('deleteContactTitle').textContent = `Delete ${username}?`;
+      // Validate contactId before proceeding
+      const sanitizedContactId = String(contactId).trim();
+
+      if (!sanitizedContactId || !/^\d+$/.test(sanitizedContactId)) {
+        console.error('Invalid contact ID in delete modal:', {contactId, sanitizedContactId});
+        showToast('Error: Invalid contact ID. Please refresh and try again.', 'error');
+        return;
+      }
+
+      pendingDeleteContactId = sanitizedContactId;
+      document.getElementById('deleteContactTitle').textContent = `Delete ${username || 'this contact'}?`;
 
       // Fetch conversation count
       const warningDiv = document.getElementById('deleteContactWarning');
       const warningText = document.getElementById('deleteContactWarningText');
       warningDiv.classList.add('hidden');
 
-      const countData = await apiCall(`/api/contacts/${contactId}/conversation-count`);
+      const countData = await apiCall(`/api/contacts/${sanitizedContactId}/conversation-count`);
       if (countData && !countData.error && countData.conversationCount !== undefined) {
         const count = countData.conversationCount;
         if (count > 0) {
           warningText.textContent = `Also deletes ${count} conversation${count === 1 ? '' : 's'}`;
           warningDiv.classList.remove('hidden');
         }
+      } else if (countData && countData.error) {
+        // If contact doesn't exist or there's an error, show error and don't proceed
+        console.error('Error fetching conversation count:', countData.error);
+        showToast(countData.error || 'Error: Unable to fetch contact details', 'error');
+        return;
       }
 
       document.getElementById('deleteContactModal').classList.remove('hidden');
@@ -2591,7 +2605,18 @@
     }
 
     async function confirmDeleteContact() {
-      if (!pendingDeleteContactId) return;
+      if (!pendingDeleteContactId) {
+        console.warn('No contact ID to delete');
+        return;
+      }
+
+      // Validate contactId format
+      const contactId = String(pendingDeleteContactId).trim();
+      if (!contactId || !/^\d+$/.test(contactId)) {
+        console.error('Invalid contact ID in confirm delete:', {pendingDeleteContactId, contactId});
+        showToast('Error: Invalid contact ID. Please refresh and try again.', 'error');
+        return;
+      }
 
       // Prevent duplicate API calls
       if (isDeleteContactInProgress) {
@@ -2599,7 +2624,6 @@
         return;
       }
 
-      const contactId = pendingDeleteContactId;
       isDeleteContactInProgress = true;
       hideDeleteContactModal();
 
@@ -2649,11 +2673,28 @@
       event.preventDefault();
       event.stopPropagation();
 
-      console.log('Opening menu for contact:', {contactId, contactUserId, contactName});
+      // Ensure contactId is a string of digits (never null/undefined)
+      const sanitizedContactId = String(contactId).trim();
+      const sanitizedUserId = String(contactUserId).trim();
+      const sanitizedName = String(contactName || '').trim();
 
-      currentContactContextMenuId = contactId;
-      currentContactContextMenuUserId = contactUserId;
-      currentContactContextMenuName = contactName;
+      if (!sanitizedContactId || !/^\d+$/.test(sanitizedContactId)) {
+        console.error('Invalid contact ID provided to menu:', {contactId, sanitizedContactId});
+        showToast('Error: Invalid contact. Please refresh and try again.', 'error');
+        return;
+      }
+
+      if (!sanitizedUserId || !/^\d+$/.test(sanitizedUserId)) {
+        console.error('Invalid user ID provided to menu:', {contactUserId, sanitizedUserId});
+        showToast('Error: Invalid contact user. Please refresh and try again.', 'error');
+        return;
+      }
+
+      console.log('Opening menu for contact:', {contactId: sanitizedContactId, contactUserId: sanitizedUserId, contactName: sanitizedName});
+
+      currentContactContextMenuId = sanitizedContactId;
+      currentContactContextMenuUserId = sanitizedUserId;
+      currentContactContextMenuName = sanitizedName;
 
       const menu = document.getElementById('contactContextMenu');
       if (!menu) {
