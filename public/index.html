@@ -3723,6 +3723,37 @@
       }, 0);
     }
 
+    // Helper: Create a pending audit log (Phase 1)
+    async function createPendingAuditLog() {
+      try {
+        const response = await apiCall('/api/transactions/create-pending-audit', {
+          method: 'POST',
+          body: JSON.stringify({})
+        });
+        console.log('[Audit] Created pending audit log:', response.auditLogId);
+        return response.auditLogId;
+      } catch (err) {
+        console.error('[Audit] Failed to create pending audit log:', err);
+        throw err;
+      }
+    }
+
+    // Helper: Register txHash with backend after wallet approval (Phase 2)
+    async function registerTxHashWithBackend(auditLogId, txHash, chainId = 'testnet') {
+      try {
+        const response = await apiCall(`/api/blockchain-audit/${auditLogId}/register-tx`, {
+          method: 'POST',
+          body: JSON.stringify({ txHash, chainId })
+        });
+        console.log('[Audit] Registered txHash with backend:', response.txHash);
+        return response;
+      } catch (err) {
+        console.error('[Audit] Failed to register txHash:', err);
+        // Non-fatal error - continue anyway as the hash will be registered when main transaction is submitted
+        return null;
+      }
+    }
+
     // Create group
     async function createGroup() {
       const name = document.getElementById('groupNameInput').value.trim();
@@ -3731,14 +3762,19 @@
       if (!name) return alert('Group name is required');
 
       try {
-        const txHash = await requestWalletSignature('Create Group', { name, description: desc || '(none)' });
+        // Phase 1: Create pending audit log
+        const auditLogId = await createPendingAuditLog();
+
+        // Phase 2: Request wallet signature and register txHash
+        const txHash = await requestWalletSignature('Create Group', { name, description: desc || '(none)' }, auditLogId);
 
         const data = await apiCall('/api/groups', {
           method: 'POST',
           body: JSON.stringify({
             name,
             description: desc || null,
-            txHash: txHash
+            txHash: txHash,
+            auditLogId: auditLogId
           })
         });
 
@@ -3867,7 +3903,7 @@
     }
 
     // Unified wallet signature flow - single dialog, direct to wallet
-    async function requestWalletSignature(action, details) {
+    async function requestWalletSignature(action, details, auditLogId = null) {
       // Validate wallet connection
       if (!currentUser || !currentUser.usernode_pubkey) {
         console.error('Wallet not connected: currentUser=', currentUser);
@@ -3878,10 +3914,10 @@
       showToast('Requesting wallet signature...', 'info');
 
       // Call wallet signature directly
-      return await executeWalletSignature(action, details);
+      return await executeWalletSignature(action, details, auditLogId);
     }
 
-    async function executeWalletSignature(action, details) {
+    async function executeWalletSignature(action, details, auditLogId = null) {
       try {
         // Validate bridge availability
         if (typeof window.sendTransaction !== 'function') {
@@ -4104,6 +4140,18 @@
         signatureState.txHash = txResult.txHash;
 
         console.log('✓ Wallet signature completed:', txResult.txHash);
+
+        // Phase 3: Register txHash with backend immediately (if audit log exists)
+        if (auditLogId) {
+          console.log(`[Phase3] Registering txHash with backend: auditLogId=${auditLogId}, txHash=${txResult.txHash}`);
+          try {
+            await registerTxHashWithBackend(auditLogId, txResult.txHash, 'testnet');
+            console.log('[Phase3] txHash registered successfully');
+          } catch (regErr) {
+            console.error('[Phase3] Failed to register txHash, but continuing:', regErr);
+          }
+        }
+
         return txResult.txHash;
       } catch (err) {
         console.error('Wallet signature failed:', err.message);
@@ -4965,15 +5013,19 @@
       try {
         const endpoint = currentGroupId ? `/api/groups/${currentGroupId}/messages` : `/api/conversations/${currentConvId}/messages`;
 
+        // Phase 1: Create pending audit log
+        const auditLogId = await createPendingAuditLog();
+
         const txDetails = { message: text.substring(0, 50) + (text.length > 50 ? '...' : '') };
-        const txHash = await requestWalletSignature('Send Message', txDetails);
+        const txHash = await requestWalletSignature('Send Message', txDetails, auditLogId);
 
         const data = await apiCall(endpoint, {
           method: 'POST',
           body: JSON.stringify({
             type: 'text',
             content: { text },
-            txHash: txHash
+            txHash: txHash,
+            auditLogId: auditLogId
           })
         });
 
@@ -5015,10 +5067,13 @@
         try {
           const endpoint = currentGroupId ? `/api/groups/${currentGroupId}/messages` : `/api/conversations/${currentConvId}/messages`;
 
-          const txHash = await requestWalletSignature('Send Image', { imageSize: imageSizeKb + ' KB' });
+          // Phase 1: Create pending audit log
+          const auditLogId = await createPendingAuditLog();
+
+          const txHash = await requestWalletSignature('Send Image', { imageSize: imageSizeKb + ' KB' }, auditLogId);
           const data = await apiCall(endpoint, {
             method: 'POST',
-            body: JSON.stringify({ type: 'image', content: { imageUrl: dataUri }, txHash: txHash })
+            body: JSON.stringify({ type: 'image', content: { imageUrl: dataUri }, txHash: txHash, auditLogId: auditLogId })
           });
 
           if (data && !data.error) {
@@ -5076,7 +5131,10 @@
         sendBtn.textContent = 'Sending...';
 
         try {
-          const txHash = await requestWalletSignature('Send Tokens', { recipient: 'selected contact', amount: `${amount} tokens`, memo: memo || '(none)' });
+          // Phase 1: Create pending audit log
+          const auditLogId = await createPendingAuditLog();
+
+          const txHash = await requestWalletSignature('Send Tokens', { recipient: 'selected contact', amount: `${amount} tokens`, memo: memo || '(none)' }, auditLogId);
 
           const data = await apiCall('/api/tokens/send', {
             method: 'POST',
@@ -5084,7 +5142,8 @@
               recipientId: currentOtherId,
               amount: parseInt(amount),
               memo,
-              txHash: txHash
+              txHash: txHash,
+              auditLogId: auditLogId
             })
           });
 

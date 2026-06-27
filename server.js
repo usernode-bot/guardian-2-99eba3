@@ -1191,7 +1191,7 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
     }
 
     const { convId } = req.params;
-    const { type, content, txHash, contentHash: frontendContentHash } = req.body;
+    const { type, content, txHash, auditLogId, contentHash: frontendContentHash } = req.body;
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
@@ -1300,14 +1300,28 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
 
     console.log(`[MESSAGE] Recording blockchain audit log: messageId=${messageId}, txHash=${actualTxHash}, status=${auditStatus}, contentHash=${contentHash}`);
 
-    const auditRes = await pool.query(`
-      INSERT INTO blockchain_audit_logs (user_id, message_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
-      RETURNING id
-    `, [userId, messageId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, now]);
-    const blockchainRecordingId = auditRes.rows[0].id;
+    let blockchainRecordingId;
+    if (auditLogId) {
+      // Two-phase flow: audit log already exists from wallet signature, just update it
+      console.log(`[MESSAGE] Using existing audit log: id=${auditLogId}`);
+      await pool.query(`
+        UPDATE blockchain_audit_logs
+        SET message_id = $1, message_type = $2, tx_hash = $3, transaction_payload = $4, status = $5, confirmed_at = $6, content_hash = $7, user_pubkey = $8, action_timestamp = $9, updated_at = NOW()
+        WHERE id = $10 AND user_id = $11
+      `, [messageId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, auditLogId, userId]);
+      blockchainRecordingId = auditLogId;
+      console.log(`[MESSAGE] Updated existing audit log: id=${blockchainRecordingId}`);
+    } else {
+      // Single-phase flow: create new audit log
+      const auditRes = await pool.query(`
+        INSERT INTO blockchain_audit_logs (user_id, message_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
+        RETURNING id
+      `, [userId, messageId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, now]);
+      blockchainRecordingId = auditRes.rows[0].id;
 
-    console.log(`[MESSAGE] Blockchain audit log created: auditLogId=${blockchainRecordingId}`);
+      console.log(`[MESSAGE] Blockchain audit log created: auditLogId=${blockchainRecordingId}`);
+    }
 
     // Update message with audit log reference
     await pool.query(`
@@ -1489,7 +1503,7 @@ app.post('/api/tokens/send', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const { recipientId, amount, memo, txHash, contentHash: frontendContentHash } = req.body;
+    const { recipientId, amount, memo, txHash, auditLogId, contentHash: frontendContentHash } = req.body;
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
@@ -1584,14 +1598,28 @@ app.post('/api/tokens/send', async (req, res) => {
 
     console.log(`[TOKEN] Recording blockchain audit log: txHash=${actualTxHash}, status=${auditStatus}, contentHash=${contentHash}`);
 
-    const auditRes = await pool.query(`
-      INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
-      RETURNING id
-    `, [userId, 'token_transfer', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, req.user.usernode_pubkey || null, now, now]);
-    const blockchainRecordingId = auditRes.rows[0].id;
+    let blockchainRecordingId;
+    if (auditLogId) {
+      // Two-phase flow: audit log already exists from wallet signature, just update it
+      console.log(`[TOKEN] Using existing audit log: id=${auditLogId}`);
+      await pool.query(`
+        UPDATE blockchain_audit_logs
+        SET message_type = $1, tx_hash = $2, transaction_payload = $3, status = $4, confirmed_at = $5, content_hash = $6, user_pubkey = $7, action_timestamp = $8, updated_at = NOW()
+        WHERE id = $9 AND user_id = $10
+      `, ['token_transfer', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, req.user.usernode_pubkey || null, now, auditLogId, userId]);
+      blockchainRecordingId = auditLogId;
+      console.log(`[TOKEN] Updated existing audit log: id=${blockchainRecordingId}`);
+    } else {
+      // Single-phase flow: create new audit log
+      const auditRes = await pool.query(`
+        INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
+        RETURNING id
+      `, [userId, 'token_transfer', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, req.user.usernode_pubkey || null, now, now]);
+      blockchainRecordingId = auditRes.rows[0].id;
 
-    console.log(`[TOKEN] Blockchain audit log created: auditLogId=${blockchainRecordingId}`);
+      console.log(`[TOKEN] Blockchain audit log created: auditLogId=${blockchainRecordingId}`);
+    }
 
     // If real tx hash provided from frontend, start polling immediately
     if (txHash) {
@@ -1765,6 +1793,37 @@ app.post('/api/blockchain-audit/:auditLogId/retry', async (req, res) => {
   }
 });
 
+// Create a pending audit log stub (Phase 1 of two-phase flow)
+app.post('/api/transactions/create-pending-audit', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    const now = new Date();
+
+    // Create audit log with status='pending', tx_hash=null (will be filled in later)
+    const auditRes = await pool.query(`
+      INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, status, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+      RETURNING id
+    `, [userId, 'pending_signature', null, 'pending', null, req.user.usernode_pubkey || null, now, now]);
+
+    const auditLogId = auditRes.rows[0].id;
+    console.log(`[AUDIT] Created pending audit log: id=${auditLogId}, userId=${userId}`);
+
+    res.json({ auditLogId, status: 'pending' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Register a submitted tx hash from frontend and start polling (real blockchain integration)
 app.post('/api/blockchain-audit/:auditLogId/register-tx', async (req, res) => {
   try {
@@ -1776,8 +1835,8 @@ app.post('/api/blockchain-audit/:auditLogId/register-tx', async (req, res) => {
     const { txHash, chainId } = req.body;
     const userId = parseInt(req.user.id, 10);
 
-    if (!txHash || !chainId) {
-      return res.status(400).json({ error: 'txHash and chainId required' });
+    if (!txHash) {
+      return res.status(400).json({ error: 'txHash required' });
     }
 
     if (isNaN(userId)) {
@@ -1803,8 +1862,15 @@ app.post('/api/blockchain-audit/:auditLogId/register-tx', async (req, res) => {
       WHERE id = $2
     `, [txHash, auditLogId]);
 
-    // Start chain polling to monitor confirmation
-    startChainPoller(chainId, txHash, auditLogId);
+    console.log(`[AUDIT] Registered txHash: auditLogId=${auditLogId}, txHash=${txHash}, chainId=${chainId || 'testnet'}`);
+
+    // Start chain polling to monitor confirmation if chainId provided
+    if (chainId) {
+      startChainPoller(chainId, txHash, auditLogId);
+    } else {
+      // Default to testnet if chainId not provided
+      startChainPoller('testnet', txHash, auditLogId);
+    }
 
     res.json({ ok: true, auditLogId, txHash, status: 'pending' });
   } catch (err) {
@@ -2820,7 +2886,7 @@ app.post('/api/groups', async (req, res) => {
     }
     console.log(`[POST /api/groups::VALIDATE] Authentication successful: userId=${req.user.id}`);
 
-    const { name, description, initialMemberIds, txHash, contentHash: frontendContentHash } = req.body;
+    const { name, description, initialMemberIds, txHash, auditLogId, contentHash: frontendContentHash } = req.body;
 
     // Validation: parse and validate user ID
     const userId = parseInt(req.user.id, 10);
@@ -2928,23 +2994,40 @@ app.post('/api/groups', async (req, res) => {
     // Sign memo following Last One Wins pattern
     const memo = signTransactionMemo(transactionPayload);
 
-    // Blockchain: Create audit log entry - use real tx hash from frontend if provided
-    const actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-group-create-' + groupId + '-' + Date.now() : 'ut1-' + network + '-tx-group-' + Math.random().toString(36).substr(2, 9));
-    const auditStatus = txHash ? 'pending' : (ENABLE_DEMO_MODE ? 'confirmed' : 'pending');
-    console.log(`[POST /api/groups::BLOCKCHAIN] Creating audit log: txHash=${actualTxHash}, status=${auditStatus}, env=${IS_STAGING ? 'staging' : 'production'}, demoMode=${ENABLE_DEMO_MODE}`);
+    // Blockchain: Use existing audit log if provided, otherwise create new one
+    let blockchainRecordingId;
+    if (auditLogId) {
+      // Two-phase flow: audit log already exists from wallet signature, just update it
+      console.log(`[POST /api/groups::BLOCKCHAIN] Using existing audit log: id=${auditLogId}`);
+      const actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-group-create-' + groupId + '-' + Date.now() : 'ut1-' + network + '-tx-group-' + Math.random().toString(36).substr(2, 9));
+      const auditStatus = txHash ? 'pending' : (ENABLE_DEMO_MODE ? 'confirmed' : 'pending');
 
-    const auditRes = await pool.query(`
-      INSERT INTO blockchain_audit_logs (user_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
-      RETURNING id
-    `, [userId, groupId, 'group_create', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, req.user.usernode_pubkey || null, now, now]);
+      await pool.query(`
+        UPDATE blockchain_audit_logs
+        SET group_id = $1, message_type = $2, tx_hash = $3, transaction_payload = $4, status = $5, confirmed_at = $6, content_hash = $7, user_pubkey = $8, action_timestamp = $9, updated_at = NOW()
+        WHERE id = $10 AND user_id = $11
+      `, [groupId, 'group_create', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, req.user.usernode_pubkey || null, now, auditLogId, userId]);
+      blockchainRecordingId = auditLogId;
+      console.log(`[POST /api/groups::BLOCKCHAIN] Updated existing audit log: id=${blockchainRecordingId}`);
+    } else {
+      // Single-phase flow: create new audit log
+      const actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-group-create-' + groupId + '-' + Date.now() : 'ut1-' + network + '-tx-group-' + Math.random().toString(36).substr(2, 9));
+      const auditStatus = txHash ? 'pending' : (ENABLE_DEMO_MODE ? 'confirmed' : 'pending');
+      console.log(`[POST /api/groups::BLOCKCHAIN] Creating new audit log: txHash=${actualTxHash}, status=${auditStatus}, env=${IS_STAGING ? 'staging' : 'production'}, demoMode=${ENABLE_DEMO_MODE}`);
 
-    if (auditRes.rows.length === 0) {
-      console.error(`[POST /api/groups::BLOCKCHAIN] Audit log insert returned no rows`);
-      throw new Error('Audit log creation query returned no results');
+      const auditRes = await pool.query(`
+        INSERT INTO blockchain_audit_logs (user_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
+        RETURNING id
+      `, [userId, groupId, 'group_create', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, req.user.usernode_pubkey || null, now, now]);
+
+      if (auditRes.rows.length === 0) {
+        console.error(`[POST /api/groups::BLOCKCHAIN] Audit log insert returned no rows`);
+        throw new Error('Audit log creation query returned no results');
+      }
+      blockchainRecordingId = auditRes.rows[0].id;
+      console.log(`[POST /api/groups::BLOCKCHAIN] Audit log created: id=${blockchainRecordingId}, rowCount=${auditRes.rowCount}`);
     }
-    const blockchainRecordingId = auditRes.rows[0].id;
-    console.log(`[POST /api/groups::BLOCKCHAIN] Audit log created: id=${blockchainRecordingId}, rowCount=${auditRes.rowCount}`);
 
     // Blockchain: If real tx hash provided from frontend, start polling immediately
     if (txHash) {
@@ -3244,7 +3327,7 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
     }
 
     const { groupId } = req.params;
-    const { type, content, txHash } = req.body;
+    const { type, content, txHash, auditLogId } = req.body;
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
@@ -3302,12 +3385,27 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
     // Use real tx hash from frontend if provided, otherwise generate placeholder
     const actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-message-' + messageId + '-' + Date.now() : 'ut1-' + network + '-tx-msg-' + Math.random().toString(36).substr(2, 9));
     const auditStatus = txHash ? 'pending' : (ENABLE_DEMO_MODE ? 'confirmed' : 'pending');
-    const auditRes = await pool.query(`
-      INSERT INTO blockchain_audit_logs (user_id, message_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
-      RETURNING id
-    `, [userId, messageId, groupId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, now]);
-    const blockchainRecordingId = auditRes.rows[0].id;
+
+    let blockchainRecordingId;
+    if (auditLogId) {
+      // Two-phase flow: audit log already exists from wallet signature, just update it
+      console.log(`[GROUP-MSG] Using existing audit log: id=${auditLogId}`);
+      await pool.query(`
+        UPDATE blockchain_audit_logs
+        SET message_id = $1, group_id = $2, message_type = $3, tx_hash = $4, transaction_payload = $5, status = $6, confirmed_at = $7, content_hash = $8, user_pubkey = $9, action_timestamp = $10, updated_at = NOW()
+        WHERE id = $11 AND user_id = $12
+      `, [messageId, groupId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, auditLogId, userId]);
+      blockchainRecordingId = auditLogId;
+      console.log(`[GROUP-MSG] Updated existing audit log: id=${blockchainRecordingId}`);
+    } else {
+      // Single-phase flow: create new audit log
+      const auditRes = await pool.query(`
+        INSERT INTO blockchain_audit_logs (user_id, message_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
+        RETURNING id
+      `, [userId, messageId, groupId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, now]);
+      blockchainRecordingId = auditRes.rows[0].id;
+    }
 
     // Update message with audit log reference
     await pool.query(`
