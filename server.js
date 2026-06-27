@@ -5096,7 +5096,7 @@ app.get('/explorer-api/:chainId/transactions/:txHash', async (req, res) => {
 
 app.post('/api/diagnostics/bridge', async (req, res) => {
   try {
-    const { diagnostic, context, userId } = req.body;
+    const { diagnostic, context, userId, telemetry } = req.body;
 
     if (!diagnostic || !context) {
       return res.status(400).json({ error: 'Missing diagnostic or context' });
@@ -5121,6 +5121,20 @@ app.post('/api/diagnostics/bridge', async (req, res) => {
       console.log(`[BRIDGE-DIAGNOSTIC] Bridge failed to load within ${context.timeoutMs}ms`);
     }
 
+    // Log bridge telemetry if provided
+    if (telemetry && telemetry.logs) {
+      console.log(`[BRIDGE-DIAGNOSTIC-TELEMETRY] Received ${telemetry.logs.length} telemetry events`);
+      telemetry.logs.slice(0, 20).forEach(log => {
+        console.log(`  [${log.category}] +${log.elapsed}ms: ${log.message}`);
+      });
+      if (telemetry.postMessageEvents && telemetry.postMessageEvents.length > 0) {
+        console.log(`[BRIDGE-DIAGNOSTIC-TELEMETRY] Received ${telemetry.postMessageEvents.length} postMessage events`);
+      }
+      if (telemetry.customEvents && telemetry.customEvents.length > 0) {
+        console.log(`[BRIDGE-DIAGNOSTIC-TELEMETRY] Received ${telemetry.customEvents.length} custom events`);
+      }
+    }
+
     // Could optionally store in database for later analysis
     // For now, just log it
     res.json({ ok: true, diagnosticsReceived: true });
@@ -5128,6 +5142,85 @@ app.post('/api/diagnostics/bridge', async (req, res) => {
     console.error('Error processing bridge diagnostic:', err);
     res.status(500).json({ error: err.message });
   }
+});
+
+// New endpoint to retrieve bridge telemetry logs via frontend (receives telemetry from client)
+app.post('/api/diagnostics/bridge-logs', async (req, res) => {
+  try {
+    const { telemetry } = req.body;
+
+    if (!telemetry) {
+      return res.status(400).json({ error: 'No telemetry data provided' });
+    }
+
+    // Log complete telemetry to console
+    console.log(`[BRIDGE-LOGS] Complete telemetry dump:`);
+    console.log(`[BRIDGE-LOGS] Total events: ${telemetry.logs?.length || 0}`);
+    console.log(`[BRIDGE-LOGS] PostMessage events: ${telemetry.postMessageEvents?.length || 0}`);
+    console.log(`[BRIDGE-LOGS] Custom events: ${telemetry.customEvents?.length || 0}`);
+
+    if (telemetry.logs && telemetry.logs.length > 0) {
+      console.log(`[BRIDGE-LOGS] === Event Timeline ===`);
+      let lastTimestamp = telemetry.logs[0].timestamp;
+      telemetry.logs.forEach((log, idx) => {
+        const elapsed = log.timestamp - lastTimestamp;
+        console.log(`[BRIDGE-LOGS] ${idx + 1}. +${elapsed}ms [${log.category}] ${log.message}`);
+        if (log.data) {
+          console.log(`     Data:`, log.data);
+        }
+      });
+    }
+
+    if (telemetry.windowSnapshot) {
+      console.log(`[BRIDGE-LOGS] Window snapshot:`, telemetry.windowSnapshot);
+    }
+
+    if (telemetry.postMessageEvents && telemetry.postMessageEvents.length > 0) {
+      console.log(`[BRIDGE-LOGS] PostMessage events:`, telemetry.postMessageEvents);
+    }
+
+    if (telemetry.promiseStates && Object.keys(telemetry.promiseStates).length > 0) {
+      console.log(`[BRIDGE-LOGS] Promise states:`, telemetry.promiseStates);
+    }
+
+    res.json({
+      ok: true,
+      telemetryReceived: true,
+      summary: {
+        totalEvents: telemetry.logs?.length || 0,
+        postMessageEvents: telemetry.postMessageEvents?.length || 0,
+        customEvents: telemetry.customEvents?.length || 0,
+        promiseStates: Object.keys(telemetry.promiseStates || {}).length
+      }
+    });
+  } catch (err) {
+    console.error('Error processing bridge logs:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Debug endpoint to manually retrieve current telemetry data (for testing/manual inspection)
+app.get('/api/debug/bridge-telemetry-check', async (req, res) => {
+  res.json({
+    note: 'Bridge telemetry is captured in the browser console. On a timeout event, logs are automatically sent to /api/diagnostics/bridge and /api/diagnostics/bridge-logs. Check server console output for [BRIDGE-LOGS] entries.',
+    howToRetrieve: [
+      '1. Open browser DevTools console',
+      '2. Look for [Bridge-Telemetry-*] console messages',
+      '3. Check server logs for [BRIDGE-LOGS] entries when a timeout occurs',
+      '4. All telemetry is automatically uploaded on timeout events'
+    ],
+    telemetryCaptures: [
+      'BRIDGE-CALL: parameters sent to window.sendTransaction()',
+      'BRIDGE-RETURN: whether the bridge returned a Promise',
+      'PROMISE-CREATED: when Promise is created',
+      'PROMISE-RESOLVED: when Promise resolves',
+      'PROMISE-REJECTED: when Promise rejects',
+      'POSTMESSAGE: all postMessage events received',
+      'CUSTOM-EVENT: any custom events fired',
+      'WINDOW-SNAPSHOT: bridge objects available at runtime',
+      'TIMEOUT-FINAL-STATE: final state when timeout fires'
+    ]
+  });
 });
 
 // ===== PRODUCTION SIMULATION TEST =====
