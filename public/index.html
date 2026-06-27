@@ -1712,6 +1712,151 @@
       failureReason: null
     };
 
+    // Bridge instrumentation and telemetry system
+    let bridgeTelemetry = {
+      logs: [],
+      postMessageEvents: [],
+      customEvents: [],
+      windowSnapshot: null,
+      promiseStates: {},
+      lastCallTimestamp: null
+    };
+
+    function telemetryLog(category, message, data = null) {
+      const entry = {
+        timestamp: Date.now(),
+        elapsed: bridgeTelemetry.lastCallTimestamp ? Date.now() - bridgeTelemetry.lastCallTimestamp : 0,
+        category: category,
+        message: message,
+        data: data
+      };
+      bridgeTelemetry.logs.push(entry);
+      console.log(`[Bridge-Telemetry-${category}] ${message}`, data || '');
+    }
+
+    function captureWindowSnapshot() {
+      const snapshot = {
+        timestamp: Date.now(),
+        hasUsernode: typeof window.usernode !== 'undefined',
+        usernodeType: typeof window.usernode,
+        hasSendTransaction: typeof window.sendTransaction === 'function',
+        usernodeKeys: []
+      };
+
+      if (typeof window.usernode === 'object' && window.usernode !== null) {
+        try {
+          snapshot.usernodeKeys = Object.keys(window.usernode);
+          snapshot.usernodeMethods = {};
+          for (const key of snapshot.usernodeKeys) {
+            snapshot.usernodeMethods[key] = typeof window.usernode[key];
+          }
+        } catch (e) {
+          snapshot.usernodeKeysError = e.message;
+        }
+      }
+
+      bridgeTelemetry.windowSnapshot = snapshot;
+      telemetryLog('WINDOW-SNAPSHOT', 'Bridge objects available', snapshot);
+    }
+
+    function setupBridgeEventListeners() {
+      // Listen for postMessage events
+      const originalAddEventListener = window.addEventListener;
+      window.addEventListener = function(eventType, handler, ...args) {
+        if (eventType === 'message') {
+          const wrappedHandler = function(event) {
+            bridgeTelemetry.postMessageEvents.push({
+              timestamp: Date.now(),
+              origin: event.origin,
+              source: event.source === window.parent ? 'parent' : event.source === window.opener ? 'opener' : 'other',
+              dataType: typeof event.data,
+              dataKeys: typeof event.data === 'object' && event.data ? Object.keys(event.data).slice(0, 10) : null,
+              data: event.data
+            });
+            telemetryLog('POSTMESSAGE', 'postMessage event received', {
+              origin: event.origin,
+              dataType: typeof event.data,
+              dataKeys: typeof event.data === 'object' && event.data ? Object.keys(event.data).slice(0, 5) : null
+            });
+            return handler.call(this, event);
+          };
+          return originalAddEventListener.call(this, eventType, wrappedHandler, ...args);
+        }
+        return originalAddEventListener.call(this, eventType, handler, ...args);
+      };
+
+      // Monitor custom events
+      const originalDispatchEvent = window.dispatchEvent;
+      window.dispatchEvent = function(event) {
+        if (event.type && event.type.includes('bridge')) {
+          bridgeTelemetry.customEvents.push({
+            timestamp: Date.now(),
+            type: event.type,
+            detail: event.detail
+          });
+          telemetryLog('CUSTOM-EVENT', `Event fired: ${event.type}`, event.detail);
+        }
+        return originalDispatchEvent.call(this, event);
+      };
+    }
+
+    function instrumentPromise(promise, label, params) {
+      if (!promise || typeof promise.then !== 'function') {
+        telemetryLog('PROMISE-ERROR', `${label}: Not a Promise`, { isPromise: false, type: typeof promise });
+        return promise;
+      }
+
+      const promiseId = `${label}-${Date.now()}`;
+      bridgeTelemetry.promiseStates[promiseId] = {
+        label: label,
+        created: Date.now(),
+        params: params,
+        resolved: false,
+        rejected: false,
+        resolvedValue: null,
+        rejectedReason: null,
+        resolveTime: null,
+        rejectTime: null
+      };
+
+      telemetryLog('PROMISE-CREATED', `${label}: Promise created`, { promiseId, params });
+
+      const instrumented = promise
+        .then(result => {
+          const state = bridgeTelemetry.promiseStates[promiseId];
+          if (state) {
+            state.resolved = true;
+            state.resolvedValue = result;
+            state.resolveTime = Date.now() - state.created;
+          }
+          telemetryLog('PROMISE-RESOLVED', `${label}: Promise resolved`, {
+            promiseId,
+            elapsedMs: state?.resolveTime,
+            resultType: typeof result,
+            resultKeys: typeof result === 'object' && result ? Object.keys(result) : null,
+            result: result
+          });
+          return result;
+        })
+        .catch(reason => {
+          const state = bridgeTelemetry.promiseStates[promiseId];
+          if (state) {
+            state.rejected = true;
+            state.rejectedReason = reason;
+            state.rejectTime = Date.now() - state.created;
+          }
+          telemetryLog('PROMISE-REJECTED', `${label}: Promise rejected`, {
+            promiseId,
+            elapsedMs: state?.rejectTime,
+            reason: reason instanceof Error ? reason.message : reason,
+            isTimeout: reason?.isTimeout || false
+          });
+          throw reason;
+        });
+
+      return instrumented;
+    }
+
     // Wallet signature timeout in milliseconds (90 seconds)
     // NOTE: Timeout duration is NOT the root cause of hangs. Root cause is unresolved promises
     // in Promise.race(). Extending this value doesn't help; the withTimeout() function now
@@ -2989,6 +3134,13 @@
     async function init() {
       // Run comprehensive bridge diagnostics
       console.log('=== Guardian 2 Initialization ===');
+
+      // === BRIDGE INSTRUMENTATION: Initialize telemetry system early ===
+      telemetryLog('STARTUP', 'Guardian 2 initialization started', {
+        timestamp: Date.now(),
+        userAgent: navigator.userAgent.substring(0, 100)
+      });
+
       const diagnostic = runBridgeDiagnostics();
 
       // Log bridge availability on page load
@@ -3777,17 +3929,54 @@
             const appPubkey = currentUser?.appPubkey || 'ut1Fww7onqF9LsRSb6d6BozgQWtjNYqQJghYxXmBc8foncb';
             const confirmTitle = action.charAt(0).toUpperCase() + action.slice(1);
 
+            // === BRIDGE INSTRUMENTATION: Log before calling bridge ===
+            if (!bridgeTelemetry.lastCallTimestamp) {
+              bridgeTelemetry.lastCallTimestamp = Date.now();
+              setupBridgeEventListeners();
+              captureWindowSnapshot();
+            }
+
+            telemetryLog('BRIDGE-CALL', `Calling window.sendTransaction (attempt ${signatureAttempt})`, {
+              appPubkey: appPubkey,
+              amount: 1,
+              memoLength: memo.length,
+              memoStructure: { app: 'guardian', action: action, detailsKeys: Object.keys(details || {}) },
+              confirmTitle: confirmTitle,
+              signatureAttempt: signatureAttempt
+            });
+
             // Call wallet with timeout
+            const bridgePromise = window.sendTransaction(
+              appPubkey,
+              1,
+              memo,
+              { confirmTitle: confirmTitle }
+            );
+
+            telemetryLog('BRIDGE-RETURN', `window.sendTransaction returned`, {
+              isPromise: bridgePromise && typeof bridgePromise.then === 'function',
+              type: typeof bridgePromise,
+              hasConstructor: bridgePromise?.constructor?.name
+            });
+
+            const instrumentedPromise = instrumentPromise(bridgePromise, `Wallet signature attempt ${signatureAttempt}`, {
+              appPubkey,
+              memoLength: memo.length,
+              action: action
+            });
+
             txResult = await withTimeout(
-              window.sendTransaction(
-                appPubkey,
-                1,
-                memo,
-                { confirmTitle: confirmTitle }
-              ),
+              instrumentedPromise,
               WALLET_SIGNATURE_TIMEOUT_MS,
               'Wallet signature'
             );
+
+            telemetryLog('BRIDGE-SUCCESS', `Wallet signature obtained`, {
+              txHash: txResult?.txHash,
+              resultType: typeof txResult,
+              resultKeys: typeof txResult === 'object' && txResult ? Object.keys(txResult) : null
+            });
+
             console.log('✓ Wallet signature obtained:', txResult.txHash);
             break; // Success, exit retry loop
           } catch (signErr) {
@@ -3801,13 +3990,34 @@
               // Capture diagnostics on timeout
               const diagnostic = runBridgeDiagnostics(true);
               console.log('[Timeout] Uploading diagnostic context with elapsed:', signErr.elapsed, 'ms');
+
+              // === BRIDGE INSTRUMENTATION: Log final promise state on timeout ===
+              telemetryLog('TIMEOUT-FINAL-STATE', 'Wallet signature timeout - capturing final state', {
+                attempt: signatureAttempt,
+                elapsed: signErr.elapsed,
+                promiseStates: bridgeTelemetry.promiseStates,
+                postMessageEventCount: bridgeTelemetry.postMessageEvents.length,
+                customEventCount: bridgeTelemetry.customEvents.length,
+                logCount: bridgeTelemetry.logs.length
+              });
+
+              // Upload diagnostics
               uploadBridgeDiagnostics(diagnostic, {
                 errorType: 'wallet_signature_timeout',
                 attempt: signatureAttempt,
                 maxAttempts: maxSignatureAttempts,
                 elapsedMs: signErr.elapsed,
-                action: action
+                action: action,
+                telemetry: bridgeTelemetry  // Include complete telemetry with diagnostics
               });
+
+              // Also upload complete telemetry logs separately for easier analysis
+              const token = getStoredToken ? getStoredToken() : (window.__usernodeToken || '');
+              fetch('/api/diagnostics/bridge-logs', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json', 'x-usernode-token': token },
+                body: JSON.stringify({ telemetry: bridgeTelemetry })
+              }).catch(err => console.error('[Telemetry] Failed to upload bridge logs:', err));
 
               // Smart retry logic: auto-retry once on first timeout, show dialog only on 2nd
               if (signatureAttempt === 1) {
