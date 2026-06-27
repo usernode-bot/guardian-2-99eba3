@@ -1515,8 +1515,14 @@
         description = `Created group '${escapeHtml(data.groupName || 'group')}'`;
       }
 
-      const statusClass = 'text-gray-600 dark:text-gray-400';
-      const statusIcon = '⏳';
+      // Determine status badge based on confirmation status
+      let statusBadgeClass = 'text-xs px-2 py-1 rounded bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200';
+      let statusBadgeText = '⏳ Confirming...';
+
+      if (isStaging) {
+        statusBadgeText = '✓ Simulated';
+        statusBadgeClass = 'text-xs px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300';
+      }
 
       notification.id = notificationId;
       notification.className = 'bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg p-4 shadow-lg pointer-events-auto max-w-sm animate-slideIn';
@@ -1527,8 +1533,9 @@
               <span class="text-lg">${icon}</span>
               <span>${description}</span>
             </div>
-            <div class="mt-2 text-xs text-zinc-600 dark:text-zinc-400">
-              <a href="#" class="text-cyan-600 dark:text-cyan-400 hover:underline" onclick="event.preventDefault(); openTransactionDetailsModal(${escapeHtml(String(data.blockchainRecordingId))})">View transaction</a>
+            <div class="mt-3 flex items-center justify-between gap-2">
+              <span class="${statusBadgeClass}" data-status-badge>${statusBadgeText}</span>
+              <a href="#" class="text-xs text-cyan-600 dark:text-cyan-400 hover:underline" onclick="event.preventDefault(); openTransactionDetailsModal(${escapeHtml(String(data.blockchainRecordingId))})">Details</a>
             </div>
           </div>
           <button onclick="document.getElementById('${notificationId}').remove()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition text-lg leading-none flex-shrink-0">✕</button>
@@ -1536,6 +1543,13 @@
       `;
 
       container.appendChild(notification);
+
+      // Start polling for confirmation if not in staging mode
+      if (!isStaging && data.blockchainRecordingId) {
+        pollTransactionConfirmation(notificationId, data.blockchainRecordingId);
+      }
+
+      return notificationId;
     }
 
     function closeTransactionDetailsModal() {
@@ -1679,8 +1693,14 @@
       startTime: null,
       completionTime: null,
       callbackTime: null,
-      timeoutTime: null
+      timeoutTime: null,
+      broadcastStarted: false,
+      confirmationStatus: null,
+      blockchainRecordingId: null
     };
+
+    // Environment and app state
+    let isStaging = false;
 
     // Bridge load state tracking
     let bridgeLoadState = {
@@ -3019,11 +3039,15 @@
       currentUser = user;
       isDemoMode = user.isDemoMode ?? false;
 
+      // Initialize environment state and polling infrastructure
+      await initializeAppState();
+
       // Log demo mode detection prominently
       console.log('\n╔════════════════════════════════════════════════════════════════╗');
       console.log('║              DEMO MODE INITIALIZATION DETECTED                 ║');
       console.log('╚════════════════════════════════════════════════════════════════╝');
       console.log('isDemoMode from API response:', isDemoMode);
+      console.log('isStaging from /health:', isStaging);
       console.log('user.isDemoMode raw value:', user.isDemoMode);
       console.log('USERNODE_ENV at server time:', user.isDemoMode ? 'staging' : 'production');
 
@@ -3567,11 +3591,14 @@
         });
 
         if (data && !data.error) {
-          showToast('Group created successfully', 'success');
+          // Show action-specific toast with status
+          const statusMsg = isStaging ? 'Group created—simulated signature confirmed' : 'Group created—awaiting blockchain confirmation';
+          showToast(`✓ ${statusMsg}`, 'success');
+
           if (data.blockchainRecordingId) {
             showPersistentNotification('group_create', {
               blockchainRecordingId: data.blockchainRecordingId,
-              groupName: data.name,
+              groupName: name,
               memberCount: data.members ? data.members.length : 0
             });
           }
@@ -3601,6 +3628,90 @@
       document.getElementById('createGroupModal').classList.add('hidden');
       document.getElementById('groupNameInput').value = '';
       document.getElementById('groupDescInput').value = '';
+    }
+
+    // Poll transaction confirmation status on blockchain
+    async function pollTransactionConfirmation(notificationId, auditLogId, maxPollAttempts = 30) {
+      let pollAttempt = 0;
+      const pollIntervalMs = 2000; // Poll every 2 seconds
+
+      const pollLoop = async () => {
+        if (pollAttempt >= maxPollAttempts) {
+          console.log(`[POLL] Reached max attempts (${maxPollAttempts}) for auditLogId=${auditLogId}, stopping`);
+          const notification = document.getElementById(notificationId);
+          if (notification) {
+            const badge = notification.querySelector('[data-status-badge]');
+            if (badge) {
+              badge.innerHTML = '⏱ Confirmation timeout';
+              badge.className = 'text-xs px-2 py-1 rounded bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200';
+            }
+          }
+          return;
+        }
+
+        pollAttempt++;
+        try {
+          const response = await apiCall(`/api/blockchain-audit/${auditLogId}`);
+          if (!response) {
+            console.log(`[POLL] No response for auditLogId=${auditLogId}, retrying...`);
+            setTimeout(pollLoop, pollIntervalMs);
+            return;
+          }
+
+          console.log(`[POLL] Attempt ${pollAttempt}/${maxPollAttempts}: status=${response.status} for auditLogId=${auditLogId}`);
+
+          const notification = document.getElementById(notificationId);
+          if (!notification) return; // Notification was closed
+
+          const badge = notification.querySelector('[data-status-badge]');
+          if (!badge) return;
+
+          if (response.status === 'confirmed') {
+            console.log(`[POLL] ✓ Transaction confirmed: auditLogId=${auditLogId}, txHash=${response.txHash}`);
+            badge.innerHTML = '✓ Confirmed';
+            badge.className = 'text-xs px-2 py-1 rounded bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200';
+            signatureState.confirmationStatus = 'confirmed';
+            return;
+          } else if (response.status === 'failed') {
+            console.log(`[POLL] ✗ Transaction failed: auditLogId=${auditLogId}, error=${response.errorMessage}`);
+            badge.innerHTML = `✗ Failed`;
+            badge.className = 'text-xs px-2 py-1 rounded bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200';
+            signatureState.confirmationStatus = 'failed';
+            return;
+          } else if (response.status === 'pending') {
+            // Still pending, continue polling
+            setTimeout(pollLoop, pollIntervalMs);
+            return;
+          }
+        } catch (err) {
+          console.error(`[POLL] Error polling transaction (attempt ${pollAttempt}/${maxPollAttempts}):`, err.message);
+          // Continue polling on error
+          setTimeout(pollLoop, pollIntervalMs);
+        }
+      };
+
+      pollLoop();
+    }
+
+    // Initialize app state from /health endpoint
+    async function initializeAppState() {
+      try {
+        const healthResponse = await apiCall('/health');
+        if (healthResponse && healthResponse.staging) {
+          isStaging = true;
+          console.log('[APP] Staging environment detected');
+          // Show STAGING badge in header
+          const header = document.querySelector('header');
+          if (header) {
+            const badge = document.createElement('div');
+            badge.className = 'fixed top-4 right-4 px-3 py-1 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 text-xs font-semibold rounded z-50';
+            badge.textContent = 'STAGING';
+            document.body.appendChild(badge);
+          }
+        }
+      } catch (err) {
+        console.log('[APP] Could not determine environment:', err.message);
+      }
     }
 
     // Unified wallet signature flow - single dialog, direct to wallet
@@ -4657,11 +4768,8 @@
         });
 
         if (data && !data.error) {
-          if (isDemoMode) {
-            showToast('📧 Simulated message sent (staging mode)', 'success');
-          } else {
-            showToast('Awaiting blockchain confirmation...', 'info');
-          }
+          const statusMsg = isStaging ? 'Message sent—simulated signature confirmed' : 'Message sent—confirming on-chain';
+          showToast(`✓ ${statusMsg}`, 'success');
           if (data.blockchainRecordingId) {
             showPersistentNotification('message', {
               blockchainRecordingId: data.blockchainRecordingId,
@@ -4698,17 +4806,14 @@
           const endpoint = currentGroupId ? `/api/groups/${currentGroupId}/messages` : `/api/conversations/${currentConvId}/messages`;
 
           const txHash = await requestWalletSignature('Send Image', { imageSize: imageSizeKb + ' KB' });
-          if (isDemoMode) {
-            showToast('🖼️ Simulated image sent (staging mode)', 'success');
-          } else {
-            showToast('Awaiting blockchain confirmation...', 'info');
-          }
           const data = await apiCall(endpoint, {
             method: 'POST',
             body: JSON.stringify({ type: 'image', content: { imageUrl: dataUri }, txHash: txHash })
           });
 
           if (data && !data.error) {
+            const statusMsg = isStaging ? 'Image sent—simulated signature confirmed' : 'Image sent—confirming on-chain';
+            showToast(`✓ ${statusMsg}`, 'success');
             if (data.blockchainRecordingId) {
               showPersistentNotification('image', {
                 blockchainRecordingId: data.blockchainRecordingId,
@@ -4774,11 +4879,8 @@
           });
 
           if (data && !data.error) {
-            if (isDemoMode) {
-              showToast('💰 Simulated token transfer (staging mode)', 'success');
-            } else {
-              showToast('Awaiting blockchain confirmation...', 'info');
-            }
+            const statusMsg = isStaging ? 'Tokens sent—simulated signature confirmed' : 'Tokens sent—confirming on-chain';
+            showToast(`✓ ${statusMsg}`, 'success');
             if (data.blockchainRecordingId) {
               showPersistentNotification('token_transfer', {
                 blockchainRecordingId: data.blockchainRecordingId,

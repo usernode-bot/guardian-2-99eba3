@@ -621,7 +621,7 @@ app.use(async (req, res, next) => {
   next();
 });
 
-app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+app.get('/health', (_req, res) => res.json({ status: 'ok', staging: IS_STAGING, environment: IS_STAGING ? 'staging' : 'production' }));
 
 // Debug endpoint to verify GuardiAI user exists (public for troubleshooting)
 app.get('/api/debug/guardiAI', async (_req, res) => {
