@@ -1682,6 +1682,16 @@
       timeoutTime: null
     };
 
+    // Bridge load state tracking
+    let bridgeLoadState = {
+      scriptLoaded: false,
+      bridgeReady: false,
+      loadStartTime: null,
+      loadCompleteTime: null,
+      loadFailed: false,
+      failureReason: null
+    };
+
     // Wallet signature timeout in milliseconds (90 seconds)
     // NOTE: Timeout duration is NOT the root cause of hangs. Root cause is unresolved promises
     // in Promise.race(). Extending this value doesn't help; the withTimeout() function now
@@ -2827,15 +2837,22 @@
       while ((Date.now() - startTime) < timeoutMs) {
         // Check both function existence AND window.usernode object presence
         if (typeof window.sendTransaction === 'function' && typeof window.usernode === 'object' && window.usernode !== null) {
+          bridgeLoadState.bridgeReady = true;
+          bridgeLoadState.loadCompleteTime = Date.now();
           return true;
         }
         await new Promise(resolve => setTimeout(resolve, 100));
       }
-      return typeof window.sendTransaction === 'function' && typeof window.usernode === 'object' && window.usernode !== null;
+      const ready = typeof window.sendTransaction === 'function' && typeof window.usernode === 'object' && window.usernode !== null;
+      if (ready) {
+        bridgeLoadState.bridgeReady = true;
+        bridgeLoadState.loadCompleteTime = Date.now();
+      }
+      return ready;
     }
 
-    // Comprehensive bridge diagnostic function for platform maintainers
-    function runBridgeDiagnostics() {
+    // Comprehensive bridge diagnostic function with optional server upload
+    function runBridgeDiagnostics(includeSignatureState = false) {
       const diagnostic = {
         timestamp: new Date().toISOString(),
         environment: {
@@ -2868,8 +2885,15 @@
           solana: typeof window.solana,
           phantom: typeof window.phantom,
           metaMask: typeof window.metaMask
-        }
+        },
+        bridgeLoadState: bridgeLoadState,
+        isDemoMode: isDemoMode
       };
+
+      // Add signature state if requested (e.g., on timeout event)
+      if (includeSignatureState) {
+        diagnostic.signatureState = signatureState;
+      }
 
       // Safely extract all methods on window.usernode
       if (typeof window.usernode === 'object' && window.usernode !== null) {
@@ -2894,6 +2918,7 @@
       console.log('╚════════════════════════════════════════════════════════════════╝');
       console.log('Environment:', diagnostic.environment);
       console.log('Bridge Script:', diagnostic.bridgeScript);
+      console.log('Bridge Load State:', diagnostic.bridgeLoadState);
       console.log('window.usernode Status:', diagnostic.windowUsernode);
       console.log('Available Bridge Methods:', diagnostic.bridgeMethods);
       console.log('Wallet Provider Detection:', diagnostic.walletProvider);
@@ -2915,6 +2940,32 @@
       return diagnostic;
     }
 
+    // Send diagnostics to server for analysis
+    async function uploadBridgeDiagnostics(diagnostic, context = {}) {
+      try {
+        const payload = {
+          diagnostic: diagnostic,
+          context: context,
+          userId: currentUser?.id || null
+        };
+        const response = await fetch('/api/diagnostics/bridge', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-usernode-token': localStorage.getItem('authToken') || ''
+          },
+          body: JSON.stringify(payload)
+        });
+        if (response.ok) {
+          console.log('[Diagnostics] Successfully uploaded bridge diagnostic to server');
+        } else {
+          console.warn('[Diagnostics] Server returned', response.status, 'when uploading diagnostics');
+        }
+      } catch (err) {
+        console.warn('[Diagnostics] Failed to upload bridge diagnostic:', err.message);
+      }
+    }
+
     async function init() {
       // Run comprehensive bridge diagnostics
       console.log('=== Guardian 2 Initialization ===');
@@ -2929,7 +2980,12 @@
         console.log('usernode.getNodeAddress exists:', typeof window.usernode.getNodeAddress !== 'undefined');
         console.log('usernode.requestLlmAccess exists:', typeof window.usernode.requestLlmAccess !== 'undefined');
       }
+      // Track bridge load start time
+      bridgeLoadState.loadStartTime = Date.now();
+
       if (typeof window.sendTransaction === 'function') {
+        bridgeLoadState.bridgeReady = true;
+        bridgeLoadState.loadCompleteTime = Date.now();
         console.log('✓ Bridge wallet API (window.sendTransaction) is available');
       } else {
         console.warn('UserNode bridge NOT available at startup - window.sendTransaction is undefined');
@@ -2943,6 +2999,15 @@
         } else {
           console.error('CRITICAL: UserNode bridge failed to load after 5 second timeout');
           console.warn('Wallet features will not be available');
+          bridgeLoadState.loadFailed = true;
+          bridgeLoadState.failureReason = 'Bridge failed to load within 5 second timeout';
+
+          // Store failure for later diagnostic upload
+          const failureDiagnostic = runBridgeDiagnostics();
+          uploadBridgeDiagnostics(failureDiagnostic, {
+            errorType: 'bridge_load_failure',
+            timeoutMs: 5000
+          });
         }
       }
 
@@ -2986,6 +3051,20 @@
       saveSettings(settings);
       document.getElementById('sidebarUsername').textContent = user.username + (user.verified ? ' ✓' : '');
       document.getElementById('sidebarWallet').textContent = user.usernode_pubkey || 'No wallet linked';
+
+      // Show demo mode indicator if in staging
+      if (isDemoMode) {
+        const headerBranding = document.getElementById('headerBranding');
+        if (headerBranding) {
+          const stagingBadge = document.createElement('span');
+          stagingBadge.className = 'ml-2 inline-block px-2 py-1 bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-100 text-xs rounded font-semibold';
+          stagingBadge.textContent = 'STAGING';
+          stagingBadge.title = 'This is a staging environment. Transactions are simulated, not real.';
+          headerBranding.appendChild(stagingBadge);
+        }
+        console.log('🔄 STAGING MODE ACTIVE - All transactions are simulated and not recorded on the blockchain');
+      }
+
       initSettings();
       updateSettingsFooter();
 
@@ -3601,10 +3680,31 @@
             console.log('✓ Wallet signature obtained:', txResult.txHash);
             break; // Success, exit retry loop
           } catch (signErr) {
+            const isTimeout = signErr.isTimeout || (signErr.message && signErr.message.includes('timed out'));
+            const isCancelled = signErr.message && signErr.message.includes('cancelled');
+            const isAuthError = signErr.message && signErr.message.includes('not signed in');
+
             console.error('Wallet signature error:', signErr.message);
 
-            if (signErr.message && signErr.message.includes('timed out')) {
-              if (signatureAttempt < maxSignatureAttempts) {
+            if (isTimeout) {
+              // Capture diagnostics on timeout
+              const diagnostic = runBridgeDiagnostics(true);
+              console.log('[Timeout] Uploading diagnostic context with elapsed:', signErr.elapsed, 'ms');
+              uploadBridgeDiagnostics(diagnostic, {
+                errorType: 'wallet_signature_timeout',
+                attempt: signatureAttempt,
+                maxAttempts: maxSignatureAttempts,
+                elapsedMs: signErr.elapsed,
+                action: action
+              });
+
+              // Smart retry logic: auto-retry once on first timeout, show dialog only on 2nd
+              if (signatureAttempt === 1) {
+                // Auto-retry silently on first timeout
+                console.log('[Retry] Auto-retrying silently after first timeout...');
+                continue;
+              } else if (signatureAttempt < maxSignatureAttempts) {
+                // Show dialog only on second timeout before final failure
                 const shouldRetry = await new Promise((resolve) => {
                   const overlay = document.createElement('div');
                   overlay.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50';
@@ -3613,16 +3713,19 @@
                   dialog.className = 'bg-white dark:bg-zinc-800 rounded-lg shadow-xl p-6 max-w-sm mx-auto';
 
                   const title = document.createElement('h2');
-                  title.className = 'text-lg font-bold text-zinc-900 dark:text-white mb-2';
-                  title.textContent = 'Wallet Signature Timeout';
+                  title.className = 'text-lg font-bold text-yellow-700 dark:text-yellow-300 mb-2';
+                  title.textContent = '⏱ Wallet Signature Timeout';
 
                   const message = document.createElement('p');
-                  message.className = 'text-sm text-zinc-600 dark:text-zinc-300 mb-4';
-                  message.innerHTML = `The wallet bridge didn't respond within ${WALLET_SIGNATURE_TIMEOUT_MS/1000}s. This can happen if your wallet extension is slow or your network is unstable. Try again and check that your wallet is responsive.`;
+                  message.className = 'text-sm text-zinc-600 dark:text-zinc-300 mb-3';
+                  message.innerHTML = `The wallet bridge didn't respond within ${WALLET_SIGNATURE_TIMEOUT_MS/1000}s. This typically means:<br><br>
+                    <strong>Check your wallet:</strong> Look at your wallet extension to see if it's asking for confirmation.<br><br>
+                    <strong>Check your network:</strong> Slow or unstable internet can cause delays.<br><br>
+                    <strong>Try again:</strong> Retry the signature and watch for any popups.`;
 
-                  const details = document.createElement('p');
-                  details.className = 'text-xs text-zinc-500 dark:text-zinc-400 mb-4 font-mono';
-                  details.innerHTML = `Attempt ${signatureAttempt} of ${maxSignatureAttempts}`;
+                  const attemptInfo = document.createElement('p');
+                  attemptInfo.className = 'text-xs text-zinc-500 dark:text-zinc-400 mb-4 bg-zinc-100 dark:bg-zinc-700 p-2 rounded';
+                  attemptInfo.innerHTML = `<strong>Attempt:</strong> ${signatureAttempt} of ${maxSignatureAttempts}`;
 
                   const buttonContainer = document.createElement('div');
                   buttonContainer.className = 'flex gap-3';
@@ -3648,23 +3751,23 @@
 
                   dialog.appendChild(title);
                   dialog.appendChild(message);
-                  dialog.appendChild(details);
+                  dialog.appendChild(attemptInfo);
                   dialog.appendChild(buttonContainer);
                   overlay.appendChild(dialog);
                   document.body.appendChild(overlay);
                 });
 
                 if (!shouldRetry) {
-                  throw new Error('User cancelled wallet signature retry');
+                  throw new Error('User cancelled wallet signature');
                 }
                 continue;
               } else {
-                throw new Error(`Wallet signature timed out after ${maxSignatureAttempts} attempts (${WALLET_SIGNATURE_TIMEOUT_MS/1000}s each). The bridge did not respond — please refresh and try again, or check your network connection.`);
+                throw new Error(`Wallet signature timed out after ${maxSignatureAttempts} attempts. Your wallet may be unresponsive or your network is unstable. Please refresh the page and try again, or check that your wallet extension is properly installed and running.`);
               }
-            } else if (signErr.message && signErr.message.includes('cancelled')) {
-              throw new Error('User cancelled wallet signature');
-            } else if (signErr.message && signErr.message.includes('not signed in')) {
-              throw new Error('Wallet not signed in - please log in to your wallet');
+            } else if (isCancelled) {
+              throw new Error('You cancelled the wallet signature request');
+            } else if (isAuthError) {
+              throw new Error('Your wallet is not signed in. Please log in to your wallet and try again');
             } else {
               throw new Error(`Wallet error: ${signErr.message || 'Signature failed'}`);
             }
@@ -4554,7 +4657,11 @@
         });
 
         if (data && !data.error) {
-          showToast('Message sent successfully', 'success');
+          if (isDemoMode) {
+            showToast('📧 Simulated message sent (staging mode)', 'success');
+          } else {
+            showToast('Awaiting blockchain confirmation...', 'info');
+          }
           if (data.blockchainRecordingId) {
             showPersistentNotification('message', {
               blockchainRecordingId: data.blockchainRecordingId,
@@ -4591,7 +4698,11 @@
           const endpoint = currentGroupId ? `/api/groups/${currentGroupId}/messages` : `/api/conversations/${currentConvId}/messages`;
 
           const txHash = await requestWalletSignature('Send Image', { imageSize: imageSizeKb + ' KB' });
-          showToast('Image sent successfully', 'success');
+          if (isDemoMode) {
+            showToast('🖼️ Simulated image sent (staging mode)', 'success');
+          } else {
+            showToast('Awaiting blockchain confirmation...', 'info');
+          }
           const data = await apiCall(endpoint, {
             method: 'POST',
             body: JSON.stringify({ type: 'image', content: { imageUrl: dataUri }, txHash: txHash })
@@ -4663,7 +4774,11 @@
           });
 
           if (data && !data.error) {
-            showToast('Token sent successfully', 'success');
+            if (isDemoMode) {
+              showToast('💰 Simulated token transfer (staging mode)', 'success');
+            } else {
+              showToast('Awaiting blockchain confirmation...', 'info');
+            }
             if (data.blockchainRecordingId) {
               showPersistentNotification('token_transfer', {
                 blockchainRecordingId: data.blockchainRecordingId,

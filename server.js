@@ -46,7 +46,7 @@ function checkRateLimit(key, limit, windowMs) {
   return true;
 }
 
-const PUBLIC_API_PATHS = new Set(['/health', '/favicon.ico', '/api/test/production-simulation']);
+const PUBLIC_API_PATHS = new Set(['/health', '/favicon.ico', '/api/test/production-simulation', '/api/diagnostics/bridge']);
 const PUBLIC_PREFIXES = ['/explorer-api/'];
 
 // Helper function to compute SHA-256 hash of content
@@ -5089,6 +5089,44 @@ app.get('/explorer-api/:chainId/transactions/:txHash', async (req, res) => {
   } catch (err) {
     console.error('Explorer API error:', err);
     res.status(500).json({ error: 'Explorer API error' });
+  }
+});
+
+// ===== BRIDGE DIAGNOSTICS ENDPOINT =====
+
+app.post('/api/diagnostics/bridge', async (req, res) => {
+  try {
+    const { diagnostic, context, userId } = req.body;
+
+    if (!diagnostic || !context) {
+      return res.status(400).json({ error: 'Missing diagnostic or context' });
+    }
+
+    // Log to console for debugging
+    console.log(`[BRIDGE-DIAGNOSTIC] User ${userId || 'unknown'} reported: ${context.errorType || 'unknown'}`);
+    console.log(`[BRIDGE-DIAGNOSTIC] Context:`, context);
+    console.log(`[BRIDGE-DIAGNOSTIC] Bridge state:`, {
+      scriptLoaded: diagnostic.bridgeScript?.scriptTagLoaded,
+      windowUsernodeExists: diagnostic.windowUsernode?.exists,
+      bridgeReadyState: diagnostic.bridgeLoadState?.bridgeReady,
+      isDemoMode: diagnostic.isDemoMode
+    });
+
+    if (context.errorType === 'wallet_signature_timeout') {
+      console.log(`[BRIDGE-DIAGNOSTIC] Wallet timeout after ${context.elapsedMs}ms on attempt ${context.attempt}/${context.maxAttempts} for action: ${context.action}`);
+      console.log(`[BRIDGE-DIAGNOSTIC] Signature state:`, diagnostic.signatureState);
+    }
+
+    if (context.errorType === 'bridge_load_failure') {
+      console.log(`[BRIDGE-DIAGNOSTIC] Bridge failed to load within ${context.timeoutMs}ms`);
+    }
+
+    // Could optionally store in database for later analysis
+    // For now, just log it
+    res.json({ ok: true, diagnosticsReceived: true });
+  } catch (err) {
+    console.error('Error processing bridge diagnostic:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
