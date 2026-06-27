@@ -340,6 +340,15 @@
       transform: scale(0.95);
     }
 
+    #feedView.hidden #feedFAB {
+      display: none !important;
+    }
+
+    /* Hide FAB when viewing channel list (only show when viewing posts) */
+    #feedView:has(#feedHeader[style*="display: block"]) #feedFAB {
+      display: none !important;
+    }
+
     /* Modal close button animation */
     #feedComposeModal button {
       transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -881,7 +890,13 @@
             <div class="mt-3 text-xs text-zinc-600 dark:text-zinc-400">
               <div class="opacity-50 cursor-default">Discover Channels</div>
             </div>
-            <button class="mt-2 w-full px-3 py-2 bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded text-sm font-medium cursor-default opacity-50 transition" disabled title="Channels are created by administrators only">Create Channel</button>
+            <button onclick="openCreateChannelModal()" class="mt-2 w-full px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition active:scale-95">Create Channel</button>
+            <!-- Filter tabs -->
+            <div class="flex gap-2 mt-4 border-b border-zinc-200 dark:border-zinc-700">
+              <button id="filterAllBtn" onclick="applyChannelFilter('all')" class="px-3 py-2 text-sm font-medium text-cyan-600 dark:text-cyan-400 border-b-2 border-cyan-600 dark:border-cyan-400">All</button>
+              <button id="filterFollowingBtn" onclick="applyChannelFilter('following')" class="px-3 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 border-b-2 border-transparent">Following</button>
+              <button id="filterNewBtn" onclick="applyChannelFilter('new')" class="px-3 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 border-b-2 border-transparent">New</button>
+            </div>
           </div>
         </div>
         <!-- Channel List or Posts Container -->
@@ -896,11 +911,17 @@
               <h3 id="channelDetailName" class="text-lg font-bold text-zinc-900 dark:text-zinc-100">Channel Name</h3>
               <p id="channelDetailDescription" class="text-sm text-zinc-600 dark:text-zinc-400 mt-1">Channel description</p>
               <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-2" id="channelDetailFollowers">0 followers</div>
+              <div id="channelDetailStats" class="flex gap-4 text-xs text-zinc-500 dark:text-zinc-500 mt-3"></div>
             </div>
-            <button id="channelFollowBtn" onclick="showChannelFollowToast()" class="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition active:scale-95">Follow</button>
+            <div class="flex gap-2">
+              <button id="channelNotificationBtn" onclick="showNotificationModeMenu()" class="px-3 py-1 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400 rounded text-sm font-medium transition active:scale-95" title="Notification settings">⚙️</button>
+              <button id="channelFollowBtn" onclick="showChannelFollowToast()" class="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition active:scale-95">Follow</button>
+            </div>
           </div>
           <button id="channelBackBtn" onclick="backToChannelList()" class="mt-3 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 text-sm transition">← Back to channels</button>
         </div>
+        <!-- Floating Action Button for Creating Posts -->
+        <button id="feedFAB" onclick="openFeedComposeModal()" class="fixed bottom-6 right-6 w-12 h-12 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-full shadow-lg flex items-center justify-center font-bold text-xl transition duration-300 ease-out z-35 active:scale-95">+</button>
       </div>
 
       <!-- Contacts View (Saved Contacts only) -->
@@ -1473,6 +1494,50 @@
         <button onclick="submitFeedPostFromModal()" class="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition duration-200 ease-out active:scale-95">Publish</button>
       </div>
     </div>
+  </div>
+
+  <!-- Create Channel Modal -->
+  <div id="createChannelModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 transition-opacity duration-300 ease-out opacity-0" onclick="if(event.target.id==='createChannelModal')closeCreateChannelModal()">
+    <div id="createChannelContainer" class="bg-white dark:bg-zinc-900 rounded-lg shadow-xl flex flex-col transform transition-all duration-300 ease-out scale-95 translate-y-4 w-full max-w-md">
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-800">
+        <h2 class="text-base font-semibold text-zinc-900 dark:text-zinc-100">Create Channel</h2>
+        <button onclick="closeCreateChannelModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition duration-200 ease-out text-lg active:scale-90">✕</button>
+      </div>
+      <!-- Modal Body -->
+      <div class="p-4 space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Channel Name *</label>
+          <input id="createChannelNameInput" type="text" placeholder="Enter channel name" maxlength="100" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition duration-200 ease-out text-sm">
+          <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-1" id="channelNameCharCount">0/100</div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Description</label>
+          <textarea id="createChannelDescInput" placeholder="Optional channel description" maxlength="500" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition duration-200 ease-out resize-none text-sm" rows="3"></textarea>
+          <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-1" id="channelDescCharCount">0/500</div>
+        </div>
+        <div id="createChannelError" class="hidden text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg"></div>
+      </div>
+      <!-- Modal Footer -->
+      <div class="flex items-center gap-2 px-4 py-3 border-t border-zinc-200 dark:border-zinc-800">
+        <div class="flex-1"></div>
+        <button onclick="closeCreateChannelModal()" class="px-3 py-1.5 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 rounded text-sm font-medium transition duration-200 ease-out active:scale-95">Cancel</button>
+        <button onclick="submitChannelCreation()" class="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition duration-200 ease-out active:scale-95">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notification Mode Menu -->
+  <div id="notificationModeMenu" class="hidden fixed z-50 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg overflow-hidden">
+    <button onclick="setChannelNotificationMode('all')" class="w-full px-4 py-2 text-sm text-left text-zinc-900 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition" data-mode="all">
+      <span class="inline-block mr-2">●</span>All Posts
+    </button>
+    <button onclick="setChannelNotificationMode('following_only')" class="w-full px-4 py-2 text-sm text-left text-zinc-900 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition" data-mode="following_only">
+      <span class="inline-block mr-2">●</span>Following Only
+    </button>
+    <button onclick="setChannelNotificationMode('muted')" class="w-full px-4 py-2 text-sm text-left text-zinc-900 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition" data-mode="muted">
+      <span class="inline-block mr-2">●</span>Muted
+    </button>
   </div>
 
   <!-- Toast Notification Container -->
@@ -5953,10 +6018,18 @@
       } else {
         html = '<div class="divide-y divide-zinc-200 dark:divide-zinc-800">';
         filteredChannelsList.forEach(channel => {
+          const createdDate = new Date(channel.createdAt);
+          const isNew = new Date().getTime() - createdDate.getTime() < 7 * 24 * 60 * 60 * 1000;
+          const verifiedBadge = channel.isVerified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs ml-1">✓</span>' : '';
+
           html += `
             <div class="p-4 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 cursor-pointer transition" onclick="showChannelPosts(${channel.id})">
-              <h3 class="font-semibold text-zinc-900 dark:text-zinc-100">${escapeHtml(channel.name)}</h3>
-              ${channel.description ? `<p class="text-sm text-zinc-600 dark:text-zinc-400 mt-1">${escapeHtml(channel.description)}</p>` : ''}
+              <div class="flex items-start justify-between mb-2">
+                <h3 class="font-semibold text-zinc-900 dark:text-zinc-100">${escapeHtml(channel.name)}${verifiedBadge}</h3>
+                ${isNew ? '<span class="text-xs bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300 px-2 py-1 rounded">New</span>' : ''}
+              </div>
+              ${channel.description ? `<p class="text-sm text-zinc-600 dark:text-zinc-400 mb-2">${escapeHtml(channel.description)}</p>` : ''}
+              <div class="text-xs text-zinc-500 dark:text-zinc-500">${channel.ownerUsername || 'System'} • ${createdDate.toLocaleDateString()}</div>
             </div>
           `;
         });
@@ -5974,11 +6047,28 @@
       document.getElementById('channelDetailHeader').classList.remove('hidden');
       document.getElementById('channelDetailName').textContent = channel.name;
       document.getElementById('channelDetailDescription').textContent = channel.description || '';
-      document.getElementById('channelDetailFollowers').textContent = '0 followers';
+      document.getElementById('channelDetailFollowers').textContent = channel.unreadCount + ' unread';
 
       try {
         const data = await apiCall(`/api/channels/${channelId}/posts?limit=50&offset=0`);
         if (data && data.posts) {
+          // Update mini stats
+          const lastPostDate = data.posts.length > 0 ? new Date(data.posts[0].createdAt) : null;
+          const lastActivityText = lastPostDate ? formatRelativeTime(data.posts[0].createdAt) : 'No posts yet';
+          const statsHtml = `
+            <span>${data.posts.length} posts</span>
+            <span>Last active ${lastActivityText}</span>
+          `;
+          document.getElementById('channelDetailStats').innerHTML = statsHtml;
+
+          // Mark channel as read
+          if (data.posts.length > 0) {
+            await apiCall(`/api/channels/${channelId}/read`, {
+              method: 'PUT',
+              body: JSON.stringify({ lastReadPostId: data.posts[0].id })
+            });
+          }
+
           let html = '';
           if (data.posts.length === 0) {
             html = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">No posts in this channel</div>';
@@ -7465,6 +7555,188 @@
         modal.classList.add('hidden');
         input.value = '';
       }, 300);
+    }
+
+    // Channel creation functions
+    function openCreateChannelModal() {
+      const modal = document.getElementById('createChannelModal');
+      const nameInput = document.getElementById('createChannelNameInput');
+      modal.classList.remove('hidden');
+      requestAnimationFrame(() => {
+        modal.style.opacity = '1';
+      });
+      nameInput.focus();
+      document.getElementById('createChannelError').classList.add('hidden');
+    }
+
+    function closeCreateChannelModal() {
+      const modal = document.getElementById('createChannelModal');
+      modal.style.opacity = '0';
+      setTimeout(() => {
+        modal.classList.add('hidden');
+        document.getElementById('createChannelNameInput').value = '';
+        document.getElementById('createChannelDescInput').value = '';
+        document.getElementById('createChannelError').classList.add('hidden');
+      }, 300);
+    }
+
+    function updateChannelCharCounts() {
+      const nameInput = document.getElementById('createChannelNameInput');
+      const descInput = document.getElementById('createChannelDescInput');
+      document.getElementById('channelNameCharCount').textContent = nameInput.value.length + '/100';
+      document.getElementById('channelDescCharCount').textContent = descInput.value.length + '/500';
+    }
+
+    document.getElementById('createChannelNameInput')?.addEventListener('input', updateChannelCharCounts);
+    document.getElementById('createChannelDescInput')?.addEventListener('input', updateChannelCharCounts);
+
+    async function submitChannelCreation() {
+      const nameInput = document.getElementById('createChannelNameInput');
+      const descInput = document.getElementById('createChannelDescInput');
+      const errorDiv = document.getElementById('createChannelError');
+      const name = nameInput.value.trim();
+      const description = descInput.value.trim();
+
+      if (!name) {
+        errorDiv.textContent = 'Channel name is required';
+        errorDiv.classList.remove('hidden');
+        return;
+      }
+
+      if (name.length > 100) {
+        errorDiv.textContent = 'Channel name must be 100 characters or less';
+        errorDiv.classList.remove('hidden');
+        return;
+      }
+
+      if (description.length > 500) {
+        errorDiv.textContent = 'Description must be 500 characters or less';
+        errorDiv.classList.remove('hidden');
+        return;
+      }
+
+      try {
+        showToast('Creating channel...', 'info');
+        const contentHash = computeContentHash(name);
+
+        // Phase 1: Create channel in DB (returns blockchainRecordingId)
+        const response = await apiCall('/api/channels', {
+          method: 'POST',
+          body: JSON.stringify({ name, description, contentHash })
+        });
+
+        if (!response || response.error) {
+          throw new Error(response?.error || 'Failed to create channel');
+        }
+
+        const channelId = response.id;
+        const blockchainRecordingId = response.blockchainRecordingId;
+
+        console.log('Channel created, requesting wallet signature:', { channelId, blockchainRecordingId });
+
+        // Close modal before requesting signature
+        closeCreateChannelModal();
+
+        // Phase 2: Request wallet signature for verification
+        try {
+          const txHash = await requestWalletSignature('Create Channel', { name, description }, blockchainRecordingId);
+          console.log('Wallet signature received:', { txHash });
+          showToast('Channel created and verified on-chain!', 'success');
+        } catch (signErr) {
+          console.warn('Wallet signature failed (channel still created in DB):', signErr.message);
+          showToast('Channel created! On-chain verification pending.', 'info');
+        }
+
+        // Reload channels list
+        await loadChannels();
+        showChannelList();
+      } catch (err) {
+        console.error('Error creating channel:', err);
+        errorDiv.textContent = err.message || 'Failed to create channel';
+        errorDiv.classList.remove('hidden');
+        showToast('Failed to create channel', 'error');
+      }
+    }
+
+    // Channel filtering
+    let currentChannelFilter = 'all';
+
+    function applyChannelFilter(type) {
+      currentChannelFilter = type;
+      const now = new Date();
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+      let filteredChannels = channelsList;
+
+      if (type === 'following') {
+        filteredChannels = channelsList.filter(ch => ch.isPinned);
+      } else if (type === 'new') {
+        filteredChannels = channelsList.filter(ch => new Date(ch.createdAt) > sevenDaysAgo);
+      }
+
+      filteredChannelsList = filteredChannels;
+
+      // Update filter button styles
+      document.getElementById('filterAllBtn').classList.toggle('border-b-2', type === 'all');
+      document.getElementById('filterAllBtn').classList.toggle('border-cyan-600', type === 'all');
+      document.getElementById('filterAllBtn').classList.toggle('dark:border-cyan-400', type === 'all');
+      document.getElementById('filterAllBtn').classList.toggle('text-cyan-600', type === 'all');
+      document.getElementById('filterAllBtn').classList.toggle('dark:text-cyan-400', type === 'all');
+      document.getElementById('filterAllBtn').classList.toggle('border-transparent', type !== 'all');
+      document.getElementById('filterAllBtn').classList.toggle('text-zinc-600', type !== 'all');
+
+      document.getElementById('filterFollowingBtn').classList.toggle('border-b-2', type === 'following');
+      document.getElementById('filterFollowingBtn').classList.toggle('border-cyan-600', type === 'following');
+      document.getElementById('filterFollowingBtn').classList.toggle('dark:border-cyan-400', type === 'following');
+      document.getElementById('filterFollowingBtn').classList.toggle('text-cyan-600', type === 'following');
+      document.getElementById('filterFollowingBtn').classList.toggle('dark:text-cyan-400', type === 'following');
+      document.getElementById('filterFollowingBtn').classList.toggle('border-transparent', type !== 'following');
+      document.getElementById('filterFollowingBtn').classList.toggle('text-zinc-600', type !== 'following');
+
+      document.getElementById('filterNewBtn').classList.toggle('border-b-2', type === 'new');
+      document.getElementById('filterNewBtn').classList.toggle('border-cyan-600', type === 'new');
+      document.getElementById('filterNewBtn').classList.toggle('dark:border-cyan-400', type === 'new');
+      document.getElementById('filterNewBtn').classList.toggle('text-cyan-600', type === 'new');
+      document.getElementById('filterNewBtn').classList.toggle('dark:text-cyan-400', type === 'new');
+      document.getElementById('filterNewBtn').classList.toggle('border-transparent', type !== 'new');
+      document.getElementById('filterNewBtn').classList.toggle('text-zinc-600', type !== 'new');
+
+      showChannelList();
+    }
+
+    // Notification mode menu
+    function showNotificationModeMenu() {
+      const menu = document.getElementById('notificationModeMenu');
+      const btn = document.getElementById('channelNotificationBtn');
+      const rect = btn.getBoundingClientRect();
+      menu.style.top = (rect.bottom + 5) + 'px';
+      menu.style.left = (rect.left - menu.offsetWidth + btn.offsetWidth) + 'px';
+      menu.classList.remove('hidden');
+      document.addEventListener('click', closeNotificationModeMenuOnClick);
+    }
+
+    function closeNotificationModeMenuOnClick(e) {
+      const menu = document.getElementById('notificationModeMenu');
+      const btn = document.getElementById('channelNotificationBtn');
+      if (!menu.contains(e.target) && !btn.contains(e.target)) {
+        menu.classList.add('hidden');
+        document.removeEventListener('click', closeNotificationModeMenuOnClick);
+      }
+    }
+
+    async function setChannelNotificationMode(mode) {
+      if (!currentChannelId) return;
+      try {
+        await apiCall(`/api/channels/${currentChannelId}/notification-mode`, {
+          method: 'POST',
+          body: JSON.stringify({ mode })
+        });
+        document.getElementById('notificationModeMenu').classList.add('hidden');
+        showToast(`Notification mode set to ${mode.replace('_', ' ')}`, 'success');
+      } catch (err) {
+        console.error('Error setting notification mode:', err);
+        showToast('Failed to set notification mode', 'error');
+      }
     }
 
     async function submitFeedPostFromModal() {

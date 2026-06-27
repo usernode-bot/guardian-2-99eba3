@@ -4197,6 +4197,178 @@ app.get('/api/channels', async (req, res) => {
   }
 });
 
+// POST /api/channels - Create a new channel
+app.post('/api/channels', async (req, res) => {
+  try {
+    const requestId = Math.random().toString(36).substr(2, 9);
+    const startTime = new Date().toISOString();
+    console.log(`[POST /api/channels::ENTRY] Request ID=${requestId}, timestamp=${startTime}`);
+
+    // Validation: check authentication
+    if (!req.user) {
+      console.error(`[POST /api/channels::VALIDATE] Authentication failed - no req.user`);
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { name, description, txHash, auditLogId, contentHash: frontendContentHash } = req.body;
+    const userId = parseInt(req.user.id, 10);
+
+    if (isNaN(userId)) {
+      console.error(`[POST /api/channels::VALIDATE] Invalid user ID: ${req.user.id}`);
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    // Validation: check wallet connection
+    if (!req.user.usernode_pubkey) {
+      console.error(`[POST /api/channels::VALIDATE] Wallet not connected - usernode_pubkey is missing`);
+      return res.status(401).json({ error: 'Must be connected to Usernode wallet to create channels' });
+    }
+
+    // Validation: check channel name
+    if (!name || name.trim().length === 0) {
+      console.error(`[POST /api/channels::VALIDATE] Channel name validation failed: empty or missing`);
+      return res.status(400).json({ error: 'Channel name is required' });
+    }
+
+    if (name.trim().length > 100) {
+      return res.status(400).json({ error: 'Channel name must be 100 characters or less' });
+    }
+
+    if (description && description.trim().length > 500) {
+      return res.status(400).json({ error: 'Channel description must be 500 characters or less' });
+    }
+
+    const network = 'testnet';
+    const now = new Date();
+
+    // Database: Create channel with is_verified=FALSE initially
+    console.log(`[POST /api/channels::DB] Creating channel with: creator_id=${userId}, name="${name.trim()}", description="${description || '(null)'}", network=${network}`);
+    const result = await pool.query(`
+      INSERT INTO channels (name, description, owner_id, is_verified, is_featured, is_system, created_at, updated_at)
+      VALUES ($1, $2, $3, FALSE, FALSE, FALSE, NOW(), NOW())
+      RETURNING id, name, description, owner_id, created_at, updated_at
+    `, [name.trim(), description ? description.trim() : null, userId]);
+
+    if (result.rows.length === 0) {
+      console.error(`[POST /api/channels::DB] Channel insert returned no rows`);
+      throw new Error('Channel creation query returned no results');
+    }
+
+    const channelId = result.rows[0].id;
+    console.log(`[POST /api/channels::DB] Channel created successfully: id=${channelId}, name="${result.rows[0].name}"`);
+
+    // Blockchain: Prepare transaction payload
+    const contentHash = frontendContentHash || computeContentHash(name.trim());
+    const transactionPayload = {
+      type: 'channel_create',
+      channelId: channelId,
+      channelName: name.trim(),
+      creatorPubkey: req.user.usernode_pubkey || APP_PUBKEY,
+      description: description ? description.trim() : null,
+      contentHash: contentHash,
+      timestamp: now.toISOString(),
+      network: network
+    };
+
+    console.log(`[POST /api/channels::BLOCKCHAIN] Transaction payload prepared: type=${transactionPayload.type}, channelId=${transactionPayload.channelId}, network=${transactionPayload.network}`);
+
+    // Sign memo following Last One Wins pattern
+    const memo = signTransactionMemo(transactionPayload);
+
+    // Blockchain: Create audit log entry
+    let blockchainRecordingId;
+    if (auditLogId) {
+      // Two-phase flow: audit log already exists from wallet signature
+      console.log(`[POST /api/channels::BLOCKCHAIN] Using existing audit log: id=${auditLogId}`);
+      const actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-channel-create-' + channelId + '-' + Date.now() : 'ut1-' + network + '-tx-channel-' + Math.random().toString(36).substr(2, 9));
+      const auditStatus = txHash ? 'pending' : (ENABLE_DEMO_MODE ? 'confirmed' : 'pending');
+
+      await pool.query(`
+        UPDATE blockchain_audit_logs
+        SET channel_id = $1, message_type = $2, tx_hash = $3, transaction_payload = $4, status = $5, confirmed_at = $6, content_hash = $7, user_pubkey = $8, action_timestamp = $9, updated_at = NOW()
+        WHERE id = $10 AND user_id = $11
+      `, [channelId, 'channel_create', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, req.user.usernode_pubkey || null, now, auditLogId, userId]);
+      blockchainRecordingId = auditLogId;
+      console.log(`[POST /api/channels::BLOCKCHAIN] Updated existing audit log: id=${blockchainRecordingId}`);
+    } else {
+      // Single-phase flow: create new audit log
+      const actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-channel-create-' + channelId + '-' + Date.now() : 'ut1-' + network + '-tx-channel-' + Math.random().toString(36).substr(2, 9));
+      const auditStatus = txHash ? 'pending' : (ENABLE_DEMO_MODE ? 'confirmed' : 'pending');
+      console.log(`[POST /api/channels::BLOCKCHAIN] Creating new audit log: txHash=${actualTxHash}, status=${auditStatus}, env=${IS_STAGING ? 'staging' : 'production'}, demoMode=${ENABLE_DEMO_MODE}`);
+
+      const auditRes = await pool.query(`
+        INSERT INTO blockchain_audit_logs (user_id, channel_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
+        RETURNING id
+      `, [userId, channelId, 'channel_create', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, req.user.usernode_pubkey || null, now, now]);
+
+      if (auditRes.rows.length === 0) {
+        console.error(`[POST /api/channels::BLOCKCHAIN] Audit log insert returned no rows`);
+        throw new Error('Audit log creation query returned no results');
+      }
+      blockchainRecordingId = auditRes.rows[0].id;
+      console.log(`[POST /api/channels::BLOCKCHAIN] Audit log created: id=${blockchainRecordingId}, rowCount=${auditRes.rowCount}`);
+    }
+
+    // Initialize channel unread tracking for creator
+    await pool.query(`
+      INSERT INTO channel_unread (user_id, channel_id, unread_count, notification_mode)
+      VALUES ($1, $2, 0, 'all')
+      ON CONFLICT (user_id, channel_id) DO NOTHING
+    `, [userId, channelId]);
+
+    // Blockchain: If real tx hash provided from frontend, start polling immediately
+    if (txHash) {
+      console.log(`[POST /api/channels::BLOCKCHAIN] Real txHash provided from frontend, starting polling`);
+      (async () => {
+        try {
+          await pollTransactionStatus(blockchainRecordingId, txHash);
+        } catch (err) {
+          console.error('Error polling transaction status:', err);
+        }
+      })();
+    } else if (!ENABLE_DEMO_MODE) {
+      console.log(`[POST /api/channels::BLOCKCHAIN] Spawning background blockchain submission task (production only)`);
+      (async () => {
+        try {
+          console.log(`[POST /api/channels::BLOCKCHAIN::ASYNC] Background task started for auditId=${blockchainRecordingId}`);
+          const result = await sendTransactionToBridge(transactionPayload, null, network);
+          console.log(`[POST /api/channels::BLOCKCHAIN::ASYNC] Bridge returned txHash=${result.txHash}, status=${result.status}`);
+
+          // Update audit log with real tx hash
+          const updateRes = await pool.query(`
+            UPDATE blockchain_audit_logs
+            SET tx_hash = $1, status = $2, updated_at = NOW()
+            WHERE id = $3 AND user_id = $4
+          `, [result.txHash, result.status || 'pending', blockchainRecordingId, userId]);
+          console.log(`[POST /api/channels::BLOCKCHAIN::ASYNC] Updated audit log with txHash: rowCount=${updateRes.rowCount}`);
+
+          // Start polling
+          if (result.txHash) {
+            await pollTransactionStatus(blockchainRecordingId, result.txHash);
+          }
+        } catch (err) {
+          console.error(`[POST /api/channels::BLOCKCHAIN::ASYNC] Background submission failed: ${err.message}`);
+        }
+      })();
+    }
+
+    res.json({
+      id: channelId,
+      name: result.rows[0].name,
+      description: result.rows[0].description,
+      ownerId: result.rows[0].owner_id,
+      ownerUsername: req.user.username,
+      isVerified: false,
+      createdAt: result.rows[0].created_at,
+      blockchainRecordingId: blockchainRecordingId
+    });
+  } catch (err) {
+    console.error('Error creating channel:', err);
+    res.status(500).json({ error: 'Failed to create channel' });
+  }
+});
+
 // GET /api/channels/:channelId/posts - Fetch paginated posts for a specific channel
 app.get('/api/channels/:channelId/posts', async (req, res) => {
   try {
@@ -4407,6 +4579,34 @@ app.get('/api/channels/:channelId/unread', async (req, res) => {
   } catch (err) {
     console.error('Error fetching unread count:', err);
     res.status(500).json({ error: 'Failed to fetch unread count' });
+  }
+});
+
+// POST /api/channels/:channelId/notification-mode - Set notification mode for a channel
+app.post('/api/channels/:channelId/notification-mode', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const channelId = parseInt(req.params.channelId);
+    const { mode } = req.body;
+
+    if (!['all', 'following_only', 'muted'].includes(mode)) {
+      return res.status(400).json({ error: 'Invalid notification mode' });
+    }
+
+    await pool.query(`
+      INSERT INTO channel_unread (user_id, channel_id, notification_mode)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (user_id, channel_id)
+      DO UPDATE SET notification_mode = $3
+    `, [req.user.id, channelId, mode]);
+
+    res.json({ success: true, mode: mode });
+  } catch (err) {
+    console.error('Error setting notification mode:', err);
+    res.status(500).json({ error: 'Failed to set notification mode' });
   }
 });
 
@@ -6254,6 +6454,11 @@ async function start() {
         ON channel_unread(user_id, channel_id)
     `);
 
+    // Add notification_mode column to channel_unread table (idempotent migration)
+    await pool.query(`
+      ALTER TABLE channel_unread ADD COLUMN IF NOT EXISTS notification_mode VARCHAR(20) DEFAULT 'all'
+    `);
+
     // Create channel_categories table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS channel_categories (
@@ -7580,6 +7785,101 @@ async function start() {
         console.log('[GuardiAI Seed] Created GuardiAI demo post 2:', { postId: guardiAIPost2Res.rows[0].id });
       }
 
+      // Seed example channels with posts
+      console.log('[Channel Seed] Starting channel seeding...');
+
+      // Create General Discussion channel
+      const generalDiscussionRes = await pool.query(`
+        INSERT INTO channels (name, description, owner_id, is_verified, is_featured, category, created_at, updated_at)
+        VALUES ('General Discussion', 'Staging demo channel for general conversation', 1, TRUE, TRUE, 'General', NOW() - INTERVAL '5 days', NOW())
+        ON CONFLICT (name) DO NOTHING
+        RETURNING id
+      `);
+
+      if (generalDiscussionRes.rows.length > 0) {
+        const generalChannelId = generalDiscussionRes.rows[0].id;
+        console.log('[Channel Seed] Created General Discussion channel:', { channelId: generalChannelId });
+
+        // Seed posts in General Discussion channel
+        await pool.query(`
+          INSERT INTO feed_posts (user_id, content, channel_id, created_at)
+          VALUES
+            (1, $1, $2, NOW() - INTERVAL '4 days'),
+            (2, $3, $2, NOW() - INTERVAL '3 days'),
+            (3, $4, $2, NOW() - INTERVAL '2 days')
+          ON CONFLICT DO NOTHING
+        `, [
+          JSON.stringify({ text: 'Staging demo: Welcome to General Discussion! Feel free to share anything here.' }),
+          generalChannelId,
+          JSON.stringify({ text: 'Great to have this channel. Looking forward to discussions!' }),
+          JSON.stringify({ text: 'Anyone else excited about the new features?' })
+        ]);
+      }
+
+      // Create Dev Updates channel
+      const devUpdatesRes = await pool.query(`
+        INSERT INTO channels (name, description, owner_id, is_verified, is_featured, category, created_at, updated_at)
+        VALUES ('Dev Updates', 'Staging demo channel for development updates', 2, TRUE, TRUE, 'Updates', NOW() - INTERVAL '3 days', NOW())
+        ON CONFLICT (name) DO NOTHING
+        RETURNING id
+      `);
+
+      if (devUpdatesRes.rows.length > 0) {
+        const devChannelId = devUpdatesRes.rows[0].id;
+        console.log('[Channel Seed] Created Dev Updates channel:', { channelId: devChannelId });
+
+        // Seed posts in Dev Updates channel
+        await pool.query(`
+          INSERT INTO feed_posts (user_id, content, channel_id, created_at)
+          VALUES
+            (2, $1, $2, NOW() - INTERVAL '2 days'),
+            (1, $3, $2, NOW() - INTERVAL '1 day')
+          ON CONFLICT DO NOTHING
+        `, [
+          JSON.stringify({ text: 'Staging demo: Just merged new bridge improvements for faster transactions!' }),
+          devChannelId,
+          JSON.stringify({ text: 'Exciting! What improvements were made?' })
+        ]);
+      }
+
+      // Create Community Highlights channel
+      const communityHighlightsRes = await pool.query(`
+        INSERT INTO channels (name, description, owner_id, is_verified, is_featured, category, created_at, updated_at)
+        VALUES ('Community Highlights', 'Staging demo channel showcasing community contributions', 3, TRUE, TRUE, 'Community', NOW() - INTERVAL '1 day', NOW())
+        ON CONFLICT (name) DO NOTHING
+        RETURNING id
+      `);
+
+      if (communityHighlightsRes.rows.length > 0) {
+        const communityChannelId = communityHighlightsRes.rows[0].id;
+        console.log('[Channel Seed] Created Community Highlights channel:', { channelId: communityChannelId });
+
+        // Seed posts in Community Highlights channel
+        await pool.query(`
+          INSERT INTO feed_posts (user_id, content, channel_id, created_at)
+          VALUES
+            (3, $1, $2, NOW() - INTERVAL '12 hours'),
+            (4, $3, $2, NOW() - INTERVAL '6 hours')
+          ON CONFLICT DO NOTHING
+        `, [
+          JSON.stringify({ text: 'Staging demo: Congratulations to @staging-demo-alice for the amazing design work!' }),
+          communityChannelId,
+          JSON.stringify({ text: 'Amazing community contributions this week! Keep it up everyone 🎉' })
+        ]);
+      }
+
+      // Initialize channel unread tracking for users
+      for (const userId of [1, 2, 3, 4, 5]) {
+        for (const channelId of [generalDiscussionRes.rows[0]?.id, devUpdatesRes.rows[0]?.id, communityHighlightsRes.rows[0]?.id].filter(Boolean)) {
+          await pool.query(`
+            INSERT INTO channel_unread (user_id, channel_id, notification_mode)
+            VALUES ($1, $2, 'all')
+            ON CONFLICT (user_id, channel_id) DO NOTHING
+          `, [userId, channelId]);
+        }
+      }
+
+      console.log('[Channel Seed] ✅ Channel seeding completed');
       console.log('[GuardiAI Seed] ✅ Staging demo data seed completed');
     }
 
