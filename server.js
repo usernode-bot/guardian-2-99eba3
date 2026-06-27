@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const https = require('https');
 const http = require('http');
 
-// Guardian 2 - Production-ready Usernode blockchain integration
+// Guardian 2 - Production-ready Usernode blockchain integration (rebuild v2)
 const app = express();
 const port = process.env.PORT || 3000;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
