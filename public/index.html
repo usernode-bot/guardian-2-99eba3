@@ -1243,10 +1243,6 @@
   <!-- Contact Options Menu -->
   <div id="contactContextMenu" class="hidden fixed z-50 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg shadow-lg min-w-40">
     <button id="viewContactProfileBtn" onclick="event.stopPropagation(); viewContactProfileFromMenu()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">View Profile</button>
-    <button id="archiveContactBtn" onclick="event.stopPropagation(); archiveContact()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">Archive Contact</button>
-    <button id="unarchiveContactBtn" onclick="event.stopPropagation(); unarchiveContact()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 hidden">Unarchive Contact</button>
-    <button id="muteContactBtn" onclick="event.stopPropagation(); muteContact()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">Mute Contact</button>
-    <button id="unmuteContactBtn" onclick="event.stopPropagation(); unmuteContact()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 hidden">Unmute Contact</button>
     <button onclick="event.stopPropagation(); deleteContactFromMenu()" class="menu-item w-full text-left px-4 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">Delete Contact</button>
   </div>
 
@@ -2569,21 +2565,35 @@
     }
 
     async function showDeleteContactModal(contactId, username) {
-      pendingDeleteContactId = contactId;
-      document.getElementById('deleteContactTitle').textContent = `Delete ${username}?`;
+      // Validate contactId before proceeding
+      const sanitizedContactId = String(contactId).trim();
+
+      if (!sanitizedContactId || !/^\d+$/.test(sanitizedContactId)) {
+        console.error('Invalid contact ID in delete modal:', {contactId, sanitizedContactId});
+        showToast('Error: Invalid contact ID. Please refresh and try again.', 'error');
+        return;
+      }
+
+      pendingDeleteContactId = sanitizedContactId;
+      document.getElementById('deleteContactTitle').textContent = `Delete ${username || 'this contact'}?`;
 
       // Fetch conversation count
       const warningDiv = document.getElementById('deleteContactWarning');
       const warningText = document.getElementById('deleteContactWarningText');
       warningDiv.classList.add('hidden');
 
-      const countData = await apiCall(`/api/contacts/${contactId}/conversation-count`);
+      const countData = await apiCall(`/api/contacts/${sanitizedContactId}/conversation-count`);
       if (countData && !countData.error && countData.conversationCount !== undefined) {
         const count = countData.conversationCount;
         if (count > 0) {
           warningText.textContent = `Also deletes ${count} conversation${count === 1 ? '' : 's'}`;
           warningDiv.classList.remove('hidden');
         }
+      } else if (countData && countData.error) {
+        // If contact doesn't exist or there's an error, show error and don't proceed
+        console.error('Error fetching conversation count:', countData.error);
+        showToast(countData.error || 'Error: Unable to fetch contact details', 'error');
+        return;
       }
 
       document.getElementById('deleteContactModal').classList.remove('hidden');
@@ -2595,7 +2605,18 @@
     }
 
     async function confirmDeleteContact() {
-      if (!pendingDeleteContactId) return;
+      if (!pendingDeleteContactId) {
+        console.warn('No contact ID to delete');
+        return;
+      }
+
+      // Validate contactId format
+      const contactId = String(pendingDeleteContactId).trim();
+      if (!contactId || !/^\d+$/.test(contactId)) {
+        console.error('Invalid contact ID in confirm delete:', {pendingDeleteContactId, contactId});
+        showToast('Error: Invalid contact ID. Please refresh and try again.', 'error');
+        return;
+      }
 
       // Prevent duplicate API calls
       if (isDeleteContactInProgress) {
@@ -2603,7 +2624,6 @@
         return;
       }
 
-      const contactId = pendingDeleteContactId;
       isDeleteContactInProgress = true;
       hideDeleteContactModal();
 
@@ -2653,51 +2673,34 @@
       event.preventDefault();
       event.stopPropagation();
 
-      console.log('Opening menu for contact:', {contactId, contactUserId, contactName});
+      // Ensure contactId is a string of digits (never null/undefined)
+      const sanitizedContactId = String(contactId).trim();
+      const sanitizedUserId = String(contactUserId).trim();
+      const sanitizedName = String(contactName || '').trim();
 
-      currentContactContextMenuId = contactId;
-      currentContactContextMenuUserId = contactUserId;
-      currentContactContextMenuName = contactName;
+      if (!sanitizedContactId || !/^\d+$/.test(sanitizedContactId)) {
+        console.error('Invalid contact ID provided to menu:', {contactId, sanitizedContactId});
+        showToast('Error: Invalid contact. Please refresh and try again.', 'error');
+        return;
+      }
+
+      if (!sanitizedUserId || !/^\d+$/.test(sanitizedUserId)) {
+        console.error('Invalid user ID provided to menu:', {contactUserId, sanitizedUserId});
+        showToast('Error: Invalid contact user. Please refresh and try again.', 'error');
+        return;
+      }
+
+      console.log('Opening menu for contact:', {contactId: sanitizedContactId, contactUserId: sanitizedUserId, contactName: sanitizedName});
+
+      currentContactContextMenuId = sanitizedContactId;
+      currentContactContextMenuUserId = sanitizedUserId;
+      currentContactContextMenuName = sanitizedName;
 
       const menu = document.getElementById('contactContextMenu');
       if (!menu) {
         console.error('Contact context menu not found in DOM');
         return;
       }
-
-      const archiveBtn = document.getElementById('archiveContactBtn');
-      const unarchiveBtn = document.getElementById('unarchiveContactBtn');
-      const muteBtn = document.getElementById('muteContactBtn');
-      const unmuteBtn = document.getElementById('unmuteContactBtn');
-
-      if (!archiveBtn || !unarchiveBtn || !muteBtn || !unmuteBtn) {
-        console.error('Contact menu buttons not found in DOM', {
-          archiveBtn: !!archiveBtn,
-          unarchiveBtn: !!unarchiveBtn,
-          muteBtn: !!muteBtn,
-          unmuteBtn: !!unmuteBtn
-        });
-        showToast('Error: contact menu unavailable', 'error');
-        return;
-      }
-
-      // Find the contact data to check archive/mute states
-      const contact = allContacts && allContacts.length > 0 ? allContacts.find(c => c.id === contactId) : null;
-      currentContactContextData = contact;
-
-      console.log('Contact data:', contact);
-
-      const userId = currentUser ? parseInt(currentUser.id, 10) : null;
-      const isArchived = contact && contact.archived_by?.length && contact.archived_by.includes(userId);
-      const isMuted = contact && contact.muted_by?.length && contact.muted_by.includes(userId);
-
-      console.log('State check:', {userId, isArchived, isMuted, archived_by: contact?.archived_by, muted_by: contact?.muted_by});
-
-      // Pre-configure button visibility before showing menu
-      archiveBtn.style.display = isArchived ? 'none' : 'block';
-      unarchiveBtn.style.display = isArchived ? 'block' : 'none';
-      muteBtn.style.display = isMuted ? 'none' : 'block';
-      unmuteBtn.style.display = isMuted ? 'block' : 'none';
 
       // Position menu, accounting for viewport
       let x = event.clientX;
@@ -2745,126 +2748,6 @@
       console.log('Viewing profile for user:', currentContactContextMenuUserId);
       closeContactContextMenu();
       await showUserProfileModal(currentContactContextMenuUserId);
-    }
-
-    async function archiveContact() {
-      if (!currentContactContextMenuId) {
-        console.warn('No contact ID to archive');
-        return;
-      }
-
-      console.log('Archiving contact:', currentContactContextMenuId);
-      closeContactContextMenu();
-
-      try {
-        const data = await apiCall(`/api/contacts/${currentContactContextMenuId}/archive`, {
-          method: 'POST',
-          body: JSON.stringify({})
-        });
-
-        console.log('Archive response:', data);
-        if (data && !data.error && data.ok) {
-          await loadContactsList();
-          showToast('Contact archived', 'success');
-        } else {
-          const errorMsg = data?.error || 'Failed to archive contact';
-          console.error('Archive error:', errorMsg);
-          showToast(errorMsg, 'error');
-        }
-      } catch (err) {
-        console.error('Error archiving contact:', err);
-        showToast('Failed to archive contact', 'error');
-      }
-    }
-
-    async function unarchiveContact() {
-      if (!currentContactContextMenuId) {
-        console.warn('No contact ID to unarchive');
-        return;
-      }
-
-      console.log('Unarchiving contact:', currentContactContextMenuId);
-      closeContactContextMenu();
-
-      try {
-        const data = await apiCall(`/api/contacts/${currentContactContextMenuId}/archive`, {
-          method: 'POST',
-          body: JSON.stringify({})
-        });
-
-        console.log('Unarchive response:', data);
-        if (data && !data.error && data.ok) {
-          await loadContactsList();
-          showToast('Contact unarchived', 'success');
-        } else {
-          const errorMsg = data?.error || 'Failed to unarchive contact';
-          console.error('Unarchive error:', errorMsg);
-          showToast(errorMsg, 'error');
-        }
-      } catch (err) {
-        console.error('Error unarchiving contact:', err);
-        showToast('Failed to unarchive contact', 'error');
-      }
-    }
-
-    async function muteContact() {
-      if (!currentContactContextMenuId) {
-        console.warn('No contact ID to mute');
-        return;
-      }
-
-      console.log('Muting contact:', currentContactContextMenuId);
-      closeContactContextMenu();
-
-      try {
-        const data = await apiCall(`/api/contacts/${currentContactContextMenuId}/mute`, {
-          method: 'PUT',
-          body: JSON.stringify({})
-        });
-
-        console.log('Mute response:', data);
-        if (data && !data.error && data.ok) {
-          await loadContactsList();
-          showToast('Contact muted', 'success');
-        } else {
-          const errorMsg = data?.error || 'Failed to mute contact';
-          console.error('Mute error:', errorMsg);
-          showToast(errorMsg, 'error');
-        }
-      } catch (err) {
-        console.error('Error muting contact:', err);
-        showToast('Failed to mute contact', 'error');
-      }
-    }
-
-    async function unmuteContact() {
-      if (!currentContactContextMenuId) {
-        console.warn('No contact ID to unmute');
-        return;
-      }
-
-      console.log('Unmuting contact:', currentContactContextMenuId);
-      closeContactContextMenu();
-
-      try {
-        const data = await apiCall(`/api/contacts/${currentContactContextMenuId}/mute`, {
-          method: 'PUT',
-          body: JSON.stringify({})
-        });
-
-        console.log('Unmute response:', data);
-        if (data && !data.error && data.ok) {
-          await loadContactsList();
-          showToast('Contact unmuted', 'success');
-        } else {
-          const errorMsg = data?.error || 'Failed to unmute contact';
-          console.error('Unmute error:', errorMsg);
-          showToast(errorMsg, 'error');
-        }
-      } catch (err) {
-        console.error('Error unmuting contact:', err);
-        showToast('Failed to unmute contact', 'error');
-      }
     }
 
     function deleteContactFromMenu() {
