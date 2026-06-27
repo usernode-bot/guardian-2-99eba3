@@ -4956,7 +4956,7 @@
     async function sendMessage() {
       const input = document.getElementById('msgInput');
       const text = input.value.trim();
-      if (!text) return;
+      if (!text || text.length < 1) return;
 
       if (!currentConvId && !currentGroupId) return;
 
@@ -4965,7 +4965,10 @@
       try {
         const endpoint = currentGroupId ? `/api/groups/${currentGroupId}/messages` : `/api/conversations/${currentConvId}/messages`;
 
-        const txDetails = { message: text.substring(0, 50) + (text.length > 50 ? '...' : '') };
+        const txDetails = {
+          message: text.substring(0, 50) + (text.length > 50 ? '...' : ''),
+          tokensIncluded: 0.001
+        };
         const txHash = await requestWalletSignature('Send Message', txDetails);
 
         const data = await apiCall(endpoint, {
@@ -5007,15 +5010,33 @@
       if (!file) return;
       if (!currentConvId && !currentGroupId) return;
 
+      // Validate MIME type
+      const validMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+      if (!validMimeTypes.includes(file.type)) {
+        showToast(`Error: Invalid image type. Supported: JPEG, PNG, WebP, GIF`, 'error');
+        return;
+      }
+
       const reader = new FileReader();
       reader.onload = async (e) => {
         const dataUri = e.target.result;
         const imageSizeKb = Math.round(dataUri.length / 1024);
+        const maxSizeKb = 5 * 1024; // 5 MB
+
+        // Validate size
+        if (imageSizeKb > maxSizeKb) {
+          showToast(`Error: Image too large (${imageSizeKb}KB). Max: 5MB`, 'error');
+          return;
+        }
 
         try {
           const endpoint = currentGroupId ? `/api/groups/${currentGroupId}/messages` : `/api/conversations/${currentConvId}/messages`;
 
-          const txHash = await requestWalletSignature('Send Image', { imageSize: imageSizeKb + ' KB' });
+          const txDetails = {
+            imageSize: imageSizeKb + ' KB',
+            tokensIncluded: 0.001
+          };
+          const txHash = await requestWalletSignature('Send Image', txDetails);
           const data = await apiCall(endpoint, {
             method: 'POST',
             body: JSON.stringify({ type: 'image', content: { imageUrl: dataUri }, txHash: txHash })

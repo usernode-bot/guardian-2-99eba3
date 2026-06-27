@@ -1216,6 +1216,19 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       return res.status(400).json({ error: 'Invalid message' });
     }
 
+    // Validate message content: must be non-empty after trimming (1+ characters for text)
+    if (type === 'text' && content.text && typeof content.text === 'string') {
+      const trimmedText = content.text.trim();
+      if (trimmedText.length === 0) {
+        return res.status(400).json({ error: 'Message cannot be empty' });
+      }
+      if (trimmedText.length < 1) {
+        return res.status(400).json({ error: 'Message must be at least 1 character' });
+      }
+    } else if (type === 'image' && (!content.imageUrl || typeof content.imageUrl !== 'string')) {
+      return res.status(400).json({ error: 'Invalid image data' });
+    }
+
     // Verify both participants are confirmed contacts
     const { rows: convRows } = await pool.query(`
       SELECT participant_a_id, participant_b_id FROM conversations WHERE id = $1
@@ -1251,12 +1264,14 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
     const messageId = msgRes.rows[0].id;
 
     // Prepare transaction payload (Usernode chain format)
+    const tokenAmount = 0.001;
     const transactionPayload = {
       type: 'message',
       messageId: messageId,
       senderId: userId,
       userPubkey: userPubkey,
       contentHash: contentHash,
+      tokenAmount: tokenAmount,
       timestamp: now.toISOString(),
       network: network
     };
@@ -1298,13 +1313,13 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
     const actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-message-' + messageId + '-' + Date.now() : 'ut1-' + network + '-tx-msg-' + Math.random().toString(36).substr(2, 9));
     const auditStatus = txHash ? 'pending' : (ENABLE_DEMO_MODE ? 'confirmed' : 'pending');
 
-    console.log(`[MESSAGE] Recording blockchain audit log: messageId=${messageId}, txHash=${actualTxHash}, status=${auditStatus}, contentHash=${contentHash}`);
+    console.log(`[MESSAGE] Recording blockchain audit log: messageId=${messageId}, txHash=${actualTxHash}, status=${auditStatus}, contentHash=${contentHash}, tokenAmount=${tokenAmount}`);
 
     const auditRes = await pool.query(`
-      INSERT INTO blockchain_audit_logs (user_id, message_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
+      INSERT INTO blockchain_audit_logs (user_id, message_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, token_amount, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
       RETURNING id
-    `, [userId, messageId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, now]);
+    `, [userId, messageId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, tokenAmount, now]);
     const blockchainRecordingId = auditRes.rows[0].id;
 
     console.log(`[MESSAGE] Blockchain audit log created: auditLogId=${blockchainRecordingId}`);
@@ -3265,6 +3280,19 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
       return res.status(400).json({ error: 'Invalid message' });
     }
 
+    // Validate message content: must be non-empty after trimming (1+ characters for text)
+    if (type === 'text' && content.text && typeof content.text === 'string') {
+      const trimmedText = content.text.trim();
+      if (trimmedText.length === 0) {
+        return res.status(400).json({ error: 'Message cannot be empty' });
+      }
+      if (trimmedText.length < 1) {
+        return res.status(400).json({ error: 'Message must be at least 1 character' });
+      }
+    } else if (type === 'image' && (!content.imageUrl || typeof content.imageUrl !== 'string')) {
+      return res.status(400).json({ error: 'Invalid image data' });
+    }
+
     // Verify user is a member of group
     const { rows: memberRows } = await pool.query(`
       SELECT id FROM group_members WHERE group_id = $1 AND user_id = $2
@@ -3288,6 +3316,7 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
     const messageId = msgRes.rows[0].id;
 
     // Prepare transaction payload
+    const tokenAmount = 0.001;
     const transactionPayload = {
       type: 'message',
       messageId: messageId,
@@ -3295,6 +3324,7 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
       senderId: userId,
       userPubkey: userPubkey,
       contentHash: contentHash,
+      tokenAmount: tokenAmount,
       timestamp: now.toISOString(),
       network: network
     };
@@ -3303,10 +3333,10 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
     const actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-message-' + messageId + '-' + Date.now() : 'ut1-' + network + '-tx-msg-' + Math.random().toString(36).substr(2, 9));
     const auditStatus = txHash ? 'pending' : (ENABLE_DEMO_MODE ? 'confirmed' : 'pending');
     const auditRes = await pool.query(`
-      INSERT INTO blockchain_audit_logs (user_id, message_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
+      INSERT INTO blockchain_audit_logs (user_id, message_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, token_amount, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)
       RETURNING id
-    `, [userId, messageId, groupId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, now]);
+    `, [userId, messageId, groupId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, tokenAmount, now]);
     const blockchainRecordingId = auditRes.rows[0].id;
 
     // Update message with audit log reference
@@ -5702,6 +5732,9 @@ async function start() {
     `);
     await pool.query(`
       ALTER TABLE blockchain_audit_logs ADD COLUMN IF NOT EXISTS action_timestamp TIMESTAMPTZ
+    `);
+    await pool.query(`
+      ALTER TABLE blockchain_audit_logs ADD COLUMN IF NOT EXISTS token_amount DECIMAL(18, 3) DEFAULT 0.001
     `);
 
     await pool.query(`

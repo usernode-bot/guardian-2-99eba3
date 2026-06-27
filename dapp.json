@@ -73,6 +73,16 @@
       "name": "Feed view renders",
       "path": "/",
       "expectSelector": "#feedView"
+    },
+    {
+      "name": "Message input allows 1+ characters",
+      "path": "/",
+      "expectSelector": "#msgInput"
+    },
+    {
+      "name": "Image attachment button available",
+      "path": "/",
+      "expectSelector": "#attachBtn"
     }
   ],
   "visibility": {
