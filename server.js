@@ -4136,6 +4136,106 @@ app.get('/api/activity', async (req, res) => {
 
 // ===== EXPLORER API PROXY =====
 
+// ===== CHANNEL ENDPOINTS =====
+
+// GET /api/channels - List all channels
+app.get('/api/channels', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { rows: channels } = await pool.query(`
+      SELECT id, name, description, is_system, created_at, updated_at
+      FROM channels
+      ORDER BY is_system DESC, created_at DESC
+    `);
+
+    res.json({
+      channels: channels.map(c => ({
+        id: c.id,
+        name: c.name,
+        description: c.description,
+        isSystem: c.is_system,
+        createdAt: c.created_at,
+        updatedAt: c.updated_at
+      }))
+    });
+  } catch (err) {
+    console.error('Error fetching channels:', err);
+    res.status(500).json({ error: 'Failed to fetch channels' });
+  }
+});
+
+// GET /api/channels/:channelId/posts - Fetch paginated posts for a specific channel
+app.get('/api/channels/:channelId/posts', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const channelId = parseInt(req.params.channelId);
+    const limit = Math.min(parseInt(req.query.limit || 50), 100);
+    const offset = parseInt(req.query.offset || 0);
+
+    // Verify channel exists
+    const { rows: channelCheck } = await pool.query(`
+      SELECT id FROM channels WHERE id = $1
+    `, [channelId]);
+
+    if (channelCheck.length === 0) {
+      return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    // Fetch posts for this channel
+    const { rows: posts } = await pool.query(`
+      SELECT
+        fp.id,
+        fp.user_id,
+        fp.content,
+        fp.created_at,
+        fp.updated_at,
+        fp.on_chain,
+        u.username,
+        u.verified_at,
+        u.avatar_url
+      FROM feed_posts fp
+      JOIN users u ON u.id = fp.user_id
+      WHERE fp.channel_id = $1
+      ORDER BY fp.created_at DESC
+      LIMIT $2 OFFSET $3
+    `, [channelId, limit, offset]);
+
+    const resultPosts = posts.map(post => ({
+      id: post.id,
+      userId: post.user_id,
+      username: post.username,
+      verified: !!post.verified_at,
+      avatarUrl: post.avatar_url,
+      content: post.content,
+      createdAt: post.created_at,
+      updatedAt: post.updated_at,
+      isEdited: post.updated_at && post.created_at && (new Date(post.updated_at) - new Date(post.created_at)) > 1000,
+      onChain: post.on_chain || false
+    }));
+
+    const { rows: countResult } = await pool.query(`
+      SELECT COUNT(*) as count FROM feed_posts WHERE channel_id = $1
+    `, [channelId]);
+
+    const total = parseInt(countResult[0].count);
+    const hasMore = offset + limit < total;
+
+    res.json({
+      posts: resultPosts,
+      hasMore
+    });
+  } catch (err) {
+    console.error('Error fetching channel posts:', err);
+    res.status(500).json({ error: 'Failed to fetch channel posts' });
+  }
+});
+
 // ===== FEED ENDPOINTS =====
 
 // Helper function to fetch link preview metadata
@@ -4177,8 +4277,17 @@ app.get('/api/feed/posts', async (req, res) => {
 
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
     const offset = parseInt(req.query.offset || 0);
+    const channelId = req.query.channel_id ? parseInt(req.query.channel_id) : null;
 
-    // Fetch all posts (both user posts and milestone posts from user_id = -1)
+    // Build query based on whether channel_id is provided
+    let whereClause = '';
+    let params = [limit, offset];
+    if (channelId) {
+      whereClause = 'WHERE fp.channel_id = $3';
+      params = [limit, offset, channelId];
+    }
+
+    // Fetch posts (optionally filtered by channel)
     const { rows: posts } = await pool.query(`
       SELECT
         fp.id,
@@ -4187,6 +4296,7 @@ app.get('/api/feed/posts', async (req, res) => {
         fp.created_at,
         fp.updated_at,
         fp.on_chain,
+        fp.channel_id,
         u.username,
         u.verified_at,
         u.avatar_url,
@@ -4194,9 +4304,10 @@ app.get('/api/feed/posts', async (req, res) => {
         (SELECT COUNT(*) FROM feed_comments WHERE post_id = fp.id)::INTEGER as comment_count
       FROM feed_posts fp
       JOIN users u ON u.id = fp.user_id
+      ${whereClause}
       ORDER BY fp.created_at DESC
       LIMIT $1 OFFSET $2
-    `, [limit, offset]);
+    `, params);
 
     const resultPosts = posts.map(post => ({
       id: post.id,
@@ -4214,9 +4325,17 @@ app.get('/api/feed/posts', async (req, res) => {
       isMilestone: post.user_id === -1
     }));
 
+    // Build count query based on whether channel_id is provided
+    let countParams = [];
+    let countWhereClause = '';
+    if (channelId) {
+      countWhereClause = 'WHERE channel_id = $1';
+      countParams = [channelId];
+    }
+
     const { rows: countResult } = await pool.query(`
-      SELECT COUNT(*) as count FROM feed_posts
-    `);
+      SELECT COUNT(*) as count FROM feed_posts ${countWhereClause}
+    `, countParams);
 
     const total = parseInt(countResult[0].count);
     const hasMore = offset + limit < total;
@@ -5889,6 +6008,38 @@ async function start() {
       )
     `);
 
+    // Create channels table (public - for organizing feed posts by channel)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS channels (
+        id BIGSERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
+        is_system BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_channels_is_system_created
+        ON channels(is_system DESC, created_at DESC)
+    `);
+
+    // Create or ensure Guardian Updates system channel exists
+    const guardianChannelResult = await pool.query(`
+      SELECT id FROM channels WHERE name = 'Guardian Updates' AND is_system = TRUE
+    `);
+    let guardianChannelId;
+    if (guardianChannelResult.rows.length === 0) {
+      const insertResult = await pool.query(`
+        INSERT INTO channels (name, description, is_system)
+        VALUES ('Guardian Updates', 'System notifications and milestones', TRUE)
+        RETURNING id
+      `);
+      guardianChannelId = insertResult.rows[0].id;
+    } else {
+      guardianChannelId = guardianChannelResult.rows[0].id;
+    }
+
     // Create feed_posts table (public - feed posts are shared with all users)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS feed_posts (
@@ -5943,11 +6094,39 @@ async function start() {
         ON feed_likes(post_id)
     `);
 
+    // Add channel_id column to feed_posts if it doesn't exist
+    await pool.query(`
+      ALTER TABLE feed_posts
+      ADD COLUMN IF NOT EXISTS channel_id BIGINT REFERENCES channels(id) ON DELETE CASCADE
+    `);
+
+    // Create index on channel_id and created_at for efficient post queries
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_feed_posts_channel_created
+        ON feed_posts(channel_id, created_at DESC)
+    `);
+
+    // Backfill existing posts to Guardian Updates channel if they don't have a channel
+    await pool.query(`
+      UPDATE feed_posts
+      SET channel_id = $1
+      WHERE channel_id IS NULL
+    `, [guardianChannelId]);
+
     // Add on_chain column to feed_posts if it doesn't exist
     await pool.query(`
       ALTER TABLE feed_posts
       ADD COLUMN IF NOT EXISTS on_chain BOOLEAN DEFAULT FALSE
     `);
+
+    // Staging: seed example post if in staging mode
+    if (process.env.USERNODE_ENV === 'staging') {
+      await pool.query(`
+        INSERT INTO feed_posts (user_id, content, channel_id, created_at)
+        VALUES (-1, $1, $2, NOW())
+        ON CONFLICT DO NOTHING
+      `, [JSON.stringify({ type: 'text', text: '[Staging] Guardian Updates - Initial System Message' }), guardianChannelId]);
+    }
 
     // Create bot_reply_log table for tracking bot replies
     await pool.query(`
