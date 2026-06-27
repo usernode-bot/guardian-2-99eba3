@@ -4145,20 +4145,50 @@ app.get('/api/channels', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const { rows: channels } = await pool.query(`
-      SELECT id, name, description, is_system, created_at, updated_at
-      FROM channels
-      ORDER BY is_system DESC, created_at DESC
-    `);
+    const category = req.query.category || null;
+    const featured = req.query.featured === 'true';
+
+    let query = `
+      SELECT c.id, c.name, c.description, c.is_system, c.owner_id, c.category, c.is_verified, c.verified_at, c.is_featured, c.created_at, c.updated_at,
+             u.username as ownerUsername,
+             (SELECT COUNT(*) FROM channel_unread WHERE user_id = $1 AND channel_id = c.id AND unread_count > 0)::INTEGER as unreadCount,
+             (SELECT COUNT(*) FROM pinned_channels WHERE user_id = $1 AND channel_id = c.id)::INTEGER as isPinned
+      FROM channels c
+      LEFT JOIN users u ON c.owner_id = u.id
+      WHERE 1=1
+    `;
+    const params = [req.user.id];
+    let paramCount = 1;
+
+    if (featured) {
+      query += ` AND c.is_featured = TRUE`;
+    }
+    if (category) {
+      paramCount++;
+      query += ` AND c.category = $${paramCount}`;
+      params.push(category);
+    }
+
+    query += ` ORDER BY c.is_featured DESC, c.is_system DESC, c.created_at DESC`;
+
+    const { rows: channels } = await pool.query(query, params);
 
     res.json({
       channels: channels.map(c => ({
         id: c.id,
         name: c.name,
         description: c.description,
+        ownerId: c.owner_id,
+        ownerUsername: c.ownerUsername,
+        category: c.category,
+        isVerified: c.is_verified,
+        verifiedAt: c.verified_at,
+        isFeatured: c.is_featured,
         isSystem: c.is_system,
         createdAt: c.created_at,
-        updatedAt: c.updated_at
+        updatedAt: c.updated_at,
+        unreadCount: parseInt(c.unreadCount) || 0,
+        isPinned: parseInt(c.isPinned) > 0
       }))
     });
   } catch (err) {
@@ -4233,6 +4263,150 @@ app.get('/api/channels/:channelId/posts', async (req, res) => {
   } catch (err) {
     console.error('Error fetching channel posts:', err);
     res.status(500).json({ error: 'Failed to fetch channel posts' });
+  }
+});
+
+// GET /api/channels/categories - List all available categories
+app.get('/api/channels/categories', async (req, res) => {
+  try {
+    const { rows: categories } = await pool.query(`
+      SELECT id, name, description FROM channel_categories ORDER BY name
+    `);
+    res.json({ categories });
+  } catch (err) {
+    console.error('Error fetching categories:', err);
+    res.status(500).json({ error: 'Failed to fetch categories' });
+  }
+});
+
+// GET /api/user/pinned-channels - List user's pinned channels
+app.get('/api/user/pinned-channels', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { rows: channels } = await pool.query(`
+      SELECT c.id, c.name, c.description, c.owner_id, c.category, c.is_verified, c.verified_at, c.is_featured, c.is_system,
+             u.username as ownerUsername,
+             (SELECT COUNT(*) FROM channel_unread WHERE user_id = $1 AND channel_id = c.id AND unread_count > 0)::INTEGER as unreadCount
+      FROM channels c
+      JOIN pinned_channels pc ON c.id = pc.channel_id
+      LEFT JOIN users u ON c.owner_id = u.id
+      WHERE pc.user_id = $1
+      ORDER BY pc.pinned_at DESC
+    `, [req.user.id]);
+
+    res.json({
+      channels: channels.map(ch => ({
+        id: ch.id,
+        name: ch.name,
+        description: ch.description,
+        ownerId: ch.owner_id,
+        ownerUsername: ch.ownerUsername,
+        category: ch.category,
+        isVerified: ch.is_verified,
+        verifiedAt: ch.verified_at,
+        isFeatured: ch.is_featured,
+        isSystem: ch.is_system,
+        unreadCount: parseInt(ch.unreadCount) || 0
+      }))
+    });
+  } catch (err) {
+    console.error('Error fetching pinned channels:', err);
+    res.status(500).json({ error: 'Failed to fetch pinned channels' });
+  }
+});
+
+// POST /api/user/pinned-channels/:channelId - Pin a channel
+app.post('/api/user/pinned-channels/:channelId', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const channelId = parseInt(req.params.channelId);
+
+    await pool.query(`
+      INSERT INTO pinned_channels (user_id, channel_id)
+      VALUES ($1, $2)
+      ON CONFLICT DO NOTHING
+    `, [req.user.id, channelId]);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error pinning channel:', err);
+    res.status(500).json({ error: 'Failed to pin channel' });
+  }
+});
+
+// DELETE /api/user/pinned-channels/:channelId - Unpin a channel
+app.delete('/api/user/pinned-channels/:channelId', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const channelId = parseInt(req.params.channelId);
+
+    await pool.query(`
+      DELETE FROM pinned_channels WHERE user_id = $1 AND channel_id = $2
+    `, [req.user.id, channelId]);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error unpinning channel:', err);
+    res.status(500).json({ error: 'Failed to unpin channel' });
+  }
+});
+
+// PUT /api/channels/:channelId/read - Mark channel as read
+app.put('/api/channels/:channelId/read', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const channelId = parseInt(req.params.channelId);
+    const { lastReadPostId } = req.body;
+
+    await pool.query(`
+      INSERT INTO channel_unread (user_id, channel_id, unread_count, last_read_post_id, last_read_at)
+      VALUES ($1, $2, 0, $3, NOW())
+      ON CONFLICT (user_id, channel_id)
+      DO UPDATE SET unread_count = 0, last_read_post_id = $3, last_read_at = NOW()
+    `, [req.user.id, channelId, lastReadPostId || null]);
+
+    res.json({ success: true, unreadCount: 0 });
+  } catch (err) {
+    console.error('Error marking channel as read:', err);
+    res.status(500).json({ error: 'Failed to mark channel as read' });
+  }
+});
+
+// GET /api/channels/:channelId/unread - Get unread count for a channel
+app.get('/api/channels/:channelId/unread', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const channelId = parseInt(req.params.channelId);
+
+    const { rows } = await pool.query(`
+      SELECT unread_count, last_read_at FROM channel_unread
+      WHERE user_id = $1 AND channel_id = $2
+    `, [req.user.id, channelId]);
+
+    const unreadInfo = rows.length > 0 ? rows[0] : { unread_count: 0, last_read_at: null };
+
+    res.json({
+      unreadCount: unreadInfo.unread_count || 0,
+      lastReadAt: unreadInfo.last_read_at
+    });
+  } catch (err) {
+    console.error('Error fetching unread count:', err);
+    res.status(500).json({ error: 'Failed to fetch unread count' });
   }
 });
 
@@ -6024,20 +6198,118 @@ async function start() {
         ON channels(is_system DESC, created_at DESC)
     `);
 
-    // Create or ensure Guardian Updates system channel exists
+    // Add columns to channels table for new features
+    await pool.query(`
+      ALTER TABLE channels
+      ADD COLUMN IF NOT EXISTS owner_id INTEGER DEFAULT -1,
+      ADD COLUMN IF NOT EXISTS category VARCHAR(100) DEFAULT 'General',
+      ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT FALSE
+    `);
+
+    // Create additional indexes
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_channels_is_featured
+        ON channels(is_featured DESC, created_at DESC)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_channels_category
+        ON channels(category, is_featured DESC)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_channels_owner_id
+        ON channels(owner_id)
+    `);
+
+    // Create pinned_channels table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pinned_channels (
+        id BIGSERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        channel_id BIGINT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+        pinned_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(user_id, channel_id)
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_pinned_channels_user_id
+        ON pinned_channels(user_id, pinned_at DESC)
+    `);
+
+    // Create channel_unread table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS channel_unread (
+        id BIGSERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        channel_id BIGINT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+        unread_count INTEGER DEFAULT 0,
+        last_read_post_id BIGINT,
+        last_read_at TIMESTAMPTZ,
+        UNIQUE(user_id, channel_id)
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_channel_unread_user_channel
+        ON channel_unread(user_id, channel_id)
+    `);
+
+    // Create channel_categories table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS channel_categories (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100) NOT NULL UNIQUE,
+        description TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    // Create or ensure Guardian Updates system channel exists with new fields
     const guardianChannelResult = await pool.query(`
       SELECT id FROM channels WHERE name = 'Guardian Updates' AND is_system = TRUE
     `);
     let guardianChannelId;
     if (guardianChannelResult.rows.length === 0) {
       const insertResult = await pool.query(`
-        INSERT INTO channels (name, description, is_system)
-        VALUES ('Guardian Updates', 'System notifications and milestones', TRUE)
+        INSERT INTO channels (name, description, is_system, owner_id, is_verified, verified_at, is_featured, category)
+        VALUES ('Guardian Updates', 'System notifications and milestones', TRUE, -1, TRUE, NOW(), TRUE, 'Updates')
         RETURNING id
       `);
       guardianChannelId = insertResult.rows[0].id;
     } else {
       guardianChannelId = guardianChannelResult.rows[0].id;
+      // Update existing Guardian Updates channel with new fields
+      await pool.query(`
+        UPDATE channels
+        SET owner_id = -1, is_verified = TRUE, verified_at = NOW(), is_featured = TRUE, category = 'Updates'
+        WHERE id = $1
+      `, [guardianChannelId]);
+    }
+
+    // Seed categories if empty
+    const categoriesCheck = await pool.query(`SELECT COUNT(*) FROM channel_categories`);
+    if (parseInt(categoriesCheck.rows[0].count) === 0) {
+      await pool.query(`
+        INSERT INTO channel_categories (name, description)
+        VALUES
+          ('Updates', 'System and important updates'),
+          ('General', 'General discussion'),
+          ('Announcements', 'Official announcements'),
+          ('Community', 'Community-driven content')
+      `);
+    }
+
+    // Staging: seed featured channels and example data
+    if (process.env.USERNODE_ENV === 'staging') {
+      await pool.query(`
+        INSERT INTO channels (name, description, owner_id, category, is_featured)
+        VALUES
+          ('Community Highlights', 'Best posts from the community', -1, 'Community', TRUE),
+          ('Announcements', 'Important network announcements', -1, 'Announcements', TRUE),
+          ('[Staging] General Discussion', 'Staging demo general channel', -1, 'General', FALSE),
+          ('[Staging] Dev Updates', 'Staging demo dev channel', -1, 'Updates', FALSE)
+        ON CONFLICT (name) DO NOTHING
+      `);
     }
 
     // Create feed_posts table (public - feed posts are shared with all users)
