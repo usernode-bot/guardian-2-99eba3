@@ -1712,11 +1712,9 @@
       failureReason: null
     };
 
-    // Wallet signature timeout in milliseconds (90 seconds)
-    // NOTE: Timeout duration is NOT the root cause of hangs. Root cause is unresolved promises
-    // in Promise.race(). Extending this value doesn't help; the withTimeout() function now
-    // properly cleans up stale promises with .finally() and silent .catch() handlers.
-    const WALLET_SIGNATURE_TIMEOUT_MS = 90000;
+    // Wallet signature timeout in milliseconds (30 seconds - reduced from 90s)
+    // Most bridge responses arrive in 5-15s; 30s gives 2x safety margin for slow networks
+    const WALLET_SIGNATURE_TIMEOUT_MS = 30000;
 
     // Splash screen initialization
     function initSplashScreen() {
@@ -2843,6 +2841,141 @@
         if (timeoutHandle !== undefined) {
           clearTimeout(timeoutHandle);
         }
+      }
+    }
+
+    // ===== WALLET INTEGRATION HELPERS =====
+
+    // Check if wallet is connected
+    async function checkWalletConnected() {
+      try {
+        const response = await fetch('/api/user', {
+          headers: { 'x-usernode-token': authToken }
+        });
+        const user = await response.json();
+
+        if (!user.usernode_pubkey) {
+          showToast('⚠️ Connect wallet first—tap the settings icon to connect', 'warning');
+          openSettingsPanel();
+          return false;
+        }
+        return true;
+      } catch (err) {
+        console.error('[Wallet] Pre-flight check failed:', err);
+        showToast('Failed to check wallet status', 'error');
+        return false;
+      }
+    }
+
+    // Create pre-signature audit log
+    async function createPreSignatureAuditLog(messageType, contentHash) {
+      try {
+        const response = await fetch('/api/transactions/pre-sign', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-usernode-token': authToken
+          },
+          body: JSON.stringify({
+            messageType: messageType,
+            contentHash: contentHash
+          })
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.error || 'Failed to create audit log');
+        }
+
+        const data = await response.json();
+        console.log(`[PreSign] Created audit log: id=${data.auditLogId}`);
+        return data.auditLogId;
+      } catch (err) {
+        console.error('[PreSign] Error:', err);
+        showToast('Failed to prepare transaction', 'error');
+        return null;
+      }
+    }
+
+    // SHA-256 helper using Web Crypto API
+    async function sha256(str) {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(str);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      return hashHex;
+    }
+
+    // Request wallet signature with timeout
+    async function requestWalletSignature(auditLogId, payload, timeoutMs = 30000) {
+      console.log(`[Signature] Requesting signature for auditLogId=${auditLogId}`);
+      showToast('⏳ Signing with wallet...', 'info');
+
+      try {
+        const txHash = await withTimeout(
+          window.sendTransaction(payload),
+          timeoutMs,
+          `Wallet Signature (auditLogId=${auditLogId})`
+        );
+
+        console.log(`[Signature] ✓ Received txHash: ${txHash}`);
+        return { success: true, txHash: txHash };
+      } catch (err) {
+        console.error(`[Signature] ✗ Error:`, err.message);
+
+        if (err.isTimeout) {
+          console.log(`[Signature] Timeout detected; auditLogId=${auditLogId} already exists`);
+          return { success: false, isTimeout: true, auditLogId: auditLogId, error: err };
+        } else if (err.message.includes('cancelled') || err.message.includes('denied') || err.message.includes('user')) {
+          console.log('[Signature] User cancelled wallet');
+          return { success: false, isCancelled: true, auditLogId: auditLogId };
+        } else {
+          return { success: false, isError: true, auditLogId: auditLogId, error: err };
+        }
+      }
+    }
+
+    // Handle signature timeout with retry logic
+    async function handleSignatureTimeout(auditLogId) {
+      console.log(`[Timeout] Checking if signature arrived late: auditLogId=${auditLogId}`);
+      showToast('⏰ Signature didn\'t arrive in 30s. Checking blockchain…', 'warning');
+
+      try {
+        const response = await fetch(`/api/blockchain-audit/${auditLogId}/check-duplicate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-usernode-token': authToken
+          },
+          body: JSON.stringify({})
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Check failed');
+        }
+
+        const result = await response.json();
+        console.log(`[Timeout] Check result:`, result);
+
+        if (result.status === 'confirmed') {
+          showToast('✓ Transaction already on-chain—check Activity tab', 'success');
+          return { action: 'show_activity', auditLogId: auditLogId };
+        } else if (result.status === 'pending') {
+          showToast(`⏳ Signature received; awaiting blockchain confirmation`, 'info');
+          return { action: 'continue_polling', auditLogId: auditLogId };
+        } else if (result.status === 'pending_signature') {
+          showToast('Signature not received yet. Retry to re-prompt wallet.', 'warning');
+          return { action: 'user_retry', auditLogId: auditLogId };
+        } else if (result.status === 'expired') {
+          showToast('Signature request expired. Please try again.', 'error');
+          return { action: 'start_over', auditLogId: null };
+        }
+      } catch (err) {
+        console.error('[Timeout] Check failed:', err);
+        showToast('Could not verify transaction status. Try again or check Activity tab.', 'error');
+        return { action: 'manual_check', auditLogId: auditLogId };
       }
     }
 

@@ -817,6 +817,232 @@ app.post('/api/user/avatar', express.json({ limit: '2mb' }), async (req, res) =>
   }
 });
 
+// ===== WALLET INTEGRATION ENDPOINTS =====
+
+// GET /api/user/wallet-status - Check wallet connection status
+app.get('/api/user/wallet-status', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userRes = await pool.query(
+      `SELECT usernode_pubkey, verified_at FROM users WHERE id = $1`,
+      [req.user.id]
+    );
+
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const user = userRes.rows[0];
+    const addressFull = user.usernode_pubkey;
+    let addressShort = null;
+    if (addressFull) {
+      addressShort = addressFull.substring(0, 10) + '...' + addressFull.substring(addressFull.length - 6);
+    }
+
+    res.json({
+      connected: !!user.usernode_pubkey,
+      address: addressShort,
+      addressFull: user.usernode_pubkey,
+      connectedAt: user.verified_at,
+      format: 'bech32m'
+    });
+  } catch (err) {
+    console.error('[Wallet] Error fetching wallet status:', err);
+    res.status(500).json({ error: 'Failed to fetch wallet status' });
+  }
+});
+
+// POST /api/user/wallet-disconnect - Disconnect wallet
+app.post('/api/user/wallet-disconnect', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    if (req.body.confirmed !== true) {
+      return res.status(400).json({
+        warning: 'This action cannot be undone. Pass confirmed: true to proceed.',
+        statusCode: 400
+      });
+    }
+
+    await pool.query(
+      `UPDATE users SET usernode_pubkey = NULL, verified_at = NULL, updated_at = NOW() WHERE id = $1`,
+      [req.user.id]
+    );
+
+    console.log(`[Wallet] User ${req.user.id} disconnected wallet`);
+    res.json({
+      ok: true,
+      message: 'Wallet disconnected. Refresh page to reconnect.'
+    });
+  } catch (err) {
+    console.error('[Wallet] Error disconnecting wallet:', err);
+    res.status(500).json({ error: 'Failed to disconnect wallet' });
+  }
+});
+
+// POST /api/transactions/pre-sign - Create pre-signature audit log
+app.post('/api/transactions/pre-sign', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { messageType, contentHash } = req.body;
+
+    // Validate input
+    if (!['message', 'token_transfer', 'group_create'].includes(messageType)) {
+      return res.status(400).json({ error: 'Invalid messageType' });
+    }
+
+    if (!contentHash || !/^[a-f0-9]{64}$/.test(contentHash)) {
+      return res.status(400).json({ error: 'Invalid contentHash format' });
+    }
+
+    const userId = parseInt(req.user.id, 10);
+
+    // Check for recent duplicate (race condition prevention)
+    const existing = await pool.query(`
+      SELECT id, tx_hash, created_at FROM blockchain_audit_logs
+      WHERE user_id = $1
+        AND message_type = $2
+        AND content_hash = $3
+        AND status_enum IN ('pending_signature'::blockchain_tx_status, 'pending'::blockchain_tx_status)
+        AND created_at > NOW() - INTERVAL '5 minutes'
+      LIMIT 1
+    `, [userId, messageType, contentHash]);
+
+    if (existing.rows.length > 0) {
+      const existingLog = existing.rows[0];
+      if (existingLog.tx_hash === null) {
+        return res.json({
+          auditLogId: existingLog.id,
+          status: 'pending_signature',
+          message: 'Already signing—check back in 30s'
+        });
+      } else {
+        return res.json({
+          auditLogId: existingLog.id,
+          status: 'pending',
+          message: 'Already submitted—waiting for confirmation'
+        });
+      }
+    }
+
+    // Insert new audit log with status 'pending_signature'
+    const auditLog = await pool.query(`
+      INSERT INTO blockchain_audit_logs (
+        user_id, message_type, content_hash, status_enum,
+        created_at, updated_at, expires_at
+      ) VALUES (
+        $1, $2, $3, 'pending_signature'::blockchain_tx_status,
+        NOW(), NOW(), NOW() + INTERVAL '5 minutes'
+      )
+      RETURNING id, created_at, expires_at
+    `, [userId, messageType, contentHash]);
+
+    const log = auditLog.rows[0];
+    console.log(`[PreSign] Created audit log: id=${log.id}, messageType=${messageType}`);
+
+    res.json({
+      ok: true,
+      auditLogId: log.id,
+      status: 'pending_signature',
+      expiresAt: log.expires_at,
+      timeoutAfterSeconds: 30
+    });
+  } catch (err) {
+    console.error('[PreSign] Error:', err);
+    res.status(500).json({ error: 'Failed to create pre-signature audit log' });
+  }
+});
+
+// POST /api/blockchain-audit/{auditLogId}/check-duplicate - Check if signature arrived late
+app.post('/api/blockchain-audit/:auditLogId/check-duplicate', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const auditLogId = parseInt(req.params.auditLogId, 10);
+    if (isNaN(auditLogId)) {
+      return res.status(400).json({ error: 'Invalid auditLogId' });
+    }
+
+    const userId = parseInt(req.user.id, 10);
+
+    // Fetch audit log
+    const auditLog = await pool.query(
+      `SELECT * FROM blockchain_audit_logs WHERE id = $1 AND user_id = $2`,
+      [auditLogId, userId]
+    );
+
+    if (auditLog.rows.length === 0) {
+      return res.status(404).json({ error: 'Audit log not found' });
+    }
+
+    const log = auditLog.rows[0];
+
+    // Check status and return appropriate response
+    if (log.status_enum === 'confirmed') {
+      return res.json({
+        found: true,
+        status: 'confirmed',
+        message: '✓ Transaction confirmed on-chain',
+        txHash: log.tx_hash,
+        confirmedAt: log.confirmed_at
+      });
+    }
+
+    if (log.status_enum === 'pending') {
+      return res.json({
+        found: true,
+        status: 'pending',
+        message: '⏳ Signature received; awaiting blockchain confirmation',
+        txHash: log.tx_hash,
+        pollAttempts: 1
+      });
+    }
+
+    if (log.status_enum === 'pending_signature' && log.expires_at && new Date(log.expires_at) < new Date()) {
+      // Expired: delete it
+      await pool.query(`DELETE FROM blockchain_audit_logs WHERE id = $1`, [auditLogId]);
+      return res.json({
+        found: false,
+        status: 'expired',
+        message: 'Signature request expired (5 min timeout). Please retry.'
+      });
+    }
+
+    if (log.status_enum === 'pending_signature') {
+      return res.json({
+        found: false,
+        status: 'pending_signature',
+        message: 'Signature not yet received. Retry to re-prompt wallet.',
+        userCanRetry: true
+      });
+    }
+
+    if (log.status_enum === 'failed') {
+      return res.json({
+        found: true,
+        status: 'failed',
+        message: 'Transaction failed: ' + (log.error_message || 'Unknown error'),
+        errorMessage: log.error_message
+      });
+    }
+
+    res.status(400).json({ error: 'Unknown status' });
+  } catch (err) {
+    console.error('[CheckDuplicate] Error:', err);
+    res.status(500).json({ error: 'Failed to check transaction status' });
+  }
+});
+
 app.get('/api/usernode/status', async (req, res) => {
   try {
     if (!req.user) {
@@ -1191,7 +1417,7 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
     }
 
     const { convId } = req.params;
-    const { type, content, txHash, contentHash: frontendContentHash } = req.body;
+    const { type, content, txHash, contentHash: frontendContentHash, auditLogId } = req.body;
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
@@ -1199,6 +1425,7 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
 
     console.log(`[MESSAGE] POST /api/conversations/${convId}/messages by user ${userId}`);
     console.log(`[MESSAGE] txHash provided: ${txHash ? 'yes - ' + txHash : 'no'}`);
+    console.log(`[MESSAGE] auditLogId provided: ${auditLogId || 'none'}`);
     console.log(`[MESSAGE] Frontend content hash: ${frontendContentHash || 'none'}`);
 
     // Validate wallet connection before proceeding with message transaction
@@ -1243,76 +1470,146 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
 
     // Use frontend-provided content hash or compute it
     const contentHash = frontendContentHash || computeContentHash(content);
-    const msgRes = await pool.query(`
-      INSERT INTO messages (conversation_id, sender_id, type, content, blockchain_recorded, blockchain_audit_log_id, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      RETURNING id, created_at
-    `, [convId, userId, type, JSON.stringify(content), true, null, now]);
-    const messageId = msgRes.rows[0].id;
 
-    // Prepare transaction payload (Usernode chain format)
-    const transactionPayload = {
-      type: 'message',
-      messageId: messageId,
-      senderId: userId,
-      userPubkey: userPubkey,
-      contentHash: contentHash,
-      timestamp: now.toISOString(),
-      network: network
-    };
+    let blockchainRecordingId = auditLogId;
+    let messageId = null;
 
-    // Sign memo following Last One Wins pattern
-    const memo = signTransactionMemo(transactionPayload);
+    // If auditLogId is provided, validate and update existing audit log
+    if (auditLogId) {
+      const auditLogIdInt = parseInt(auditLogId, 10);
+      if (isNaN(auditLogIdInt)) {
+        return res.status(400).json({ error: 'Invalid auditLogId' });
+      }
 
-    // Check for duplicate transactions (race condition detection)
-    // Same user + content_hash + message_type within 2 minutes = likely duplicate from retry
-    const duplicateCheck = await pool.query(`
-      SELECT id, tx_hash, created_at FROM blockchain_audit_logs
-      WHERE user_id = $1
-      AND message_type = $2
-      AND content_hash = $3
-      AND created_at > NOW() - INTERVAL '2 minutes'
-      ORDER BY created_at DESC
-      LIMIT 1
-    `, [userId, 'message', contentHash]);
+      // Fetch audit log
+      const auditLogRes = await pool.query(
+        `SELECT * FROM blockchain_audit_logs WHERE id = $1 AND user_id = $2`,
+        [auditLogIdInt, userId]
+      );
 
-    if (duplicateCheck.rows.length > 0) {
-      const existingLog = duplicateCheck.rows[0];
-      const timeSincePrevious = Date.now() - new Date(existingLog.created_at).getTime();
-      console.log(`[MESSAGE] Duplicate transaction detected! Existing auditLogId=${existingLog.id}, txHash=${existingLog.tx_hash}, time since: ${timeSincePrevious}ms`);
-      console.log(`[MESSAGE] This indicates a race condition: wallet signed (${txHash}) but timeout fired before callback on previous attempt`);
-      // Return the existing audit log instead of creating a duplicate
-      const blockchainRecordingId = existingLog.id;
-      console.log(`[MESSAGE] Returning existing audit log to prevent duplicate submission`);
-      res.json({
-        id: messageId,
-        createdAt: new Date(now),
-        blockchainRecordingId: blockchainRecordingId,
-        isDuplicate: true,
-        note: 'Transaction already recorded - previous attempt succeeded despite timeout error'
-      });
-      return;
+      if (auditLogRes.rows.length === 0) {
+        return res.status(404).json({ error: 'Audit log not found' });
+      }
+
+      const auditLog = auditLogRes.rows[0];
+
+      // Verify status is still 'pending_signature'
+      if (auditLog.status_enum !== 'pending_signature') {
+        return res.status(400).json({ error: 'Audit log is not pending signature; cannot update' });
+      }
+
+      // Verify content hash matches
+      if (contentHash !== auditLog.content_hash) {
+        return res.status(400).json({ error: 'Content mismatch; cannot resubmit' });
+      }
+
+      // Insert message first
+      const msgRes = await pool.query(`
+        INSERT INTO messages (conversation_id, sender_id, type, content, blockchain_recorded, blockchain_audit_log_id, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id, created_at
+      `, [convId, userId, type, JSON.stringify(content), true, auditLogIdInt, now]);
+      messageId = msgRes.rows[0].id;
+
+      // Update existing audit log atomically
+      const updateRes = await pool.query(`
+        UPDATE blockchain_audit_logs SET
+          message_id = $1,
+          tx_hash = $2,
+          status_enum = 'pending'::blockchain_tx_status,
+          signed_at = NOW(),
+          expires_at = NULL,
+          updated_at = NOW()
+        WHERE id = $3 AND user_id = $4 AND status_enum = 'pending_signature'::blockchain_tx_status
+        RETURNING id
+      `, [messageId, txHash || ('ut1-msg-' + messageId), auditLogIdInt, userId]);
+
+      if (updateRes.rowCount === 0) {
+        // Race condition: another request already updated this audit log
+        const existingLog = await pool.query(
+          `SELECT * FROM blockchain_audit_logs WHERE id = $1 AND user_id = $2`,
+          [auditLogIdInt, userId]
+        );
+
+        if (existingLog.rows.length > 0 && existingLog.rows[0].status_enum === 'pending') {
+          return res.json({
+            id: messageId,
+            createdAt: now,
+            blockchainRecordingId: auditLogIdInt,
+            isDuplicate: true,
+            message: 'Another request already submitted this transaction'
+          });
+        } else {
+          return res.status(400).json({ error: 'Audit log status changed; cannot update' });
+        }
+      }
+
+      blockchainRecordingId = auditLogIdInt;
+    } else {
+      // No auditLogId: fall back to old behavior (create new audit log)
+      const msgRes = await pool.query(`
+        INSERT INTO messages (conversation_id, sender_id, type, content, blockchain_recorded, blockchain_audit_log_id, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id, created_at
+      `, [convId, userId, type, JSON.stringify(content), true, null, now]);
+      messageId = msgRes.rows[0].id;
+
+      // Prepare transaction payload for audit log
+      const transactionPayload = {
+        type: 'message',
+        messageId: messageId,
+        senderId: userId,
+        userPubkey: userPubkey,
+        contentHash: contentHash,
+        timestamp: now.toISOString(),
+        network: network
+      };
+
+      // Check for duplicate transactions (race condition detection)
+      const duplicateCheck = await pool.query(`
+        SELECT id, tx_hash, created_at FROM blockchain_audit_logs
+        WHERE user_id = $1
+        AND message_type = $2
+        AND content_hash = $3
+        AND created_at > NOW() - INTERVAL '2 minutes'
+        ORDER BY created_at DESC
+        LIMIT 1
+      `, [userId, 'message', contentHash]);
+
+      if (duplicateCheck.rows.length > 0) {
+        const existingLog = duplicateCheck.rows[0];
+        console.log(`[MESSAGE] Duplicate transaction detected! Existing auditLogId=${existingLog.id}`);
+        blockchainRecordingId = existingLog.id;
+        res.json({
+          id: messageId,
+          createdAt: now,
+          blockchainRecordingId: blockchainRecordingId,
+          isDuplicate: true,
+          note: 'Transaction already recorded'
+        });
+        return;
+      }
+
+      // Create new audit log for backward compat
+      const actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-message-' + messageId + '-' + Date.now() : 'ut1-' + network + '-tx-msg-' + Math.random().toString(36).substr(2, 9));
+      const auditStatus = txHash ? 'pending' : (ENABLE_DEMO_MODE ? 'confirmed' : 'pending');
+
+      console.log(`[MESSAGE] Recording blockchain audit log: messageId=${messageId}, txHash=${actualTxHash}, status=${auditStatus}`);
+
+      const auditRes = await pool.query(`
+        INSERT INTO blockchain_audit_logs (user_id, message_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
+        RETURNING id
+      `, [userId, messageId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, now]);
+      blockchainRecordingId = auditRes.rows[0].id;
+
+      console.log(`[MESSAGE] Blockchain audit log created: auditLogId=${blockchainRecordingId}`);
+
+      // Update message with audit log reference
+      await pool.query(`
+        UPDATE messages SET blockchain_audit_log_id = $1 WHERE id = $2
+      `, [blockchainRecordingId, messageId]);
     }
-
-    // Use real tx hash from frontend if provided, otherwise generate placeholder
-    const actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-message-' + messageId + '-' + Date.now() : 'ut1-' + network + '-tx-msg-' + Math.random().toString(36).substr(2, 9));
-    const auditStatus = txHash ? 'pending' : (ENABLE_DEMO_MODE ? 'confirmed' : 'pending');
-
-    console.log(`[MESSAGE] Recording blockchain audit log: messageId=${messageId}, txHash=${actualTxHash}, status=${auditStatus}, contentHash=${contentHash}`);
-
-    const auditRes = await pool.query(`
-      INSERT INTO blockchain_audit_logs (user_id, message_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
-      RETURNING id
-    `, [userId, messageId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, now]);
-    const blockchainRecordingId = auditRes.rows[0].id;
-
-    console.log(`[MESSAGE] Blockchain audit log created: auditLogId=${blockchainRecordingId}`);
-
-    // Update message with audit log reference
-    await pool.query(`
-      UPDATE messages SET blockchain_audit_log_id = $1 WHERE id = $2
-    `, [blockchainRecordingId, messageId]);
 
     // Update conversation updated_at to reflect new message activity
     await pool.query(`
@@ -5395,6 +5692,48 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// ===== CLEANUP JOB =====
+
+function startCleanupJob() {
+  // Run cleanup every 60 seconds
+  const cleanupInterval = setInterval(async () => {
+    try {
+      const startTime = Date.now();
+
+      // Delete expired pending_signature logs (> 5 minutes old)
+      const result = await pool.query(`
+        DELETE FROM blockchain_audit_logs
+        WHERE status_enum = 'pending_signature'::blockchain_tx_status
+        AND expires_at IS NOT NULL
+        AND expires_at < NOW()
+        RETURNING id
+      `);
+
+      const rowsDeleted = result.rowCount || 0;
+      const duration = Date.now() - startTime;
+
+      if (rowsDeleted > 0) {
+        console.log(`[Cleanup] Deleted ${rowsDeleted} expired pending_signature logs in ${duration}ms`);
+
+        // Optional: Log cleanup runs for monitoring
+        try {
+          await pool.query(`
+            INSERT INTO blockchain_cleanup_runs (rows_deleted, duration_ms)
+            VALUES ($1, $2)
+          `, [rowsDeleted, duration]);
+        } catch (err) {
+          console.warn('[Cleanup] Failed to log cleanup run:', err.message);
+        }
+      }
+    } catch (err) {
+      console.error('[Cleanup] Error during cleanup job:', err.message);
+      // Don't exit on error; try again next interval
+    }
+  }, 60000);  // 60 second interval
+
+  return cleanupInterval;
+}
+
 // ===== DATABASE INITIALIZATION =====
 
 async function start() {
@@ -5611,6 +5950,62 @@ async function start() {
       ALTER TABLE blockchain_audit_logs ADD COLUMN IF NOT EXISTS action_timestamp TIMESTAMPTZ
     `);
 
+    // Add wallet signature pre-sign status columns (wallet integration migrations)
+    try {
+      // Create enum type for blockchain transaction status
+      await pool.query(`
+        CREATE TYPE blockchain_tx_status AS ENUM ('pending_signature', 'pending', 'confirmed', 'failed')
+      `).catch(() => {
+        // Enum already exists, ignore error
+      });
+    } catch (err) {
+      // Type creation may fail if it already exists in some contexts; continue
+    }
+
+    await pool.query(`
+      ALTER TABLE blockchain_audit_logs ADD COLUMN IF NOT EXISTS signed_at TIMESTAMPTZ
+    `);
+    await pool.query(`
+      ALTER TABLE blockchain_audit_logs ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ
+    `);
+    await pool.query(`
+      ALTER TABLE blockchain_audit_logs ADD COLUMN IF NOT EXISTS status_enum blockchain_tx_status DEFAULT 'pending_signature'::blockchain_tx_status
+    `);
+
+    // Backfill status_enum from existing tx_hash and confirmed_at states
+    await pool.query(`
+      UPDATE blockchain_audit_logs
+      SET status_enum = CASE
+        WHEN confirmed_at IS NOT NULL THEN 'confirmed'::blockchain_tx_status
+        WHEN tx_hash IS NOT NULL AND confirmed_at IS NULL THEN 'pending'::blockchain_tx_status
+        ELSE 'pending_signature'::blockchain_tx_status
+      END
+      WHERE status_enum = 'pending_signature'::blockchain_tx_status
+    `);
+
+    // Set expires_at for orphaned pending_signature logs
+    await pool.query(`
+      UPDATE blockchain_audit_logs
+      SET expires_at = NOW() + INTERVAL '5 minutes'
+      WHERE tx_hash IS NULL AND expires_at IS NULL
+    `);
+
+    // Create blockchain cleanup runs table for monitoring
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS blockchain_cleanup_runs (
+        id BIGSERIAL PRIMARY KEY,
+        ran_at TIMESTAMPTZ DEFAULT NOW(),
+        rows_deleted INTEGER,
+        duration_ms INTEGER
+      )
+    `);
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_blockchain_cleanup_runs_recent
+        ON blockchain_cleanup_runs(ran_at DESC)
+        WHERE ran_at > NOW() - INTERVAL '24 hours'
+    `);
+
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_blockchain_audit_logs_message_id
         ON blockchain_audit_logs(message_id)
@@ -5623,6 +6018,25 @@ async function start() {
       CREATE INDEX IF NOT EXISTS idx_blockchain_audit_logs_group_id
         ON blockchain_audit_logs(group_id)
     `);
+
+    // Add wallet integration indexes for cleanup and dedup
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_blockchain_audit_logs_pending_sig_expires
+        ON blockchain_audit_logs(expires_at)
+        WHERE status_enum = 'pending_signature'::blockchain_tx_status AND expires_at IS NOT NULL
+    `);
+
+    // Create unique index to prevent duplicate audit logs per user + content_hash + message_type within 5 min
+    try {
+      await pool.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_blockchain_audit_logs_dedup
+        ON blockchain_audit_logs(user_id, content_hash, message_type)
+        WHERE status_enum IN ('pending_signature'::blockchain_tx_status, 'pending'::blockchain_tx_status)
+        AND created_at > (NOW() - INTERVAL '5 minutes')
+      `);
+    } catch (err) {
+      console.log('[Migration] Dedup index may already exist or constraint conflict, continuing...');
+    }
 
     // Create groups table (marked private)
     await pool.query(`
@@ -7014,6 +7428,9 @@ async function start() {
         await createGuardiAIPost();
       }
     }, 43200000);
+
+    // Start cleanup job for expired pending_signature audit logs
+    startCleanupJob();
 
     app.listen(port, () => console.log(`Listening on :${port}`));
   } catch (err) {
