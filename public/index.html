@@ -3628,6 +3628,16 @@
       }, 0);
     }
 
+    // Helper: Compute SHA256 content hash (matching server-side computeContentHash)
+    async function computeContentHash(content) {
+      const contentStr = typeof content === 'string' ? content : JSON.stringify(content);
+      const encoder = new TextEncoder();
+      const data = encoder.encode(contentStr);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
     // Helper: Create a pending audit log (Phase 1)
     async function createPendingAuditLog() {
       try {
@@ -3670,8 +3680,20 @@
         // Phase 1: Create pending audit log
         const auditLogId = await createPendingAuditLog();
 
+        // Compute contentHash for group creation
+        const contentHash = await computeContentHash(name.trim());
+        const now = new Date().toISOString();
+
+        // Build wallet signature details with unified memo structure
+        const signatureDetails = {
+          type: 'group_create',
+          senderId: currentUser.id,
+          timestamp: now,
+          contentHash: contentHash
+        };
+
         // Phase 2: Request wallet signature and register txHash
-        const txHash = await requestWalletSignature('Create Group', { name, description: desc || '(none)' }, auditLogId);
+        const txHash = await requestWalletSignature('Create Group', signatureDetails, auditLogId);
 
         const data = await apiCall('/api/groups', {
           method: 'POST',
@@ -3679,7 +3701,8 @@
             name,
             description: desc || null,
             txHash: txHash,
-            auditLogId: auditLogId
+            auditLogId: auditLogId,
+            contentHash: contentHash
           })
         });
 
@@ -3829,11 +3852,18 @@
           throw new Error('Wallet bridge is not available. Please ensure your wallet extension is enabled.');
         }
 
-        // Build memo from action and details
+        // Extract contentHash and timestamp from details (provided by caller)
+        const contentHash = details.contentHash;
+        const timestamp = details.timestamp;
+        const type = details.type;
+
+        // Build unified memo structure matching backend expectations
         const memo = JSON.stringify({
           app: 'guardian',
-          action: action,
-          details: details
+          type: type,
+          senderId: currentUser.id,
+          timestamp: timestamp,
+          contentHash: contentHash
         });
 
         // Validate memo size (bridge has 1024 byte limit)
@@ -3881,7 +3911,7 @@
               appPubkey: appPubkey,
               amount: 1,
               memoLength: memo.length,
-              memoStructure: { app: 'guardian', action: action, detailsKeys: Object.keys(details || {}) },
+              memoStructure: { app: 'guardian', type: type, senderId: currentUser.id },
               confirmTitle: confirmTitle,
               signatureAttempt: signatureAttempt
             });
@@ -4921,8 +4951,19 @@
         // Phase 1: Create pending audit log
         const auditLogId = await createPendingAuditLog();
 
-        const txDetails = { message: text.substring(0, 50) + (text.length > 50 ? '...' : '') };
-        const txHash = await requestWalletSignature('Send Message', txDetails, auditLogId);
+        // Compute contentHash for this message
+        const contentHash = await computeContentHash(text);
+        const now = new Date().toISOString();
+
+        // Build wallet signature details with unified memo structure
+        const signatureDetails = {
+          type: 'message',
+          senderId: currentUser.id,
+          timestamp: now,
+          contentHash: contentHash
+        };
+
+        const txHash = await requestWalletSignature('Send Message', signatureDetails, auditLogId);
 
         const data = await apiCall(endpoint, {
           method: 'POST',
@@ -4930,7 +4971,8 @@
             type: 'text',
             content: { text },
             txHash: txHash,
-            auditLogId: auditLogId
+            auditLogId: auditLogId,
+            contentHash: contentHash
           })
         });
 
@@ -4975,10 +5017,22 @@
           // Phase 1: Create pending audit log
           const auditLogId = await createPendingAuditLog();
 
-          const txHash = await requestWalletSignature('Send Image', { imageSize: imageSizeKb + ' KB' }, auditLogId);
+          // Compute contentHash for image data
+          const contentHash = await computeContentHash(dataUri);
+          const now = new Date().toISOString();
+
+          // Build wallet signature details with unified memo structure
+          const signatureDetails = {
+            type: 'message',
+            senderId: currentUser.id,
+            timestamp: now,
+            contentHash: contentHash
+          };
+
+          const txHash = await requestWalletSignature('Send Image', signatureDetails, auditLogId);
           const data = await apiCall(endpoint, {
             method: 'POST',
-            body: JSON.stringify({ type: 'image', content: { imageUrl: dataUri }, txHash: txHash, auditLogId: auditLogId })
+            body: JSON.stringify({ type: 'image', content: { imageUrl: dataUri }, txHash: txHash, auditLogId: auditLogId, contentHash: contentHash })
           });
 
           if (data && !data.error) {
@@ -5039,7 +5093,20 @@
           // Phase 1: Create pending audit log
           const auditLogId = await createPendingAuditLog();
 
-          const txHash = await requestWalletSignature('Send Tokens', { recipient: 'selected contact', amount: `${amount} tokens`, memo: memo || '(none)' }, auditLogId);
+          // Compute contentHash for token transfer
+          const contentHashData = currentUser.usernode_pubkey + parseInt(amount);
+          const contentHash = await computeContentHash(contentHashData);
+          const now = new Date().toISOString();
+
+          // Build wallet signature details with unified memo structure
+          const signatureDetails = {
+            type: 'token_transfer',
+            senderId: currentUser.id,
+            timestamp: now,
+            contentHash: contentHash
+          };
+
+          const txHash = await requestWalletSignature('Send Tokens', signatureDetails, auditLogId);
 
           const data = await apiCall('/api/tokens/send', {
             method: 'POST',
@@ -5048,7 +5115,8 @@
               amount: parseInt(amount),
               memo,
               txHash: txHash,
-              auditLogId: auditLogId
+              auditLogId: auditLogId,
+              contentHash: contentHash
             })
           });
 

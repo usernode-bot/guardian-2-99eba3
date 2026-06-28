@@ -1206,6 +1206,11 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       return res.status(401).json({ error: 'Must be connected to Usernode wallet to send messages' });
     }
 
+    // Require wallet signature (txHash must be provided from frontend)
+    if (!txHash) {
+      return res.status(400).json({ error: 'Wallet signature required - txHash not provided. Please complete the wallet signature request.' });
+    }
+
     const now = new Date();
 
     if (!checkRateLimit(`msg:${userId}`, 100, 60000)) {
@@ -1294,9 +1299,9 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       return;
     }
 
-    // Use real tx hash from frontend if provided, otherwise generate placeholder
-    const actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-message-' + messageId + '-' + Date.now() : 'ut1-' + network + '-tx-msg-' + Math.random().toString(36).substr(2, 9));
-    const auditStatus = txHash ? 'pending' : (ENABLE_DEMO_MODE ? 'confirmed' : 'pending');
+    // txHash is required from frontend wallet signature
+    const actualTxHash = txHash;
+    const auditStatus = 'pending';
 
     console.log(`[MESSAGE] Recording blockchain audit log: messageId=${messageId}, txHash=${actualTxHash}, status=${auditStatus}, contentHash=${contentHash}`);
 
@@ -1338,33 +1343,11 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       UPDATE conversations SET archived_by = array_remove(archived_by, $1) WHERE id = $2 AND archived_by @> ARRAY[$1]::integer[]
     `, [otherId, convId]);
 
-    // If real tx hash provided from frontend, start polling immediately
-    if (txHash) {
-      console.log(`[MESSAGE] Real txHash from frontend - starting chain poller for txHash=${txHash}, auditLogId=${blockchainRecordingId}`);
-      startChainPoller(network, txHash, blockchainRecordingId).catch(err => {
-        console.error('Error starting chain poller:', err);
-      });
-    } else if (!ENABLE_DEMO_MODE) {
-      // Async: submit to blockchain in the background (production only, no frontend tx hash)
-      (async () => {
-        try {
-          const result = await sendTransactionToBridge(transactionPayload, null, network);
-          // Update audit log with real tx hash
-          await pool.query(`
-            UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
-          `, [result.txHash, blockchainRecordingId]);
-          // Start monitoring
-          monitorBlockchainStatus(blockchainRecordingId, result.txHash).catch(err => {
-            console.error('Error monitoring blockchain status:', err);
-          });
-        } catch (err) {
-          console.error('Background blockchain submission error:', err);
-          await pool.query(`
-            UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
-          `, [err.message, blockchainRecordingId]);
-        }
-      })();
-    }
+    // Start chain polling for the wallet-signed transaction
+    console.log(`[MESSAGE] txHash from frontend - starting chain poller for txHash=${txHash}, auditLogId=${blockchainRecordingId}`);
+    startChainPoller(network, txHash, blockchainRecordingId).catch(err => {
+      console.error('Error starting chain poller:', err);
+    });
 
     res.json({
       id: messageId,
@@ -1519,6 +1502,11 @@ app.post('/api/tokens/send', async (req, res) => {
       return res.status(401).json({ error: 'Must be connected to Usernode wallet to send tokens' });
     }
 
+    // Require wallet signature (txHash must be provided from frontend)
+    if (!txHash) {
+      return res.status(400).json({ error: 'Wallet signature required - txHash not provided. Please complete the wallet signature request.' });
+    }
+
     const now = new Date();
 
     if (!recipientId || !amount) {
@@ -1592,9 +1580,9 @@ app.post('/api/tokens/send', async (req, res) => {
       return;
     }
 
-    // Use real tx hash from frontend if provided, otherwise generate placeholder
-    const actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-token-' + Date.now() : 'ut1-' + network + '-tx-token-' + Math.random().toString(36).substr(2, 9));
-    const auditStatus = txHash ? 'pending' : (ENABLE_DEMO_MODE ? 'confirmed' : 'pending');
+    // txHash is required from frontend wallet signature
+    const actualTxHash = txHash;
+    const auditStatus = 'pending';
 
     console.log(`[TOKEN] Recording blockchain audit log: txHash=${actualTxHash}, status=${auditStatus}, contentHash=${contentHash}`);
 
@@ -1621,52 +1609,11 @@ app.post('/api/tokens/send', async (req, res) => {
       console.log(`[TOKEN] Blockchain audit log created: auditLogId=${blockchainRecordingId}`);
     }
 
-    // If real tx hash provided from frontend, start polling immediately
-    if (txHash) {
-      console.log(`[TOKEN] Real txHash from frontend - starting chain poller for txHash=${txHash}, auditLogId=${blockchainRecordingId}`);
-      startChainPoller(network, txHash, blockchainRecordingId).catch(err => {
-        console.error('Error starting chain poller:', err);
-      });
-    } else if (!ENABLE_DEMO_MODE) {
-      // Async: try to call sidecar for real token transfer (production only)
-      (async () => {
-        try {
-          // First try sidecar RPC for actual token transfer
-          const sidecarResult = await sendOutgoingPayment(
-            recipientPubkey,
-            parseInt(amount),
-            JSON.stringify(transactionPayload)
-          );
-          if (sidecarResult && sidecarResult.transactionHash) {
-            // Update audit log with real tx hash from sidecar
-            await pool.query(`
-              UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
-            `, [sidecarResult.transactionHash, blockchainRecordingId]);
-            // Start monitoring with real tx hash
-            pollTransactionStatus(blockchainRecordingId, sidecarResult.transactionHash).catch(err => {
-              console.error('Error polling transaction status:', err);
-            });
-          }
-        } catch (err) {
-          console.error('Sidecar token transfer error:', err);
-          // Fall back to bridge approach
-          try {
-            const result = await sendTransactionToBridge(transactionPayload, null, network);
-            await pool.query(`
-              UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
-            `, [result.txHash, blockchainRecordingId]);
-            monitorBlockchainStatus(blockchainRecordingId, result.txHash).catch(err => {
-              console.error('Error monitoring blockchain status:', err);
-            });
-          } catch (bridgeErr) {
-            console.error('Bridge fallback error:', bridgeErr);
-            await pool.query(`
-              UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
-            `, [bridgeErr.message, blockchainRecordingId]);
-          }
-        }
-      })();
-    }
+    // Start chain polling for the wallet-signed transaction
+    console.log(`[TOKEN] txHash from frontend - starting chain poller for txHash=${txHash}, auditLogId=${blockchainRecordingId}`);
+    startChainPoller(network, txHash, blockchainRecordingId).catch(err => {
+      console.error('Error starting chain poller:', err);
+    });
 
     res.json({
       blockchainRecordingId: blockchainRecordingId,
@@ -2903,6 +2850,13 @@ app.post('/api/groups', async (req, res) => {
       return res.status(401).json({ error: 'Must be connected to Usernode wallet to create groups' });
     }
 
+    // Validation: require wallet signature (txHash must be provided from frontend)
+    console.log(`[POST /api/groups::VALIDATE] Checking wallet signature: txHash=${txHash ? 'present' : 'missing'}`);
+    if (!txHash) {
+      console.error(`[POST /api/groups::VALIDATE] Wallet signature not provided - txHash is missing`);
+      return res.status(400).json({ error: 'Wallet signature required - txHash not provided. Please complete the wallet signature request.' });
+    }
+
     // Validation: check group name
     console.log(`[POST /api/groups::VALIDATE] Group name validation: provided="${name}", trimmed="${name ? name.trim() : '(null)'}", length=${name ? name.trim().length : 0}`);
     if (!name || name.trim().length === 0) {
@@ -3338,6 +3292,11 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
       return res.status(401).json({ error: 'Must be connected to Usernode wallet to send group messages' });
     }
 
+    // Require wallet signature (txHash must be provided from frontend)
+    if (!txHash) {
+      return res.status(400).json({ error: 'Wallet signature required - txHash not provided. Please complete the wallet signature request.' });
+    }
+
     const now = new Date();
 
     if (!checkRateLimit(`gmsg:${userId}`, 100, 60000)) {
@@ -3382,9 +3341,9 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
       network: network
     };
 
-    // Use real tx hash from frontend if provided, otherwise generate placeholder
-    const actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-message-' + messageId + '-' + Date.now() : 'ut1-' + network + '-tx-msg-' + Math.random().toString(36).substr(2, 9));
-    const auditStatus = txHash ? 'pending' : (ENABLE_DEMO_MODE ? 'confirmed' : 'pending');
+    // txHash is required from frontend wallet signature
+    const actualTxHash = txHash;
+    const auditStatus = 'pending';
 
     let blockchainRecordingId;
     if (auditLogId) {
