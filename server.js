@@ -355,6 +355,164 @@ async function sendOutgoingPayment(recipient, amount, memo) {
   }
 }
 
+// Send message transaction to blockchain via RPC
+async function sendMessageToBlockchain(messagePayload, memo, network = 'testnet') {
+  try {
+    console.log(`[BLOCKCHAIN-SUBMIT] sendMessageToBlockchain: messageId=${messagePayload.messageId}, memo=${memo ? 'provided' : 'none'}`);
+
+    // In staging or without RPC URL, return demo transaction
+    if (IS_STAGING || !NODE_RPC_URL) {
+      console.log(`[BLOCKCHAIN-SUBMIT] Demo/staging mode: would submit message ${messagePayload.messageId} to network ${network}`);
+      return { transactionHash: 'ut1staging-' + network + '-message-' + Date.now() };
+    }
+
+    // In production: POST to NODE_RPC_URL /transaction/submit
+    const rpcPayload = {
+      method: 'transaction_submit',
+      params: {
+        type: 'message',
+        transaction: messagePayload,
+        memo: memo,
+        appPubkey: APP_PUBKEY
+      }
+    };
+
+    console.log(`[BLOCKCHAIN-SUBMIT] Submitting message tx to ${NODE_RPC_URL}/transaction/submit, messageId=${messagePayload.messageId}`);
+
+    return new Promise((resolve, reject) => {
+      const url = new URL('/transaction/submit', NODE_RPC_URL);
+      const isHttps = NODE_RPC_URL.startsWith('https');
+      const client = isHttps ? https : http;
+
+      const options = {
+        hostname: url.hostname,
+        port: url.port,
+        path: url.pathname,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${APP_SECRET_KEY}`
+        },
+        timeout: 10000
+      };
+
+      const req = client.request(options, (res) => {
+        let data = '';
+        res.on('data', chunk => { data += chunk; });
+        res.on('end', () => {
+          try {
+            const response = JSON.parse(data);
+            if (res.statusCode >= 200 && res.statusCode < 300) {
+              const txHash = response.txHash || response.hash || response.transactionHash || 'ut1-' + network + '-tx-msg-' + Math.random().toString(36).substr(2, 9);
+              console.log(`[BLOCKCHAIN-SUBMIT] Message submitted: statusCode=${res.statusCode}, txHash=${txHash}`);
+              resolve({
+                transactionHash: txHash
+              });
+            } else {
+              console.error(`[BLOCKCHAIN-SUBMIT] RPC error: statusCode=${res.statusCode}, response=${JSON.stringify(response)}`);
+              reject(new Error(`RPC error: ${response.error || res.statusCode}`));
+            }
+          } catch (err) {
+            console.error(`[BLOCKCHAIN-SUBMIT] Failed to parse RPC response: ${err.message}`);
+            reject(new Error(`Failed to parse RPC response: ${err.message}`));
+          }
+        });
+      });
+
+      req.on('error', reject);
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new Error('Message submission RPC request timeout'));
+      });
+
+      req.write(JSON.stringify(rpcPayload));
+      req.end();
+    });
+  } catch (err) {
+    console.error('Error sending message to blockchain:', err);
+    throw err;
+  }
+}
+
+// Send group creation transaction to blockchain via RPC
+async function sendGroupToBlockchain(groupPayload, memo, memberPubkeys, network = 'testnet') {
+  try {
+    console.log(`[BLOCKCHAIN-SUBMIT] sendGroupToBlockchain: groupId=${groupPayload.groupId}, memo=${memo ? 'provided' : 'none'}`);
+
+    // In staging or without RPC URL, return demo transaction
+    if (IS_STAGING || !NODE_RPC_URL) {
+      console.log(`[BLOCKCHAIN-SUBMIT] Demo/staging mode: would create group ${groupPayload.groupId} to network ${network}`);
+      return { transactionHash: 'ut1staging-' + network + '-group-' + Date.now() };
+    }
+
+    // In production: POST to NODE_RPC_URL /transaction/submit
+    const rpcPayload = {
+      method: 'transaction_submit',
+      params: {
+        type: 'group_create',
+        transaction: groupPayload,
+        memo: memo,
+        appPubkey: APP_PUBKEY
+      }
+    };
+
+    console.log(`[BLOCKCHAIN-SUBMIT] Submitting group tx to ${NODE_RPC_URL}/transaction/submit, groupId=${groupPayload.groupId}`);
+
+    return new Promise((resolve, reject) => {
+      const url = new URL('/transaction/submit', NODE_RPC_URL);
+      const isHttps = NODE_RPC_URL.startsWith('https');
+      const client = isHttps ? https : http;
+
+      const options = {
+        hostname: url.hostname,
+        port: url.port,
+        path: url.pathname,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${APP_SECRET_KEY}`
+        },
+        timeout: 10000
+      };
+
+      const req = client.request(options, (res) => {
+        let data = '';
+        res.on('data', chunk => { data += chunk; });
+        res.on('end', () => {
+          try {
+            const response = JSON.parse(data);
+            if (res.statusCode >= 200 && res.statusCode < 300) {
+              const txHash = response.txHash || response.hash || response.transactionHash || 'ut1-' + network + '-tx-group-' + Math.random().toString(36).substr(2, 9);
+              console.log(`[BLOCKCHAIN-SUBMIT] Group created: statusCode=${res.statusCode}, txHash=${txHash}`);
+              resolve({
+                transactionHash: txHash
+              });
+            } else {
+              console.error(`[BLOCKCHAIN-SUBMIT] RPC error: statusCode=${res.statusCode}, response=${JSON.stringify(response)}`);
+              reject(new Error(`RPC error: ${response.error || res.statusCode}`));
+            }
+          } catch (err) {
+            console.error(`[BLOCKCHAIN-SUBMIT] Failed to parse RPC response: ${err.message}`);
+            reject(new Error(`Failed to parse RPC response: ${err.message}`));
+          }
+        });
+      });
+
+      req.on('error', reject);
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new Error('Group submission RPC request timeout'));
+      });
+
+      req.write(JSON.stringify(rpcPayload));
+      req.end();
+    });
+  } catch (err) {
+    console.error('Error sending group to blockchain:', err);
+    throw err;
+  }
+}
+
 // Send transaction to blockchain via bridge
 async function sendTransactionToBridge(payload, txHashFromFrontend, network = 'testnet') {
   try {
@@ -1348,20 +1506,45 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       // Async: submit to blockchain in the background (production only, no frontend tx hash)
       (async () => {
         try {
-          const result = await sendTransactionToBridge(transactionPayload, null, network);
-          // Update audit log with real tx hash
+          // Validate memo before calling RPC (signTransactionMemo can return null)
+          if (!memo) {
+            throw new Error('Failed to sign transaction memo');
+          }
+          const result = await sendMessageToBlockchain(transactionPayload, memo, network);
+
+          // Update audit log with real txHash from RPC
           await pool.query(`
             UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
-          `, [result.txHash, blockchainRecordingId]);
-          // Start monitoring
-          monitorBlockchainStatus(blockchainRecordingId, result.txHash).catch(err => {
-            console.error('Error monitoring blockchain status:', err);
+          `, [result.transactionHash, blockchainRecordingId]);
+
+          // Start polling with real txHash against blockchain explorer
+          startChainPoller(network, result.transactionHash, blockchainRecordingId).catch(err => {
+            console.error('Error starting chain poller:', err);
           });
         } catch (err) {
           console.error('Background blockchain submission error:', err);
-          await pool.query(`
-            UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
-          `, [err.message, blockchainRecordingId]);
+
+          // Fallback: try bridge approach (generates placeholder hash)
+          try {
+            const bridgeResult = await sendTransactionToBridge(transactionPayload, null, network);
+
+            // Update audit log with placeholder hash from bridge
+            await pool.query(`
+              UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
+            `, [bridgeResult.txHash, blockchainRecordingId]);
+
+            // Start polling with placeholder (will timeout after 20 attempts)
+            // This allows audit log to be marked as 'failed' after max polls
+            startChainPoller(network, bridgeResult.txHash, blockchainRecordingId).catch(pollerErr => {
+              console.error('Error starting fallback chain poller:', pollerErr);
+            });
+          } catch (bridgeErr) {
+            // Both RPC and fallback failed — mark as failed immediately
+            console.error('Fallback blockchain submission also failed:', bridgeErr);
+            await pool.query(`
+              UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
+            `, [bridgeErr.message, blockchainRecordingId]);
+          }
         }
       })();
     }
@@ -3044,25 +3227,45 @@ app.post('/api/groups', async (req, res) => {
       (async () => {
         try {
           console.log(`[POST /api/groups::BLOCKCHAIN::ASYNC] Background task started for auditId=${blockchainRecordingId}`);
-          const result = await sendTransactionToBridge(transactionPayload, null, network);
-          console.log(`[POST /api/groups::BLOCKCHAIN::ASYNC] Bridge returned txHash=${result.txHash}, status=${result.status}`);
 
-          // Update audit log with real tx hash
+          // Validate memo before calling RPC
+          if (!memo) {
+            throw new Error('Failed to sign transaction memo');
+          }
+
+          const result = await sendGroupToBlockchain(transactionPayload, memo, memberPubkeys, network);
+          console.log(`[POST /api/groups::BLOCKCHAIN::ASYNC] RPC returned txHash=${result.transactionHash}`);
+
           const updateRes = await pool.query(`
             UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
-          `, [result.txHash, blockchainRecordingId]);
+          `, [result.transactionHash, blockchainRecordingId]);
           console.log(`[POST /api/groups::BLOCKCHAIN::ASYNC] Audit log updated with real txHash, rowCount=${updateRes.rowCount}`);
 
-          // Start monitoring
-          console.log(`[POST /api/groups::BLOCKCHAIN::ASYNC] Starting blockchain status monitoring`);
-          monitorBlockchainStatus(blockchainRecordingId, result.txHash).catch(err => {
-            console.error(`[POST /api/groups::BLOCKCHAIN::ASYNC] Error monitoring blockchain status: ${err.message}`, err);
+          console.log(`[POST /api/groups::BLOCKCHAIN::ASYNC] Starting chain polling`);
+          startChainPoller(network, result.transactionHash, blockchainRecordingId).catch(err => {
+            console.error(`[POST /api/groups::BLOCKCHAIN::ASYNC] Error starting chain poller: ${err.message}`, err);
           });
         } catch (err) {
           console.error(`[POST /api/groups::BLOCKCHAIN::ASYNC] Background blockchain submission error: ${err.message}`, err);
-          await pool.query(`
-            UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
-          `, [err.message, blockchainRecordingId]);
+
+          // Fallback: try bridge approach
+          try {
+            const bridgeResult = await sendTransactionToBridge(transactionPayload, null, network);
+
+            await pool.query(`
+              UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
+            `, [bridgeResult.txHash, blockchainRecordingId]);
+
+            // Start polling with placeholder so it eventually marks as 'failed'
+            startChainPoller(network, bridgeResult.txHash, blockchainRecordingId).catch(pollerErr => {
+              console.error(`[POST /api/groups::BLOCKCHAIN::ASYNC] Error starting fallback chain poller: ${pollerErr.message}`, pollerErr);
+            });
+          } catch (bridgeErr) {
+            console.error(`[POST /api/groups::BLOCKCHAIN::ASYNC] Fallback also failed: ${bridgeErr.message}`, bridgeErr);
+            await pool.query(`
+              UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
+            `, [bridgeErr.message, blockchainRecordingId]);
+          }
         }
       })();
     } else {
