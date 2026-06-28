@@ -884,7 +884,7 @@
             <div class="mt-3 text-xs text-zinc-600 dark:text-zinc-400">
               <div class="opacity-50 cursor-default">Discover Channels</div>
             </div>
-            <button class="mt-2 w-full px-3 py-2 bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded text-sm font-medium cursor-default opacity-50 transition" disabled title="Channels are created by administrators only">Create Channel</button>
+            <button onclick="openCreateChannelModal()" class="mt-2 w-full px-3 py-2 bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded text-sm font-medium hover:bg-zinc-300 dark:hover:bg-zinc-700 active:scale-95 transition" title="Create a new channel">Create Channel</button>
           </div>
         </div>
         <!-- Channel List or Posts Container -->
@@ -1304,6 +1304,22 @@
       <div class="flex gap-2">
         <button onclick="closeCreateGroupModal()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
         <button onclick="createGroup()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Channel Modal -->
+  <div id="createChannelModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
+      <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Create Channel</h2>
+      <input id="channelNameInput" type="text" placeholder="Channel name" maxlength="255" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+      <textarea id="channelDescInput" placeholder="Description (optional)" maxlength="1000" rows="3" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"></textarea>
+      <select id="channelCategoryInput" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+        <option value="">Select a category...</option>
+      </select>
+      <div class="flex gap-2">
+        <button onclick="closeCreateChannelModal()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
+        <button onclick="createChannel()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Create</button>
       </div>
     </div>
   </div>
@@ -3724,6 +3740,93 @@
       document.getElementById('createGroupModal').classList.add('hidden');
       document.getElementById('groupNameInput').value = '';
       document.getElementById('groupDescInput').value = '';
+    }
+
+    // Open create channel modal
+    async function openCreateChannelModal() {
+      const modal = document.getElementById('createChannelModal');
+      modal.classList.remove('hidden');
+      document.getElementById('channelNameInput').value = '';
+      document.getElementById('channelDescInput').value = '';
+
+      // Populate category dropdown
+      try {
+        const data = await apiCall('/api/channels/categories');
+        const select = document.getElementById('channelCategoryInput');
+        select.innerHTML = '<option value="">Select a category...</option>';
+        if (data && data.categories) {
+          data.categories.forEach(cat => {
+            const option = document.createElement('option');
+            option.value = cat.name;
+            option.textContent = cat.name;
+            select.appendChild(option);
+          });
+        }
+      } catch (err) {
+        console.error('Error loading categories:', err);
+        showToast('Error loading categories', 'error');
+      }
+    }
+
+    // Close create channel modal
+    function closeCreateChannelModal() {
+      document.getElementById('createChannelModal').classList.add('hidden');
+      document.getElementById('channelNameInput').value = '';
+      document.getElementById('channelDescInput').value = '';
+      document.getElementById('channelCategoryInput').value = '';
+    }
+
+    // Create channel with wallet signature
+    async function createChannel() {
+      const name = document.getElementById('channelNameInput').value.trim();
+      const desc = document.getElementById('channelDescInput').value.trim();
+      const category = document.getElementById('channelCategoryInput').value.trim();
+
+      if (!name) return alert('Channel name is required');
+      if (!category) return alert('Category is required');
+
+      try {
+        // Phase 1: Create pending audit log
+        const auditLogId = await createPendingAuditLog();
+
+        // Phase 2: Request wallet signature and register txHash
+        const txHash = await requestWalletSignature('Create Channel', { name, category, description: desc || '(none)' }, auditLogId);
+
+        const data = await apiCall('/api/channels', {
+          method: 'POST',
+          body: JSON.stringify({
+            name,
+            description: desc || null,
+            category,
+            txHash: txHash,
+            auditLogId: auditLogId
+          })
+        });
+
+        if (data && !data.error) {
+          // Show action-specific toast with status
+          const statusMsg = isStaging ? 'Channel created—simulated signature confirmed' : 'Channel created—awaiting blockchain confirmation';
+          showToast(`✓ ${statusMsg}`, 'success');
+
+          if (data.blockchainRecordingId) {
+            showPersistentNotification('channel_create', {
+              blockchainRecordingId: data.blockchainRecordingId,
+              channelName: name,
+              category: category
+            });
+          }
+          closeCreateChannelModal();
+          loadChannels();
+        } else if (data && data.error) {
+          showToast(`Failed to create channel: ${data.error}`, 'error');
+          throw new Error(data.error);
+        }
+      } catch (err) {
+        if (!err.message.includes('User cancelled') && !err.message.includes('cancelled')) {
+          console.error('Create channel error:', err);
+          showToast(`Error: ${err.message}`, 'error');
+        }
+      }
     }
 
     // Poll transaction confirmation status on blockchain
