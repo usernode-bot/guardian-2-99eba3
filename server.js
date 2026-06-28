@@ -4279,6 +4279,103 @@ app.get('/api/channels/categories', async (req, res) => {
   }
 });
 
+// POST /api/channels - Create a new channel
+app.post('/api/channels', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
+
+    // Verify wallet is connected
+    if (!req.user.usernode_pubkey) {
+      return res.status(401).json({ error: 'Must be connected to Usernode wallet to create channels' });
+    }
+
+    const { name, description, category, txHash, auditLogId } = req.body;
+
+    // Validate channel name
+    if (!name || typeof name !== 'string' || name.trim().length === 0 || name.length > 255) {
+      return res.status(400).json({ error: 'Channel name is required and must be 1-255 characters' });
+    }
+
+    // Validate description
+    if (description && (typeof description !== 'string' || description.length > 1000)) {
+      return res.status(400).json({ error: 'Description must be max 1000 characters' });
+    }
+
+    // Validate category
+    if (!category || typeof category !== 'string' || category.trim().length === 0) {
+      return res.status(400).json({ error: 'Category is required' });
+    }
+
+    // Check if category exists
+    const { rows: categoryCheck } = await pool.query(`
+      SELECT id FROM channel_categories WHERE name = $1
+    `, [category]);
+
+    if (categoryCheck.length === 0) {
+      return res.status(400).json({ error: 'Invalid channel category' });
+    }
+
+    // Validate txHash and auditLogId
+    if (!txHash || !auditLogId) {
+      return res.status(400).json({ error: 'Transaction hash and audit log ID are required' });
+    }
+
+    // Insert new channel
+    const { rows: channelRows } = await pool.query(`
+      INSERT INTO channels (name, description, owner_id, category, is_system, is_verified, is_featured)
+      VALUES ($1, $2, $3, $4, FALSE, FALSE, FALSE)
+      RETURNING id, name, description, owner_id, category, is_verified, verified_at, is_featured, is_system, created_at, updated_at
+    `, [name, description || null, userId, category]);
+
+    if (channelRows.length === 0) {
+      return res.status(500).json({ error: 'Failed to create channel' });
+    }
+
+    const channel = channelRows[0];
+
+    // Get owner username
+    const { rows: userRows } = await pool.query(`
+      SELECT username FROM users WHERE id = $1
+    `, [userId]);
+
+    const ownerUsername = userRows.length > 0 ? userRows[0].username : null;
+
+    // Update audit log with txHash
+    if (auditLogId) {
+      await pool.query(`
+        UPDATE blockchain_audit_logs
+        SET tx_hash = $1, status = 'confirmed', confirmed_at = NOW()
+        WHERE id = $2 AND user_id = $3
+      `, [txHash, auditLogId, userId]);
+    }
+
+    res.status(201).json({
+      id: channel.id,
+      name: channel.name,
+      description: channel.description,
+      ownerId: channel.owner_id,
+      ownerUsername: ownerUsername,
+      category: channel.category,
+      isVerified: channel.is_verified,
+      verifiedAt: channel.verified_at,
+      isFeatured: channel.is_featured,
+      isSystem: channel.is_system,
+      createdAt: channel.created_at,
+      updatedAt: channel.updated_at
+    });
+  } catch (err) {
+    console.error('Error creating channel:', err);
+    res.status(500).json({ error: 'Failed to create channel' });
+  }
+});
+
 // GET /api/user/pinned-channels - List user's pinned channels
 app.get('/api/user/pinned-channels', async (req, res) => {
   try {
