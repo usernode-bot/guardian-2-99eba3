@@ -30,12 +30,15 @@ let ENABLE_DEMO_MODE = getEnableDemoMode();
 const APP_PUBKEY = process.env.APP_PUBKEY || 'ut1Fww7onqF9LsRSb6d6BozgQWtjNYqQJghYxXmBc8foncb';
 const APP_SECRET_KEY = process.env.APP_SECRET_KEY || 'guardian_sk_mqudwes5_ae613cf56214808e';
 
-// RPC Configuration with validation and intelligent defaults
+// RPC Configuration with validation (Real Testnet mode only)
 function validateAndConfigureRPC() {
+  // RPC configuration only applies when NETWORK_MODE === 'testnet'
+  // In demo mode, bridge/fallback is used exclusively
+
   let configuredUrl = process.env.NODE_RPC_URL;
 
-  // If NODE_RPC_URL is set, validate it's a valid URL
-  if (configuredUrl) {
+  // If NODE_RPC_URL is set, validate it's a valid URL (only in testnet mode)
+  if (configuredUrl && NETWORK_MODE === 'testnet') {
     try {
       new URL(configuredUrl);
     } catch (err) {
@@ -45,14 +48,19 @@ function validateAndConfigureRPC() {
   }
 
   // If not set or invalid, use intelligent defaults based on environment
-  if (!configuredUrl) {
+  if (!configuredUrl && NETWORK_MODE === 'testnet') {
     if (IS_STAGING) {
       configuredUrl = 'http://host.docker.internal:3001';
       console.log(`[CONFIG] NODE_RPC_URL not set in staging, using default: ${configuredUrl}`);
     } else {
-      console.warn(`[CONFIG] NODE_RPC_URL not configured in production — token transfers and blockchain features may be unavailable`);
+      console.warn(`[CONFIG] NODE_RPC_URL not configured in production testnet mode — token transfers and blockchain features may be unavailable`);
       configuredUrl = null; // Will trigger fallback to bridge mode
     }
+  }
+
+  // In demo mode, return null to skip RPC entirely
+  if (NETWORK_MODE === 'demo') {
+    return null;
   }
 
   return configuredUrl;
@@ -66,6 +74,11 @@ let rpcHealthCacheTime = 0;
 const RPC_HEALTH_CACHE_MS = 30000; // 30 seconds
 
 async function checkRPCHealth() {
+  // RPC health checks only in testnet mode
+  if (NETWORK_MODE !== 'testnet') {
+    return { rpcUrl: null, reachable: false, error: 'Demo mode - RPC not used' };
+  }
+
   if (!NODE_RPC_URL) {
     return { rpcUrl: null, reachable: false, error: 'NODE_RPC_URL not configured' };
   }
@@ -419,13 +432,13 @@ async function sendOutgoingPayment(recipient, amount, memo) {
   try {
     console.log(`[BLOCKCHAIN-SUBMIT] sendOutgoingPayment: recipient=${recipient}, amount=${amount}, memo=${memo ? 'provided' : 'none'}`);
 
-    // In staging or without RPC URL, return demo transaction
-    if (IS_STAGING || !NODE_RPC_URL) {
-      console.log(`[BLOCKCHAIN-SUBMIT] Demo/staging mode: would send ${amount} to ${recipient}`);
+    // In demo mode or without RPC URL in testnet, use bridge/fallback
+    if (NETWORK_MODE === 'demo' || !NODE_RPC_URL) {
+      console.log(`[BLOCKCHAIN-SUBMIT] Bridge/fallback mode: would send ${amount} to ${recipient}`);
       return { success: true, transactionHash: 'ut1staging-token-demo-' + Date.now() };
     }
 
-    // In production: POST to NODE_RPC_URL /wallet/send
+    // In testnet mode with RPC: POST to NODE_RPC_URL /wallet/send
     // Pattern: Last One Wins wallet_send RPC format
     const rpcPayload = {
       method: 'wallet_send',
@@ -504,18 +517,18 @@ async function sendOutgoingPayment(recipient, amount, memo) {
   }
 }
 
-// Send message transaction to blockchain via RPC
+// Send message transaction to blockchain via RPC (Real Testnet mode only)
 async function sendMessageToBlockchain(messagePayload, memo, network = 'testnet') {
   try {
     console.log(`[BLOCKCHAIN-SUBMIT] sendMessageToBlockchain: messageId=${messagePayload.messageId}, memo=${memo ? 'provided' : 'none'}`);
 
-    // In staging or without RPC URL, return demo transaction
-    if (IS_STAGING || !NODE_RPC_URL) {
-      console.log(`[BLOCKCHAIN-SUBMIT] Demo/staging mode: would submit message ${messagePayload.messageId} to network ${network}`);
+    // In demo mode or without RPC URL in testnet, use bridge/fallback
+    if (NETWORK_MODE === 'demo' || !NODE_RPC_URL) {
+      console.log(`[BLOCKCHAIN-SUBMIT] Bridge/fallback mode: would submit message ${messagePayload.messageId} to network ${network}`);
       return { transactionHash: 'ut1staging-' + network + '-message-' + Date.now() };
     }
 
-    // In production: POST to NODE_RPC_URL /transaction/submit
+    // In testnet mode with RPC: POST to NODE_RPC_URL /transaction/submit
     const rpcPayload = {
       method: 'transaction_submit',
       params: {
@@ -592,18 +605,18 @@ async function sendMessageToBlockchain(messagePayload, memo, network = 'testnet'
   }
 }
 
-// Send group creation transaction to blockchain via RPC
+// Send group creation transaction to blockchain via RPC (Real Testnet mode only)
 async function sendGroupToBlockchain(groupPayload, memo, memberPubkeys, network = 'testnet') {
   try {
     console.log(`[BLOCKCHAIN-SUBMIT] sendGroupToBlockchain: groupId=${groupPayload.groupId}, memo=${memo ? 'provided' : 'none'}`);
 
-    // In staging or without RPC URL, return demo transaction
-    if (IS_STAGING || !NODE_RPC_URL) {
-      console.log(`[BLOCKCHAIN-SUBMIT] Demo/staging mode: would create group ${groupPayload.groupId} to network ${network}`);
+    // In demo mode or without RPC URL in testnet, use bridge/fallback
+    if (NETWORK_MODE === 'demo' || !NODE_RPC_URL) {
+      console.log(`[BLOCKCHAIN-SUBMIT] Bridge/fallback mode: would create group ${groupPayload.groupId} to network ${network}`);
       return { transactionHash: 'ut1staging-' + network + '-group-' + Date.now() };
     }
 
-    // In production: POST to NODE_RPC_URL /transaction/submit
+    // In testnet mode with RPC: POST to NODE_RPC_URL /transaction/submit
     const rpcPayload = {
       method: 'transaction_submit',
       params: {
@@ -1214,8 +1227,20 @@ app.get('/api/config', async (req, res) => {
     // Check if user is authorized (first user OR has created a group)
     const canEdit = userId === 1 || (await userHasCreatedGroup(userId));
 
-    // Get RPC health status
-    const rpcHealth = await checkRPCHealth();
+    // Get RPC health status only in testnet mode
+    const rpcHealth = NETWORK_MODE === 'testnet' ? await checkRPCHealth() : null;
+
+    const nodeRpcUrlSecret = {
+      key: 'NODE_RPC_URL',
+      value: NODE_RPC_URL,
+      required: false,
+      private: false
+    };
+
+    // Only include rpcStatus in testnet mode
+    if (NETWORK_MODE === 'testnet') {
+      nodeRpcUrlSecret.rpcStatus = rpcHealth;
+    }
 
     res.json({
       networkMode: NETWORK_MODE,
@@ -1235,13 +1260,7 @@ app.get('/api/config', async (req, res) => {
           required: true,
           private: true
         },
-        {
-          key: 'NODE_RPC_URL',
-          value: NODE_RPC_URL,
-          required: false,
-          private: false,
-          rpcStatus: rpcHealth
-        }
+        nodeRpcUrlSecret
       ]
     });
   } catch (err) {
@@ -8140,9 +8159,16 @@ async function start() {
     app.listen(port, () => {
       console.log(`Listening on :${port}`);
       console.log(`[CONFIG] USERNODE_ENV: ${process.env.USERNODE_ENV || 'not set'}`);
-      console.log(`[CONFIG] NODE_RPC_URL configured: ${NODE_RPC_URL || 'not configured'}`);
       console.log(`[CONFIG] NETWORK_MODE: ${NETWORK_MODE}`);
       console.log(`[CONFIG] IS_STAGING: ${IS_STAGING}`);
+      if (NETWORK_MODE === 'testnet') {
+        console.log(`[CONFIG] Real Testnet mode - RPC enabled: ${NODE_RPC_URL ? 'yes' : 'no'}`);
+        if (NODE_RPC_URL) {
+          console.log(`[CONFIG] NODE_RPC_URL: ${NODE_RPC_URL}`);
+        }
+      } else {
+        console.log(`[CONFIG] Demo mode - using bridge/fallback exclusively, RPC disabled`);
+      }
     });
   } catch (err) {
     console.error(err);
