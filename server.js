@@ -1507,9 +1507,18 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
     }
 
     // Use real tx hash from frontend if provided, otherwise generate placeholder
-    const actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-message-' + messageId + '-' + Date.now() : 'ut1-' + network + '-tx-msg-' + Math.random().toString(36).substr(2, 9));
+    let actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-message-' + messageId + '-' + Date.now() : 'ut1-' + network + '-tx-msg-' + Math.random().toString(36).substr(2, 9));
+
+    // Defensive fallback: ensure tx_hash is never null before INSERT
+    if (!actualTxHash) {
+      actualTxHash = `guardian-pending-msg-${messageId}-${Date.now()}-${crypto.randomUUID()}`;
+      console.warn(`[MESSAGE] Fallback tx_hash generated: ${actualTxHash}`);
+    }
+
     const auditStatus = txHash ? 'pending' : (ENABLE_DEMO_MODE ? 'confirmed' : 'pending');
 
+    // Log audit creation with all critical fields
+    console.log(`[AUDIT LOG] MESSAGE: txHash=${actualTxHash}, messageId=${messageId}, status=${auditStatus}, contentHash=${contentHash}`);
     console.log(`[MESSAGE] Recording blockchain audit log: messageId=${messageId}, txHash=${actualTxHash}, status=${auditStatus}, contentHash=${contentHash}`);
 
     let blockchainRecordingId;
@@ -1525,6 +1534,11 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       console.log(`[MESSAGE] Updated existing audit log: id=${blockchainRecordingId}`);
     } else {
       // Single-phase flow: create new audit log
+      // Defensive validation: ensure tx_hash is present before INSERT
+      if (!actualTxHash) {
+        throw new Error('Missing tx_hash before audit log creation');
+      }
+
       const auditRes = await pool.query(`
         INSERT INTO blockchain_audit_logs (user_id, message_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
@@ -3236,7 +3250,14 @@ app.post('/api/groups', async (req, res) => {
     if (auditLogId) {
       // Two-phase flow: audit log already exists from wallet signature, just update it
       console.log(`[POST /api/groups::BLOCKCHAIN] Using existing audit log: id=${auditLogId}`);
-      const actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-group-create-' + groupId + '-' + Date.now() : 'ut1-' + network + '-tx-group-' + Math.random().toString(36).substr(2, 9));
+      let actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-group-create-' + groupId + '-' + Date.now() : 'ut1-' + network + '-tx-group-' + Math.random().toString(36).substr(2, 9));
+
+      // Defensive fallback: ensure tx_hash is never null before UPDATE
+      if (!actualTxHash) {
+        actualTxHash = `guardian-pending-group-${groupId}-${Date.now()}-${crypto.randomUUID()}`;
+        console.warn(`[POST /api/groups::BLOCKCHAIN] Fallback tx_hash generated: ${actualTxHash}`);
+      }
+
       const auditStatus = txHash ? 'pending' : (ENABLE_DEMO_MODE ? 'confirmed' : 'pending');
 
       await pool.query(`
@@ -3248,9 +3269,22 @@ app.post('/api/groups', async (req, res) => {
       console.log(`[POST /api/groups::BLOCKCHAIN] Updated existing audit log: id=${blockchainRecordingId}`);
     } else {
       // Single-phase flow: create new audit log
-      const actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-group-create-' + groupId + '-' + Date.now() : 'ut1-' + network + '-tx-group-' + Math.random().toString(36).substr(2, 9));
+      let actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-group-create-' + groupId + '-' + Date.now() : 'ut1-' + network + '-tx-group-' + Math.random().toString(36).substr(2, 9));
+
+      // Defensive fallback: ensure tx_hash is never null before INSERT
+      if (!actualTxHash) {
+        actualTxHash = `guardian-pending-group-${groupId}-${Date.now()}-${crypto.randomUUID()}`;
+        console.warn(`[POST /api/groups::BLOCKCHAIN] Fallback tx_hash generated: ${actualTxHash}`);
+      }
+
       const auditStatus = txHash ? 'pending' : (ENABLE_DEMO_MODE ? 'confirmed' : 'pending');
+      console.log(`[AUDIT LOG] GROUP_CREATE: txHash=${actualTxHash}, groupId=${groupId}, status=${auditStatus}, memberCount=${memberPubkeys.length}`);
       console.log(`[POST /api/groups::BLOCKCHAIN] Creating new audit log: txHash=${actualTxHash}, status=${auditStatus}, env=${IS_STAGING ? 'staging' : 'production'}, demoMode=${ENABLE_DEMO_MODE}`);
+
+      // Defensive validation: ensure tx_hash is present before INSERT
+      if (!actualTxHash) {
+        throw new Error('Missing tx_hash before audit log creation');
+      }
 
       const auditRes = await pool.query(`
         INSERT INTO blockchain_audit_logs (user_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
