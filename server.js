@@ -4376,7 +4376,7 @@ app.get('/api/network/peer-count', async (req, res) => {
 });
 
 // Get user-specific peer count (testnet peers connected to this user)
-// Only available when testnet_enabled is true in user settings
+// Only available when user has network_mode set to 'testnet'
 app.get('/api/user/peers/connected', async (req, res) => {
   try {
     if (!req.user) {
@@ -4388,12 +4388,12 @@ app.get('/api/user/peers/connected', async (req, res) => {
       return res.status(400).json({ error: 'Invalid user ID' });
     }
 
-    // Check if testnet is enabled for this user
+    // Check if network mode is testnet for this user
     const { rows: userRows } = await pool.query(`
-      SELECT testnet_enabled FROM users WHERE id = $1
+      SELECT network FROM users WHERE id = $1
     `, [userId]);
 
-    if (!userRows.length || !userRows[0].testnet_enabled) {
+    if (!userRows.length || userRows[0].network !== 'testnet') {
       return res.status(403).json({
         error: 'Peer count feature is not enabled',
         available: false
@@ -6355,16 +6355,6 @@ async function start() {
       throw err;
     }
 
-    try {
-      console.log('[Migration] Adding testnet_enabled column to users table...');
-      await pool.query(`
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS testnet_enabled BOOLEAN DEFAULT FALSE
-      `);
-      console.log('[Migration] ✅ testnet_enabled column migration completed');
-    } catch (err) {
-      console.error('[Migration] ❌ ERROR adding testnet_enabled column:', err.message);
-      throw err;
-    }
 
     // Create conversations table (marked private)
     await pool.query(`

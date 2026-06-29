@@ -6261,7 +6261,7 @@
       // Load guardian data and start polling when on guardians tab
       if (tabName === 'guardians') {
         loadGuardiansData();
-        // Polling will start in loadGuardiansData if testnet_enabled is true
+        // Polling will start in loadGuardiansData if network_mode is 'testnet'
       }
 
       // Save tab preference
@@ -6365,9 +6365,9 @@
       try {
         const userPeerResponse = await apiCall('/api/user/peers/connected');
 
-        // If 403, testnet_enabled is false, so stop polling
+        // If 403, network_mode is not 'testnet', so stop polling
         if (userPeerResponse && userPeerResponse.error && userPeerResponse.available === false) {
-          console.log('[Guardian Data] Testnet feature disabled, stopping polling');
+          console.log('[Guardian Data] Testnet not enabled, stopping polling');
           if (guardianPollInterval) {
             clearInterval(guardianPollInterval);
             guardianPollInterval = null;
@@ -6478,7 +6478,7 @@
           }
         }
 
-        // Fetch user's peer count (user-specific testnet peers) - only if testnet_enabled is true
+        // Fetch user's peer count (user-specific testnet peers) - only if network_mode is 'testnet'
         try {
           console.log('[Guardian Data] Fetching user peer count...');
           const userPeerResponse = await apiCall('/api/user/peers/connected');
@@ -6488,9 +6488,9 @@
             console.log('[Guardian Data] User peer count loaded:', userPeerResponse.userPeerCount);
           }
         } catch (err) {
-          // 403 means testnet_enabled is false, so set to null to hide the feature
+          // 403 means network_mode is not 'testnet', so set to null to hide the feature
           if (err.status === 403 || (err.response && err.response.status === 403)) {
-            console.log('[Guardian Data] Testnet feature not enabled for this user');
+            console.log('[Guardian Data] Testnet not enabled for this user (network_mode is not testnet)');
             response.userPeerCount = null;
             response.userPeerIds = [];
           } else {
@@ -6716,9 +6716,9 @@
       const userPeerCount = guardianData.userPeerCount;
       const foregroundHours = (guardianData.peerData && guardianData.peerData.foreground_hours) || guardianData.foregroundHours || 0;
 
-      // Check if peer count is available (null means testnet_enabled is false or not in testnet mode)
+      // Check if peer count is available (null means network_mode is not 'testnet')
       if (userPeerCount === null) {
-        showErrorModal('Peer Details', 'Peer count feature is not enabled. Please enable testnet mode in your settings to view connected peers.');
+        showErrorModal('Peer Details', 'Peer count feature is not enabled. Please switch to testnet mode in your settings to view connected peers.');
         return;
       }
 
