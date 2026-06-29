@@ -2188,10 +2188,24 @@
           const modeName = mode === 'demo' ? 'Demo' : 'Testnet';
           showToast('Switched to ' + modeName + ' mode', 'success');
 
-          // Transaction history accordion is always visible; just ensure polling is active
-          pollTransactionHistory();
-          if (transactionHistoryIntervalId) clearInterval(transactionHistoryIntervalId);
-          transactionHistoryIntervalId = setInterval(pollTransactionHistory, 2000);
+          // Refresh all data after mode change
+          try {
+            if (document.getElementById('conversationsView') && !document.getElementById('conversationsView').classList.contains('hidden')) {
+              await loadConversations();
+            }
+            if (document.getElementById('groupsList') && !document.getElementById('groupsList').classList.contains('hidden')) {
+              await loadGroups();
+            }
+            if (document.getElementById('feedView') && !document.getElementById('feedView').classList.contains('hidden')) {
+              await loadChannels();
+            }
+            // Refresh transaction history
+            pollTransactionHistory();
+            if (transactionHistoryIntervalId) clearInterval(transactionHistoryIntervalId);
+            transactionHistoryIntervalId = setInterval(pollTransactionHistory, 2000);
+          } catch (refreshErr) {
+            console.error('Error refreshing data after mode change:', refreshErr);
+          }
         } else if (result && result.error) {
           dropdown.value = previousMode;
           if (result.error.includes('Not authorized')) {

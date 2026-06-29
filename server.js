@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const https = require('https');
 const http = require('http');
+const mockData = require('./server-mock-data');
 
 // Guardian 2 - Production-ready Usernode blockchain integration
 const app = express();
@@ -842,6 +843,22 @@ app.get('/api/user', async (req, res) => {
     return res.status(401).json({ error: 'Not authenticated' });
   }
   try {
+    if (ENABLE_DEMO_MODE) {
+      const mockUser = mockData.getMockUserProfile(1);
+      return res.json({
+        id: 1,
+        username: mockUser.username,
+        usernode_pubkey: mockUser.usernode_pubkey,
+        verified: !!mockUser.verified_at,
+        network: 'testnet',
+        view_mode: 'web',
+        avatar_url: mockUser.avatar_url,
+        created_at: mockUser.created_at,
+        bio: mockUser.bio,
+        isDemoMode: ENABLE_DEMO_MODE,
+        appPubkey: APP_PUBKEY,
+      });
+    }
     const userRes = await pool.query(`SELECT view_mode, avatar_url, created_at, bio FROM users WHERE id = $1`, [req.user.id]);
     const view_mode = userRes.rows[0]?.view_mode || 'web';
     const avatar_url = userRes.rows[0]?.avatar_url || null;
@@ -894,6 +911,14 @@ app.get('/api/user/stats', async (req, res) => {
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
       return res.status(400).json({ error: 'Invalid user ID' });
+    }
+
+    if (ENABLE_DEMO_MODE) {
+      return res.json({
+        postsCount: mockData.MOCK_USER_STATS.totalMessagesCount,
+        contactsCount: 12,
+        messagesCount: mockData.MOCK_USER_STATS.totalGroupsCount + 4
+      });
     }
 
     // Query posts count
@@ -1192,6 +1217,10 @@ app.get('/api/conversations', async (req, res) => {
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    if (ENABLE_DEMO_MODE) {
+      return res.json(mockData.getMockConversations(1, limit, offset));
     }
 
     // Optimized query using joins to eliminate N+1 lookups
@@ -2144,6 +2173,25 @@ app.get('/api/transactions-by-user', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
+    if (ENABLE_DEMO_MODE) {
+      const mockResult = mockData.getMockTransactionsByUser(1, limit, offset);
+      const transactions = mockResult.transactions.map(tx => ({
+        id: tx.id,
+        messageId: null,
+        groupId: null,
+        messageType: tx.message_type,
+        txHash: tx.tx_hash,
+        status: tx.status,
+        errorMessage: null,
+        confirmedAt: tx.confirmed_at,
+        createdAt: tx.created_at,
+        recipientUsername: tx.recipientUsername || null,
+        groupName: tx.groupName || null,
+        transactionPayload: null
+      }));
+      return res.json({ transactions, total: mockResult.total, limit, offset });
+    }
+
     let whereClause = 'bal.user_id = $1';
     let params = [userId];
     if (typeFilter) {
@@ -2891,6 +2939,20 @@ app.get('/api/search/users', async (req, res) => {
     }
 
     const q = req.query.q || '';
+
+    if (ENABLE_DEMO_MODE) {
+      const mockResult = mockData.getMockSearchUsers(q, 20);
+      return res.json({
+        users: mockResult.results.map(u => ({
+          id: u.id,
+          username: u.username,
+          usernode_pubkey: u.usernode_pubkey || null,
+          verified: u.verified,
+          mutualCount: 0
+        }))
+      });
+    }
+
     let rows;
 
     try {
@@ -3051,6 +3113,10 @@ app.get('/api/groups', async (req, res) => {
     }
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
     const offset = parseInt(req.query.offset || 0);
+
+    if (ENABLE_DEMO_MODE) {
+      return res.json(mockData.getMockGroups(1, limit, offset));
+    }
 
     // Get groups where user is a member
     const { rows: groupRows } = await pool.query(`
@@ -3414,6 +3480,19 @@ app.get('/api/groups/:groupId', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
+    if (ENABLE_DEMO_MODE) {
+      const groupIdInt = parseInt(groupId);
+      const mockGroup = mockData.getMockGroupById(groupIdInt);
+      if (!mockGroup) {
+        return res.status(404).json({ error: 'Group not found' });
+      }
+      const mockMembers = mockData.getMockGroupMembers(groupIdInt);
+      return res.json({
+        ...mockGroup,
+        members: mockMembers.members
+      });
+    }
+
     // Verify user is a member
     const { rows: memberRows } = await pool.query(`
       SELECT id FROM group_members WHERE group_id = $1 AND user_id = $2
@@ -3568,6 +3647,24 @@ app.get('/api/groups/:groupId/messages', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
+    const offset = parseInt(req.query.offset || 0);
+
+    if (ENABLE_DEMO_MODE) {
+      const groupIdInt = parseInt(groupId);
+      const mockResult = mockData.getMockGroupMessages(groupIdInt, limit, offset);
+      const msgList = mockResult.messages.map(m => ({
+        id: m.id,
+        senderId: m.sender_id,
+        senderUsername: mockData.MOCK_USERS.find(u => u.id === m.sender_id)?.username || 'Unknown',
+        type: m.type,
+        content: m.content,
+        createdAt: m.created_at,
+        blockchainRecorded: false,
+        blockchainAuditLogId: null
+      }));
+      return res.json({ messages: msgList, hasMore: offset + limit < mockResult.total });
+    }
+
     const before = req.query.before ? new Date(req.query.before) : new Date();
 
     // Verify user is a member
@@ -4439,6 +4536,10 @@ app.get('/api/channels', async (req, res) => {
     const category = req.query.category || null;
     const featured = req.query.featured === 'true';
 
+    if (ENABLE_DEMO_MODE) {
+      return res.json(mockData.getMockChannels(1, category, featured));
+    }
+
     let query = `
       SELECT c.id, c.name, c.description, c.is_system, c.owner_id, c.category, c.is_verified, c.verified_at, c.is_featured, c.created_at, c.updated_at,
              u.username as ownerUsername,
@@ -4498,6 +4599,25 @@ app.get('/api/channels/:channelId/posts', async (req, res) => {
     const channelId = parseInt(req.params.channelId);
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
     const offset = parseInt(req.query.offset || 0);
+
+    if (ENABLE_DEMO_MODE) {
+      const mockResult = mockData.getMockChannelPosts(channelId, limit, offset);
+      return res.json({
+        posts: mockResult.posts.map(p => ({
+          id: p.id,
+          userId: p.authorId,
+          username: p.authorUsername,
+          verified: false,
+          avatarUrl: p.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.authorUsername}`,
+          content: p.content,
+          createdAt: p.createdAt,
+          updatedAt: p.createdAt,
+          isEdited: false,
+          onChain: false
+        })),
+        hasMore: offset + limit < mockResult.total
+      });
+    }
 
     // Verify channel exists
     const { rows: channelCheck } = await pool.query(`
