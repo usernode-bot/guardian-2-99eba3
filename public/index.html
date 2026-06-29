@@ -276,6 +276,84 @@
       animation: feedPostEnter 0.4s ease-out;
     }
 
+    #feedView {
+      contain: layout style paint;
+    }
+
+    /* Compose Modal Styles */
+    #feedComposeModal {
+      backdrop-filter: blur(4px);
+      opacity: 0;
+      transition: opacity 0.3s ease-out;
+      pointer-events: none;
+    }
+
+    #feedComposeModal.hidden {
+      display: none;
+    }
+
+    #feedComposeModal:not(.hidden) {
+      display: flex;
+      pointer-events: auto;
+    }
+
+    #feedComposeContainer {
+      animation: slideUpModal 0.3s ease-out forwards;
+    }
+
+    @keyframes slideUpModal {
+      from {
+        opacity: 0;
+        transform: scale(0.95) translateY(16px);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+    }
+
+    /* FAB entrance animation */
+    #feedFAB {
+      animation: fabFadeIn 0.4s ease-out 0.1s backwards;
+    }
+
+    @keyframes fabFadeIn {
+      from {
+        opacity: 0;
+        transform: scale(0.8);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    /* FAB hover and active states */
+    #feedFAB {
+      transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+                  box-shadow 0.2s ease-out,
+                  background-color 0.2s ease-out;
+    }
+
+    #feedFAB:hover {
+      transform: scale(1.1);
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15);
+    }
+
+    #feedFAB:active {
+      transform: scale(0.95);
+    }
+
+    /* Modal close button animation */
+    #feedComposeModal button {
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    #feedComposeModal .text-lg:hover {
+      transform: rotate(90deg);
+    }
+
+
     /* Textarea smooth focus animation */
     #feedComposeInput {
       transition: border-color 0.2s ease-out,
