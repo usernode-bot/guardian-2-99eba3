@@ -6261,7 +6261,11 @@
       // Load guardian data and start polling when on guardians tab
       if (tabName === 'guardians') {
         loadGuardiansData();
-        guardianPollInterval = setInterval(refreshUserPeerCount, 10000);
+        // Only poll peer count if in testnet mode
+        const settings = loadSettings();
+        if (settings.networkMode === 'testnet') {
+          guardianPollInterval = setInterval(refreshUserPeerCount, 10000);
+        }
       }
 
       // Save tab preference
@@ -6363,6 +6367,17 @@
 
     async function refreshUserPeerCount() {
       try {
+        // Check if we're in testnet mode before polling
+        const settings = loadSettings();
+        if (settings.networkMode !== 'testnet') {
+          // Stop polling if mode changed to demo
+          if (guardianPollInterval) {
+            clearInterval(guardianPollInterval);
+            guardianPollInterval = null;
+          }
+          return;
+        }
+
         const userPeerResponse = await apiCall('/api/user/peers/connected');
         if (!userPeerResponse) return;
 
@@ -6460,29 +6475,38 @@
           }
         }
 
-        // Fetch user's peer count (user-specific testnet peers)
-        try {
-          console.log('[Guardian Data] Fetching user peer count...');
-          const userPeerResponse = await apiCall('/api/user/peers/connected');
-          if (userPeerResponse) {
-            response.userPeerCount = userPeerResponse.userPeerCount;
-            response.userPeerIds = userPeerResponse.peerIds;
-            console.log('[Guardian Data] User peer count loaded:', userPeerResponse.userPeerCount);
+        // Fetch user's peer count (user-specific testnet peers) - only in testnet mode
+        const settings = loadSettings();
+        if (settings.networkMode === 'testnet') {
+          try {
+            console.log('[Guardian Data] Fetching user peer count...');
+            const userPeerResponse = await apiCall('/api/user/peers/connected');
+            if (userPeerResponse) {
+              response.userPeerCount = userPeerResponse.userPeerCount;
+              response.userPeerIds = userPeerResponse.peerIds;
+              console.log('[Guardian Data] User peer count loaded:', userPeerResponse.userPeerCount);
+            }
+          } catch (err) {
+            console.error('[Guardian Data] Error loading user peer count:', err);
           }
-        } catch (err) {
-          console.error('[Guardian Data] Error loading user peer count:', err);
-        }
 
-        // Fetch peer count (network connectivity) - kept for reference
-        try {
-          console.log('[Guardian Data] Fetching network peer count...');
-          const peerCountResponse = await fetchPeerCount();
-          if (peerCountResponse) {
-            response.peerCount = peerCountResponse;
-            console.log('[Guardian Data] Network peer count loaded:', peerCountResponse.peerCount);
+          // Fetch peer count (network connectivity) - kept for reference
+          try {
+            console.log('[Guardian Data] Fetching network peer count...');
+            const peerCountResponse = await fetchPeerCount();
+            if (peerCountResponse) {
+              response.peerCount = peerCountResponse;
+              console.log('[Guardian Data] Network peer count loaded:', peerCountResponse.peerCount);
+            }
+          } catch (err) {
+            console.error('[Guardian Data] Error loading network peer count:', err);
           }
-        } catch (err) {
-          console.error('[Guardian Data] Error loading network peer count:', err);
+        } else {
+          // In demo mode, don't fetch peer counts
+          response.userPeerCount = null;
+          response.userPeerIds = [];
+          response.peerCount = null;
+          console.log('[Guardian Data] Skipping peer count fetch in demo mode');
         }
 
         // Cache the data and update display with real data
@@ -6543,12 +6567,16 @@
       const hours = data.foregroundHours || 0;
       const level = data.contributionLevel || 0;
       const rank = data.rank || 'New Guardian';
-      const userPeerCount = data.userPeerCount || 0;
+      const userPeerCount = data.userPeerCount !== null ? data.userPeerCount : null;
 
-      // Update hours with user peer count info
+      // Update hours with user peer count info (only show peer count in testnet mode)
       const hoursDisplay = document.getElementById('profileGuardianHours');
       if (hoursDisplay) {
-        hoursDisplay.innerHTML = `<div>${hours}</div><div class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Connected Peers: ${userPeerCount}</div>`;
+        if (userPeerCount !== null) {
+          hoursDisplay.innerHTML = `<div>${hours}</div><div class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Connected Peers: ${userPeerCount}</div>`;
+        } else {
+          hoursDisplay.textContent = hours;
+        }
       }
 
       // Update rank
@@ -6676,8 +6704,14 @@
         return;
       }
 
-      const userPeerCount = guardianData.userPeerCount || 0;
+      const userPeerCount = guardianData.userPeerCount;
       const foregroundHours = (guardianData.peerData && guardianData.peerData.foreground_hours) || guardianData.foregroundHours || 0;
+
+      // Check if peer count is available (null means demo mode)
+      if (userPeerCount === null) {
+        showErrorModal('Peer Details', 'Peer count is only available in Real testnet mode. Switch to testnet to see connected peers.');
+        return;
+      }
 
       // Create modal
       const modal = document.createElement('div');

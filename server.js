@@ -4376,10 +4376,19 @@ app.get('/api/network/peer-count', async (req, res) => {
 });
 
 // Get user-specific peer count (testnet peers connected to this user)
+// Only available when network mode is 'testnet'
 app.get('/api/user/peers/connected', async (req, res) => {
   try {
     if (!req.user) {
       return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    // Only show peer count in testnet mode
+    if (NETWORK_MODE !== 'testnet') {
+      return res.status(403).json({
+        error: 'Peer count not available in demo mode',
+        available: false
+      });
     }
 
     const userId = parseInt(req.user.id, 10);
