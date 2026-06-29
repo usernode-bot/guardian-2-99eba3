@@ -1879,6 +1879,53 @@
       return instrumented;
     }
 
+    // ===== Foreground Visibility Tracker =====
+    class VisibilityTracker {
+      constructor() {
+        this.isTabActive = !document.hidden;
+        this.sessionStartTime = Date.now();
+        this.lastSessionData = null;
+        this.initialized = false;
+        this.setupListeners();
+      }
+
+      setupListeners() {
+        document.addEventListener('visibilitychange', () => {
+          if (document.hidden) {
+            this.handleTabLoseFocus();
+          } else {
+            this.handleTabRegainFocus();
+          }
+        });
+        this.initialized = true;
+      }
+
+      handleTabLoseFocus() {
+        const now = Date.now();
+        const sessionDurationSeconds = (now - this.sessionStartTime) / 1000;
+        this.isTabActive = false;
+        this.logSession(sessionDurationSeconds);
+      }
+
+      handleTabRegainFocus() {
+        this.isTabActive = true;
+        this.sessionStartTime = Date.now();
+      }
+
+      logSession(durationSeconds) {
+        if (durationSeconds < 1) return; // Skip very short sessions
+
+        apiCall('/api/user/foreground-session', {
+          method: 'POST',
+          body: JSON.stringify({ sessionDurationSeconds: durationSeconds })
+        }).catch(err => {
+          console.error('Error logging foreground session:', err);
+        });
+      }
+    }
+
+    const visibilityTracker = new VisibilityTracker();
+
     // Wallet signature timeout in milliseconds (90 seconds)
     // NOTE: Timeout duration is NOT the root cause of hangs. Root cause is unresolved promises
     // in Promise.race(). Extending this value doesn't help; the withTimeout() function now
@@ -6214,7 +6261,7 @@
       // Load guardian data and start polling when on guardians tab
       if (tabName === 'guardians') {
         loadGuardiansData();
-        guardianPollInterval = setInterval(refreshPeerCount, 30000);
+        guardianPollInterval = setInterval(refreshUserPeerCount, 10000);
       }
 
       // Save tab preference
@@ -6314,6 +6361,35 @@
       }
     }
 
+    async function refreshUserPeerCount() {
+      try {
+        const userPeerResponse = await apiCall('/api/user/peers/connected');
+        if (!userPeerResponse) return;
+
+        if (cachedGuardiansData) {
+          cachedGuardiansData.userPeerCount = userPeerResponse.userPeerCount;
+          cachedGuardiansData.userPeerIds = userPeerResponse.peerIds;
+        }
+
+        const userPeerCount = userPeerResponse.userPeerCount || 0;
+        const hours = cachedGuardiansData?.foregroundHours || 0;
+
+        const hoursDisplay = document.getElementById('profileGuardianHours');
+        if (hoursDisplay) {
+          hoursDisplay.innerHTML = `<div>${hours}</div><div class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Connected Peers: ${userPeerCount}</div>`;
+        }
+
+        // Update count in Peer Details modal if it is currently open
+        const peerModal = document.getElementById('peerModal');
+        if (peerModal) {
+          const countEl = peerModal.querySelector('.text-3xl');
+          if (countEl) countEl.textContent = userPeerCount;
+        }
+      } catch (err) {
+        console.error('Error refreshing user peer count:', err);
+      }
+    }
+
     async function loadGuardiansData() {
       try {
         console.log('[Guardian Data] Loading guardians data...');
@@ -6384,16 +6460,29 @@
           }
         }
 
-        // Fetch peer count (network connectivity)
+        // Fetch user's peer count (user-specific testnet peers)
         try {
-          console.log('[Guardian Data] Fetching peer count...');
+          console.log('[Guardian Data] Fetching user peer count...');
+          const userPeerResponse = await apiCall('/api/user/peers/connected');
+          if (userPeerResponse) {
+            response.userPeerCount = userPeerResponse.userPeerCount;
+            response.userPeerIds = userPeerResponse.peerIds;
+            console.log('[Guardian Data] User peer count loaded:', userPeerResponse.userPeerCount);
+          }
+        } catch (err) {
+          console.error('[Guardian Data] Error loading user peer count:', err);
+        }
+
+        // Fetch peer count (network connectivity) - kept for reference
+        try {
+          console.log('[Guardian Data] Fetching network peer count...');
           const peerCountResponse = await fetchPeerCount();
           if (peerCountResponse) {
             response.peerCount = peerCountResponse;
-            console.log('[Guardian Data] Peer count loaded:', peerCountResponse.peerCount);
+            console.log('[Guardian Data] Network peer count loaded:', peerCountResponse.peerCount);
           }
         } catch (err) {
-          console.error('[Guardian Data] Error loading peer count:', err);
+          console.error('[Guardian Data] Error loading network peer count:', err);
         }
 
         // Cache the data and update display with real data
@@ -6454,12 +6543,12 @@
       const hours = data.foregroundHours || 0;
       const level = data.contributionLevel || 0;
       const rank = data.rank || 'New Guardian';
-      const peerCount = data.peerCount?.peerCount || 0;
+      const userPeerCount = data.userPeerCount || 0;
 
-      // Update hours with peer count info
+      // Update hours with user peer count info
       const hoursDisplay = document.getElementById('profileGuardianHours');
       if (hoursDisplay) {
-        hoursDisplay.innerHTML = `<div>${hours}</div><div class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Connected Peers: ${peerCount}</div>`;
+        hoursDisplay.innerHTML = `<div>${hours}</div><div class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Connected Peers: ${userPeerCount}</div>`;
       }
 
       // Update rank
@@ -6587,7 +6676,7 @@
         return;
       }
 
-      const peerCount = guardianData.peerCount?.peerCount || 0;
+      const userPeerCount = guardianData.userPeerCount || 0;
       const foregroundHours = (guardianData.peerData && guardianData.peerData.foreground_hours) || guardianData.foregroundHours || 0;
 
       // Create modal
@@ -6606,9 +6695,9 @@
           </div>
           <div class="space-y-4">
             <div class="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-              <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Connected Peers</div>
-              <div class="text-3xl font-bold text-blue-600 dark:text-blue-400">${peerCount}</div>
-              <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">peers in Usernode network</div>
+              <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Your Connected Peers</div>
+              <div class="text-3xl font-bold text-blue-600 dark:text-blue-400">${userPeerCount}</div>
+              <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">testnet peers connected to your node</div>
             </div>
             <div class="bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-200 dark:border-cyan-800 rounded-lg p-4">
               <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Your Foreground Hours</div>
