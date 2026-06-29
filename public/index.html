@@ -6261,11 +6261,7 @@
       // Load guardian data and start polling when on guardians tab
       if (tabName === 'guardians') {
         loadGuardiansData();
-        // Only poll peer count if in testnet mode
-        const settings = loadSettings();
-        if (settings.networkMode === 'testnet') {
-          guardianPollInterval = setInterval(refreshUserPeerCount, 10000);
-        }
+        // Polling will start in loadGuardiansData if testnet_enabled is true
       }
 
       // Save tab preference
@@ -6367,10 +6363,11 @@
 
     async function refreshUserPeerCount() {
       try {
-        // Check if we're in testnet mode before polling
-        const settings = loadSettings();
-        if (settings.networkMode !== 'testnet') {
-          // Stop polling if mode changed to demo
+        const userPeerResponse = await apiCall('/api/user/peers/connected');
+
+        // If 403, testnet_enabled is false, so stop polling
+        if (userPeerResponse && userPeerResponse.error && userPeerResponse.available === false) {
+          console.log('[Guardian Data] Testnet feature disabled, stopping polling');
           if (guardianPollInterval) {
             clearInterval(guardianPollInterval);
             guardianPollInterval = null;
@@ -6378,7 +6375,6 @@
           return;
         }
 
-        const userPeerResponse = await apiCall('/api/user/peers/connected');
         if (!userPeerResponse) return;
 
         if (cachedGuardiansData) {
@@ -6402,6 +6398,13 @@
         }
       } catch (err) {
         console.error('Error refreshing user peer count:', err);
+        // Stop polling on 403 (testnet disabled)
+        if (err && err.status === 403) {
+          if (guardianPollInterval) {
+            clearInterval(guardianPollInterval);
+            guardianPollInterval = null;
+          }
+        }
       }
     }
 
@@ -6475,22 +6478,28 @@
           }
         }
 
-        // Fetch user's peer count (user-specific testnet peers) - only in testnet mode
-        const settings = loadSettings();
-        if (settings.networkMode === 'testnet') {
-          try {
-            console.log('[Guardian Data] Fetching user peer count...');
-            const userPeerResponse = await apiCall('/api/user/peers/connected');
-            if (userPeerResponse) {
-              response.userPeerCount = userPeerResponse.userPeerCount;
-              response.userPeerIds = userPeerResponse.peerIds;
-              console.log('[Guardian Data] User peer count loaded:', userPeerResponse.userPeerCount);
-            }
-          } catch (err) {
+        // Fetch user's peer count (user-specific testnet peers) - only if testnet_enabled is true
+        try {
+          console.log('[Guardian Data] Fetching user peer count...');
+          const userPeerResponse = await apiCall('/api/user/peers/connected');
+          if (userPeerResponse) {
+            response.userPeerCount = userPeerResponse.userPeerCount;
+            response.userPeerIds = userPeerResponse.peerIds;
+            console.log('[Guardian Data] User peer count loaded:', userPeerResponse.userPeerCount);
+          }
+        } catch (err) {
+          // 403 means testnet_enabled is false, so set to null to hide the feature
+          if (err.status === 403 || (err.response && err.response.status === 403)) {
+            console.log('[Guardian Data] Testnet feature not enabled for this user');
+            response.userPeerCount = null;
+            response.userPeerIds = [];
+          } else {
             console.error('[Guardian Data] Error loading user peer count:', err);
           }
+        }
 
-          // Fetch peer count (network connectivity) - kept for reference
+        // Fetch peer count (network connectivity) - only if testnet is enabled
+        if (response.userPeerCount !== null) {
           try {
             console.log('[Guardian Data] Fetching network peer count...');
             const peerCountResponse = await fetchPeerCount();
@@ -6501,18 +6510,18 @@
           } catch (err) {
             console.error('[Guardian Data] Error loading network peer count:', err);
           }
-        } else {
-          // In demo mode, don't fetch peer counts
-          response.userPeerCount = null;
-          response.userPeerIds = [];
-          response.peerCount = null;
-          console.log('[Guardian Data] Skipping peer count fetch in demo mode');
         }
 
         // Cache the data and update display with real data
         cachedGuardiansData = response;
         console.log('[Guardian Data] Data cached and ready');
         displayGuardiansData(response);
+
+        // Start polling if testnet is enabled
+        if (response.userPeerCount !== null && !guardianPollInterval) {
+          console.log('[Guardian Data] Starting peer count polling');
+          guardianPollInterval = setInterval(refreshUserPeerCount, 10000);
+        }
       } catch (err) {
         console.error('[Guardian Data] Unexpected error:', err);
         displayGuardiansError();
@@ -6707,9 +6716,9 @@
       const userPeerCount = guardianData.userPeerCount;
       const foregroundHours = (guardianData.peerData && guardianData.peerData.foreground_hours) || guardianData.foregroundHours || 0;
 
-      // Check if peer count is available (null means demo mode)
+      // Check if peer count is available (null means testnet_enabled is false or not in testnet mode)
       if (userPeerCount === null) {
-        showErrorModal('Peer Details', 'Peer count is only available in Real testnet mode. Switch to testnet to see connected peers.');
+        showErrorModal('Peer Details', 'Peer count feature is not enabled. Please enable testnet mode in your settings to view connected peers.');
         return;
       }
 
