@@ -6342,7 +6342,7 @@ async function start() {
         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         message_id BIGINT REFERENCES messages(id) ON DELETE CASCADE,
         message_type VARCHAR(50),
-        tx_hash VARCHAR(255) UNIQUE NOT NULL,
+        tx_hash VARCHAR(255) UNIQUE,
         status VARCHAR(50) NOT NULL DEFAULT 'pending',
         transaction_payload JSONB,
         transaction_data JSONB,
@@ -6386,6 +6386,11 @@ async function start() {
     `);
     await pool.query(`
       ALTER TABLE blockchain_audit_logs ADD COLUMN IF NOT EXISTS action_timestamp TIMESTAMPTZ
+    `);
+
+    // Drop NOT NULL constraint on tx_hash to allow two-phase audit log creation (pending audits with null tx_hash)
+    await pool.query(`
+      ALTER TABLE blockchain_audit_logs ALTER COLUMN tx_hash DROP NOT NULL
     `);
 
     await pool.query(`
