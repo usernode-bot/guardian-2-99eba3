@@ -810,14 +810,17 @@
                   </div>
                 </div>
 
-                <!-- Demo Mode Toggle -->
+                <!-- Network Mode Selection -->
                 <div class="space-y-2">
                   <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400 flex items-center gap-2">
-                    <input id="demModeToggle" type="checkbox" onchange="updateDemoMode(this.checked)" class="rounded cursor-pointer" />
-                    <span>Enable Demo Mode</span>
-                    <span id="demoModeLoading" class="hidden inline-block w-3 h-3 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></span>
+                    <span>Network Mode</span>
+                    <span id="networkModeLoading" class="hidden inline-block w-3 h-3 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></span>
                   </label>
-                  <p class="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed"><strong>Enabled:</strong> Transactions are simulated with fake hashes; audit logs immediately mark as confirmed. <strong>Disabled:</strong> Real testnet transactions; wallet confirmation required; transactions remain pending until blockchain confirms.</p>
+                  <select id="networkModeSelect" onchange="updateNetworkMode(this.value)" class="w-full px-2 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none">
+                    <option value="testnet">Testnet (Real Transactions)</option>
+                    <option value="demo">Demo (Simulated)</option>
+                  </select>
+                  <p class="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed"><strong>Testnet:</strong> Real blockchain transactions; wallet confirmation required; transactions remain pending until blockchain confirms. <strong>Demo:</strong> Transactions are simulated with fake hashes; audit logs immediately mark as confirmed.</p>
                 </div>
 
                 <!-- Permission Notice -->
@@ -1923,6 +1926,7 @@
         layout: stored.layout || 'comfortable',
         network: stored.network || 'testnet',
         view_mode: stored.view_mode || 'web',
+        networkMode: stored.networkMode || 'testnet',
       };
     }
 
@@ -2025,12 +2029,19 @@
       try {
         const config = await apiCall('/api/config');
         if (config && !config.error) {
-          const checkbox = document.getElementById('demModeToggle');
+          const dropdown = document.getElementById('networkModeSelect');
           const noPermission = document.getElementById('configNoPermission');
           const accordion = document.getElementById('configAccordion');
 
-          checkbox.checked = config.isDemoMode;
-          checkbox.disabled = !config.canEdit;
+          // Set dropdown to current network mode, defaulting to networkMode if available, else isDemoMode for backward compat
+          const currentMode = config.networkMode || (config.isDemoMode ? 'demo' : 'testnet');
+          dropdown.value = currentMode;
+          dropdown.disabled = !config.canEdit;
+
+          // Save to localStorage
+          const settings = loadSettings();
+          settings.networkMode = currentMode;
+          saveSettings(settings);
 
           if (!config.canEdit) {
             noPermission.classList.remove('hidden');
@@ -2040,8 +2051,8 @@
             accordion.classList.remove('opacity-60');
           }
 
-          // Update dot color based on demo mode state
-          updateConfigDotColor(config.isDemoMode);
+          // Update dot color based on network mode (demo = amber, testnet = gray)
+          updateConfigDotColor(currentMode === 'demo');
 
           // Render secrets display
           renderSecretsDisplay(config.secrets);
@@ -2153,43 +2164,49 @@
       }
     }
 
-    async function updateDemoMode(enabled) {
-      const checkbox = document.getElementById('demModeToggle');
-      const loading = document.getElementById('demoModeLoading');
-      const previousState = !enabled;
+    async function updateNetworkMode(mode) {
+      const dropdown = document.getElementById('networkModeSelect');
+      const loading = document.getElementById('networkModeLoading');
+      const previousMode = dropdown.value;
 
       try {
         loading.classList.remove('hidden');
-        checkbox.disabled = true;
+        dropdown.disabled = true;
 
-        const result = await apiCall('/api/config/demo-mode', {
+        const result = await apiCall('/api/config/network-mode', {
           method: 'PUT',
-          body: JSON.stringify({ enabled: enabled })
+          body: JSON.stringify({ networkMode: mode })
         });
 
         if (result && !result.error) {
-          updateConfigDotColor(enabled);
-          showToast('Demo mode ' + (enabled ? 'enabled' : 'disabled'), 'success');
+          // Save to localStorage
+          const settings = loadSettings();
+          settings.networkMode = mode;
+          saveSettings(settings);
+
+          updateConfigDotColor(mode === 'demo');
+          const modeName = mode === 'demo' ? 'Demo' : 'Testnet';
+          showToast('Switched to ' + modeName + ' mode', 'success');
 
           // Transaction history accordion is always visible; just ensure polling is active
           pollTransactionHistory();
           if (transactionHistoryIntervalId) clearInterval(transactionHistoryIntervalId);
           transactionHistoryIntervalId = setInterval(pollTransactionHistory, 2000);
         } else if (result && result.error) {
-          checkbox.checked = previousState;
+          dropdown.value = previousMode;
           if (result.error.includes('Not authorized')) {
             showToast('You do not have permission to change this setting', 'error');
           } else {
-            showToast('Failed to update demo mode: ' + result.error, 'error');
+            showToast('Failed to update network mode: ' + result.error, 'error');
           }
         }
       } catch (err) {
-        console.error('Error updating demo mode:', err);
-        checkbox.checked = previousState;
+        console.error('Error updating network mode:', err);
+        dropdown.value = previousMode;
         showToast('Error updating configuration', 'error');
       } finally {
         loading.classList.add('hidden');
-        checkbox.disabled = false;
+        dropdown.disabled = false;
       }
     }
 

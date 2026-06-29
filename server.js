@@ -12,7 +12,19 @@ const port = process.env.PORT || 3000;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const JWT_SECRET = process.env.JWT_SECRET;
 const IS_STAGING = process.env.USERNODE_ENV === 'staging';
-let ENABLE_DEMO_MODE = process.env.ENABLE_DEMO_MODE === 'true' || IS_STAGING;
+
+// Initialize network mode with priority: NETWORK_MODE env var > ENABLE_DEMO_MODE env var > USERNODE_ENV==='staging' > default 'testnet'
+let NETWORK_MODE = process.env.NETWORK_MODE && ['demo', 'testnet'].includes(process.env.NETWORK_MODE)
+  ? process.env.NETWORK_MODE
+  : process.env.ENABLE_DEMO_MODE === 'true'
+    ? 'demo'
+    : IS_STAGING
+      ? 'demo'
+      : 'testnet';
+
+// Derive ENABLE_DEMO_MODE for backward compatibility with existing transaction code
+const getEnableDemoMode = () => NETWORK_MODE === 'demo';
+let ENABLE_DEMO_MODE = getEnableDemoMode();
 
 // Usernode blockchain configuration
 const APP_PUBKEY = process.env.APP_PUBKEY || 'ut1Fww7onqF9LsRSb6d6BozgQWtjNYqQJghYxXmBc8foncb';
@@ -1048,9 +1060,10 @@ app.get('/api/config', async (req, res) => {
     const canEdit = userId === 1 || (await userHasCreatedGroup(userId));
 
     res.json({
+      networkMode: NETWORK_MODE,
       isDemoMode: ENABLE_DEMO_MODE,
       canEdit: canEdit,
-      description: 'When enabled, all blockchain transactions use fake tx hashes and audit logs are immediately confirmed. When disabled, real wallet interaction is required and audit logs are pending until blockchain confirmation.',
+      description: 'Demo mode: all blockchain transactions use fake tx hashes and audit logs are immediately confirmed. Testnet mode: real wallet interaction is required and audit logs are pending until blockchain confirmation.',
       secrets: [
         {
           key: 'APP_PUBKEY',
@@ -1078,6 +1091,45 @@ app.get('/api/config', async (req, res) => {
   }
 });
 
+app.put('/api/config/network-mode', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    const { networkMode } = req.body;
+    if (!['demo', 'testnet'].includes(networkMode)) {
+      return res.status(400).json({ error: 'Invalid input: networkMode must be "demo" or "testnet"' });
+    }
+
+    // Check authorization (first user OR has created a group)
+    const canEdit = userId === 1 || (await userHasCreatedGroup(userId));
+    if (!canEdit) {
+      return res.status(403).json({ error: 'Not authorized to modify configuration' });
+    }
+
+    // Update in-memory state
+    NETWORK_MODE = networkMode;
+    ENABLE_DEMO_MODE = getEnableDemoMode();
+    console.log(`[CONFIG] Network mode updated: ${networkMode} (by user ${userId})`);
+
+    res.json({
+      networkMode: NETWORK_MODE,
+      isDemoMode: ENABLE_DEMO_MODE,
+      status: 'updated'
+    });
+  } catch (err) {
+    console.error('Error updating config:', err);
+    res.status(500).json({ error: 'Failed to update configuration' });
+  }
+});
+
+// Backward compatibility: legacy demo-mode endpoint
 app.put('/api/config/demo-mode', async (req, res) => {
   try {
     if (!req.user) {
@@ -1100,12 +1152,14 @@ app.put('/api/config/demo-mode', async (req, res) => {
       return res.status(403).json({ error: 'Not authorized to modify configuration' });
     }
 
-    // Update in-memory state
-    ENABLE_DEMO_MODE = enabled;
-    console.log(`[CONFIG] Demo mode updated: ${enabled} (by user ${userId})`);
+    // Update in-memory state via network mode
+    NETWORK_MODE = enabled ? 'demo' : 'testnet';
+    ENABLE_DEMO_MODE = getEnableDemoMode();
+    console.log(`[CONFIG] Demo mode updated (legacy endpoint): ${enabled} (by user ${userId})`);
 
     res.json({
       isDemoMode: ENABLE_DEMO_MODE,
+      networkMode: NETWORK_MODE,
       status: 'updated'
     });
   } catch (err) {
