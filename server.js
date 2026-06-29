@@ -1112,8 +1112,8 @@ app.put('/api/config/network-mode', async (req, res) => {
     }
 
     const { networkMode } = req.body;
-    if (!['demo', 'testnet'].includes(networkMode)) {
-      return res.status(400).json({ error: 'Invalid input: networkMode must be "demo" or "testnet"' });
+    if (!['demo', 'real_testnet'].includes(networkMode)) {
+      return res.status(400).json({ error: 'Invalid input: networkMode must be "demo" or "real_testnet"' });
     }
 
     // Check authorization (first user OR has created a group)
@@ -4376,7 +4376,7 @@ app.get('/api/network/peer-count', async (req, res) => {
 });
 
 // Get user-specific peer count (testnet peers connected to this user)
-// Only available when user has network_mode set to 'testnet'
+// Only available when user has network_mode set to 'real_testnet'
 app.get('/api/user/peers/connected', async (req, res) => {
   try {
     if (!req.user) {
@@ -4388,12 +4388,12 @@ app.get('/api/user/peers/connected', async (req, res) => {
       return res.status(400).json({ error: 'Invalid user ID' });
     }
 
-    // Check if network mode is testnet for this user
+    // Check if network mode is real_testnet for this user
     const { rows: userRows } = await pool.query(`
       SELECT network FROM users WHERE id = $1
     `, [userId]);
 
-    if (!userRows.length || userRows[0].network !== 'testnet') {
+    if (!userRows.length || userRows[0].network !== 'real_testnet') {
       return res.status(403).json({
         error: 'Peer count feature is not enabled',
         available: false
@@ -6320,7 +6320,7 @@ async function start() {
 
     // Add network column if it doesn't exist (idempotent migration)
     await pool.query(`
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS network VARCHAR(50) DEFAULT 'testnet'
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS network VARCHAR(50) DEFAULT 'real_testnet'
     `);
 
     // Add view_mode column if it doesn't exist (idempotent migration)
