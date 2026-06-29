@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const https = require('https');
 const http = require('http');
+const { createUsernamesCache } = require('./lib/dapp-server');
 
 // Guardian 2 - Production-ready Usernode blockchain integration
 const app = express();
@@ -2893,6 +2894,7 @@ app.get('/api/search/users', async (req, res) => {
     const q = req.query.q || '';
     let rows;
 
+    // Query local database
     try {
       const result = await queryWithTimeout(pool, `
         SELECT id, username, verified_at, usernode_pubkey
@@ -2922,6 +2924,7 @@ app.get('/api/search/users', async (req, res) => {
           username: u.username,
           usernode_pubkey: u.usernode_pubkey,
           verified: !!u.verified_at,
+          source: 'local',
           mutualCount: 0,
         }));
         return res.json({ users: filteredUsers });
@@ -2930,15 +2933,58 @@ app.get('/api/search/users', async (req, res) => {
       throw timeoutErr;
     }
 
-    const users = rows.map(r => ({
+    // Convert database results to include source field
+    const localUsers = rows.map(r => ({
       id: r.id,
       username: r.username,
       usernode_pubkey: r.usernode_pubkey || null,
       verified: !!r.verified_at,
+      source: 'local',
       mutualCount: 0,
     }));
 
-    res.json({ users });
+    // Query blockchain usernames cache (with timeout)
+    let blockchainUsers = [];
+    if (global.usernamesCache && global.usernamesCache.ready() && q.length >= 2) {
+      try {
+        const blockchainTimeout = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Blockchain timeout')), 2500)
+        );
+        const blockchainQuery = Promise.resolve(global.usernamesCache.searchUsernames(q));
+
+        const blockchainResults = await Promise.race([blockchainQuery, blockchainTimeout]);
+        blockchainUsers = blockchainResults.map(u => ({
+          username: u.username,
+          usernode_pubkey: u.usernode_pubkey,
+          source: 'blockchain',
+          mutualCount: 0,
+        }));
+      } catch (blockchainErr) {
+        // Silently fail on blockchain timeout or error
+        console.debug('[SearchUsers] Blockchain query failed:', blockchainErr.message);
+      }
+    }
+
+    // Merge and deduplicate results (local takes precedence over blockchain)
+    const seenPubkeys = new Set();
+    const allUsers = [];
+
+    // Add local users first
+    for (const user of localUsers) {
+      if (user.usernode_pubkey) {
+        seenPubkeys.add(user.usernode_pubkey.toLowerCase());
+      }
+      allUsers.push(user);
+    }
+
+    // Add blockchain users that aren't already in local results
+    for (const user of blockchainUsers) {
+      if (user.usernode_pubkey && !seenPubkeys.has(user.usernode_pubkey.toLowerCase())) {
+        allUsers.push(user);
+      }
+    }
+
+    res.json({ users: allUsers });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -7954,6 +8000,19 @@ async function start() {
         await createGuardiAIPost();
       }
     }, 43200000);
+
+    // Initialize Usernode blockchain usernames cache for real-time search
+    console.log('[UsernamesCache] Initializing on server startup...');
+    const usernamesCache = createUsernamesCache({
+      nodeRpcUrl: NODE_RPC_URL,
+      refreshIntervalMs: 300000, // 5 minutes
+      isStaging: IS_STAGING
+    });
+    await usernamesCache.initialize();
+    console.log('[UsernamesCache] ✅ Cache initialized:', usernamesCache.stats());
+
+    // Store cache in global scope for access by API endpoints
+    global.usernamesCache = usernamesCache;
 
     app.listen(port, () => console.log(`Listening on :${port}`));
   } catch (err) {
