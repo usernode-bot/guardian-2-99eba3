@@ -2943,9 +2943,9 @@ app.get('/api/search/users', async (req, res) => {
       mutualCount: 0,
     }));
 
-    // Query blockchain usernames cache (with timeout)
+    // Query blockchain usernames cache (with timeout) - only in testnet mode
     let blockchainUsers = [];
-    if (global.usernamesCache && global.usernamesCache.ready() && q.length >= 2) {
+    if (NETWORK_MODE === 'testnet' && global.usernamesCache && global.usernamesCache.ready() && q.length >= 2) {
       try {
         const blockchainTimeout = new Promise((_, reject) =>
           setTimeout(() => reject(new Error('Blockchain timeout')), 2500)
