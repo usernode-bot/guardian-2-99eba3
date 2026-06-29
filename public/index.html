@@ -3928,6 +3928,13 @@
 
     // Unified wallet signature flow - single dialog, direct to wallet
     async function requestWalletSignature(action, details, auditLogId = null) {
+      // In demo mode, skip wallet confirmation entirely
+      if (currentUser && currentUser.isDemoMode) {
+        console.log('Demo mode: Skipping wallet signature for action:', action);
+        showToast('Demo mode: Skipping wallet confirmation', 'info');
+        return 'demo-tx-hash-' + Date.now();
+      }
+
       // Validate wallet connection
       if (!currentUser || !currentUser.usernode_pubkey) {
         console.error('Wallet not connected: currentUser=', currentUser);

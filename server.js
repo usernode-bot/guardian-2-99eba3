@@ -1441,9 +1441,10 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
     console.log(`[MESSAGE] POST /api/conversations/${convId}/messages by user ${userId}`);
     console.log(`[MESSAGE] txHash provided: ${txHash ? 'yes - ' + txHash : 'no'}`);
     console.log(`[MESSAGE] Frontend content hash: ${frontendContentHash || 'none'}`);
+    console.log(`[MESSAGE] Demo mode: ${ENABLE_DEMO_MODE}`);
 
-    // Validate wallet connection before proceeding with message transaction
-    if (!req.user.usernode_pubkey) {
+    // Validate wallet connection before proceeding with message transaction (skip in demo mode)
+    if (!ENABLE_DEMO_MODE && !req.user.usernode_pubkey) {
       return res.status(401).json({ error: 'Must be connected to Usernode wallet to send messages' });
     }
 
@@ -1478,8 +1479,8 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       return res.status(403).json({ error: 'You have been blocked by this user' });
     }
 
-    // Fetch user's pubkey
-    const userPubkey = req.user.usernode_pubkey;
+    // Fetch user's pubkey (mock in demo mode)
+    const userPubkey = req.user.usernode_pubkey || (ENABLE_DEMO_MODE ? 'ut1demo-user-' + userId : null);
     const network = 'testnet';
 
     // Use frontend-provided content hash or compute it
@@ -3213,9 +3214,9 @@ app.post('/api/groups', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
-    // Validation: check wallet connection before proceeding with group creation
-    console.log(`[POST /api/groups::VALIDATE] Checking wallet connection: usernode_pubkey=${req.user.usernode_pubkey ? 'present' : 'missing'}`);
-    if (!req.user.usernode_pubkey) {
+    // Validation: check wallet connection before proceeding with group creation (skip in demo mode)
+    console.log(`[POST /api/groups::VALIDATE] Checking wallet connection: usernode_pubkey=${req.user.usernode_pubkey ? 'present' : 'missing'}, ENABLE_DEMO_MODE=${ENABLE_DEMO_MODE}`);
+    if (!ENABLE_DEMO_MODE && !req.user.usernode_pubkey) {
       console.error(`[POST /api/groups::VALIDATE] Wallet not connected - usernode_pubkey is missing`);
       return res.status(401).json({ error: 'Must be connected to Usernode wallet to create groups' });
     }
@@ -3721,8 +3722,8 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
-    // Validate wallet connection before proceeding with group message transaction
-    if (!req.user.usernode_pubkey) {
+    // Validate wallet connection before proceeding with group message transaction (skip in demo mode)
+    if (!ENABLE_DEMO_MODE && !req.user.usernode_pubkey) {
       return res.status(401).json({ error: 'Must be connected to Usernode wallet to send group messages' });
     }
 
@@ -3745,8 +3746,8 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
       return res.status(403).json({ error: 'Not a member of this group' });
     }
 
-    // Fetch user's pubkey
-    const userPubkey = req.user.usernode_pubkey;
+    // Fetch user's pubkey (mock in demo mode)
+    const userPubkey = req.user.usernode_pubkey || (ENABLE_DEMO_MODE ? 'ut1demo-user-' + userId : null);
     const network = 'testnet';
 
     // Create message with blockchain recording enabled
