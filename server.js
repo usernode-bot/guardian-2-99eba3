@@ -29,7 +29,34 @@ let ENABLE_DEMO_MODE = getEnableDemoMode();
 // Usernode blockchain configuration
 const APP_PUBKEY = process.env.APP_PUBKEY || 'ut1Fww7onqF9LsRSb6d6BozgQWtjNYqQJghYxXmBc8foncb';
 const APP_SECRET_KEY = process.env.APP_SECRET_KEY || 'guardian_sk_mqudwes5_ae613cf56214808e';
-const NODE_RPC_URL = process.env.NODE_RPC_URL || 'http://localhost:3001';
+let NODE_RPC_URL = process.env.NODE_RPC_URL || 'http://localhost:3001';
+
+// Helper function to get RPC endpoint from database
+async function getRpcEndpointFromDatabase() {
+  try {
+    const result = await pool.query(`
+      SELECT value FROM config_state WHERE key = 'NODE_RPC_URL' LIMIT 1
+    `);
+    if (result.rows.length > 0) {
+      return result.rows[0].value;
+    }
+  } catch (err) {
+    console.error('[RPC Config] Error fetching RPC endpoint from database:', err.message);
+  }
+  return null;
+}
+
+// Initialize RPC URL from database if available
+async function initializeRpcUrl() {
+  const dbRpcUrl = await getRpcEndpointFromDatabase();
+  if (dbRpcUrl) {
+    NODE_RPC_URL = dbRpcUrl;
+    console.log('[RPC Config] RPC endpoint initialized from database:', NODE_RPC_URL);
+  } else {
+    NODE_RPC_URL = process.env.NODE_RPC_URL || 'http://localhost:3001';
+    console.log('[RPC Config] RPC endpoint initialized from environment:', NODE_RPC_URL);
+  }
+}
 
 // Usernode chain configuration
 const CHAIN_CONFIG = {
@@ -1062,7 +1089,9 @@ app.get('/api/config', async (req, res) => {
     res.json({
       networkMode: NETWORK_MODE,
       isDemoMode: ENABLE_DEMO_MODE,
+      rpcEndpoint: NODE_RPC_URL,
       canEdit: canEdit,
+      canEditRpc: canEdit,
       description: 'Demo mode: all blockchain transactions use fake tx hashes and audit logs are immediately confirmed. Testnet mode: real wallet interaction is required and audit logs are pending until blockchain confirmation.',
       secrets: [
         {
@@ -1165,6 +1194,59 @@ app.put('/api/config/demo-mode', async (req, res) => {
   } catch (err) {
     console.error('Error updating config:', err);
     res.status(500).json({ error: 'Failed to update configuration' });
+  }
+});
+
+// Update RPC endpoint configuration
+app.put('/api/config/rpc-endpoint', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    const { rpcEndpoint } = req.body;
+    if (!rpcEndpoint || typeof rpcEndpoint !== 'string') {
+      return res.status(400).json({ error: 'Invalid input: rpcEndpoint must be a non-empty string' });
+    }
+
+    // Validate URL format
+    try {
+      new URL(rpcEndpoint);
+    } catch (err) {
+      return res.status(400).json({ error: 'Invalid URL format for rpcEndpoint' });
+    }
+
+    // Check authorization (first user OR has created a group)
+    const canEdit = userId === 1 || (await userHasCreatedGroup(userId));
+    if (!canEdit) {
+      return res.status(403).json({ error: 'Not authorized to modify configuration' });
+    }
+
+    // Update database config_state table (insert or update)
+    await pool.query(`
+      INSERT INTO config_state (key, value, created_at, updated_at)
+      VALUES ($1, $2, NOW(), NOW())
+      ON CONFLICT (key) DO UPDATE SET
+        value = EXCLUDED.value,
+        updated_at = NOW()
+    `, ['NODE_RPC_URL', rpcEndpoint]);
+
+    // Update in-memory state
+    NODE_RPC_URL = rpcEndpoint;
+    console.log(`[CONFIG] RPC endpoint updated: ${rpcEndpoint} (by user ${userId})`);
+
+    res.json({
+      rpcEndpoint: NODE_RPC_URL,
+      status: 'updated'
+    });
+  } catch (err) {
+    console.error('Error updating RPC endpoint:', err);
+    res.status(500).json({ error: 'Failed to update RPC endpoint' });
   }
 });
 
@@ -1470,7 +1552,8 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       userPubkey: userPubkey,
       contentHash: contentHash,
       timestamp: now.toISOString(),
-      network: network
+      network: network,
+      rpcEndpoint: NODE_RPC_URL
     };
 
     // Sign memo following Last One Wins pattern
@@ -1803,7 +1886,8 @@ app.post('/api/tokens/send', async (req, res) => {
       amount: parseInt(amount),
       memo: memo || '',
       contentHash: contentHash,
-      network: network
+      network: network,
+      rpcEndpoint: NODE_RPC_URL
     };
 
     // Sign memo following Last One Wins pattern
@@ -3238,7 +3322,8 @@ app.post('/api/groups', async (req, res) => {
       memberPubkeys: memberPubkeys.length > 0 ? memberPubkeys : [req.user.usernode_pubkey || APP_PUBKEY],
       contentHash: contentHash,
       timestamp: now.toISOString(),
-      network: network
+      network: network,
+      rpcEndpoint: NODE_RPC_URL
     };
     console.log(`[POST /api/groups::BLOCKCHAIN] Transaction payload prepared: type=${transactionPayload.type}, groupId=${transactionPayload.groupId}, memberCount=${transactionPayload.memberPubkeys.length}, network=${transactionPayload.network}, creatorPubkeyPresent=${!!transactionPayload.creatorPubkey}`);
 
@@ -6751,6 +6836,21 @@ async function start() {
         ON network_milestones(key)
     `);
 
+    // Create config_state table (public - stores runtime configuration like RPC endpoint)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS config_state (
+        id SERIAL PRIMARY KEY,
+        key VARCHAR(100) UNIQUE NOT NULL,
+        value TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_config_state_key
+        ON config_state(key)
+    `);
+
     // Create crypto_data_cache table (public - cached CoinGecko data for Crypto Daily bot)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS crypto_data_cache (
@@ -6775,6 +6875,9 @@ async function start() {
     await pool.query(`COMMENT ON TABLE group_members IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE group_messages IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE group_read_receipts IS 'staging:private'`);
+
+    // Initialize RPC endpoint from database or environment
+    await initializeRpcUrl();
 
     // Seed staging data
     // Seed mock testnet users (grace, henry, iris, jack) in all environments for user search testing
@@ -6889,7 +6992,8 @@ async function start() {
                 memo: msg.content.memo,
                 userPubkey: dmUserPubkeyMap[msg.sender],
                 contentHash: contentHash,
-                timestamp: msgTime.toISOString()
+                timestamp: msgTime.toISOString(),
+                rpcEndpoint: NODE_RPC_URL
               }
             : {
                 type: 'message',
@@ -6897,7 +7001,8 @@ async function start() {
                 senderId: msg.sender,
                 userPubkey: dmUserPubkeyMap[msg.sender],
                 contentHash: contentHash,
-                timestamp: msgTime.toISOString()
+                timestamp: msgTime.toISOString(),
+                rpcEndpoint: NODE_RPC_URL
               };
 
           const auditResult = await pool.query(`
