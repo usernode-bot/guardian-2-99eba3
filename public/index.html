@@ -6320,7 +6320,8 @@
       document.getElementById('channelDetailHeader').classList.remove('hidden');
       document.getElementById('channelDetailName').textContent = channel.name;
       document.getElementById('channelDetailDescription').textContent = channel.description || '';
-      document.getElementById('channelDetailFollowers').textContent = '0 followers';
+      const followerCount = channel.followerCount || 0;
+      document.getElementById('channelDetailFollowers').textContent = `${followerCount} ${followerCount === 1 ? 'follower' : 'followers'}`;
 
       // Set up action buttons based on ownership
       const isOwner = currentUser && channel.ownerId === currentUser.id;
@@ -6331,8 +6332,13 @@
           <button onclick="deleteChannelConfirm(${channel.id})" class="px-3 py-1 bg-red-600 hover:bg-red-700 dark:hover:bg-red-500 text-white rounded text-sm font-medium transition active:scale-95">Delete</button>
         `;
       } else {
+        const isFollowing = currentUser && channel.isFollowing;
+        const followBtnText = isFollowing ? 'Following' : 'Follow';
+        const followBtnClass = isFollowing
+          ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-300 dark:hover:bg-zinc-600'
+          : 'bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white';
         actionButtonsContainer.innerHTML = `
-          <button id="channelFollowBtn" onclick="showChannelFollowToast()" class="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition active:scale-95">Follow</button>
+          <button id="channelFollowBtn" class="px-3 py-1 ${followBtnClass} rounded text-sm font-medium transition active:scale-95" onclick="toggleFollowChannel(${channel.id}, ${!isFollowing})">${followBtnText}</button>
         `;
       }
 
@@ -6440,9 +6446,6 @@
       showChannelList();
     }
 
-    function showChannelFollowToast() {
-      showToast('Follow feature coming soon', 'info');
-    }
 
     function editChannelModal(channelId) {
       const channel = channelsList.find(ch => ch.id === channelId);
@@ -6635,7 +6638,9 @@
           if (data && !data.error) {
             showToast('Channel followed', 'success');
             await loadChannels();
-            await switchFeedTab('discover');
+            if (currentChannelId === channelId) {
+              await showChannelPosts(channelId);
+            }
           } else if (data && data.error) {
             showToast(data.error, 'error');
           }
@@ -6644,8 +6649,9 @@
           if (data && !data.error) {
             showToast('Channel unfollowed', 'success');
             await loadChannels();
-            const currentTab = document.getElementById('feedTabFollowing').classList.contains('border-cyan-600') ? 'following' : 'discover';
-            await switchFeedTab(currentTab);
+            if (currentChannelId === channelId) {
+              await showChannelPosts(channelId);
+            }
           } else if (data && data.error) {
             showToast(data.error, 'error');
           }
