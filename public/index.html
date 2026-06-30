@@ -810,21 +810,20 @@
                   </div>
                 </div>
 
-                <!-- Network Mode Selection -->
+                <!-- Network Status (Read-Only) -->
                 <div class="space-y-2">
                   <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400 flex items-center gap-2">
-                    <span>Network Mode</span>
+                    <span>Network Status</span>
                     <span id="networkModeLoading" class="hidden inline-block w-3 h-3 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></span>
                   </label>
-                  <select id="networkModeSelect" onchange="updateNetworkMode(this.value)" class="w-full px-2 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none">
-                    <option value="real_testnet">Real Testnet (Live Transactions)</option>
-                    <option value="demo">Demo (Simulated)</option>
-                  </select>
-                  <p class="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed"><strong>Testnet:</strong> Real blockchain transactions; wallet confirmation required; transactions remain pending until blockchain confirms. <strong>Demo:</strong> Transactions are simulated with fake hashes; audit logs immediately mark as confirmed.</p>
+                  <div id="networkStatusDisplay" class="w-full px-2 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 font-medium">
+                    <span id="networkModeIndicator">Detecting network...</span>
+                  </div>
+                  <p class="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">Your network mode is automatically detected from your Usernode wallet connection. <strong>Testnet:</strong> Real blockchain transactions; wallet confirmation required. <strong>Demo:</strong> Transactions are simulated for testing.</p>
                 </div>
 
-                <!-- RPC Endpoint Configuration (only shown in testnet mode) -->
-                <div id="rpcEndpointConfig" class="hidden space-y-2">
+                <!-- RPC Endpoint Configuration -->
+                <div id="rpcEndpointConfig" class="space-y-2">
                   <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400 flex items-center gap-2">
                     <span>RPC Endpoint URL</span>
                     <span id="rpcEndpointLoading" class="hidden inline-block w-3 h-3 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></span>
@@ -2005,9 +2004,9 @@
       return {
         theme: theme,
         layout: stored.layout || 'comfortable',
-        network: stored.network || 'real_testnet',
+        network: stored.network || 'testnet',
         view_mode: stored.view_mode || 'web',
-        networkMode: stored.networkMode || 'real_testnet',
+        networkMode: stored.networkMode || 'testnet',
       };
     }
 
@@ -2017,7 +2016,7 @@
     }
 
     function getCurrentNetwork() {
-      return 'real_testnet';
+      return 'testnet';
     }
 
     function initSettings() {
@@ -2106,20 +2105,29 @@
       }
     }
 
+    function updateNetworkStatusDisplay(network) {
+      const indicator = document.getElementById('networkModeIndicator');
+      if (indicator) {
+        const displayText = network === 'demo' ? 'Connected to Demo Network' : 'Connected to Testnet';
+        const badgeClass = network === 'demo'
+          ? 'inline-block px-2 py-1 bg-cyan-500 text-white rounded text-xs font-medium'
+          : 'inline-block px-2 py-1 bg-gray-500 text-white rounded text-xs font-medium';
+        indicator.innerHTML = `<span class="${badgeClass}">${displayText}</span>`;
+      }
+      updateConfigDotColor(network === 'demo');
+    }
+
     async function loadConfigState() {
       try {
         const config = await apiCall('/api/config');
         if (config && !config.error) {
-          const dropdown = document.getElementById('networkModeSelect');
           const noPermission = document.getElementById('configNoPermission');
           const accordion = document.getElementById('configAccordion');
           const rpcEndpointConfig = document.getElementById('rpcEndpointConfig');
           const rpcEndpointInput = document.getElementById('rpcEndpointInput');
 
-          // Set dropdown to current network mode, defaulting to networkMode if available, else isDemoMode for backward compat
-          const currentMode = config.networkMode || (config.isDemoMode ? 'demo' : 'real_testnet');
-          dropdown.value = currentMode;
-          dropdown.disabled = !config.canEdit;
+          // Get current network mode, defaulting to networkMode if available, else isDemoMode for backward compat
+          const currentMode = config.networkMode || (config.isDemoMode ? 'demo' : 'testnet');
 
           // Show/hide RPC endpoint config based on network mode and permission
           if (currentMode === 'testnet' && config.canEditRpc) {
@@ -2135,6 +2143,9 @@
           settings.networkMode = currentMode;
           saveSettings(settings);
 
+          // Update network status display
+          updateNetworkStatusDisplay(currentMode);
+
           if (!config.canEdit) {
             noPermission.classList.remove('hidden');
             accordion.classList.add('opacity-60');
@@ -2143,7 +2154,7 @@
             accordion.classList.remove('opacity-60');
           }
 
-          // Update dot color based on network mode (demo = amber, testnet = gray)
+          // Update dot color based on network mode (demo = cyan, testnet = gray)
           updateConfigDotColor(currentMode === 'demo');
 
           // Render secrets display
@@ -2256,75 +2267,11 @@
       }
     }
 
+    // Network mode is now auto-detected from wallet and cannot be manually changed
+    // This function is kept for compatibility but is a no-op
     async function updateNetworkMode(mode) {
-      const dropdown = document.getElementById('networkModeSelect');
-      const loading = document.getElementById('networkModeLoading');
-      const rpcEndpointConfig = document.getElementById('rpcEndpointConfig');
-      const previousMode = dropdown.value;
-
-      try {
-        loading.classList.remove('hidden');
-        dropdown.disabled = true;
-
-        const result = await apiCall('/api/config/network-mode', {
-          method: 'PUT',
-          body: JSON.stringify({ networkMode: mode })
-        });
-
-        if (result && !result.error) {
-          // Save to localStorage
-          const settings = loadSettings();
-          settings.networkMode = mode;
-          saveSettings(settings);
-
-          updateConfigDotColor(mode === 'demo');
-          const modeName = mode === 'demo' ? 'Demo' : 'Testnet';
-          showToast('Switched to ' + modeName + ' mode', 'success');
-
-          // Show/hide RPC endpoint config based on mode
-          if (mode === 'testnet') {
-            rpcEndpointConfig.classList.remove('hidden');
-          } else {
-            rpcEndpointConfig.classList.add('hidden');
-          }
-
-          // Reload config state to refresh all UI elements
-          await loadConfigState();
-
-          // Refresh all data after mode change
-          try {
-            if (document.getElementById('conversationsView') && !document.getElementById('conversationsView').classList.contains('hidden')) {
-              await loadConversations();
-            }
-            if (document.getElementById('groupsList') && !document.getElementById('groupsList').classList.contains('hidden')) {
-              await loadGroups();
-            }
-            if (document.getElementById('feedView') && !document.getElementById('feedView').classList.contains('hidden')) {
-              await loadChannels();
-            }
-            // Transaction history accordion is always visible; just ensure polling is active
-            pollTransactionHistory();
-            if (transactionHistoryIntervalId) clearInterval(transactionHistoryIntervalId);
-            transactionHistoryIntervalId = setInterval(pollTransactionHistory, 2000);
-          } catch (refreshErr) {
-            console.error('Error refreshing data after mode change:', refreshErr);
-          }
-        } else if (result && result.error) {
-          dropdown.value = previousMode;
-          if (result.error.includes('Not authorized')) {
-            showToast('You do not have permission to change this setting', 'error');
-          } else {
-            showToast('Failed to update network mode: ' + result.error, 'error');
-          }
-        }
-      } catch (err) {
-        console.error('Error updating network mode:', err);
-        dropdown.value = previousMode;
-        showToast('Error updating configuration', 'error');
-      } finally {
-        loading.classList.add('hidden');
-        dropdown.disabled = false;
-      }
+      console.log('[NETWORK] Network mode is auto-detected and cannot be manually changed');
+      showToast('Network mode is automatically detected from your wallet', 'info');
     }
 
     async function updateRpcEndpoint() {
@@ -3310,7 +3257,31 @@
 
             const viewMode = user.view_mode || 'web';
       const settings = loadSettings();
-      settings.network = 'real_testnet';
+
+      // Auto-detect network from wallet capability
+      try {
+        const networkCapability = await apiCall('/api/wallet/network-capability');
+        if (networkCapability && networkCapability.network) {
+          const detectedNetwork = networkCapability.network === 'demo' ? 'demo' : 'testnet';
+          console.log(`[NETWORK] Auto-detected network from wallet: ${detectedNetwork}`);
+
+          // Update network mode on backend
+          await apiCall('/api/config/network-mode', {
+            method: 'PUT',
+            body: JSON.stringify({ networkMode: detectedNetwork })
+          });
+
+          settings.networkMode = detectedNetwork;
+          updateNetworkStatusDisplay(detectedNetwork);
+        }
+      } catch (err) {
+        console.warn('[NETWORK] Failed to auto-detect network:', err.message);
+        // Fall back to environment-based default
+        const fallbackNetwork = isDemoMode ? 'demo' : 'testnet';
+        settings.networkMode = fallbackNetwork;
+        updateNetworkStatusDisplay(fallbackNetwork);
+      }
+
       settings.view_mode = viewMode;
       saveSettings(settings);
       document.getElementById('sidebarUsername').textContent = user.username + (user.verified ? ' ✓' : '');

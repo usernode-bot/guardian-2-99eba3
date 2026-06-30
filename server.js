@@ -1348,6 +1348,29 @@ app.get('/api/usernode/status', async (req, res) => {
   }
 });
 
+app.get('/api/wallet/network-capability', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    // Auto-detect network based on environment and wallet state
+    // In staging: default to 'demo' for testing
+    // In production: default to 'testnet' for live transactions
+    const detectedNetwork = IS_STAGING ? 'demo' : 'testnet';
+
+    console.log(`[WALLET] Network capability detected: ${detectedNetwork} (USERNODE_ENV=${IS_STAGING ? 'staging' : 'production'})`);
+
+    res.json({
+      network: detectedNetwork,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('Error detecting wallet network capability:', err);
+    res.status(500).json({ error: 'Failed to detect network capability' });
+  }
+});
+
 // ===== CONFIGURATION ENDPOINTS =====
 
 app.get('/api/config', async (req, res) => {
@@ -1420,8 +1443,8 @@ app.put('/api/config/network-mode', async (req, res) => {
     }
 
     const { networkMode } = req.body;
-    if (!['demo', 'real_testnet'].includes(networkMode)) {
-      return res.status(400).json({ error: 'Invalid input: networkMode must be "demo" or "real_testnet"' });
+    if (!['demo', 'testnet'].includes(networkMode)) {
+      return res.status(400).json({ error: 'Invalid input: networkMode must be "demo" or "testnet"' });
     }
 
     // Check authorization (first user OR has created a group)
@@ -1433,7 +1456,9 @@ app.put('/api/config/network-mode', async (req, res) => {
     // Update in-memory state
     NETWORK_MODE = networkMode;
     ENABLE_DEMO_MODE = getEnableDemoMode();
-    console.log(`[CONFIG] Network mode updated: ${networkMode} (by user ${userId})`);
+    // Recalculate NODE_RPC_URL based on new network mode
+    NODE_RPC_URL = validateAndConfigureRPC();
+    console.log(`[CONFIG] Network mode updated: ${networkMode} (by user ${userId}), NODE_RPC_URL reconfigured`);
 
     res.json({
       networkMode: NETWORK_MODE,
