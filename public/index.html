@@ -817,10 +817,28 @@
                     <span id="networkModeLoading" class="hidden inline-block w-3 h-3 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></span>
                   </label>
                   <select id="networkModeSelect" onchange="updateNetworkMode(this.value)" class="w-full px-2 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none">
-                    <option value="testnet">Testnet (Real Transactions)</option>
+                    <option value="real_testnet">Real Testnet (Live Transactions)</option>
                     <option value="demo">Demo (Simulated)</option>
                   </select>
                   <p class="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed"><strong>Testnet:</strong> Real blockchain transactions; wallet confirmation required; transactions remain pending until blockchain confirms. <strong>Demo:</strong> Transactions are simulated with fake hashes; audit logs immediately mark as confirmed.</p>
+                </div>
+
+                <!-- RPC Endpoint Configuration (only shown in testnet mode) -->
+                <div id="rpcEndpointConfig" class="hidden space-y-2">
+                  <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400 flex items-center gap-2">
+                    <span>RPC Endpoint URL</span>
+                    <span id="rpcEndpointLoading" class="hidden inline-block w-3 h-3 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></span>
+                  </label>
+                  <input
+                    id="rpcEndpointInput"
+                    type="text"
+                    placeholder="e.g., http://localhost:3001 or https://testnet-rpc.usernodelabs.org"
+                    class="w-full px-2 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  />
+                  <button id="rpcEndpointSave" onclick="updateRpcEndpoint()" class="w-full px-3 py-1.5 bg-cyan-500 text-white rounded text-xs font-medium hover:bg-cyan-600 transition">
+                    Save RPC Endpoint
+                  </button>
+                  <p class="text-xs text-zinc-600 dark:text-zinc-400">Usernode testnet RPC endpoint for submitting transactions.</p>
                 </div>
 
                 <!-- Permission Notice -->
@@ -1879,6 +1897,53 @@
       return instrumented;
     }
 
+    // ===== Foreground Visibility Tracker =====
+    class VisibilityTracker {
+      constructor() {
+        this.isTabActive = !document.hidden;
+        this.sessionStartTime = Date.now();
+        this.lastSessionData = null;
+        this.initialized = false;
+        this.setupListeners();
+      }
+
+      setupListeners() {
+        document.addEventListener('visibilitychange', () => {
+          if (document.hidden) {
+            this.handleTabLoseFocus();
+          } else {
+            this.handleTabRegainFocus();
+          }
+        });
+        this.initialized = true;
+      }
+
+      handleTabLoseFocus() {
+        const now = Date.now();
+        const sessionDurationSeconds = (now - this.sessionStartTime) / 1000;
+        this.isTabActive = false;
+        this.logSession(sessionDurationSeconds);
+      }
+
+      handleTabRegainFocus() {
+        this.isTabActive = true;
+        this.sessionStartTime = Date.now();
+      }
+
+      logSession(durationSeconds) {
+        if (durationSeconds < 1) return; // Skip very short sessions
+
+        apiCall('/api/user/foreground-session', {
+          method: 'POST',
+          body: JSON.stringify({ sessionDurationSeconds: durationSeconds })
+        }).catch(err => {
+          console.error('Error logging foreground session:', err);
+        });
+      }
+    }
+
+    const visibilityTracker = new VisibilityTracker();
+
     // Wallet signature timeout in milliseconds (90 seconds)
     // NOTE: Timeout duration is NOT the root cause of hangs. Root cause is unresolved promises
     // in Promise.race(). Extending this value doesn't help; the withTimeout() function now
@@ -1924,9 +1989,9 @@
       return {
         theme: theme,
         layout: stored.layout || 'comfortable',
-        network: stored.network || 'testnet',
+        network: stored.network || 'real_testnet',
         view_mode: stored.view_mode || 'web',
-        networkMode: stored.networkMode || 'testnet',
+        networkMode: stored.networkMode || 'real_testnet',
       };
     }
 
@@ -1936,7 +2001,7 @@
     }
 
     function getCurrentNetwork() {
-      return 'testnet';
+      return 'real_testnet';
     }
 
     function initSettings() {
@@ -2032,11 +2097,22 @@
           const dropdown = document.getElementById('networkModeSelect');
           const noPermission = document.getElementById('configNoPermission');
           const accordion = document.getElementById('configAccordion');
+          const rpcEndpointConfig = document.getElementById('rpcEndpointConfig');
+          const rpcEndpointInput = document.getElementById('rpcEndpointInput');
 
           // Set dropdown to current network mode, defaulting to networkMode if available, else isDemoMode for backward compat
-          const currentMode = config.networkMode || (config.isDemoMode ? 'demo' : 'testnet');
+          const currentMode = config.networkMode || (config.isDemoMode ? 'demo' : 'real_testnet');
           dropdown.value = currentMode;
           dropdown.disabled = !config.canEdit;
+
+          // Show/hide RPC endpoint config based on network mode and permission
+          if (currentMode === 'testnet' && config.canEditRpc) {
+            rpcEndpointConfig.classList.remove('hidden');
+            rpcEndpointInput.value = config.rpcEndpoint || 'http://localhost:3001';
+            rpcEndpointInput.disabled = !config.canEditRpc;
+          } else {
+            rpcEndpointConfig.classList.add('hidden');
+          }
 
           // Save to localStorage
           const settings = loadSettings();
@@ -2167,6 +2243,7 @@
     async function updateNetworkMode(mode) {
       const dropdown = document.getElementById('networkModeSelect');
       const loading = document.getElementById('networkModeLoading');
+      const rpcEndpointConfig = document.getElementById('rpcEndpointConfig');
       const previousMode = dropdown.value;
 
       try {
@@ -2188,10 +2265,34 @@
           const modeName = mode === 'demo' ? 'Demo' : 'Testnet';
           showToast('Switched to ' + modeName + ' mode', 'success');
 
-          // Transaction history accordion is always visible; just ensure polling is active
-          pollTransactionHistory();
-          if (transactionHistoryIntervalId) clearInterval(transactionHistoryIntervalId);
-          transactionHistoryIntervalId = setInterval(pollTransactionHistory, 2000);
+          // Show/hide RPC endpoint config based on mode
+          if (mode === 'testnet') {
+            rpcEndpointConfig.classList.remove('hidden');
+          } else {
+            rpcEndpointConfig.classList.add('hidden');
+          }
+
+          // Reload config state to refresh all UI elements
+          await loadConfigState();
+
+          // Refresh all data after mode change
+          try {
+            if (document.getElementById('conversationsView') && !document.getElementById('conversationsView').classList.contains('hidden')) {
+              await loadConversations();
+            }
+            if (document.getElementById('groupsList') && !document.getElementById('groupsList').classList.contains('hidden')) {
+              await loadGroups();
+            }
+            if (document.getElementById('feedView') && !document.getElementById('feedView').classList.contains('hidden')) {
+              await loadChannels();
+            }
+            // Transaction history accordion is always visible; just ensure polling is active
+            pollTransactionHistory();
+            if (transactionHistoryIntervalId) clearInterval(transactionHistoryIntervalId);
+            transactionHistoryIntervalId = setInterval(pollTransactionHistory, 2000);
+          } catch (refreshErr) {
+            console.error('Error refreshing data after mode change:', refreshErr);
+          }
         } else if (result && result.error) {
           dropdown.value = previousMode;
           if (result.error.includes('Not authorized')) {
@@ -2207,6 +2308,54 @@
       } finally {
         loading.classList.add('hidden');
         dropdown.disabled = false;
+      }
+    }
+
+    async function updateRpcEndpoint() {
+      const input = document.getElementById('rpcEndpointInput');
+      const loading = document.getElementById('rpcEndpointLoading');
+      const saveBtn = document.getElementById('rpcEndpointSave');
+      const rpcUrl = input.value.trim();
+
+      if (!rpcUrl) {
+        showToast('RPC endpoint cannot be empty', 'error');
+        return;
+      }
+
+      // Validate URL format
+      try {
+        new URL(rpcUrl);
+      } catch (err) {
+        showToast('Invalid URL format for RPC endpoint', 'error');
+        return;
+      }
+
+      try {
+        loading.classList.remove('hidden');
+        saveBtn.disabled = true;
+
+        const result = await apiCall('/api/config/rpc-endpoint', {
+          method: 'PUT',
+          body: JSON.stringify({ rpcEndpoint: rpcUrl })
+        });
+
+        if (result && !result.error) {
+          showToast('RPC endpoint updated successfully', 'success');
+          // Reload config state to refresh the display
+          await loadConfigState();
+        } else if (result && result.error) {
+          if (result.error.includes('Not authorized')) {
+            showToast('You do not have permission to change RPC endpoint', 'error');
+          } else {
+            showToast('Failed to update RPC endpoint: ' + result.error, 'error');
+          }
+        }
+      } catch (err) {
+        console.error('Error updating RPC endpoint:', err);
+        showToast('Error updating RPC endpoint', 'error');
+      } finally {
+        loading.classList.add('hidden');
+        saveBtn.disabled = false;
       }
     }
 
@@ -3145,7 +3294,7 @@
 
             const viewMode = user.view_mode || 'web';
       const settings = loadSettings();
-      settings.network = 'testnet';
+      settings.network = 'real_testnet';
       settings.view_mode = viewMode;
       saveSettings(settings);
       document.getElementById('sidebarUsername').textContent = user.username + (user.verified ? ' ✓' : '');
@@ -3914,6 +4063,13 @@
 
     // Unified wallet signature flow - single dialog, direct to wallet
     async function requestWalletSignature(action, details, auditLogId = null) {
+      // In demo mode, skip wallet confirmation entirely
+      if (currentUser && currentUser.isDemoMode) {
+        console.log('Demo mode: Skipping wallet signature for action:', action);
+        showToast('Demo mode: Skipping wallet confirmation', 'info');
+        return 'demo-tx-hash-' + Date.now();
+      }
+
       // Validate wallet connection
       if (!currentUser || !currentUser.usernode_pubkey) {
         console.error('Wallet not connected: currentUser=', currentUser);
@@ -6214,7 +6370,7 @@
       // Load guardian data and start polling when on guardians tab
       if (tabName === 'guardians') {
         loadGuardiansData();
-        guardianPollInterval = setInterval(refreshPeerCount, 30000);
+        // Polling will start in loadGuardiansData if network_mode is 'real_testnet'
       }
 
       // Save tab preference
@@ -6314,6 +6470,53 @@
       }
     }
 
+    async function refreshUserPeerCount() {
+      try {
+        const userPeerResponse = await apiCall('/api/user/peers/connected');
+
+        // If 403, network_mode is not 'real_testnet', so stop polling
+        if (userPeerResponse && userPeerResponse.error && userPeerResponse.available === false) {
+          console.log('[Guardian Data] Real testnet not enabled, stopping polling');
+          if (guardianPollInterval) {
+            clearInterval(guardianPollInterval);
+            guardianPollInterval = null;
+          }
+          return;
+        }
+
+        if (!userPeerResponse) return;
+
+        if (cachedGuardiansData) {
+          cachedGuardiansData.userPeerCount = userPeerResponse.userPeerCount;
+          cachedGuardiansData.userPeerIds = userPeerResponse.peerIds;
+        }
+
+        const userPeerCount = userPeerResponse.userPeerCount || 0;
+        const hours = cachedGuardiansData?.foregroundHours || 0;
+
+        const hoursDisplay = document.getElementById('profileGuardianHours');
+        if (hoursDisplay) {
+          hoursDisplay.innerHTML = `<div>${hours}</div><div class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Connected Peers: ${userPeerCount}</div>`;
+        }
+
+        // Update count in Peer Details modal if it is currently open
+        const peerModal = document.getElementById('peerModal');
+        if (peerModal) {
+          const countEl = peerModal.querySelector('.text-3xl');
+          if (countEl) countEl.textContent = userPeerCount;
+        }
+      } catch (err) {
+        console.error('Error refreshing user peer count:', err);
+        // Stop polling on 403 (testnet disabled)
+        if (err && err.status === 403) {
+          if (guardianPollInterval) {
+            clearInterval(guardianPollInterval);
+            guardianPollInterval = null;
+          }
+        }
+      }
+    }
+
     async function loadGuardiansData() {
       try {
         console.log('[Guardian Data] Loading guardians data...');
@@ -6384,22 +6587,50 @@
           }
         }
 
-        // Fetch peer count (network connectivity)
+        // Fetch user's peer count (user-specific testnet peers) - only if network_mode is 'real_testnet'
         try {
-          console.log('[Guardian Data] Fetching peer count...');
-          const peerCountResponse = await fetchPeerCount();
-          if (peerCountResponse) {
-            response.peerCount = peerCountResponse;
-            console.log('[Guardian Data] Peer count loaded:', peerCountResponse.peerCount);
+          console.log('[Guardian Data] Fetching user peer count...');
+          const userPeerResponse = await apiCall('/api/user/peers/connected');
+          if (userPeerResponse) {
+            response.userPeerCount = userPeerResponse.userPeerCount;
+            response.userPeerIds = userPeerResponse.peerIds;
+            console.log('[Guardian Data] User peer count loaded:', userPeerResponse.userPeerCount);
           }
         } catch (err) {
-          console.error('[Guardian Data] Error loading peer count:', err);
+          // 403 means network_mode is not 'real_testnet', so set to null to hide the feature
+          if (err.status === 403 || (err.response && err.response.status === 403)) {
+            console.log('[Guardian Data] Real testnet not enabled for this user (network_mode is not real_testnet)');
+            response.userPeerCount = null;
+            response.userPeerIds = [];
+          } else {
+            console.error('[Guardian Data] Error loading user peer count:', err);
+          }
+        }
+
+        // Fetch peer count (network connectivity) - only if testnet is enabled
+        if (response.userPeerCount !== null) {
+          try {
+            console.log('[Guardian Data] Fetching network peer count...');
+            const peerCountResponse = await fetchPeerCount();
+            if (peerCountResponse) {
+              response.peerCount = peerCountResponse;
+              console.log('[Guardian Data] Network peer count loaded:', peerCountResponse.peerCount);
+            }
+          } catch (err) {
+            console.error('[Guardian Data] Error loading network peer count:', err);
+          }
         }
 
         // Cache the data and update display with real data
         cachedGuardiansData = response;
         console.log('[Guardian Data] Data cached and ready');
         displayGuardiansData(response);
+
+        // Start polling if testnet is enabled
+        if (response.userPeerCount !== null && !guardianPollInterval) {
+          console.log('[Guardian Data] Starting peer count polling');
+          guardianPollInterval = setInterval(refreshUserPeerCount, 10000);
+        }
       } catch (err) {
         console.error('[Guardian Data] Unexpected error:', err);
         displayGuardiansError();
@@ -6454,12 +6685,16 @@
       const hours = data.foregroundHours || 0;
       const level = data.contributionLevel || 0;
       const rank = data.rank || 'New Guardian';
-      const peerCount = data.peerCount?.peerCount || 0;
+      const userPeerCount = data.userPeerCount !== null ? data.userPeerCount : null;
 
-      // Update hours with peer count info
+      // Update hours with user peer count info (only show peer count in testnet mode)
       const hoursDisplay = document.getElementById('profileGuardianHours');
       if (hoursDisplay) {
-        hoursDisplay.innerHTML = `<div>${hours}</div><div class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Connected Peers: ${peerCount}</div>`;
+        if (userPeerCount !== null) {
+          hoursDisplay.innerHTML = `<div>${hours}</div><div class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Connected Peers: ${userPeerCount}</div>`;
+        } else {
+          hoursDisplay.textContent = hours;
+        }
       }
 
       // Update rank
@@ -6587,8 +6822,14 @@
         return;
       }
 
-      const peerCount = guardianData.peerCount?.peerCount || 0;
+      const userPeerCount = guardianData.userPeerCount;
       const foregroundHours = (guardianData.peerData && guardianData.peerData.foreground_hours) || guardianData.foregroundHours || 0;
+
+      // Check if peer count is available (null means network_mode is not 'real_testnet')
+      if (userPeerCount === null) {
+        showErrorModal('Peer Details', 'Peer count feature is not enabled. Please switch to real testnet mode in your settings to view connected peers.');
+        return;
+      }
 
       // Create modal
       const modal = document.createElement('div');
@@ -6606,9 +6847,9 @@
           </div>
           <div class="space-y-4">
             <div class="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-              <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Connected Peers</div>
-              <div class="text-3xl font-bold text-blue-600 dark:text-blue-400">${peerCount}</div>
-              <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">peers in Usernode network</div>
+              <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Your Connected Peers</div>
+              <div class="text-3xl font-bold text-blue-600 dark:text-blue-400">${userPeerCount}</div>
+              <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">testnet peers connected to your node</div>
             </div>
             <div class="bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-200 dark:border-cyan-800 rounded-lg p-4">
               <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Your Foreground Hours</div>

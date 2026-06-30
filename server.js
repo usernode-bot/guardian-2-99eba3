@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const https = require('https');
 const http = require('http');
+const mockData = require('./server-mock-data');
 
 // Guardian 2 - Production-ready Usernode blockchain integration
 const app = express();
@@ -66,7 +67,7 @@ function validateAndConfigureRPC() {
   return configuredUrl;
 }
 
-const NODE_RPC_URL = validateAndConfigureRPC();
+let NODE_RPC_URL = validateAndConfigureRPC();
 
 // RPC health check cache
 let rpcHealthCache = null;
@@ -172,6 +173,34 @@ function classifyRPCError(err) {
   return { type: 'unknown', message: message || code || 'Unknown RPC error' };
 }
 
+// Helper function to get RPC endpoint from database
+async function getRpcEndpointFromDatabase() {
+  try {
+    const result = await pool.query(`
+      SELECT value FROM config_state WHERE key = 'NODE_RPC_URL' LIMIT 1
+    `);
+    if (result.rows.length > 0) {
+      return result.rows[0].value;
+    }
+  } catch (err) {
+    console.error('[RPC Config] Error fetching RPC endpoint from database:', err.message);
+  }
+  return null;
+}
+
+// Initialize RPC URL from database if available (testnet only)
+async function initializeRpcUrl() {
+  if (NETWORK_MODE !== 'testnet') return;
+  const dbRpcUrl = await getRpcEndpointFromDatabase();
+  if (dbRpcUrl) {
+    NODE_RPC_URL = dbRpcUrl;
+    console.log('[RPC Config] RPC endpoint initialized from database:', NODE_RPC_URL);
+  } else {
+    NODE_RPC_URL = validateAndConfigureRPC();
+    console.log('[RPC Config] RPC endpoint initialized from environment:', NODE_RPC_URL);
+  }
+}
+
 // Usernode chain configuration
 const CHAIN_CONFIG = {
   testnet: {
@@ -242,8 +271,8 @@ function calculateRankData(foregroundHours) {
   return { rank, hoursBracket, contributionLevel };
 }
 
-// Helper function to get foreground hours for a user (staging: mock data, prod: placeholder)
-function getForegroundHours(userId) {
+// Helper function to get foreground hours for a user (staging: mock data, prod: from sessions table)
+async function getForegroundHours(userId) {
   if (IS_STAGING) {
     // In staging, provide mock data based on user ID for consistency
     const numUserId = parseInt(userId, 10);
@@ -251,10 +280,19 @@ function getForegroundHours(userId) {
     // Use modulo to deterministically map user ID to a value
     return mockDataSet[numUserId % mockDataSet.length];
   } else {
-    // In production, fetch from peers/usernode
-    // For now, default to 0 hours as a placeholder
-    // TODO: Integrate with usernode peer discovery to fetch real foreground hours
-    return 0;
+    // In production, sum foreground hours from sessions table
+    try {
+      const { rows } = await pool.query(`
+        SELECT COALESCE(SUM(duration_seconds), 0) as total_seconds
+        FROM user_foreground_sessions
+        WHERE user_id = $1
+      `, [userId]);
+      const totalSeconds = rows[0].total_seconds || 0;
+      return Math.floor(totalSeconds / 3600); // Convert seconds to hours
+    } catch (err) {
+      console.error('Error fetching foreground hours from sessions:', err);
+      return 0;
+    }
   }
 }
 
@@ -1010,6 +1048,22 @@ app.get('/api/user', async (req, res) => {
     return res.status(401).json({ error: 'Not authenticated' });
   }
   try {
+    if (ENABLE_DEMO_MODE) {
+      const mockUser = mockData.getMockUserProfile(1);
+      return res.json({
+        id: 1,
+        username: mockUser.username,
+        usernode_pubkey: mockUser.usernode_pubkey,
+        verified: !!mockUser.verified_at,
+        network: 'testnet',
+        view_mode: 'web',
+        avatar_url: mockUser.avatar_url,
+        created_at: mockUser.created_at,
+        bio: mockUser.bio,
+        isDemoMode: ENABLE_DEMO_MODE,
+        appPubkey: APP_PUBKEY,
+      });
+    }
     const userRes = await pool.query(`SELECT view_mode, avatar_url, created_at, bio FROM users WHERE id = $1`, [req.user.id]);
     const view_mode = userRes.rows[0]?.view_mode || 'web';
     const avatar_url = userRes.rows[0]?.avatar_url || null;
@@ -1062,6 +1116,14 @@ app.get('/api/user/stats', async (req, res) => {
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
       return res.status(400).json({ error: 'Invalid user ID' });
+    }
+
+    if (ENABLE_DEMO_MODE) {
+      return res.json({
+        postsCount: mockData.MOCK_USER_STATS.totalMessagesCount,
+        contactsCount: 12,
+        messagesCount: mockData.MOCK_USER_STATS.totalGroupsCount + 4
+      });
     }
 
     // Query posts count
@@ -1245,7 +1307,9 @@ app.get('/api/config', async (req, res) => {
     res.json({
       networkMode: NETWORK_MODE,
       isDemoMode: ENABLE_DEMO_MODE,
+      rpcEndpoint: NODE_RPC_URL,
       canEdit: canEdit,
+      canEditRpc: canEdit,
       description: 'Demo mode: all blockchain transactions use fake tx hashes and audit logs are immediately confirmed. Testnet mode: real wallet interaction is required and audit logs are pending until blockchain confirmation.',
       secrets: [
         {
@@ -1281,8 +1345,8 @@ app.put('/api/config/network-mode', async (req, res) => {
     }
 
     const { networkMode } = req.body;
-    if (!['demo', 'testnet'].includes(networkMode)) {
-      return res.status(400).json({ error: 'Invalid input: networkMode must be "demo" or "testnet"' });
+    if (!['demo', 'real_testnet'].includes(networkMode)) {
+      return res.status(400).json({ error: 'Invalid input: networkMode must be "demo" or "real_testnet"' });
     }
 
     // Check authorization (first user OR has created a group)
@@ -1361,6 +1425,59 @@ app.get('/api/health/rpc', async (req, res) => {
   }
 });
 
+// Update RPC endpoint configuration
+app.put('/api/config/rpc-endpoint', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    const { rpcEndpoint } = req.body;
+    if (!rpcEndpoint || typeof rpcEndpoint !== 'string') {
+      return res.status(400).json({ error: 'Invalid input: rpcEndpoint must be a non-empty string' });
+    }
+
+    // Validate URL format
+    try {
+      new URL(rpcEndpoint);
+    } catch (err) {
+      return res.status(400).json({ error: 'Invalid URL format for rpcEndpoint' });
+    }
+
+    // Check authorization (first user OR has created a group)
+    const canEdit = userId === 1 || (await userHasCreatedGroup(userId));
+    if (!canEdit) {
+      return res.status(403).json({ error: 'Not authorized to modify configuration' });
+    }
+
+    // Update database config_state table (insert or update)
+    await pool.query(`
+      INSERT INTO config_state (key, value, created_at, updated_at)
+      VALUES ($1, $2, NOW(), NOW())
+      ON CONFLICT (key) DO UPDATE SET
+        value = EXCLUDED.value,
+        updated_at = NOW()
+    `, ['NODE_RPC_URL', rpcEndpoint]);
+
+    // Update in-memory state
+    NODE_RPC_URL = rpcEndpoint;
+    console.log(`[CONFIG] RPC endpoint updated: ${rpcEndpoint} (by user ${userId})`);
+
+    res.json({
+      rpcEndpoint: NODE_RPC_URL,
+      status: 'updated'
+    });
+  } catch (err) {
+    console.error('Error updating RPC endpoint:', err);
+    res.status(500).json({ error: 'Failed to update RPC endpoint' });
+  }
+});
+
 // Helper function to check if user has created a group
 async function userHasCreatedGroup(userId) {
   try {
@@ -1385,6 +1502,10 @@ app.get('/api/conversations', async (req, res) => {
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    if (ENABLE_DEMO_MODE) {
+      return res.json(mockData.getMockConversations(1, limit, offset));
     }
 
     // Optimized query using joins to eliminate N+1 lookups
@@ -1605,9 +1726,10 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
     console.log(`[MESSAGE] POST /api/conversations/${convId}/messages by user ${userId}`);
     console.log(`[MESSAGE] txHash provided: ${txHash ? 'yes - ' + txHash : 'no'}`);
     console.log(`[MESSAGE] Frontend content hash: ${frontendContentHash || 'none'}`);
+    console.log(`[MESSAGE] Demo mode: ${ENABLE_DEMO_MODE}`);
 
-    // Validate wallet connection before proceeding with message transaction
-    if (!req.user.usernode_pubkey) {
+    // Validate wallet connection before proceeding with message transaction (skip in demo mode)
+    if (!ENABLE_DEMO_MODE && !req.user.usernode_pubkey) {
       return res.status(401).json({ error: 'Must be connected to Usernode wallet to send messages' });
     }
 
@@ -1642,8 +1764,8 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       return res.status(403).json({ error: 'You have been blocked by this user' });
     }
 
-    // Fetch user's pubkey
-    const userPubkey = req.user.usernode_pubkey;
+    // Fetch user's pubkey (mock in demo mode)
+    const userPubkey = req.user.usernode_pubkey || (ENABLE_DEMO_MODE ? 'ut1demo-user-' + userId : null);
     const network = 'testnet';
 
     // Use frontend-provided content hash or compute it
@@ -1663,7 +1785,8 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       userPubkey: userPubkey,
       contentHash: contentHash,
       timestamp: now.toISOString(),
-      network: network
+      network: network,
+      rpcEndpoint: NODE_RPC_URL
     };
 
     // Sign memo following Last One Wins pattern
@@ -1999,7 +2122,8 @@ app.post('/api/tokens/send', async (req, res) => {
       amount: parseInt(amount),
       memo: memo || '',
       contentHash: contentHash,
-      network: network
+      network: network,
+      rpcEndpoint: NODE_RPC_URL
     };
 
     // Sign memo following Last One Wins pattern
@@ -2340,6 +2464,25 @@ app.get('/api/transactions-by-user', async (req, res) => {
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    if (ENABLE_DEMO_MODE) {
+      const mockResult = mockData.getMockTransactionsByUser(1, limit, offset);
+      const transactions = mockResult.transactions.map(tx => ({
+        id: tx.id,
+        messageId: null,
+        groupId: null,
+        messageType: tx.message_type,
+        txHash: tx.tx_hash,
+        status: tx.status,
+        errorMessage: null,
+        confirmedAt: tx.confirmed_at,
+        createdAt: tx.created_at,
+        recipientUsername: tx.recipientUsername || null,
+        groupName: tx.groupName || null,
+        transactionPayload: null
+      }));
+      return res.json({ transactions, total: mockResult.total, limit, offset });
     }
 
     let whereClause = 'bal.user_id = $1';
@@ -3089,6 +3232,20 @@ app.get('/api/search/users', async (req, res) => {
     }
 
     const q = req.query.q || '';
+
+    if (ENABLE_DEMO_MODE) {
+      const mockResult = mockData.getMockSearchUsers(q, 20);
+      return res.json({
+        users: mockResult.results.map(u => ({
+          id: u.id,
+          username: u.username,
+          usernode_pubkey: u.usernode_pubkey || null,
+          verified: u.verified,
+          mutualCount: 0
+        }))
+      });
+    }
+
     let rows;
 
     try {
@@ -3180,7 +3337,7 @@ app.get('/api/users/by-username/:username', async (req, res) => {
     `, [username]);
     if (!rows.length) return res.status(404).json({ error: 'User not found' });
     const user = rows[0];
-    const foregroundHours = getForegroundHours(user.id);
+    const foregroundHours = await getForegroundHours(user.id);
     const { rank, hoursBracket, contributionLevel } = calculateRankData(foregroundHours);
     res.json({
       id: user.id,
@@ -3213,7 +3370,7 @@ app.get('/api/users/:userId', async (req, res) => {
     }
 
     const user = rows[0];
-    const foregroundHours = getForegroundHours(userId);
+    const foregroundHours = await getForegroundHours(userId);
     const { rank, hoursBracket, contributionLevel } = calculateRankData(foregroundHours);
 
     res.json({
@@ -3249,6 +3406,10 @@ app.get('/api/groups', async (req, res) => {
     }
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
     const offset = parseInt(req.query.offset || 0);
+
+    if (ENABLE_DEMO_MODE) {
+      return res.json(mockData.getMockGroups(1, limit, offset));
+    }
 
     // Get groups where user is a member
     const { rows: groupRows } = await pool.query(`
@@ -3345,9 +3506,9 @@ app.post('/api/groups', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
-    // Validation: check wallet connection before proceeding with group creation
-    console.log(`[POST /api/groups::VALIDATE] Checking wallet connection: usernode_pubkey=${req.user.usernode_pubkey ? 'present' : 'missing'}`);
-    if (!req.user.usernode_pubkey) {
+    // Validation: check wallet connection before proceeding with group creation (skip in demo mode)
+    console.log(`[POST /api/groups::VALIDATE] Checking wallet connection: usernode_pubkey=${req.user.usernode_pubkey ? 'present' : 'missing'}, ENABLE_DEMO_MODE=${ENABLE_DEMO_MODE}`);
+    if (!ENABLE_DEMO_MODE && !req.user.usernode_pubkey) {
       console.error(`[POST /api/groups::VALIDATE] Wallet not connected - usernode_pubkey is missing`);
       return res.status(401).json({ error: 'Must be connected to Usernode wallet to create groups' });
     }
@@ -3436,7 +3597,8 @@ app.post('/api/groups', async (req, res) => {
       memberPubkeys: memberPubkeys.length > 0 ? memberPubkeys : [req.user.usernode_pubkey || APP_PUBKEY],
       contentHash: contentHash,
       timestamp: now.toISOString(),
-      network: network
+      network: network,
+      rpcEndpoint: NODE_RPC_URL
     };
     console.log(`[POST /api/groups::BLOCKCHAIN] Transaction payload prepared: type=${transactionPayload.type}, groupId=${transactionPayload.groupId}, memberCount=${transactionPayload.memberPubkeys.length}, network=${transactionPayload.network}, creatorPubkeyPresent=${!!transactionPayload.creatorPubkey}`);
 
@@ -3615,6 +3777,19 @@ app.get('/api/groups/:groupId', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
+    if (ENABLE_DEMO_MODE) {
+      const groupIdInt = parseInt(groupId);
+      const mockGroup = mockData.getMockGroupById(groupIdInt);
+      if (!mockGroup) {
+        return res.status(404).json({ error: 'Group not found' });
+      }
+      const mockMembers = mockData.getMockGroupMembers(groupIdInt);
+      return res.json({
+        ...mockGroup,
+        members: mockMembers.members
+      });
+    }
+
     // Verify user is a member
     const { rows: memberRows } = await pool.query(`
       SELECT id FROM group_members WHERE group_id = $1 AND user_id = $2
@@ -3769,6 +3944,24 @@ app.get('/api/groups/:groupId/messages', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
+    const offset = parseInt(req.query.offset || 0);
+
+    if (ENABLE_DEMO_MODE) {
+      const groupIdInt = parseInt(groupId);
+      const mockResult = mockData.getMockGroupMessages(groupIdInt, limit, offset);
+      const msgList = mockResult.messages.map(m => ({
+        id: m.id,
+        senderId: m.sender_id,
+        senderUsername: mockData.MOCK_USERS.find(u => u.id === m.sender_id)?.username || 'Unknown',
+        type: m.type,
+        content: m.content,
+        createdAt: m.created_at,
+        blockchainRecorded: false,
+        blockchainAuditLogId: null
+      }));
+      return res.json({ messages: msgList, hasMore: offset + limit < mockResult.total });
+    }
+
     const before = req.query.before ? new Date(req.query.before) : new Date();
 
     // Verify user is a member
@@ -3825,8 +4018,8 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
-    // Validate wallet connection before proceeding with group message transaction
-    if (!req.user.usernode_pubkey) {
+    // Validate wallet connection before proceeding with group message transaction (skip in demo mode)
+    if (!ENABLE_DEMO_MODE && !req.user.usernode_pubkey) {
       return res.status(401).json({ error: 'Must be connected to Usernode wallet to send group messages' });
     }
 
@@ -3849,8 +4042,8 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
       return res.status(403).json({ error: 'Not a member of this group' });
     }
 
-    // Fetch user's pubkey
-    const userPubkey = req.user.usernode_pubkey;
+    // Fetch user's pubkey (mock in demo mode)
+    const userPubkey = req.user.usernode_pubkey || (ENABLE_DEMO_MODE ? 'ut1demo-user-' + userId : null);
     const network = 'testnet';
 
     // Create message with blockchain recording enabled
@@ -4486,7 +4679,7 @@ app.get('/api/user/guardians', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const foregroundHours = getForegroundHours(req.user.id);
+    const foregroundHours = await getForegroundHours(req.user.id);
     const { rank, hoursBracket, contributionLevel } = calculateRankData(foregroundHours);
 
     res.json({
@@ -4567,6 +4760,118 @@ app.get('/api/network/peer-count', async (req, res) => {
   }
 });
 
+// Get user-specific peer count (testnet peers connected to this user)
+// Only available when user has network_mode set to 'real_testnet'
+app.get('/api/user/peers/connected', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
+
+    // Check if network mode is real_testnet for this user
+    const { rows: userRows } = await pool.query(`
+      SELECT network FROM users WHERE id = $1
+    `, [userId]);
+
+    if (!userRows.length || userRows[0].network !== 'real_testnet') {
+      return res.status(403).json({
+        error: 'Peer count feature is not enabled',
+        available: false
+      });
+    }
+
+    if (IS_STAGING) {
+      // In staging, provide mock data cycling through [3, 7, 5, 9, 6] every 10 seconds
+      const mockPeerCounts = [3, 7, 5, 9, 6];
+      const timeWindow = Math.floor(Date.now() / 10000); // 10-second windows
+      const userPeerCount = mockPeerCounts[(timeWindow + userId) % mockPeerCounts.length];
+      // Generate deterministic mock peer IDs
+      const peerIds = Array.from({ length: userPeerCount }, (_, i) =>
+        `ut1peer${userId}${i.toString().padStart(3, '0')}`
+      );
+
+      return res.json({
+        userPeerCount,
+        peerIds,
+        lastUpdatedAt: new Date().toISOString()
+      });
+    } else {
+      // In production, query user_peers table
+      const { rows } = await pool.query(`
+        SELECT peer_id FROM user_peers
+        WHERE user_id = $1 AND last_seen_at > NOW() - INTERVAL '30 seconds'
+        ORDER BY last_seen_at DESC
+      `, [userId]);
+
+      const peerIds = rows.map(r => r.peer_id);
+      return res.json({
+        userPeerCount: peerIds.length,
+        peerIds,
+        lastUpdatedAt: new Date().toISOString()
+      });
+    }
+  } catch (err) {
+    console.error('Error fetching user peer count:', err);
+    res.status(500).json({ error: 'Failed to fetch user peer count' });
+  }
+});
+
+// Log a foreground session
+app.post('/api/user/foreground-session', express.json(), async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
+
+    const { sessionDurationSeconds } = req.body;
+    if (typeof sessionDurationSeconds !== 'number' || sessionDurationSeconds < 0) {
+      return res.status(400).json({ error: 'Invalid sessionDurationSeconds' });
+    }
+
+    // Skip session logging for very short sessions (< 1 second)
+    if (sessionDurationSeconds < 1) {
+      return res.json({ status: 'skipped', reason: 'Session too short' });
+    }
+
+    if (IS_STAGING) {
+      // In staging, accept the request but don't persist
+      return res.json({
+        status: 'accepted',
+        message: 'Session logged (staging mode)',
+        durationSeconds: sessionDurationSeconds
+      });
+    } else {
+      // In production, log the session
+      const now = new Date();
+      const sessionStart = new Date(now.getTime() - sessionDurationSeconds * 1000);
+      const sessionEnd = now;
+
+      await pool.query(`
+        INSERT INTO user_foreground_sessions (user_id, session_start, session_end, duration_seconds)
+        VALUES ($1, $2, $3, $4)
+      `, [userId, sessionStart, sessionEnd, Math.round(sessionDurationSeconds)]);
+
+      return res.json({
+        status: 'logged',
+        durationSeconds: sessionDurationSeconds
+      });
+    }
+  } catch (err) {
+    console.error('Error logging foreground session:', err);
+    res.status(500).json({ error: 'Failed to log foreground session' });
+  }
+});
+
 app.get('/api/activity', async (req, res) => {
   try {
     if (!req.user) {
@@ -4640,6 +4945,10 @@ app.get('/api/channels', async (req, res) => {
     const category = req.query.category || null;
     const featured = req.query.featured === 'true';
 
+    if (ENABLE_DEMO_MODE) {
+      return res.json(mockData.getMockChannels(1, category, featured));
+    }
+
     let query = `
       SELECT c.id, c.name, c.description, c.is_system, c.owner_id, c.category, c.is_verified, c.verified_at, c.is_featured, c.created_at, c.updated_at,
              u.username as ownerUsername,
@@ -4699,6 +5008,25 @@ app.get('/api/channels/:channelId/posts', async (req, res) => {
     const channelId = parseInt(req.params.channelId);
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
     const offset = parseInt(req.query.offset || 0);
+
+    if (ENABLE_DEMO_MODE) {
+      const mockResult = mockData.getMockChannelPosts(channelId, limit, offset);
+      return res.json({
+        posts: mockResult.posts.map(p => ({
+          id: p.id,
+          userId: p.authorId,
+          username: p.authorUsername,
+          verified: false,
+          avatarUrl: p.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.authorUsername}`,
+          content: p.content,
+          createdAt: p.createdAt,
+          updatedAt: p.createdAt,
+          isEdited: false,
+          onChain: false
+        })),
+        hasMore: offset + limit < mockResult.total
+      });
+    }
 
     // Verify channel exists
     const { rows: channelCheck } = await pool.query(`
@@ -6400,7 +6728,7 @@ async function start() {
 
     // Add network column if it doesn't exist (idempotent migration)
     await pool.query(`
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS network VARCHAR(50) DEFAULT 'testnet'
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS network VARCHAR(50) DEFAULT 'real_testnet'
     `);
 
     // Add view_mode column if it doesn't exist (idempotent migration)
@@ -6434,6 +6762,7 @@ async function start() {
       console.error('[Migration] ❌ ERROR adding is_bot column:', err.message);
       throw err;
     }
+
 
     // Create conversations table (marked private)
     await pool.query(`
@@ -6952,6 +7281,21 @@ async function start() {
         ON network_milestones(key)
     `);
 
+    // Create config_state table (public - stores runtime configuration like RPC endpoint)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS config_state (
+        id SERIAL PRIMARY KEY,
+        key VARCHAR(100) UNIQUE NOT NULL,
+        value TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_config_state_key
+        ON config_state(key)
+    `);
+
     // Create crypto_data_cache table (public - cached CoinGecko data for Crypto Daily bot)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS crypto_data_cache (
@@ -6966,6 +7310,42 @@ async function start() {
         ON crypto_data_cache(last_fetched_at DESC)
     `);
 
+    // Create user_peers table (tracks peers connected to each user)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_peers (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        peer_id VARCHAR(100) NOT NULL,
+        connected_at TIMESTAMPTZ DEFAULT NOW(),
+        last_seen_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(user_id, peer_id)
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_peers_user_id
+        ON user_peers(user_id, last_seen_at DESC)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_peers_peer_id
+        ON user_peers(peer_id)
+    `);
+
+    // Create user_foreground_sessions table (tracks foreground tab sessions per user)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_foreground_sessions (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        session_start TIMESTAMPTZ NOT NULL,
+        session_end TIMESTAMPTZ NOT NULL,
+        duration_seconds INTEGER NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_foreground_sessions_user_id
+        ON user_foreground_sessions(user_id, created_at DESC)
+    `);
+
     // Mark tables as private
     await pool.query(`COMMENT ON TABLE conversations IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE messages IS 'staging:private'`);
@@ -6976,6 +7356,11 @@ async function start() {
     await pool.query(`COMMENT ON TABLE group_members IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE group_messages IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE group_read_receipts IS 'staging:private'`);
+    await pool.query(`COMMENT ON TABLE user_peers IS 'staging:private'`);
+    await pool.query(`COMMENT ON TABLE user_foreground_sessions IS 'staging:private'`);
+
+    // Initialize RPC endpoint from database or environment
+    await initializeRpcUrl();
 
     // Seed staging data
     // Seed mock testnet users (grace, henry, iris, jack) in all environments for user search testing
@@ -7090,7 +7475,8 @@ async function start() {
                 memo: msg.content.memo,
                 userPubkey: dmUserPubkeyMap[msg.sender],
                 contentHash: contentHash,
-                timestamp: msgTime.toISOString()
+                timestamp: msgTime.toISOString(),
+                rpcEndpoint: NODE_RPC_URL
               }
             : {
                 type: 'message',
@@ -7098,7 +7484,8 @@ async function start() {
                 senderId: msg.sender,
                 userPubkey: dmUserPubkeyMap[msg.sender],
                 contentHash: contentHash,
-                timestamp: msgTime.toISOString()
+                timestamp: msgTime.toISOString(),
+                rpcEndpoint: NODE_RPC_URL
               };
 
           const auditResult = await pool.query(`
