@@ -5306,6 +5306,126 @@ app.post('/api/channels', async (req, res) => {
   }
 });
 
+// PUT /api/channels/:channelId - Update a channel (owner only)
+app.put('/api/channels/:channelId', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const channelId = parseInt(req.params.channelId);
+    const { name, description } = req.body;
+
+    if (isNaN(channelId)) {
+      return res.status(400).json({ error: 'Invalid channel ID' });
+    }
+
+    // Validate input
+    if (!name || typeof name !== 'string' || name.trim().length === 0 || name.length > 255) {
+      return res.status(400).json({ error: 'Channel name is required and must be 1-255 characters' });
+    }
+
+    if (description && (typeof description !== 'string' || description.length > 1000)) {
+      return res.status(400).json({ error: 'Description must be max 1000 characters' });
+    }
+
+    // Check if channel exists and verify ownership
+    const { rows: channelCheck } = await pool.query(`
+      SELECT id, owner_id FROM channels WHERE id = $1
+    `, [channelId]);
+
+    if (channelCheck.length === 0) {
+      return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    if (channelCheck[0].owner_id !== req.user.id) {
+      return res.status(403).json({ error: 'Only the channel owner can edit this channel' });
+    }
+
+    // Update channel
+    const { rows: updated } = await pool.query(`
+      UPDATE channels
+      SET name = $1, description = $2, updated_at = NOW()
+      WHERE id = $3
+      RETURNING id, name, description, owner_id, category, is_verified, verified_at, is_featured, is_system, created_at, updated_at
+    `, [name.trim(), description || null, channelId]);
+
+    if (updated.length === 0) {
+      return res.status(500).json({ error: 'Failed to update channel' });
+    }
+
+    const channel = updated[0];
+
+    // Get owner username
+    const { rows: userRows } = await pool.query(`
+      SELECT username FROM users WHERE id = $1
+    `, [channel.owner_id]);
+
+    const ownerUsername = userRows.length > 0 ? userRows[0].username : null;
+
+    res.json({
+      id: channel.id,
+      name: channel.name,
+      description: channel.description,
+      ownerId: channel.owner_id,
+      ownerUsername: ownerUsername,
+      category: channel.category,
+      isVerified: channel.is_verified,
+      verifiedAt: channel.verified_at,
+      isFeatured: channel.is_featured,
+      isSystem: channel.is_system,
+      createdAt: channel.created_at,
+      updatedAt: channel.updated_at
+    });
+  } catch (err) {
+    console.error('Error updating channel:', err);
+    res.status(500).json({ error: 'Failed to update channel' });
+  }
+});
+
+// DELETE /api/channels/:channelId - Delete a channel (owner only)
+app.delete('/api/channels/:channelId', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const channelId = parseInt(req.params.channelId);
+
+    if (isNaN(channelId)) {
+      return res.status(400).json({ error: 'Invalid channel ID' });
+    }
+
+    // Check if channel exists and verify ownership
+    const { rows: channelCheck } = await pool.query(`
+      SELECT id, owner_id FROM channels WHERE id = $1
+    `, [channelId]);
+
+    if (channelCheck.length === 0) {
+      return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    if (channelCheck[0].owner_id !== req.user.id) {
+      return res.status(403).json({ error: 'Only the channel owner can delete this channel' });
+    }
+
+    // Delete all posts in the channel first
+    await pool.query(`
+      DELETE FROM feed_posts WHERE channel_id = $1
+    `, [channelId]);
+
+    // Delete the channel
+    await pool.query(`
+      DELETE FROM channels WHERE id = $1
+    `, [channelId]);
+
+    res.json({ success: true, message: 'Channel deleted successfully' });
+  } catch (err) {
+    console.error('Error deleting channel:', err);
+    res.status(500).json({ error: 'Failed to delete channel' });
+  }
+});
+
 // GET /api/user/pinned-channels - List user's pinned channels
 app.get('/api/user/pinned-channels', async (req, res) => {
   try {
@@ -8603,6 +8723,58 @@ async function start() {
       }
 
       console.log('[GuardiAI Seed] ✅ Staging demo data seed completed');
+
+      // Seed channels for staging testing
+      console.log('[Channel Seed] Starting channel seed data...');
+
+      // Ensure channel categories exist
+      await pool.query(`
+        INSERT INTO channel_categories (name, description) VALUES
+        ('Updates', 'System and important updates'),
+        ('General', 'General discussion'),
+        ('Announcements', 'Official announcements')
+        ON CONFLICT (name) DO NOTHING
+      `);
+
+      // Seed demo channels
+      const channels = [
+        { name: 'Staging Demo Channel', description: 'A staging demo channel for testing the feed-like UI', owner_id: 1, category: 'General' },
+        { name: 'Updates & News', description: 'Latest updates and news from the team', owner_id: 2, category: 'Announcements' },
+        { name: 'Product Feedback', description: 'Share your feedback and suggestions', owner_id: 3, category: 'General' }
+      ];
+
+      for (const channel of channels) {
+        const result = await pool.query(`
+          INSERT INTO channels (name, description, owner_id, category, is_system, is_verified, is_featured, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, FALSE, FALSE, FALSE, NOW(), NOW())
+          ON CONFLICT DO NOTHING
+          RETURNING id
+        `, [channel.name, channel.description, channel.owner_id, channel.category]);
+
+        if (result.rows.length > 0) {
+          const channelId = result.rows[0].id;
+          console.log(`[Channel Seed] Created channel: ${channel.name} (id: ${channelId})`);
+
+          // Seed demo posts in the channel
+          const posts = [
+            { user_id: 1, content: 'Welcome to the Staging Demo Channel! This is a great place to test the new feed-like layout.', offset: 180 },
+            { user_id: 2, content: 'The channel detail view now has a sticky header with owner-specific controls. Try editing or deleting this channel if you are the owner!', offset: 120 },
+            { user_id: 3, content: 'Posts are displayed in a clean chronological feed. You can see the most recent posts first.', offset: 60 },
+            { user_id: 1, content: 'Load more posts at the bottom to see older messages. Try scrolling down to test pagination!', offset: 30 }
+          ];
+
+          for (const post of posts) {
+            await pool.query(`
+              INSERT INTO feed_posts (user_id, channel_id, content, created_at)
+              VALUES ($1, $2, $3, NOW() - INTERVAL '${post.offset} minutes')
+              ON CONFLICT DO NOTHING
+            `, [post.user_id, channelId, JSON.stringify({ text: post.content })]);
+          }
+          console.log(`[Channel Seed] Created ${posts.length} demo posts in channel: ${channel.name}`);
+        }
+      }
+
+      console.log('[Channel Seed] ✅ Channel seed data completed');
     }
 
     // Create reserved system user for Crypto Daily bot (all environments)

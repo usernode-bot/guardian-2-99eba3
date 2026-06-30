@@ -918,16 +918,24 @@
           <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading channels...</div>
         </div>
         <!-- Channel Detail Header (hidden until a channel is selected) -->
-        <div id="channelDetailHeader" class="sticky top-0 z-[100] bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0 hidden p-4">
-          <div class="flex items-start justify-between">
-            <div class="flex-1">
-              <h3 id="channelDetailName" class="text-lg font-bold text-zinc-900 dark:text-zinc-100">Channel Name</h3>
-              <p id="channelDetailDescription" class="text-sm text-zinc-600 dark:text-zinc-400 mt-1">Channel description</p>
-              <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-2" id="channelDetailFollowers">0 followers</div>
+        <div id="channelDetailHeader" class="sticky top-0 z-[100] bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0 hidden">
+          <!-- Main header row with back button, title, and action buttons -->
+          <div class="flex items-center justify-between p-4">
+            <div class="flex items-center gap-3 flex-1 min-w-0">
+              <button id="channelBackBtn" onclick="backToChannelList()" class="flex-shrink-0 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition text-xl">←</button>
+              <div class="min-w-0 flex-1">
+                <h3 id="channelDetailName" class="text-lg font-bold text-zinc-900 dark:text-zinc-100 truncate">Channel Name</h3>
+              </div>
             </div>
-            <button id="channelFollowBtn" onclick="showChannelFollowToast()" class="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition active:scale-95">Follow</button>
+            <div id="channelActionButtons" class="flex items-center gap-2 flex-shrink-0 ml-4">
+              <button id="channelFollowBtn" onclick="showChannelFollowToast()" class="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition active:scale-95">Follow</button>
+            </div>
           </div>
-          <button id="channelBackBtn" onclick="backToChannelList()" class="mt-3 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 text-sm transition">← Back to channels</button>
+          <!-- Info row with description and followers -->
+          <div class="px-4 pb-3 border-t border-zinc-100 dark:border-zinc-800">
+            <p id="channelDetailDescription" class="text-sm text-zinc-600 dark:text-zinc-400">Channel description</p>
+            <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-1" id="channelDetailFollowers">0 followers</div>
+          </div>
         </div>
       </div>
 
@@ -6282,6 +6290,20 @@
       document.getElementById('channelDetailDescription').textContent = channel.description || '';
       document.getElementById('channelDetailFollowers').textContent = '0 followers';
 
+      // Set up action buttons based on ownership
+      const isOwner = currentUser && channel.ownerId === currentUser.id;
+      const actionButtonsContainer = document.getElementById('channelActionButtons');
+      if (isOwner) {
+        actionButtonsContainer.innerHTML = `
+          <button onclick="editChannelModal(${channel.id})" class="px-3 py-1 bg-zinc-600 hover:bg-zinc-700 dark:hover:bg-zinc-500 text-white rounded text-sm font-medium transition active:scale-95">Edit</button>
+          <button onclick="deleteChannelConfirm(${channel.id})" class="px-3 py-1 bg-red-600 hover:bg-red-700 dark:hover:bg-red-500 text-white rounded text-sm font-medium transition active:scale-95">Delete</button>
+        `;
+      } else {
+        actionButtonsContainer.innerHTML = `
+          <button id="channelFollowBtn" onclick="showChannelFollowToast()" class="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition active:scale-95">Follow</button>
+        `;
+      }
+
       try {
         isLoadingChannelPosts = true;
         const data = await apiCall(`/api/channels/${channelId}/posts?limit=50&offset=0`);
@@ -6289,16 +6311,21 @@
           channelPostsHasMore = data.hasMore || false;
           let html = '';
           if (data.posts.length === 0) {
-            html = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">No posts in this channel</div>';
+            html = `<div class="text-center py-12 text-zinc-600 dark:text-zinc-500">
+              <p class="text-lg font-medium mb-2">No posts yet in #${escapeHtml(channel.name)}</p>
+              <p class="text-sm">Be the first to post in this channel!</p>
+            </div>`;
           } else {
-            html = '<div class="space-y-3 p-2" id="channelPostsContainer">';
+            html = '<div class="space-y-3 p-4" id="channelPostsContainer">';
             data.posts.forEach(post => {
               html += renderChannelPost(post);
             });
             html += '</div>';
 
             if (channelPostsHasMore) {
-              html += '<div class="p-2"><button onclick="loadMoreChannelPosts(' + channelId + ')" class="w-full py-2 px-3 text-sm font-medium text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition border border-cyan-600 dark:border-cyan-500 rounded">Load more posts</button></div>';
+              html += '<div class="p-4 flex justify-center"><button onclick="loadMoreChannelPosts(' + channelId + ')" class="py-2 px-6 text-sm font-medium text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition border border-cyan-600 dark:border-cyan-500 rounded">Load more posts</button></div>';
+            } else if (data.posts.length > 0) {
+              html += '<div class="p-4 text-center text-xs text-zinc-500 dark:text-zinc-500">No more posts</div>';
             }
           }
           document.getElementById('feedMainContent').innerHTML = html;
@@ -6359,7 +6386,7 @@
       const contentText = post.content?.text || '[No text]';
 
       return `
-        <div class="p-3 bg-white dark:bg-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-lg transition">
+        <div class="pb-3 border-b border-zinc-100 dark:border-zinc-800 last:border-b-0">
           <div class="flex items-start gap-3">
             <div class="flex-shrink-0 w-10 h-10 bg-zinc-300 dark:bg-zinc-700 rounded-full flex items-center justify-center text-xs font-bold text-zinc-600 dark:text-zinc-400">
               ${post.username ? post.username.substring(0, 2).toUpperCase() : 'U'}
@@ -6369,7 +6396,7 @@
                 <span class="font-semibold text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username || 'System')}</span>
                 ${post.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs">✓</span>' : ''}
               </div>
-              <p class="text-zinc-900 dark:text-zinc-100 mb-2 text-sm mt-1">${escapeHtml(contentText)}</p>
+              <p class="text-zinc-900 dark:text-zinc-100 text-sm mt-1 mb-2 whitespace-pre-wrap break-words">${escapeHtml(contentText)}</p>
               <div class="text-xs text-zinc-500 dark:text-zinc-500">${formattedTime}</div>
             </div>
           </div>
@@ -6383,6 +6410,73 @@
 
     function showChannelFollowToast() {
       showToast('Follow feature coming soon', 'info');
+    }
+
+    function editChannelModal(channelId) {
+      const channel = channelsList.find(ch => ch.id === channelId);
+      if (!channel) return;
+
+      const newName = prompt('Edit channel name:', channel.name);
+      if (newName === null) return;
+      if (newName.trim().length === 0) {
+        showToast('Channel name cannot be empty', 'error');
+        return;
+      }
+
+      const newDesc = prompt('Edit channel description:', channel.description || '');
+      if (newDesc === null) return;
+
+      updateChannel(channelId, newName.trim(), newDesc.trim());
+    }
+
+    async function updateChannel(channelId, name, description) {
+      try {
+        const data = await apiCall(`/api/channels/${channelId}`, {
+          method: 'PUT',
+          body: JSON.stringify({ name, description })
+        });
+
+        if (data && data.error) {
+          showToast(`Error updating channel: ${data.error}`, 'error');
+          return;
+        }
+
+        showToast('Channel updated successfully', 'success');
+        await loadChannels();
+        await showChannelPosts(channelId);
+      } catch (err) {
+        console.error('Error updating channel:', err);
+        showToast('Failed to update channel', 'error');
+      }
+    }
+
+    function deleteChannelConfirm(channelId) {
+      const channel = channelsList.find(ch => ch.id === channelId);
+      if (!channel) return;
+
+      if (confirm(`Are you sure you want to delete the channel "#${channel.name}"? This action cannot be undone.`)) {
+        deleteChannel(channelId);
+      }
+    }
+
+    async function deleteChannel(channelId) {
+      try {
+        const data = await apiCall(`/api/channels/${channelId}`, {
+          method: 'DELETE'
+        });
+
+        if (data && data.error) {
+          showToast(`Error deleting channel: ${data.error}`, 'error');
+          return;
+        }
+
+        showToast('Channel deleted successfully', 'success');
+        await loadChannels();
+        backToChannelList();
+      } catch (err) {
+        console.error('Error deleting channel:', err);
+        showToast('Failed to delete channel', 'error');
+      }
     }
 
     function showProfileView() {
