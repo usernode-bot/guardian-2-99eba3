@@ -5079,7 +5079,9 @@ app.get('/api/channels', async (req, res) => {
       SELECT c.id, c.name, c.description, c.is_system, c.owner_id, c.category, c.is_verified, c.verified_at, c.is_featured, c.created_at, c.updated_at,
              u.username as ownerUsername,
              (SELECT COUNT(*) FROM channel_unread WHERE user_id = $1 AND channel_id = c.id AND unread_count > 0)::INTEGER as unreadCount,
-             (SELECT COUNT(*) FROM pinned_channels WHERE user_id = $1 AND channel_id = c.id)::INTEGER as isPinned
+             (SELECT COUNT(*) FROM pinned_channels WHERE user_id = $1 AND channel_id = c.id)::INTEGER as isPinned,
+             (SELECT COUNT(*) FROM channel_followers WHERE channel_id = c.id)::INTEGER as followerCount,
+             (SELECT COUNT(*) FROM channel_followers WHERE user_id = $1 AND channel_id = c.id)::INTEGER as isFollowing
       FROM channels c
       LEFT JOIN users u ON c.owner_id = u.id
       WHERE 1=1
@@ -5115,7 +5117,9 @@ app.get('/api/channels', async (req, res) => {
         createdAt: c.created_at,
         updatedAt: c.updated_at,
         unreadCount: parseInt(c.unreadCount) || 0,
-        isPinned: parseInt(c.isPinned) > 0
+        isPinned: parseInt(c.isPinned) > 0,
+        followerCount: parseInt(c.followerCount) || 0,
+        isFollowing: parseInt(c.isFollowing) > 0
       }))
     });
   } catch (err) {
@@ -5304,6 +5308,13 @@ app.post('/api/channels', async (req, res) => {
 
     const ownerUsername = userRows.length > 0 ? userRows[0].username : null;
 
+    // Auto-follow: creator automatically follows their own channel
+    await pool.query(`
+      INSERT INTO channel_followers (user_id, channel_id, followed_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (user_id, channel_id) DO NOTHING
+    `, [userId, channel.id]);
+
     // Update audit log with txHash
     if (auditLogId) {
       await pool.query(`
@@ -5330,6 +5341,260 @@ app.post('/api/channels', async (req, res) => {
   } catch (err) {
     console.error('Error creating channel:', err);
     res.status(500).json({ error: 'Failed to create channel' });
+  }
+});
+
+// PUT /api/channels/:channelId - Update a channel (owner only)
+app.put('/api/channels/:channelId', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const channelId = parseInt(req.params.channelId);
+    const { name, description } = req.body;
+
+    if (isNaN(channelId)) {
+      return res.status(400).json({ error: 'Invalid channel ID' });
+    }
+
+    // Validate input
+    if (!name || typeof name !== 'string' || name.trim().length === 0 || name.length > 255) {
+      return res.status(400).json({ error: 'Channel name is required and must be 1-255 characters' });
+    }
+
+    if (description && (typeof description !== 'string' || description.length > 1000)) {
+      return res.status(400).json({ error: 'Description must be max 1000 characters' });
+    }
+
+    // Check if channel exists and verify ownership
+    const { rows: channelCheck } = await pool.query(`
+      SELECT id, owner_id FROM channels WHERE id = $1
+    `, [channelId]);
+
+    if (channelCheck.length === 0) {
+      return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    if (channelCheck[0].owner_id !== req.user.id) {
+      return res.status(403).json({ error: 'Only the channel owner can edit this channel' });
+    }
+
+    // Update channel
+    const { rows: updated } = await pool.query(`
+      UPDATE channels
+      SET name = $1, description = $2, updated_at = NOW()
+      WHERE id = $3
+      RETURNING id, name, description, owner_id, category, is_verified, verified_at, is_featured, is_system, created_at, updated_at
+    `, [name.trim(), description || null, channelId]);
+
+    if (updated.length === 0) {
+      return res.status(500).json({ error: 'Failed to update channel' });
+    }
+
+    const channel = updated[0];
+
+    // Get owner username
+    const { rows: userRows } = await pool.query(`
+      SELECT username FROM users WHERE id = $1
+    `, [channel.owner_id]);
+
+    const ownerUsername = userRows.length > 0 ? userRows[0].username : null;
+
+    res.json({
+      id: channel.id,
+      name: channel.name,
+      description: channel.description,
+      ownerId: channel.owner_id,
+      ownerUsername: ownerUsername,
+      category: channel.category,
+      isVerified: channel.is_verified,
+      verifiedAt: channel.verified_at,
+      isFeatured: channel.is_featured,
+      isSystem: channel.is_system,
+      createdAt: channel.created_at,
+      updatedAt: channel.updated_at
+    });
+  } catch (err) {
+    console.error('Error updating channel:', err);
+    res.status(500).json({ error: 'Failed to update channel' });
+  }
+});
+
+// DELETE /api/channels/:channelId - Delete a channel (owner only)
+app.delete('/api/channels/:channelId', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const channelId = parseInt(req.params.channelId);
+
+    if (isNaN(channelId)) {
+      return res.status(400).json({ error: 'Invalid channel ID' });
+    }
+
+    // Check if channel exists and verify ownership
+    const { rows: channelCheck } = await pool.query(`
+      SELECT id, owner_id FROM channels WHERE id = $1
+    `, [channelId]);
+
+    if (channelCheck.length === 0) {
+      return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    if (channelCheck[0].owner_id !== req.user.id) {
+      return res.status(403).json({ error: 'Only the channel owner can delete this channel' });
+    }
+
+    // Delete all posts in the channel first
+    await pool.query(`
+      DELETE FROM feed_posts WHERE channel_id = $1
+    `, [channelId]);
+
+    // Delete the channel
+    await pool.query(`
+      DELETE FROM channels WHERE id = $1
+    `, [channelId]);
+
+    res.json({ success: true, message: 'Channel deleted successfully' });
+  } catch (err) {
+    console.error('Error deleting channel:', err);
+    res.status(500).json({ error: 'Failed to delete channel' });
+  }
+});
+
+// GET /api/user/followed-channels - List channels the user follows with latest post preview
+app.get('/api/user/followed-channels', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { rows: followedChannels } = await pool.query(`
+      SELECT c.id, c.name, c.description, c.owner_id, c.category, c.is_verified, c.verified_at, c.is_featured, c.is_system, c.created_at, c.updated_at,
+             u.username as ownerUsername,
+             cf.followed_at,
+             (SELECT COUNT(*) FROM channel_followers WHERE channel_id = c.id)::INTEGER as followerCount,
+             fp.id as latestPostId,
+             fp.user_id as latestPostUserId,
+             fp.content as latestPostContent,
+             fp.created_at as latestPostCreatedAt,
+             pu.username as latestPostUsername
+      FROM channel_followers cf
+      JOIN channels c ON cf.channel_id = c.id
+      LEFT JOIN users u ON c.owner_id = u.id
+      LEFT JOIN (
+        SELECT DISTINCT ON (channel_id) id, user_id, content, created_at, channel_id
+        FROM feed_posts
+        ORDER BY channel_id, created_at DESC
+      ) fp ON c.id = fp.channel_id
+      LEFT JOIN users pu ON fp.user_id = pu.id
+      WHERE cf.user_id = $1
+      ORDER BY fp.created_at DESC NULLS LAST, cf.followed_at DESC
+    `, [req.user.id]);
+
+    const channels = followedChannels.map(ch => {
+      const contentObj = ch.latestPostContent ? JSON.parse(ch.latestPostContent) : null;
+      const contentSnippet = contentObj?.text ? contentObj.text.substring(0, 100) + (contentObj.text.length > 100 ? '...' : '') : null;
+
+      return {
+        id: ch.id,
+        name: ch.name,
+        description: ch.description,
+        ownerId: ch.owner_id,
+        ownerUsername: ch.ownerUsername,
+        category: ch.category,
+        isVerified: ch.is_verified,
+        verifiedAt: ch.verified_at,
+        isFeatured: ch.is_featured,
+        isSystem: ch.is_system,
+        createdAt: ch.created_at,
+        updatedAt: ch.updated_at,
+        followerCount: parseInt(ch.followerCount) || 0,
+        followedAt: ch.followed_at,
+        latestPost: ch.latestPostId ? {
+          id: ch.latestPostId,
+          authorUsername: ch.latestPostUsername,
+          contentSnippet: contentSnippet,
+          createdAt: ch.latestPostCreatedAt
+        } : null
+      };
+    });
+
+    res.json({ channels });
+  } catch (err) {
+    console.error('Error fetching followed channels:', err);
+    res.status(500).json({ error: 'Failed to fetch followed channels' });
+  }
+});
+
+// POST /api/channels/:channelId/follow - Follow a channel
+app.post('/api/channels/:channelId/follow', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const channelId = parseInt(req.params.channelId);
+    if (isNaN(channelId)) {
+      return res.status(400).json({ error: 'Invalid channel ID' });
+    }
+
+    // Check if channel exists
+    const { rows: channelCheck } = await pool.query(`
+      SELECT id FROM channels WHERE id = $1
+    `, [channelId]);
+
+    if (channelCheck.length === 0) {
+      return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    // Try to insert follower relationship
+    const { rows: result } = await pool.query(`
+      INSERT INTO channel_followers (user_id, channel_id, followed_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (user_id, channel_id) DO NOTHING
+      RETURNING id
+    `, [req.user.id, channelId]);
+
+    if (result.length === 0) {
+      return res.status(409).json({ error: 'Already following this channel' });
+    }
+
+    res.json({ success: true, message: 'Channel followed' });
+  } catch (err) {
+    console.error('Error following channel:', err);
+    res.status(500).json({ error: 'Failed to follow channel' });
+  }
+});
+
+// DELETE /api/channels/:channelId/follow - Unfollow a channel
+app.delete('/api/channels/:channelId/follow', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const channelId = parseInt(req.params.channelId);
+    if (isNaN(channelId)) {
+      return res.status(400).json({ error: 'Invalid channel ID' });
+    }
+
+    const { rows: result } = await pool.query(`
+      DELETE FROM channel_followers
+      WHERE user_id = $1 AND channel_id = $2
+      RETURNING id
+    `, [req.user.id, channelId]);
+
+    if (result.length === 0) {
+      return res.status(404).json({ error: 'Not following this channel' });
+    }
+
+    res.json({ success: true, message: 'Channel unfollowed' });
+  } catch (err) {
+    console.error('Error unfollowing channel:', err);
+    res.status(500).json({ error: 'Failed to unfollow channel' });
   }
 });
 
@@ -7281,6 +7546,25 @@ async function start() {
         ON channel_unread(user_id, channel_id)
     `);
 
+    // Create channel_followers table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS channel_followers (
+        id BIGSERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        channel_id BIGINT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+        followed_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(user_id, channel_id)
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_channel_followers_user_id
+        ON channel_followers(user_id, followed_at DESC)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_channel_followers_channel_id
+        ON channel_followers(channel_id)
+    `);
+
     // Create channel_categories table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS channel_categories (
@@ -8666,6 +8950,70 @@ async function start() {
       }
 
       console.log('[GuardiAI Seed] ✅ Staging demo data seed completed');
+
+      // Seed channels for staging testing
+      console.log('[Channel Seed] Starting channel seed data...');
+
+      // Ensure channel categories exist
+      await pool.query(`
+        INSERT INTO channel_categories (name, description) VALUES
+        ('Updates', 'System and important updates'),
+        ('General', 'General discussion'),
+        ('Announcements', 'Official announcements')
+        ON CONFLICT (name) DO NOTHING
+      `);
+
+      // Seed demo channels
+      const channels = [
+        { name: 'Staging Demo Channel', description: 'A staging demo channel for testing the feed-like UI', owner_id: 1, category: 'General' },
+        { name: 'Updates & News', description: 'Latest updates and news from the team', owner_id: 2, category: 'Announcements' },
+        { name: 'Product Feedback', description: 'Share your feedback and suggestions', owner_id: 3, category: 'General' }
+      ];
+
+      for (const channel of channels) {
+        const result = await pool.query(`
+          INSERT INTO channels (name, description, owner_id, category, is_system, is_verified, is_featured, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, FALSE, FALSE, FALSE, NOW(), NOW())
+          ON CONFLICT DO NOTHING
+          RETURNING id
+        `, [channel.name, channel.description, channel.owner_id, channel.category]);
+
+        if (result.rows.length > 0) {
+          const channelId = result.rows[0].id;
+          console.log(`[Channel Seed] Created channel: ${channel.name} (id: ${channelId})`);
+
+          // Seed demo posts in the channel
+          const posts = [
+            { user_id: 1, content: 'Welcome to the Staging Demo Channel! This is a great place to test the new feed-like layout.', offset: 180 },
+            { user_id: 2, content: 'The channel detail view now has a sticky header with owner-specific controls. Try editing or deleting this channel if you are the owner!', offset: 120 },
+            { user_id: 3, content: 'Posts are displayed in a clean chronological feed. You can see the most recent posts first.', offset: 60 },
+            { user_id: 1, content: 'Load more posts at the bottom to see older messages. Try scrolling down to test pagination!', offset: 30 }
+          ];
+
+          for (const post of posts) {
+            await pool.query(`
+              INSERT INTO feed_posts (user_id, channel_id, content, created_at)
+              VALUES ($1, $2, $3, NOW() - INTERVAL '${post.offset} minutes')
+              ON CONFLICT DO NOTHING
+            `, [post.user_id, channelId, JSON.stringify({ text: post.content })]);
+          }
+          console.log(`[Channel Seed] Created ${posts.length} demo posts in channel: ${channel.name}`);
+        }
+      }
+
+      // Seed channel followers for demo user (user 1 follows all channels)
+      console.log('[Channel Seed] Adding follower relationships...');
+      const { rows: channelRows } = await pool.query(`SELECT id FROM channels ORDER BY created_at ASC`);
+      for (const ch of channelRows) {
+        await pool.query(`
+          INSERT INTO channel_followers (user_id, channel_id, followed_at)
+          VALUES ($1, $2, NOW())
+          ON CONFLICT (user_id, channel_id) DO NOTHING
+        `, [1, ch.id]);
+      }
+      console.log(`[Channel Seed] ✅ Added follower relationships (demo user follows ${channelRows.length} channels)`);
+
+      console.log('[Channel Seed] ✅ Channel seed data completed');
     }
 
     // Create reserved system user for Crypto Daily bot (all environments)
