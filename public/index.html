@@ -5751,6 +5751,7 @@
             usernode_pubkey: result.usernode_pubkey,
             verified: result.verified,
             avatar_url: result.avatar_url,
+            source: result.source || 'local',
             isSearchResult: true,
             id: undefined
           });
@@ -5772,13 +5773,16 @@
         const isSaved = !item.isSearchResult;
         const displayName = item.nickname || item.username;
         const wallet = item.usernode_pubkey || 'No wallet';
+        const isBlockchainSource = item.source === 'blockchain';
+        const sourceLabel = isBlockchainSource ? ' <span class="text-xs font-medium text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-900/30 px-2 py-1 rounded">Usernode</span>' : '';
+        const userId = item.userId || item.id;
 
         if (isSaved) {
           return `
-            <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer" onclick="startConversationWithContact(${item.userId}, '${item.username}')">
+            <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer" onclick="startConversationWithContact(${userId}, '${item.username}')">
               <div class="flex justify-between items-start gap-2">
                 <div class="flex-1 min-w-0">
-                  <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${displayName} ${item.verified ? '<span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
+                  <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${displayName}${sourceLabel} ${item.verified ? '<span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
                   <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${wallet}</div>
                 </div>
                 <button onclick="event.stopPropagation(); showDeleteContactModal(${item.id}, '${displayName.replace(/'/g, "\\'")}')" class="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/30 rounded p-1 transition flex-shrink-0" title="Delete contact">🗑️</button>
@@ -5787,13 +5791,13 @@
           `;
         } else {
           return `
-            <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer" onclick="startConversationWithContact(${item.userId}, '${item.username}')">
+            <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer" onclick="startConversationWithContact(${userId}, '${item.username}')">
               <div class="flex justify-between items-start gap-2">
                 <div class="flex-1 min-w-0">
-                  <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${displayName} ${item.verified ? '<span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
+                  <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${displayName}${sourceLabel} ${item.verified ? '<span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
                   <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${wallet}</div>
                 </div>
-                <button onclick="event.stopPropagation(); addContactFromSearch(${item.userId}, '${item.username}')" class="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 text-sm transition">➕ Add</button>
+                <button onclick="event.stopPropagation(); addContactFromSearch(${userId}, '${item.username}')" class="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 text-sm transition">➕ Add</button>
               </div>
             </div>
           `;
