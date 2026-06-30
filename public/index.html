@@ -6348,13 +6348,36 @@
         if (data && data.posts) {
           channelPostsHasMore = data.hasMore || false;
           let html = '';
+
+          if (isOwner) {
+            html += `
+              <div class="p-4 border-b border-zinc-200 dark:border-zinc-800">
+                <textarea id="channelComposeTextarea-${channelId}" placeholder="Write a post in #${escapeHtml(channel.name)}..." maxlength="2000" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition resize-none" rows="3"></textarea>
+                <div class="flex justify-between items-center mt-2">
+                  <span class="text-xs text-zinc-500 dark:text-zinc-500"><span id="charCount-${channelId}">0</span>/2000</span>
+                  <button onclick="submitChannelPost(${channelId})" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition active:scale-95">Post</button>
+                </div>
+              </div>
+            `;
+
+            const textarea = null;
+            setTimeout(() => {
+              const ta = document.getElementById(`channelComposeTextarea-${channelId}`);
+              if (ta) {
+                ta.addEventListener('input', () => {
+                  document.getElementById(`charCount-${channelId}`).textContent = ta.value.length;
+                });
+              }
+            }, 0);
+          }
+
           if (data.posts.length === 0) {
-            html = `<div class="text-center py-12 text-zinc-600 dark:text-zinc-500">
+            html += `<div class="text-center py-12 text-zinc-600 dark:text-zinc-500">
               <p class="text-lg font-medium mb-2">No posts yet in #${escapeHtml(channel.name)}</p>
               <p class="text-sm">Be the first to post in this channel!</p>
             </div>`;
           } else {
-            html = '<div class="space-y-3 p-4" id="channelPostsContainer">';
+            html += '<div class="space-y-3 p-4" id="channelPostsContainer">';
             data.posts.forEach(post => {
               html += renderChannelPost(post);
             });
@@ -6367,6 +6390,16 @@
             }
           }
           document.getElementById('feedMainContent').innerHTML = html;
+
+          if (isOwner) {
+            const textarea = document.getElementById(`channelComposeTextarea-${channelId}`);
+            if (textarea) {
+              textarea.addEventListener('input', () => {
+                document.getElementById(`charCount-${channelId}`).textContent = textarea.value.length;
+              });
+            }
+          }
+
           channelPostsOffset = 50;
         } else if (data && data.error) {
           throw new Error(data.error);
@@ -6415,6 +6448,47 @@
         showToast('Error loading more posts', 'error');
       } finally {
         isLoadingChannelPosts = false;
+      }
+    }
+
+    async function submitChannelPost(channelId) {
+      const textarea = document.getElementById(`channelComposeTextarea-${channelId}`);
+      if (!textarea) return;
+
+      const postText = textarea.value.trim();
+      if (!postText) {
+        showToast('Post cannot be empty', 'error');
+        return;
+      }
+
+      if (postText.length > 2000) {
+        showToast('Post exceeds 2000 character limit', 'error');
+        return;
+      }
+
+      try {
+        const submitBtn = event.target;
+        submitBtn.disabled = true;
+
+        const data = await apiCall(`/api/channels/${channelId}/posts`, {
+          method: 'POST',
+          body: JSON.stringify({ content: { text: postText } })
+        });
+
+        if (data && data.error) {
+          showToast(data.error, 'error');
+        } else if (data) {
+          showToast('Post created', 'success');
+          textarea.value = '';
+          document.getElementById(`charCount-${channelId}`).textContent = '0';
+          await showChannelPosts(channelId);
+        }
+      } catch (err) {
+        console.error('Error submitting channel post:', err);
+        showToast('Error creating post', 'error');
+      } finally {
+        const submitBtn = event.target;
+        if (submitBtn) submitBtn.disabled = false;
       }
     }
 

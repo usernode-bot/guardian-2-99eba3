@@ -5598,6 +5598,77 @@ app.delete('/api/channels/:channelId/follow', async (req, res) => {
   }
 });
 
+// POST /api/channels/:channelId/posts - Create a post in a channel
+app.post('/api/channels/:channelId/posts', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const channelId = parseInt(req.params.channelId);
+    if (isNaN(channelId)) {
+      return res.status(400).json({ error: 'Invalid channel ID' });
+    }
+
+    // Verify channel exists and user is owner
+    const { rows: channelRows } = await pool.query(`
+      SELECT owner_id FROM channels WHERE id = $1
+    `, [channelId]);
+
+    if (channelRows.length === 0) {
+      return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    const channel = channelRows[0];
+    if (channel.owner_id !== req.user.id) {
+      return res.status(403).json({ error: 'Only the channel owner can post' });
+    }
+
+    // Validate content
+    const { content } = req.body;
+    if (!content || !content.text) {
+      return res.status(400).json({ error: 'Content with text is required' });
+    }
+
+    const text = String(content.text).trim();
+    if (text.length === 0) {
+      return res.status(400).json({ error: 'Post content cannot be empty' });
+    }
+
+    if (text.length > 2000) {
+      return res.status(400).json({ error: 'Post exceeds 2000 character limit' });
+    }
+
+    // Insert the post
+    const { rows: insertResult } = await pool.query(`
+      INSERT INTO feed_posts (user_id, content, channel_id, created_at)
+      VALUES ($1, $2, $3, NOW())
+      RETURNING id, user_id, content, created_at, updated_at
+    `, [req.user.id, JSON.stringify(content), channelId]);
+
+    if (insertResult.length === 0) {
+      return res.status(500).json({ error: 'Failed to create post' });
+    }
+
+    const post = insertResult[0];
+    res.status(201).json({
+      id: post.id,
+      userId: post.user_id,
+      username: req.user.username,
+      verified: false,
+      avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${req.user.username}`,
+      content: post.content,
+      createdAt: post.created_at,
+      updatedAt: post.updated_at,
+      isEdited: false,
+      onChain: false
+    });
+  } catch (err) {
+    console.error('Error creating channel post:', err);
+    res.status(500).json({ error: 'Failed to create post' });
+  }
+});
+
 // GET /api/user/pinned-channels - List user's pinned channels
 app.get('/api/user/pinned-channels', async (req, res) => {
   try {
