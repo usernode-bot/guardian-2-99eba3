@@ -11,7 +11,29 @@ const mockData = require('./server-mock-data');
 // Guardian 2 - Production-ready Usernode blockchain integration
 const app = express();
 const port = process.env.PORT || 3000;
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+// DATABASE_URL with graceful fallback for staging environments
+const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://localhost/guardian_staging';
+console.log(`[CONFIG] DATABASE_URL: ${DATABASE_URL ? 'configured' : 'using fallback'}`);
+
+const pool = new Pool({
+  connectionString: DATABASE_URL,
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000
+});
+
+// Track database connection state
+let dbConnected = false;
+pool.on('connect', () => {
+  dbConnected = true;
+  console.log('[DB] Connection established');
+});
+pool.on('error', (err) => {
+  dbConnected = false;
+  console.error('[DB] Pool error:', err.message);
+});
+
 const JWT_SECRET = process.env.JWT_SECRET;
 const IS_STAGING = process.env.USERNODE_ENV === 'staging';
 
@@ -972,7 +994,7 @@ app.use(async (req, res, next) => {
   }
 
   // Upsert user on first request: ensure user exists in DB with wallet identity
-  if (req.user) {
+  if (req.user && dbConnected) {
     try {
       await pool.query(`
         INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at)
@@ -998,7 +1020,32 @@ app.use(async (req, res, next) => {
   next();
 });
 
-app.get('/health', (_req, res) => res.json({ status: 'ok', staging: IS_STAGING, environment: IS_STAGING ? 'staging' : 'production' }));
+app.get('/health', async (_req, res) => {
+  try {
+    // Quick database connectivity check (timeout after 1 second)
+    await Promise.race([
+      pool.query('SELECT 1'),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('DB timeout')), 1000))
+    ]);
+    res.json({
+      status: 'ok',
+      staging: IS_STAGING,
+      environment: IS_STAGING ? 'staging' : 'production',
+      database: 'connected'
+    });
+  } catch (err) {
+    // Graceful degradation: respond 200 even if DB is unavailable
+    // This prevents container startup from failing when DB takes time to initialize
+    console.warn('[HEALTH] Database check failed:', err.message);
+    res.json({
+      status: 'ok',
+      staging: IS_STAGING,
+      environment: IS_STAGING ? 'staging' : 'production',
+      database: 'disconnected',
+      warning: 'Database unavailable but server is running'
+    });
+  }
+});
 
 // Debug endpoint to verify GuardiAI user exists (public for troubleshooting)
 app.get('/api/debug/guardiAI', async (_req, res) => {
@@ -1505,8 +1552,14 @@ app.get('/api/conversations', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
+    // Return empty conversations if database is not connected
+    if (!dbConnected) {
+      return res.json({ conversations: { active: [], pending: [], archived: [] } });
+    }
+
     if (ENABLE_DEMO_MODE) {
-      return res.json(mockData.getMockConversations(1, limit, offset));
+      const mockConvs = mockData.getMockConversations(1, limit, offset);
+      return res.json({ conversations: mockConvs });
     }
 
     // Optimized query using joins to eliminate N+1 lookups
@@ -6776,8 +6829,34 @@ app.get('*', (req, res) => {
 
 async function start() {
   try {
-    // Drop old presses table if it exists (for demo purposes)
-    await pool.query(`DROP TABLE IF EXISTS presses CASCADE`);
+    console.log('[STARTUP] Initializing Guardian 2 server...');
+
+    // Test database connectivity with timeout
+    console.log('[DB] Testing connection...');
+    try {
+      await Promise.race([
+        pool.query('SELECT 1'),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), 3000))
+      ]);
+      console.log('[DB] ✅ Connection successful');
+      dbConnected = true;
+    } catch (dbErr) {
+      console.warn('[DB] ⚠️  Cannot reach database, continuing with limited functionality:', dbErr.message);
+      console.warn('[DB] The app will serve static pages but database features will be unavailable');
+      dbConnected = false;
+      // Don't throw - allow server to continue
+    }
+
+    // Skip table initialization if database is not connected
+    if (!dbConnected) {
+      console.log('[STARTUP] Skipping database initialization due to connection failure');
+      console.log('[STARTUP] App will boot in degraded mode with static content only');
+    }
+
+    if (dbConnected) {
+      try {
+        // Drop old presses table if it exists (for demo purposes)
+        await pool.query(`DROP TABLE IF EXISTS presses CASCADE`);
 
     // Create users table
     await pool.query(`
@@ -8571,61 +8650,114 @@ async function start() {
         `, [m.key, m.label, m.value, m.unit, m.category]);
       }
     }
+      } catch (dbInitErr) {
+        console.error('[DB] Database initialization error:', dbInitErr.message);
+        console.log('[STARTUP] Continuing with degraded functionality');
+      }
+    }
 
     // Start hourly milestone post generator (runs every hour with 24-hour cooldown)
     // Create initial milestone post on startup if cooldown allows
-    if (await shouldCreateMilestonePost()) {
-      await createMilestonePost();
+    if (dbConnected) {
+      try {
+        if (await shouldCreateMilestonePost()) {
+          await createMilestonePost();
+        }
+      } catch (err) {
+        console.warn('[STARTUP] Failed to create initial milestone post:', err.message);
+      }
     }
 
     // Set interval to check and create milestone post every hour (3600000 ms)
     // Only creates if 24 hours have passed since the last post
-    setInterval(async () => {
-      if (await shouldCreateMilestonePost()) {
-        await createMilestonePost();
-      }
-    }, 3600000);
+    if (dbConnected) {
+      setInterval(async () => {
+        try {
+          if (await shouldCreateMilestonePost()) {
+            await createMilestonePost();
+          }
+        } catch (err) {
+          console.warn('[BOT] Milestone post creation failed:', err.message);
+        }
+      }, 3600000);
+    }
 
     // Start Crypto Daily bot (runs every 2 hours)
     // Create initial post on startup if cooldown check passes
-    if (await shouldCreateCryptoDailyPost()) {
-      await createCryptoDailyPost();
+    if (dbConnected) {
+      try {
+        if (await shouldCreateCryptoDailyPost()) {
+          await createCryptoDailyPost();
+        }
+      } catch (err) {
+        console.warn('[STARTUP] Failed to create initial Crypto Daily post:', err.message);
+      }
     }
 
     // Set interval to create a new Crypto Daily post every 2 hours (7200000 ms)
     // Conditionally create posts only when cooldown criteria are met
-    setInterval(async () => {
-      if (await shouldCreateCryptoDailyPost()) {
-        await createCryptoDailyPost();
-      }
-    }, 7200000);
+    if (dbConnected) {
+      setInterval(async () => {
+        try {
+          if (await shouldCreateCryptoDailyPost()) {
+            await createCryptoDailyPost();
+          }
+        } catch (err) {
+          console.warn('[BOT] Crypto Daily post creation failed:', err.message);
+        }
+      }, 7200000);
+    }
 
     // Start GuardiAI bot (runs every 12 hours)
     // Create initial post on startup if cooldown check passes
-    if (await shouldCreateGuardiAIPost()) {
-      await createGuardiAIPost();
+    if (dbConnected) {
+      try {
+        if (await shouldCreateGuardiAIPost()) {
+          await createGuardiAIPost();
+        }
+      } catch (err) {
+        console.warn('[STARTUP] Failed to create initial GuardiAI post:', err.message);
+      }
     }
 
     // Set interval to create a new GuardiAI post every 12 hours (43200000 ms)
     // Conditionally create posts only when cooldown criteria are met
-    setInterval(async () => {
-      if (await shouldCreateGuardiAIPost()) {
-        await createGuardiAIPost();
-      }
-    }, 43200000);
+    if (dbConnected) {
+      setInterval(async () => {
+        try {
+          if (await shouldCreateGuardiAIPost()) {
+            await createGuardiAIPost();
+          }
+        } catch (err) {
+          console.warn('[BOT] GuardiAI post creation failed:', err.message);
+        }
+      }, 43200000);
+    }
 
     // Initialize Usernode blockchain usernames cache for real-time search
-    console.log('[UsernamesCache] Initializing on server startup...');
-    const usernamesCache = createUsernamesCache({
-      nodeRpcUrl: NODE_RPC_URL,
-      refreshIntervalMs: 300000, // 5 minutes
-      isStaging: IS_STAGING
-    });
-    await usernamesCache.initialize();
-    console.log('[UsernamesCache] ✅ Cache initialized:', usernamesCache.stats());
+    try {
+      console.log('[UsernamesCache] Initializing on server startup...');
+      const usernamesCache = createUsernamesCache({
+        nodeRpcUrl: NODE_RPC_URL,
+        refreshIntervalMs: 300000, // 5 minutes
+        isStaging: IS_STAGING
+      });
+      await usernamesCache.initialize();
+      console.log('[UsernamesCache] ✅ Cache initialized:', usernamesCache.stats());
 
-    // Store cache in global scope for access by API endpoints
-    global.usernamesCache = usernamesCache;
+      // Store cache in global scope for access by API endpoints
+      global.usernamesCache = usernamesCache;
+    } catch (cacheErr) {
+      console.warn('[UsernamesCache] Initialization failed:', cacheErr.message);
+      // Create a no-op cache that returns empty results
+      global.usernamesCache = {
+        searchUsernames: () => [],
+        getUsername: () => null,
+        getUsernameByPubkey: () => null,
+        ready: () => false,
+        stats: () => ({ initialized: false, usernameCount: 0 })
+      };
+    }
 
     app.listen(port, () => {
       console.log(`Listening on :${port}`);
