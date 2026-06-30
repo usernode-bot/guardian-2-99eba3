@@ -1,3 +1,4 @@
+# Rebuild trigger: 2026-06-30-rebuild-01
 FROM node:22-alpine
 WORKDIR /app
 COPY package.json ./
