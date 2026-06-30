@@ -2165,8 +2165,8 @@ app.post('/api/tokens/send', async (req, res) => {
     console.log(`[TOKEN] txHash provided: ${txHash ? 'yes - ' + txHash : 'no'}`);
     console.log(`[TOKEN] Frontend content hash: ${frontendContentHash || 'none'}`);
 
-    // Validate wallet connection before proceeding with transaction
-    if (!req.user.usernode_pubkey) {
+    // Validate wallet connection before proceeding with transaction (skip in demo mode)
+    if (!ENABLE_DEMO_MODE && !req.user.usernode_pubkey) {
       return res.status(401).json({ error: 'Must be connected to Usernode wallet to send tokens' });
     }
 
@@ -3984,8 +3984,8 @@ app.put('/api/groups/:groupId', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
-    // Validate wallet connection before proceeding with group update
-    if (!req.user.usernode_pubkey) {
+    // Validate wallet connection before proceeding with group update (skip in demo mode)
+    if (!ENABLE_DEMO_MODE && !req.user.usernode_pubkey) {
       return res.status(401).json({ error: 'Must be connected to Usernode wallet to update groups' });
     }
 
@@ -4024,11 +4024,12 @@ app.put('/api/groups/:groupId', async (req, res) => {
     // Create audit log entry for group update
     const networkPrefix = network === 'mainnet' ? 'mainnet-' : 'testnet-';
     const placeholderTxHash = ENABLE_DEMO_MODE ? 'ut1staging-' + networkPrefix + 'tx-update-' + Date.now() : 'ut1-' + networkPrefix + 'tx-update-' + Math.random().toString(36).substr(2, 9);
+    const auditStatus = ENABLE_DEMO_MODE ? 'confirmed' : 'pending';
     const auditRes = await pool.query(`
       INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $6)
       RETURNING id
-    `, [userId, 'group_update', placeholderTxHash, JSON.stringify(transactionPayload), 'pending', now]);
+    `, [userId, 'group_update', placeholderTxHash, JSON.stringify(transactionPayload), auditStatus, now]);
     const blockchainRecordingId = auditRes.rows[0].id;
 
     // Async: submit to blockchain in the background
@@ -5252,8 +5253,8 @@ app.post('/api/channels', async (req, res) => {
       return res.status(400).json({ error: 'Invalid user ID' });
     }
 
-    // Verify wallet is connected
-    if (!req.user.usernode_pubkey) {
+    // Verify wallet is connected (skip in demo mode)
+    if (!ENABLE_DEMO_MODE && !req.user.usernode_pubkey) {
       return res.status(401).json({ error: 'Must be connected to Usernode wallet to create channels' });
     }
 
@@ -5317,11 +5318,20 @@ app.post('/api/channels', async (req, res) => {
 
     // Update audit log with txHash
     if (auditLogId) {
-      await pool.query(`
-        UPDATE blockchain_audit_logs
-        SET tx_hash = $1, status = 'confirmed', confirmed_at = NOW()
-        WHERE id = $2 AND user_id = $3
-      `, [txHash, auditLogId, userId]);
+      const auditStatusForChannel = ENABLE_DEMO_MODE ? 'confirmed' : 'pending';
+      if (ENABLE_DEMO_MODE) {
+        await pool.query(`
+          UPDATE blockchain_audit_logs
+          SET tx_hash = $1, status = $2, confirmed_at = NOW()
+          WHERE id = $3 AND user_id = $4
+        `, [txHash, auditStatusForChannel, auditLogId, userId]);
+      } else {
+        await pool.query(`
+          UPDATE blockchain_audit_logs
+          SET tx_hash = $1, status = $2
+          WHERE id = $3 AND user_id = $4
+        `, [txHash, auditStatusForChannel, auditLogId, userId]);
+      }
     }
 
     res.status(201).json({
