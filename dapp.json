@@ -2,6 +2,13 @@
   "name": "Guardian",
   "secrets": [
     {
+      "key": "DATABASE_URL",
+      "description": "PostgreSQL connection string for Guardian's database. Format: postgresql://user:password@host:port/database. Required for persistent storage of users, messages, and channels.",
+      "required": false,
+      "private": true,
+      "staging_default": "postgresql://localhost/guardian_staging"
+    },
+    {
       "key": "APP_PUBKEY",
       "description": "Guardian app's ED25519 public key address (ut1...) for blockchain transactions. Used for transaction signing and app identification on Usernode testnet.",
       "required": true,

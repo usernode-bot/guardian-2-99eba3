@@ -5,11 +5,35 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const https = require('https');
 const http = require('http');
+const { createUsernamesCache } = require('./lib/dapp-server');
+const mockData = require('./server-mock-data');
 
 // Guardian 2 - Production-ready Usernode blockchain integration
 const app = express();
 const port = process.env.PORT || 3000;
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+// DATABASE_URL with graceful fallback for staging environments
+const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://localhost/guardian_staging';
+console.log(`[CONFIG] DATABASE_URL: ${DATABASE_URL ? 'configured' : 'using fallback'}`);
+
+const pool = new Pool({
+  connectionString: DATABASE_URL,
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000
+});
+
+// Track database connection state
+let dbConnected = false;
+pool.on('connect', () => {
+  dbConnected = true;
+  console.log('[DB] Connection established');
+});
+pool.on('error', (err) => {
+  dbConnected = false;
+  console.error('[DB] Pool error:', err.message);
+});
+
 const JWT_SECRET = process.env.JWT_SECRET;
 const IS_STAGING = process.env.USERNODE_ENV === 'staging';
 
@@ -29,7 +53,176 @@ let ENABLE_DEMO_MODE = getEnableDemoMode();
 // Usernode blockchain configuration
 const APP_PUBKEY = process.env.APP_PUBKEY || 'ut1Fww7onqF9LsRSb6d6BozgQWtjNYqQJghYxXmBc8foncb';
 const APP_SECRET_KEY = process.env.APP_SECRET_KEY || 'guardian_sk_mqudwes5_ae613cf56214808e';
-const NODE_RPC_URL = process.env.NODE_RPC_URL || 'http://localhost:3001';
+
+// RPC Configuration with validation (Real Testnet mode only)
+function validateAndConfigureRPC() {
+  // RPC configuration only applies when NETWORK_MODE === 'testnet'
+  // In demo mode, bridge/fallback is used exclusively
+
+  let configuredUrl = process.env.NODE_RPC_URL;
+
+  // If NODE_RPC_URL is set, validate it's a valid URL (only in testnet mode)
+  if (configuredUrl && NETWORK_MODE === 'testnet') {
+    try {
+      new URL(configuredUrl);
+    } catch (err) {
+      console.warn(`[CONFIG] NODE_RPC_URL is invalid URL: ${configuredUrl}, error: ${err.message}`);
+      configuredUrl = null;
+    }
+  }
+
+  // If not set or invalid, use intelligent defaults based on environment
+  if (!configuredUrl && NETWORK_MODE === 'testnet') {
+    if (IS_STAGING) {
+      configuredUrl = 'http://host.docker.internal:3001';
+      console.log(`[CONFIG] NODE_RPC_URL not set in staging, using default: ${configuredUrl}`);
+    } else {
+      console.warn(`[CONFIG] NODE_RPC_URL not configured in production testnet mode — token transfers and blockchain features may be unavailable`);
+      configuredUrl = null; // Will trigger fallback to bridge mode
+    }
+  }
+
+  // In demo mode, return null to skip RPC entirely
+  if (NETWORK_MODE === 'demo') {
+    return null;
+  }
+
+  return configuredUrl;
+}
+
+let NODE_RPC_URL = validateAndConfigureRPC();
+
+// RPC health check cache
+let rpcHealthCache = null;
+let rpcHealthCacheTime = 0;
+const RPC_HEALTH_CACHE_MS = 30000; // 30 seconds
+
+async function checkRPCHealth() {
+  // RPC health checks only in testnet mode
+  if (NETWORK_MODE !== 'testnet') {
+    return { rpcUrl: null, reachable: false, error: 'Demo mode - RPC not used' };
+  }
+
+  if (!NODE_RPC_URL) {
+    return { rpcUrl: null, reachable: false, error: 'NODE_RPC_URL not configured' };
+  }
+
+  const now = Date.now();
+  if (rpcHealthCache && (now - rpcHealthCacheTime) < RPC_HEALTH_CACHE_MS) {
+    return rpcHealthCache;
+  }
+
+  return new Promise((resolve) => {
+    const startTime = Date.now();
+    const url = new URL('/health', NODE_RPC_URL);
+    const isHttps = NODE_RPC_URL.startsWith('https');
+    const client = isHttps ? https : http;
+
+    const options = {
+      hostname: url.hostname,
+      port: url.port,
+      path: url.pathname,
+      method: 'GET',
+      timeout: 3000
+    };
+
+    const req = client.request(options, (res) => {
+      const responseTime = Date.now() - startTime;
+      const result = {
+        rpcUrl: NODE_RPC_URL,
+        reachable: res.statusCode >= 200 && res.statusCode < 300,
+        responseTime,
+        lastChecked: new Date().toISOString(),
+        error: null
+      };
+      rpcHealthCache = result;
+      rpcHealthCacheTime = now;
+      resolve(result);
+    });
+
+    req.on('error', (err) => {
+      const responseTime = Date.now() - startTime;
+      const result = {
+        rpcUrl: NODE_RPC_URL,
+        reachable: false,
+        responseTime,
+        lastChecked: new Date().toISOString(),
+        error: err.code || err.message
+      };
+      rpcHealthCache = result;
+      rpcHealthCacheTime = now;
+      resolve(result);
+    });
+
+    req.on('timeout', () => {
+      req.destroy();
+      const responseTime = Date.now() - startTime;
+      const result = {
+        rpcUrl: NODE_RPC_URL,
+        reachable: false,
+        responseTime,
+        lastChecked: new Date().toISOString(),
+        error: 'ETIMEDOUT'
+      };
+      rpcHealthCache = result;
+      rpcHealthCacheTime = now;
+      resolve(result);
+    });
+
+    req.end();
+  });
+}
+
+// Helper function to classify RPC errors
+function classifyRPCError(err) {
+  if (!err) return { type: 'unknown', message: 'Unknown error' };
+
+  const message = err.message || '';
+  const code = err.code || '';
+
+  if (code === 'ECONNREFUSED' || message.includes('ECONNREFUSED')) {
+    return { type: 'ECONNREFUSED', message: `RPC connection refused at ${NODE_RPC_URL}` };
+  }
+  if (code === 'ENOTFOUND' || message.includes('ENOTFOUND')) {
+    return { type: 'ENOTFOUND', message: `RPC hostname not found: ${NODE_RPC_URL}` };
+  }
+  if (code === 'ETIMEDOUT' || message.includes('ETIMEDOUT')) {
+    return { type: 'ETIMEDOUT', message: `RPC connection timeout: ${NODE_RPC_URL}` };
+  }
+  if (message.includes('timeout') || code === 'ESOCKETTIMEDOUT') {
+    return { type: 'timeout', message: `RPC request timeout (>10s): ${NODE_RPC_URL}` };
+  }
+
+  return { type: 'unknown', message: message || code || 'Unknown RPC error' };
+}
+
+// Helper function to get RPC endpoint from database
+async function getRpcEndpointFromDatabase() {
+  try {
+    const result = await pool.query(`
+      SELECT value FROM config_state WHERE key = 'NODE_RPC_URL' LIMIT 1
+    `);
+    if (result.rows.length > 0) {
+      return result.rows[0].value;
+    }
+  } catch (err) {
+    console.error('[RPC Config] Error fetching RPC endpoint from database:', err.message);
+  }
+  return null;
+}
+
+// Initialize RPC URL from database if available (testnet only)
+async function initializeRpcUrl() {
+  if (NETWORK_MODE !== 'testnet') return;
+  const dbRpcUrl = await getRpcEndpointFromDatabase();
+  if (dbRpcUrl) {
+    NODE_RPC_URL = dbRpcUrl;
+    console.log('[RPC Config] RPC endpoint initialized from database:', NODE_RPC_URL);
+  } else {
+    NODE_RPC_URL = validateAndConfigureRPC();
+    console.log('[RPC Config] RPC endpoint initialized from environment:', NODE_RPC_URL);
+  }
+}
 
 // Usernode chain configuration
 const CHAIN_CONFIG = {
@@ -101,8 +294,8 @@ function calculateRankData(foregroundHours) {
   return { rank, hoursBracket, contributionLevel };
 }
 
-// Helper function to get foreground hours for a user (staging: mock data, prod: placeholder)
-function getForegroundHours(userId) {
+// Helper function to get foreground hours for a user (staging: mock data, prod: from sessions table)
+async function getForegroundHours(userId) {
   if (IS_STAGING) {
     // In staging, provide mock data based on user ID for consistency
     const numUserId = parseInt(userId, 10);
@@ -110,10 +303,19 @@ function getForegroundHours(userId) {
     // Use modulo to deterministically map user ID to a value
     return mockDataSet[numUserId % mockDataSet.length];
   } else {
-    // In production, fetch from peers/usernode
-    // For now, default to 0 hours as a placeholder
-    // TODO: Integrate with usernode peer discovery to fetch real foreground hours
-    return 0;
+    // In production, sum foreground hours from sessions table
+    try {
+      const { rows } = await pool.query(`
+        SELECT COALESCE(SUM(duration_seconds), 0) as total_seconds
+        FROM user_foreground_sessions
+        WHERE user_id = $1
+      `, [userId]);
+      const totalSeconds = rows[0].total_seconds || 0;
+      return Math.floor(totalSeconds / 3600); // Convert seconds to hours
+    } catch (err) {
+      console.error('Error fetching foreground hours from sessions:', err);
+      return 0;
+    }
   }
 }
 
@@ -291,13 +493,13 @@ async function sendOutgoingPayment(recipient, amount, memo) {
   try {
     console.log(`[BLOCKCHAIN-SUBMIT] sendOutgoingPayment: recipient=${recipient}, amount=${amount}, memo=${memo ? 'provided' : 'none'}`);
 
-    // In staging or without RPC URL, return demo transaction
-    if (IS_STAGING || !NODE_RPC_URL) {
-      console.log(`[BLOCKCHAIN-SUBMIT] Demo/staging mode: would send ${amount} to ${recipient}`);
+    // In demo mode or without RPC URL in testnet, use bridge/fallback
+    if (NETWORK_MODE === 'demo' || !NODE_RPC_URL) {
+      console.log(`[BLOCKCHAIN-SUBMIT] Bridge/fallback mode: would send ${amount} to ${recipient}`);
       return { success: true, transactionHash: 'ut1staging-token-demo-' + Date.now() };
     }
 
-    // In production: POST to NODE_RPC_URL /wallet/send
+    // In testnet mode with RPC: POST to NODE_RPC_URL /wallet/send
     // Pattern: Last One Wins wallet_send RPC format
     const rpcPayload = {
       method: 'wallet_send',
@@ -309,7 +511,7 @@ async function sendOutgoingPayment(recipient, amount, memo) {
       }
     };
 
-    console.log(`[BLOCKCHAIN-SUBMIT] Submitting real payment tx to ${NODE_RPC_URL}/wallet/send with payload: ${JSON.stringify(rpcPayload)}`);
+    console.log(`[BLOCKCHAIN-RPC] Attempting to connect to ${NODE_RPC_URL}/wallet/send, timeout=10000ms, method=wallet_send`);
 
     return new Promise((resolve, reject) => {
       const url = new URL('/wallet/send', NODE_RPC_URL);
@@ -336,26 +538,35 @@ async function sendOutgoingPayment(recipient, amount, memo) {
             const response = JSON.parse(data);
             if (res.statusCode >= 200 && res.statusCode < 300) {
               const txHash = response.txHash || response.hash || 'ut1-tx-' + Math.random().toString(36).substr(2, 9);
-              console.log(`[BLOCKCHAIN-SUBMIT] Payment submitted successfully: statusCode=${res.statusCode}, txHash=${txHash}, response=${JSON.stringify(response)}`);
+              console.log(`[BLOCKCHAIN-SUBMIT] Payment submitted successfully: statusCode=${res.statusCode}, txHash=${txHash}`);
               resolve({
                 success: true,
                 transactionHash: txHash
               });
+            } else if (res.statusCode >= 500) {
+              console.error(`[BLOCKCHAIN-RPC] Server error (HTTP ${res.statusCode}): ${response.error || JSON.stringify(response)}`);
+              reject(new Error(`RPC server error (HTTP ${res.statusCode}): ${response.error || 'unknown'}`));
             } else {
-              console.error(`[BLOCKCHAIN-SUBMIT] RPC error: statusCode=${res.statusCode}, response=${JSON.stringify(response)}`);
-              reject(new Error(`RPC error: ${response.error || res.statusCode}`));
+              console.error(`[BLOCKCHAIN-RPC] Client error (HTTP ${res.statusCode}): ${response.error || JSON.stringify(response)}`);
+              reject(new Error(`RPC error (HTTP ${res.statusCode}): ${response.error || 'unknown'}`));
             }
           } catch (err) {
-            console.error(`[BLOCKCHAIN-SUBMIT] Failed to parse RPC response: ${err.message}`);
+            console.error(`[BLOCKCHAIN-RPC] Failed to parse RPC response: ${err.message}`);
             reject(new Error(`Failed to parse RPC response: ${err.message}`));
           }
         });
       });
 
-      req.on('error', reject);
+      req.on('error', (err) => {
+        const errorClass = classifyRPCError(err);
+        console.error(`[BLOCKCHAIN-RPC] Connection failed (${errorClass.type}): ${errorClass.message}`);
+        reject(new Error(`${errorClass.type}: ${errorClass.message}`));
+      });
+
       req.on('timeout', () => {
         req.destroy();
-        reject(new Error('Sidecar RPC request timeout'));
+        console.error(`[BLOCKCHAIN-RPC] Request timeout (>10s): ${NODE_RPC_URL}/wallet/send`);
+        reject(new Error('RPC_TIMEOUT: Request timeout (exceeded 10 seconds)'));
       });
 
       req.write(JSON.stringify(rpcPayload));
@@ -367,18 +578,18 @@ async function sendOutgoingPayment(recipient, amount, memo) {
   }
 }
 
-// Send message transaction to blockchain via RPC
+// Send message transaction to blockchain via RPC (Real Testnet mode only)
 async function sendMessageToBlockchain(messagePayload, memo, network = 'testnet') {
   try {
     console.log(`[BLOCKCHAIN-SUBMIT] sendMessageToBlockchain: messageId=${messagePayload.messageId}, memo=${memo ? 'provided' : 'none'}`);
 
-    // In staging or without RPC URL, return demo transaction
-    if (IS_STAGING || !NODE_RPC_URL) {
-      console.log(`[BLOCKCHAIN-SUBMIT] Demo/staging mode: would submit message ${messagePayload.messageId} to network ${network}`);
+    // In demo mode or without RPC URL in testnet, use bridge/fallback
+    if (NETWORK_MODE === 'demo' || !NODE_RPC_URL) {
+      console.log(`[BLOCKCHAIN-SUBMIT] Bridge/fallback mode: would submit message ${messagePayload.messageId} to network ${network}`);
       return { transactionHash: 'ut1staging-' + network + '-message-' + Date.now() };
     }
 
-    // In production: POST to NODE_RPC_URL /transaction/submit
+    // In testnet mode with RPC: POST to NODE_RPC_URL /transaction/submit
     const rpcPayload = {
       method: 'transaction_submit',
       params: {
@@ -389,7 +600,7 @@ async function sendMessageToBlockchain(messagePayload, memo, network = 'testnet'
       }
     };
 
-    console.log(`[BLOCKCHAIN-SUBMIT] Submitting message tx to ${NODE_RPC_URL}/transaction/submit, messageId=${messagePayload.messageId}`);
+    console.log(`[BLOCKCHAIN-RPC] Attempting to connect to ${NODE_RPC_URL}/transaction/submit, timeout=10000ms, method=transaction_submit`);
 
     return new Promise((resolve, reject) => {
       const url = new URL('/transaction/submit', NODE_RPC_URL);
@@ -420,21 +631,30 @@ async function sendMessageToBlockchain(messagePayload, memo, network = 'testnet'
               resolve({
                 transactionHash: txHash
               });
+            } else if (res.statusCode >= 500) {
+              console.error(`[BLOCKCHAIN-RPC] Server error (HTTP ${res.statusCode}): ${response.error || JSON.stringify(response)}`);
+              reject(new Error(`RPC server error (HTTP ${res.statusCode}): ${response.error || 'unknown'}`));
             } else {
-              console.error(`[BLOCKCHAIN-SUBMIT] RPC error: statusCode=${res.statusCode}, response=${JSON.stringify(response)}`);
-              reject(new Error(`RPC error: ${response.error || res.statusCode}`));
+              console.error(`[BLOCKCHAIN-RPC] Client error (HTTP ${res.statusCode}): ${response.error || JSON.stringify(response)}`);
+              reject(new Error(`RPC error (HTTP ${res.statusCode}): ${response.error || 'unknown'}`));
             }
           } catch (err) {
-            console.error(`[BLOCKCHAIN-SUBMIT] Failed to parse RPC response: ${err.message}`);
+            console.error(`[BLOCKCHAIN-RPC] Failed to parse RPC response: ${err.message}`);
             reject(new Error(`Failed to parse RPC response: ${err.message}`));
           }
         });
       });
 
-      req.on('error', reject);
+      req.on('error', (err) => {
+        const errorClass = classifyRPCError(err);
+        console.error(`[BLOCKCHAIN-RPC] Connection failed (${errorClass.type}): ${errorClass.message}`);
+        reject(new Error(`${errorClass.type}: ${errorClass.message}`));
+      });
+
       req.on('timeout', () => {
         req.destroy();
-        reject(new Error('Message submission RPC request timeout'));
+        console.error(`[BLOCKCHAIN-RPC] Request timeout (>10s): ${NODE_RPC_URL}/transaction/submit`);
+        reject(new Error('RPC_TIMEOUT: Request timeout (exceeded 10 seconds)'));
       });
 
       req.write(JSON.stringify(rpcPayload));
@@ -446,18 +666,18 @@ async function sendMessageToBlockchain(messagePayload, memo, network = 'testnet'
   }
 }
 
-// Send group creation transaction to blockchain via RPC
+// Send group creation transaction to blockchain via RPC (Real Testnet mode only)
 async function sendGroupToBlockchain(groupPayload, memo, memberPubkeys, network = 'testnet') {
   try {
     console.log(`[BLOCKCHAIN-SUBMIT] sendGroupToBlockchain: groupId=${groupPayload.groupId}, memo=${memo ? 'provided' : 'none'}`);
 
-    // In staging or without RPC URL, return demo transaction
-    if (IS_STAGING || !NODE_RPC_URL) {
-      console.log(`[BLOCKCHAIN-SUBMIT] Demo/staging mode: would create group ${groupPayload.groupId} to network ${network}`);
+    // In demo mode or without RPC URL in testnet, use bridge/fallback
+    if (NETWORK_MODE === 'demo' || !NODE_RPC_URL) {
+      console.log(`[BLOCKCHAIN-SUBMIT] Bridge/fallback mode: would create group ${groupPayload.groupId} to network ${network}`);
       return { transactionHash: 'ut1staging-' + network + '-group-' + Date.now() };
     }
 
-    // In production: POST to NODE_RPC_URL /transaction/submit
+    // In testnet mode with RPC: POST to NODE_RPC_URL /transaction/submit
     const rpcPayload = {
       method: 'transaction_submit',
       params: {
@@ -468,7 +688,7 @@ async function sendGroupToBlockchain(groupPayload, memo, memberPubkeys, network 
       }
     };
 
-    console.log(`[BLOCKCHAIN-SUBMIT] Submitting group tx to ${NODE_RPC_URL}/transaction/submit, groupId=${groupPayload.groupId}`);
+    console.log(`[BLOCKCHAIN-RPC] Attempting to connect to ${NODE_RPC_URL}/transaction/submit, timeout=10000ms, method=transaction_submit`);
 
     return new Promise((resolve, reject) => {
       const url = new URL('/transaction/submit', NODE_RPC_URL);
@@ -499,21 +719,30 @@ async function sendGroupToBlockchain(groupPayload, memo, memberPubkeys, network 
               resolve({
                 transactionHash: txHash
               });
+            } else if (res.statusCode >= 500) {
+              console.error(`[BLOCKCHAIN-RPC] Server error (HTTP ${res.statusCode}): ${response.error || JSON.stringify(response)}`);
+              reject(new Error(`RPC server error (HTTP ${res.statusCode}): ${response.error || 'unknown'}`));
             } else {
-              console.error(`[BLOCKCHAIN-SUBMIT] RPC error: statusCode=${res.statusCode}, response=${JSON.stringify(response)}`);
-              reject(new Error(`RPC error: ${response.error || res.statusCode}`));
+              console.error(`[BLOCKCHAIN-RPC] Client error (HTTP ${res.statusCode}): ${response.error || JSON.stringify(response)}`);
+              reject(new Error(`RPC error (HTTP ${res.statusCode}): ${response.error || 'unknown'}`));
             }
           } catch (err) {
-            console.error(`[BLOCKCHAIN-SUBMIT] Failed to parse RPC response: ${err.message}`);
+            console.error(`[BLOCKCHAIN-RPC] Failed to parse RPC response: ${err.message}`);
             reject(new Error(`Failed to parse RPC response: ${err.message}`));
           }
         });
       });
 
-      req.on('error', reject);
+      req.on('error', (err) => {
+        const errorClass = classifyRPCError(err);
+        console.error(`[BLOCKCHAIN-RPC] Connection failed (${errorClass.type}): ${errorClass.message}`);
+        reject(new Error(`${errorClass.type}: ${errorClass.message}`));
+      });
+
       req.on('timeout', () => {
         req.destroy();
-        reject(new Error('Group submission RPC request timeout'));
+        console.error(`[BLOCKCHAIN-RPC] Request timeout (>10s): ${NODE_RPC_URL}/transaction/submit`);
+        reject(new Error('RPC_TIMEOUT: Request timeout (exceeded 10 seconds)'));
       });
 
       req.write(JSON.stringify(rpcPayload));
@@ -765,7 +994,7 @@ app.use(async (req, res, next) => {
   }
 
   // Upsert user on first request: ensure user exists in DB with wallet identity
-  if (req.user) {
+  if (req.user && dbConnected) {
     try {
       await pool.query(`
         INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at)
@@ -791,7 +1020,32 @@ app.use(async (req, res, next) => {
   next();
 });
 
-app.get('/health', (_req, res) => res.json({ status: 'ok', staging: IS_STAGING, environment: IS_STAGING ? 'staging' : 'production' }));
+app.get('/health', async (_req, res) => {
+  try {
+    // Quick database connectivity check (timeout after 1 second)
+    await Promise.race([
+      pool.query('SELECT 1'),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('DB timeout')), 1000))
+    ]);
+    res.json({
+      status: 'ok',
+      staging: IS_STAGING,
+      environment: IS_STAGING ? 'staging' : 'production',
+      database: 'connected'
+    });
+  } catch (err) {
+    // Graceful degradation: respond 200 even if DB is unavailable
+    // This prevents container startup from failing when DB takes time to initialize
+    console.warn('[HEALTH] Database check failed:', err.message);
+    res.json({
+      status: 'ok',
+      staging: IS_STAGING,
+      environment: IS_STAGING ? 'staging' : 'production',
+      database: 'disconnected',
+      warning: 'Database unavailable but server is running'
+    });
+  }
+});
 
 // Debug endpoint to verify GuardiAI user exists (public for troubleshooting)
 app.get('/api/debug/guardiAI', async (_req, res) => {
@@ -842,6 +1096,22 @@ app.get('/api/user', async (req, res) => {
     return res.status(401).json({ error: 'Not authenticated' });
   }
   try {
+    if (ENABLE_DEMO_MODE) {
+      const mockUser = mockData.getMockUserProfile(1);
+      return res.json({
+        id: 1,
+        username: mockUser.username,
+        usernode_pubkey: mockUser.usernode_pubkey,
+        verified: !!mockUser.verified_at,
+        network: 'testnet',
+        view_mode: 'web',
+        avatar_url: mockUser.avatar_url,
+        created_at: mockUser.created_at,
+        bio: mockUser.bio,
+        isDemoMode: ENABLE_DEMO_MODE,
+        appPubkey: APP_PUBKEY,
+      });
+    }
     const userRes = await pool.query(`SELECT view_mode, avatar_url, created_at, bio FROM users WHERE id = $1`, [req.user.id]);
     const view_mode = userRes.rows[0]?.view_mode || 'web';
     const avatar_url = userRes.rows[0]?.avatar_url || null;
@@ -894,6 +1164,14 @@ app.get('/api/user/stats', async (req, res) => {
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
       return res.status(400).json({ error: 'Invalid user ID' });
+    }
+
+    if (ENABLE_DEMO_MODE) {
+      return res.json({
+        postsCount: mockData.MOCK_USER_STATS.totalMessagesCount,
+        contactsCount: 12,
+        messagesCount: mockData.MOCK_USER_STATS.totalGroupsCount + 4
+      });
     }
 
     // Query posts count
@@ -1059,10 +1337,27 @@ app.get('/api/config', async (req, res) => {
     // Check if user is authorized (first user OR has created a group)
     const canEdit = userId === 1 || (await userHasCreatedGroup(userId));
 
+    // Get RPC health status only in testnet mode
+    const rpcHealth = NETWORK_MODE === 'testnet' ? await checkRPCHealth() : null;
+
+    const nodeRpcUrlSecret = {
+      key: 'NODE_RPC_URL',
+      value: NODE_RPC_URL,
+      required: false,
+      private: false
+    };
+
+    // Only include rpcStatus in testnet mode
+    if (NETWORK_MODE === 'testnet') {
+      nodeRpcUrlSecret.rpcStatus = rpcHealth;
+    }
+
     res.json({
       networkMode: NETWORK_MODE,
       isDemoMode: ENABLE_DEMO_MODE,
+      rpcEndpoint: NODE_RPC_URL,
       canEdit: canEdit,
+      canEditRpc: canEdit,
       description: 'Demo mode: all blockchain transactions use fake tx hashes and audit logs are immediately confirmed. Testnet mode: real wallet interaction is required and audit logs are pending until blockchain confirmation.',
       secrets: [
         {
@@ -1077,12 +1372,7 @@ app.get('/api/config', async (req, res) => {
           required: true,
           private: true
         },
-        {
-          key: 'NODE_RPC_URL',
-          value: NODE_RPC_URL,
-          required: false,
-          private: false
-        }
+        nodeRpcUrlSecret
       ]
     });
   } catch (err) {
@@ -1103,8 +1393,8 @@ app.put('/api/config/network-mode', async (req, res) => {
     }
 
     const { networkMode } = req.body;
-    if (!['demo', 'testnet'].includes(networkMode)) {
-      return res.status(400).json({ error: 'Invalid input: networkMode must be "demo" or "testnet"' });
+    if (!['demo', 'real_testnet'].includes(networkMode)) {
+      return res.status(400).json({ error: 'Invalid input: networkMode must be "demo" or "real_testnet"' });
     }
 
     // Check authorization (first user OR has created a group)
@@ -1168,6 +1458,74 @@ app.put('/api/config/demo-mode', async (req, res) => {
   }
 });
 
+// RPC health check endpoint
+app.get('/api/health/rpc', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const rpcHealth = await checkRPCHealth();
+    res.json(rpcHealth);
+  } catch (err) {
+    console.error('Error checking RPC health:', err);
+    res.status(500).json({ error: 'Failed to check RPC health' });
+  }
+});
+
+// Update RPC endpoint configuration
+app.put('/api/config/rpc-endpoint', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    const { rpcEndpoint } = req.body;
+    if (!rpcEndpoint || typeof rpcEndpoint !== 'string') {
+      return res.status(400).json({ error: 'Invalid input: rpcEndpoint must be a non-empty string' });
+    }
+
+    // Validate URL format
+    try {
+      new URL(rpcEndpoint);
+    } catch (err) {
+      return res.status(400).json({ error: 'Invalid URL format for rpcEndpoint' });
+    }
+
+    // Check authorization (first user OR has created a group)
+    const canEdit = userId === 1 || (await userHasCreatedGroup(userId));
+    if (!canEdit) {
+      return res.status(403).json({ error: 'Not authorized to modify configuration' });
+    }
+
+    // Update database config_state table (insert or update)
+    await pool.query(`
+      INSERT INTO config_state (key, value, created_at, updated_at)
+      VALUES ($1, $2, NOW(), NOW())
+      ON CONFLICT (key) DO UPDATE SET
+        value = EXCLUDED.value,
+        updated_at = NOW()
+    `, ['NODE_RPC_URL', rpcEndpoint]);
+
+    // Update in-memory state
+    NODE_RPC_URL = rpcEndpoint;
+    console.log(`[CONFIG] RPC endpoint updated: ${rpcEndpoint} (by user ${userId})`);
+
+    res.json({
+      rpcEndpoint: NODE_RPC_URL,
+      status: 'updated'
+    });
+  } catch (err) {
+    console.error('Error updating RPC endpoint:', err);
+    res.status(500).json({ error: 'Failed to update RPC endpoint' });
+  }
+});
+
 // Helper function to check if user has created a group
 async function userHasCreatedGroup(userId) {
   try {
@@ -1192,6 +1550,16 @@ app.get('/api/conversations', async (req, res) => {
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    // Return empty conversations if database is not connected
+    if (!dbConnected) {
+      return res.json({ conversations: { active: [], pending: [], archived: [] } });
+    }
+
+    if (ENABLE_DEMO_MODE) {
+      const mockConvs = mockData.getMockConversations(1, limit, offset);
+      return res.json({ conversations: mockConvs });
     }
 
     // Optimized query using joins to eliminate N+1 lookups
@@ -1412,9 +1780,10 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
     console.log(`[MESSAGE] POST /api/conversations/${convId}/messages by user ${userId}`);
     console.log(`[MESSAGE] txHash provided: ${txHash ? 'yes - ' + txHash : 'no'}`);
     console.log(`[MESSAGE] Frontend content hash: ${frontendContentHash || 'none'}`);
+    console.log(`[MESSAGE] Demo mode: ${ENABLE_DEMO_MODE}`);
 
-    // Validate wallet connection before proceeding with message transaction
-    if (!req.user.usernode_pubkey) {
+    // Validate wallet connection before proceeding with message transaction (skip in demo mode)
+    if (!ENABLE_DEMO_MODE && !req.user.usernode_pubkey) {
       return res.status(401).json({ error: 'Must be connected to Usernode wallet to send messages' });
     }
 
@@ -1449,8 +1818,8 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       return res.status(403).json({ error: 'You have been blocked by this user' });
     }
 
-    // Fetch user's pubkey
-    const userPubkey = req.user.usernode_pubkey;
+    // Fetch user's pubkey (mock in demo mode)
+    const userPubkey = req.user.usernode_pubkey || (ENABLE_DEMO_MODE ? 'ut1demo-user-' + userId : null);
     const network = 'testnet';
 
     // Use frontend-provided content hash or compute it
@@ -1470,7 +1839,8 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       userPubkey: userPubkey,
       contentHash: contentHash,
       timestamp: now.toISOString(),
-      network: network
+      network: network,
+      rpcEndpoint: NODE_RPC_URL
     };
 
     // Sign memo following Last One Wins pattern
@@ -1590,7 +1960,8 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
             console.error('Error starting chain poller:', err);
           });
         } catch (err) {
-          console.error('Background blockchain submission error:', err);
+          const errorClass = classifyRPCError(err);
+          console.error(`[BLOCKCHAIN-FALLBACK] RPC failed (${errorClass.type}), using bridge fallback for messageId=${messageId}: ${err.message}`);
 
           // Fallback: try bridge approach (generates placeholder hash)
           try {
@@ -1601,6 +1972,8 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
               UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
             `, [bridgeResult.txHash, blockchainRecordingId]);
 
+            console.log(`[BLOCKCHAIN-FALLBACK] Updated audit log with bridge tx hash: txHash=${bridgeResult.txHash}, auditLogId=${blockchainRecordingId}`);
+
             // Start polling with placeholder (will timeout after 20 attempts)
             // This allows audit log to be marked as 'failed' after max polls
             startChainPoller(network, bridgeResult.txHash, blockchainRecordingId).catch(pollerErr => {
@@ -1608,7 +1981,7 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
             });
           } catch (bridgeErr) {
             // Both RPC and fallback failed — mark as failed immediately
-            console.error('Fallback blockchain submission also failed:', bridgeErr);
+            console.error(`[BLOCKCHAIN-FALLBACK] Bridge fallback also failed: ${bridgeErr.message}`);
             await pool.query(`
               UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
             `, [bridgeErr.message, blockchainRecordingId]);
@@ -1803,7 +2176,8 @@ app.post('/api/tokens/send', async (req, res) => {
       amount: parseInt(amount),
       memo: memo || '',
       contentHash: contentHash,
-      network: network
+      network: network,
+      rpcEndpoint: NODE_RPC_URL
     };
 
     // Sign memo following Last One Wins pattern
@@ -1899,18 +2273,20 @@ app.post('/api/tokens/send', async (req, res) => {
             });
           }
         } catch (err) {
-          console.error('Sidecar token transfer error:', err);
+          const errorClass = classifyRPCError(err);
+          console.error(`[BLOCKCHAIN-FALLBACK] RPC failed (${errorClass.type}), using bridge fallback for token transfer: ${err.message}`);
           // Fall back to bridge approach
           try {
             const result = await sendTransactionToBridge(transactionPayload, null, network);
             await pool.query(`
               UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
             `, [result.txHash, blockchainRecordingId]);
+            console.log(`[BLOCKCHAIN-FALLBACK] Updated audit log with bridge tx hash: txHash=${result.txHash}, auditLogId=${blockchainRecordingId}`);
             monitorBlockchainStatus(blockchainRecordingId, result.txHash).catch(err => {
               console.error('Error monitoring blockchain status:', err);
             });
           } catch (bridgeErr) {
-            console.error('Bridge fallback error:', bridgeErr);
+            console.error(`[BLOCKCHAIN-FALLBACK] Bridge fallback also failed: ${bridgeErr.message}`);
             await pool.query(`
               UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
             `, [bridgeErr.message, blockchainRecordingId]);
@@ -2142,6 +2518,25 @@ app.get('/api/transactions-by-user', async (req, res) => {
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    if (ENABLE_DEMO_MODE) {
+      const mockResult = mockData.getMockTransactionsByUser(1, limit, offset);
+      const transactions = mockResult.transactions.map(tx => ({
+        id: tx.id,
+        messageId: null,
+        groupId: null,
+        messageType: tx.message_type,
+        txHash: tx.tx_hash,
+        status: tx.status,
+        errorMessage: null,
+        confirmedAt: tx.confirmed_at,
+        createdAt: tx.created_at,
+        recipientUsername: tx.recipientUsername || null,
+        groupName: tx.groupName || null,
+        transactionPayload: null
+      }));
+      return res.json({ transactions, total: mockResult.total, limit, offset });
     }
 
     let whereClause = 'bal.user_id = $1';
@@ -2891,8 +3286,23 @@ app.get('/api/search/users', async (req, res) => {
     }
 
     const q = req.query.q || '';
+
+    if (ENABLE_DEMO_MODE) {
+      const mockResult = mockData.getMockSearchUsers(q, 20);
+      return res.json({
+        users: mockResult.results.map(u => ({
+          id: u.id,
+          username: u.username,
+          usernode_pubkey: u.usernode_pubkey || null,
+          verified: u.verified,
+          mutualCount: 0
+        }))
+      });
+    }
+
     let rows;
 
+    // Query local database
     try {
       const result = await queryWithTimeout(pool, `
         SELECT id, username, verified_at, usernode_pubkey
@@ -2922,6 +3332,7 @@ app.get('/api/search/users', async (req, res) => {
           username: u.username,
           usernode_pubkey: u.usernode_pubkey,
           verified: !!u.verified_at,
+          source: 'local',
           mutualCount: 0,
         }));
         return res.json({ users: filteredUsers });
@@ -2930,15 +3341,58 @@ app.get('/api/search/users', async (req, res) => {
       throw timeoutErr;
     }
 
-    const users = rows.map(r => ({
+    // Convert database results to include source field
+    const localUsers = rows.map(r => ({
       id: r.id,
       username: r.username,
       usernode_pubkey: r.usernode_pubkey || null,
       verified: !!r.verified_at,
+      source: 'local',
       mutualCount: 0,
     }));
 
-    res.json({ users });
+    // Query blockchain usernames cache (with timeout) - only in testnet mode
+    let blockchainUsers = [];
+    if (NETWORK_MODE === 'testnet' && global.usernamesCache && global.usernamesCache.ready() && q.length >= 2) {
+      try {
+        const blockchainTimeout = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Blockchain timeout')), 2500)
+        );
+        const blockchainQuery = Promise.resolve(global.usernamesCache.searchUsernames(q));
+
+        const blockchainResults = await Promise.race([blockchainQuery, blockchainTimeout]);
+        blockchainUsers = blockchainResults.map(u => ({
+          username: u.username,
+          usernode_pubkey: u.usernode_pubkey,
+          source: 'blockchain',
+          mutualCount: 0,
+        }));
+      } catch (blockchainErr) {
+        // Silently fail on blockchain timeout or error
+        console.debug('[SearchUsers] Blockchain query failed:', blockchainErr.message);
+      }
+    }
+
+    // Merge and deduplicate results (local takes precedence over blockchain)
+    const seenPubkeys = new Set();
+    const allUsers = [];
+
+    // Add local users first
+    for (const user of localUsers) {
+      if (user.usernode_pubkey) {
+        seenPubkeys.add(user.usernode_pubkey.toLowerCase());
+      }
+      allUsers.push(user);
+    }
+
+    // Add blockchain users that aren't already in local results
+    for (const user of blockchainUsers) {
+      if (user.usernode_pubkey && !seenPubkeys.has(user.usernode_pubkey.toLowerCase())) {
+        allUsers.push(user);
+      }
+    }
+
+    res.json({ users: allUsers });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -2982,7 +3436,7 @@ app.get('/api/users/by-username/:username', async (req, res) => {
     `, [username]);
     if (!rows.length) return res.status(404).json({ error: 'User not found' });
     const user = rows[0];
-    const foregroundHours = getForegroundHours(user.id);
+    const foregroundHours = await getForegroundHours(user.id);
     const { rank, hoursBracket, contributionLevel } = calculateRankData(foregroundHours);
     res.json({
       id: user.id,
@@ -3015,7 +3469,7 @@ app.get('/api/users/:userId', async (req, res) => {
     }
 
     const user = rows[0];
-    const foregroundHours = getForegroundHours(userId);
+    const foregroundHours = await getForegroundHours(userId);
     const { rank, hoursBracket, contributionLevel } = calculateRankData(foregroundHours);
 
     res.json({
@@ -3051,6 +3505,10 @@ app.get('/api/groups', async (req, res) => {
     }
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
     const offset = parseInt(req.query.offset || 0);
+
+    if (ENABLE_DEMO_MODE) {
+      return res.json(mockData.getMockGroups(1, limit, offset));
+    }
 
     // Get groups where user is a member
     const { rows: groupRows } = await pool.query(`
@@ -3147,9 +3605,9 @@ app.post('/api/groups', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
-    // Validation: check wallet connection before proceeding with group creation
-    console.log(`[POST /api/groups::VALIDATE] Checking wallet connection: usernode_pubkey=${req.user.usernode_pubkey ? 'present' : 'missing'}`);
-    if (!req.user.usernode_pubkey) {
+    // Validation: check wallet connection before proceeding with group creation (skip in demo mode)
+    console.log(`[POST /api/groups::VALIDATE] Checking wallet connection: usernode_pubkey=${req.user.usernode_pubkey ? 'present' : 'missing'}, ENABLE_DEMO_MODE=${ENABLE_DEMO_MODE}`);
+    if (!ENABLE_DEMO_MODE && !req.user.usernode_pubkey) {
       console.error(`[POST /api/groups::VALIDATE] Wallet not connected - usernode_pubkey is missing`);
       return res.status(401).json({ error: 'Must be connected to Usernode wallet to create groups' });
     }
@@ -3238,7 +3696,8 @@ app.post('/api/groups', async (req, res) => {
       memberPubkeys: memberPubkeys.length > 0 ? memberPubkeys : [req.user.usernode_pubkey || APP_PUBKEY],
       contentHash: contentHash,
       timestamp: now.toISOString(),
-      network: network
+      network: network,
+      rpcEndpoint: NODE_RPC_URL
     };
     console.log(`[POST /api/groups::BLOCKCHAIN] Transaction payload prepared: type=${transactionPayload.type}, groupId=${transactionPayload.groupId}, memberCount=${transactionPayload.memberPubkeys.length}, network=${transactionPayload.network}, creatorPubkeyPresent=${!!transactionPayload.creatorPubkey}`);
 
@@ -3334,7 +3793,8 @@ app.post('/api/groups', async (req, res) => {
             console.error(`[POST /api/groups::BLOCKCHAIN::ASYNC] Error starting chain poller: ${err.message}`, err);
           });
         } catch (err) {
-          console.error(`[POST /api/groups::BLOCKCHAIN::ASYNC] Background blockchain submission error: ${err.message}`, err);
+          const errorClass = classifyRPCError(err);
+          console.error(`[BLOCKCHAIN-FALLBACK] RPC failed (${errorClass.type}), using bridge fallback for groupId=${groupId}: ${err.message}`);
 
           // Fallback: try bridge approach
           try {
@@ -3344,12 +3804,14 @@ app.post('/api/groups', async (req, res) => {
               UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
             `, [bridgeResult.txHash, blockchainRecordingId]);
 
+            console.log(`[BLOCKCHAIN-FALLBACK] Updated audit log with bridge tx hash: txHash=${bridgeResult.txHash}, auditLogId=${blockchainRecordingId}`);
+
             // Start polling with placeholder so it eventually marks as 'failed'
             startChainPoller(network, bridgeResult.txHash, blockchainRecordingId).catch(pollerErr => {
               console.error(`[POST /api/groups::BLOCKCHAIN::ASYNC] Error starting fallback chain poller: ${pollerErr.message}`, pollerErr);
             });
           } catch (bridgeErr) {
-            console.error(`[POST /api/groups::BLOCKCHAIN::ASYNC] Fallback also failed: ${bridgeErr.message}`, bridgeErr);
+            console.error(`[BLOCKCHAIN-FALLBACK] Bridge fallback also failed: ${bridgeErr.message}`);
             await pool.query(`
               UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
             `, [bridgeErr.message, blockchainRecordingId]);
@@ -3412,6 +3874,19 @@ app.get('/api/groups/:groupId', async (req, res) => {
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    if (ENABLE_DEMO_MODE) {
+      const groupIdInt = parseInt(groupId);
+      const mockGroup = mockData.getMockGroupById(groupIdInt);
+      if (!mockGroup) {
+        return res.status(404).json({ error: 'Group not found' });
+      }
+      const mockMembers = mockData.getMockGroupMembers(groupIdInt);
+      return res.json({
+        ...mockGroup,
+        members: mockMembers.members
+      });
     }
 
     // Verify user is a member
@@ -3568,6 +4043,24 @@ app.get('/api/groups/:groupId/messages', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
+    const offset = parseInt(req.query.offset || 0);
+
+    if (ENABLE_DEMO_MODE) {
+      const groupIdInt = parseInt(groupId);
+      const mockResult = mockData.getMockGroupMessages(groupIdInt, limit, offset);
+      const msgList = mockResult.messages.map(m => ({
+        id: m.id,
+        senderId: m.sender_id,
+        senderUsername: mockData.MOCK_USERS.find(u => u.id === m.sender_id)?.username || 'Unknown',
+        type: m.type,
+        content: m.content,
+        createdAt: m.created_at,
+        blockchainRecorded: false,
+        blockchainAuditLogId: null
+      }));
+      return res.json({ messages: msgList, hasMore: offset + limit < mockResult.total });
+    }
+
     const before = req.query.before ? new Date(req.query.before) : new Date();
 
     // Verify user is a member
@@ -3624,8 +4117,8 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
-    // Validate wallet connection before proceeding with group message transaction
-    if (!req.user.usernode_pubkey) {
+    // Validate wallet connection before proceeding with group message transaction (skip in demo mode)
+    if (!ENABLE_DEMO_MODE && !req.user.usernode_pubkey) {
       return res.status(401).json({ error: 'Must be connected to Usernode wallet to send group messages' });
     }
 
@@ -3648,8 +4141,8 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
       return res.status(403).json({ error: 'Not a member of this group' });
     }
 
-    // Fetch user's pubkey
-    const userPubkey = req.user.usernode_pubkey;
+    // Fetch user's pubkey (mock in demo mode)
+    const userPubkey = req.user.usernode_pubkey || (ENABLE_DEMO_MODE ? 'ut1demo-user-' + userId : null);
     const network = 'testnet';
 
     // Create message with blockchain recording enabled
@@ -4285,7 +4778,7 @@ app.get('/api/user/guardians', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const foregroundHours = getForegroundHours(req.user.id);
+    const foregroundHours = await getForegroundHours(req.user.id);
     const { rank, hoursBracket, contributionLevel } = calculateRankData(foregroundHours);
 
     res.json({
@@ -4366,6 +4859,118 @@ app.get('/api/network/peer-count', async (req, res) => {
   }
 });
 
+// Get user-specific peer count (testnet peers connected to this user)
+// Only available when user has network_mode set to 'real_testnet'
+app.get('/api/user/peers/connected', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
+
+    // Check if network mode is real_testnet for this user
+    const { rows: userRows } = await pool.query(`
+      SELECT network FROM users WHERE id = $1
+    `, [userId]);
+
+    if (!userRows.length || userRows[0].network !== 'real_testnet') {
+      return res.status(403).json({
+        error: 'Peer count feature is not enabled',
+        available: false
+      });
+    }
+
+    if (IS_STAGING) {
+      // In staging, provide mock data cycling through [3, 7, 5, 9, 6] every 10 seconds
+      const mockPeerCounts = [3, 7, 5, 9, 6];
+      const timeWindow = Math.floor(Date.now() / 10000); // 10-second windows
+      const userPeerCount = mockPeerCounts[(timeWindow + userId) % mockPeerCounts.length];
+      // Generate deterministic mock peer IDs
+      const peerIds = Array.from({ length: userPeerCount }, (_, i) =>
+        `ut1peer${userId}${i.toString().padStart(3, '0')}`
+      );
+
+      return res.json({
+        userPeerCount,
+        peerIds,
+        lastUpdatedAt: new Date().toISOString()
+      });
+    } else {
+      // In production, query user_peers table
+      const { rows } = await pool.query(`
+        SELECT peer_id FROM user_peers
+        WHERE user_id = $1 AND last_seen_at > NOW() - INTERVAL '30 seconds'
+        ORDER BY last_seen_at DESC
+      `, [userId]);
+
+      const peerIds = rows.map(r => r.peer_id);
+      return res.json({
+        userPeerCount: peerIds.length,
+        peerIds,
+        lastUpdatedAt: new Date().toISOString()
+      });
+    }
+  } catch (err) {
+    console.error('Error fetching user peer count:', err);
+    res.status(500).json({ error: 'Failed to fetch user peer count' });
+  }
+});
+
+// Log a foreground session
+app.post('/api/user/foreground-session', express.json(), async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
+
+    const { sessionDurationSeconds } = req.body;
+    if (typeof sessionDurationSeconds !== 'number' || sessionDurationSeconds < 0) {
+      return res.status(400).json({ error: 'Invalid sessionDurationSeconds' });
+    }
+
+    // Skip session logging for very short sessions (< 1 second)
+    if (sessionDurationSeconds < 1) {
+      return res.json({ status: 'skipped', reason: 'Session too short' });
+    }
+
+    if (IS_STAGING) {
+      // In staging, accept the request but don't persist
+      return res.json({
+        status: 'accepted',
+        message: 'Session logged (staging mode)',
+        durationSeconds: sessionDurationSeconds
+      });
+    } else {
+      // In production, log the session
+      const now = new Date();
+      const sessionStart = new Date(now.getTime() - sessionDurationSeconds * 1000);
+      const sessionEnd = now;
+
+      await pool.query(`
+        INSERT INTO user_foreground_sessions (user_id, session_start, session_end, duration_seconds)
+        VALUES ($1, $2, $3, $4)
+      `, [userId, sessionStart, sessionEnd, Math.round(sessionDurationSeconds)]);
+
+      return res.json({
+        status: 'logged',
+        durationSeconds: sessionDurationSeconds
+      });
+    }
+  } catch (err) {
+    console.error('Error logging foreground session:', err);
+    res.status(500).json({ error: 'Failed to log foreground session' });
+  }
+});
+
 app.get('/api/activity', async (req, res) => {
   try {
     if (!req.user) {
@@ -4439,6 +5044,10 @@ app.get('/api/channels', async (req, res) => {
     const category = req.query.category || null;
     const featured = req.query.featured === 'true';
 
+    if (ENABLE_DEMO_MODE) {
+      return res.json(mockData.getMockChannels(1, category, featured));
+    }
+
     let query = `
       SELECT c.id, c.name, c.description, c.is_system, c.owner_id, c.category, c.is_verified, c.verified_at, c.is_featured, c.created_at, c.updated_at,
              u.username as ownerUsername,
@@ -4498,6 +5107,25 @@ app.get('/api/channels/:channelId/posts', async (req, res) => {
     const channelId = parseInt(req.params.channelId);
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
     const offset = parseInt(req.query.offset || 0);
+
+    if (ENABLE_DEMO_MODE) {
+      const mockResult = mockData.getMockChannelPosts(channelId, limit, offset);
+      return res.json({
+        posts: mockResult.posts.map(p => ({
+          id: p.id,
+          userId: p.authorId,
+          username: p.authorUsername,
+          verified: false,
+          avatarUrl: p.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.authorUsername}`,
+          content: p.content,
+          createdAt: p.createdAt,
+          updatedAt: p.createdAt,
+          isEdited: false,
+          onChain: false
+        })),
+        hasMore: offset + limit < mockResult.total
+      });
+    }
 
     // Verify channel exists
     const { rows: channelCheck } = await pool.query(`
@@ -4560,6 +5188,17 @@ app.get('/api/channels/:channelId/posts', async (req, res) => {
 // GET /api/channels/categories - List all available categories
 app.get('/api/channels/categories', async (req, res) => {
   try {
+    if (ENABLE_DEMO_MODE) {
+      return res.json({
+        categories: [
+          { id: 1, name: 'Updates', description: 'System and important updates' },
+          { id: 2, name: 'General', description: 'General discussion' },
+          { id: 3, name: 'Announcements', description: 'Official announcements' },
+          { id: 4, name: 'Community', description: 'Community-driven content' }
+        ]
+      });
+    }
+
     const { rows: categories } = await pool.query(`
       SELECT id, name, description FROM channel_categories ORDER BY name
     `);
@@ -6176,8 +6815,34 @@ app.get('*', (req, res) => {
 
 async function start() {
   try {
-    // Drop old presses table if it exists (for demo purposes)
-    await pool.query(`DROP TABLE IF EXISTS presses CASCADE`);
+    console.log('[STARTUP] Initializing Guardian 2 server...');
+
+    // Test database connectivity with timeout
+    console.log('[DB] Testing connection...');
+    try {
+      await Promise.race([
+        pool.query('SELECT 1'),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), 3000))
+      ]);
+      console.log('[DB] ✅ Connection successful');
+      dbConnected = true;
+    } catch (dbErr) {
+      console.warn('[DB] ⚠️  Cannot reach database, continuing with limited functionality:', dbErr.message);
+      console.warn('[DB] The app will serve static pages but database features will be unavailable');
+      dbConnected = false;
+      // Don't throw - allow server to continue
+    }
+
+    // Skip table initialization if database is not connected
+    if (!dbConnected) {
+      console.log('[STARTUP] Skipping database initialization due to connection failure');
+      console.log('[STARTUP] App will boot in degraded mode with static content only');
+    }
+
+    if (dbConnected) {
+      try {
+        // Drop old presses table if it exists (for demo purposes)
+        await pool.query(`DROP TABLE IF EXISTS presses CASCADE`);
 
     // Create users table
     await pool.query(`
@@ -6199,7 +6864,7 @@ async function start() {
 
     // Add network column if it doesn't exist (idempotent migration)
     await pool.query(`
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS network VARCHAR(50) DEFAULT 'testnet'
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS network VARCHAR(50) DEFAULT 'real_testnet'
     `);
 
     // Add view_mode column if it doesn't exist (idempotent migration)
@@ -6233,6 +6898,7 @@ async function start() {
       console.error('[Migration] ❌ ERROR adding is_bot column:', err.message);
       throw err;
     }
+
 
     // Create conversations table (marked private)
     await pool.query(`
@@ -6751,6 +7417,21 @@ async function start() {
         ON network_milestones(key)
     `);
 
+    // Create config_state table (public - stores runtime configuration like RPC endpoint)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS config_state (
+        id SERIAL PRIMARY KEY,
+        key VARCHAR(100) UNIQUE NOT NULL,
+        value TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_config_state_key
+        ON config_state(key)
+    `);
+
     // Create crypto_data_cache table (public - cached CoinGecko data for Crypto Daily bot)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS crypto_data_cache (
@@ -6765,6 +7446,42 @@ async function start() {
         ON crypto_data_cache(last_fetched_at DESC)
     `);
 
+    // Create user_peers table (tracks peers connected to each user)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_peers (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        peer_id VARCHAR(100) NOT NULL,
+        connected_at TIMESTAMPTZ DEFAULT NOW(),
+        last_seen_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(user_id, peer_id)
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_peers_user_id
+        ON user_peers(user_id, last_seen_at DESC)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_peers_peer_id
+        ON user_peers(peer_id)
+    `);
+
+    // Create user_foreground_sessions table (tracks foreground tab sessions per user)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_foreground_sessions (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        session_start TIMESTAMPTZ NOT NULL,
+        session_end TIMESTAMPTZ NOT NULL,
+        duration_seconds INTEGER NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_foreground_sessions_user_id
+        ON user_foreground_sessions(user_id, created_at DESC)
+    `);
+
     // Mark tables as private
     await pool.query(`COMMENT ON TABLE conversations IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE messages IS 'staging:private'`);
@@ -6775,6 +7492,11 @@ async function start() {
     await pool.query(`COMMENT ON TABLE group_members IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE group_messages IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE group_read_receipts IS 'staging:private'`);
+    await pool.query(`COMMENT ON TABLE user_peers IS 'staging:private'`);
+    await pool.query(`COMMENT ON TABLE user_foreground_sessions IS 'staging:private'`);
+
+    // Initialize RPC endpoint from database or environment
+    await initializeRpcUrl();
 
     // Seed staging data
     // Seed mock testnet users (grace, henry, iris, jack) in all environments for user search testing
@@ -6889,7 +7611,8 @@ async function start() {
                 memo: msg.content.memo,
                 userPubkey: dmUserPubkeyMap[msg.sender],
                 contentHash: contentHash,
-                timestamp: msgTime.toISOString()
+                timestamp: msgTime.toISOString(),
+                rpcEndpoint: NODE_RPC_URL
               }
             : {
                 type: 'message',
@@ -6897,7 +7620,8 @@ async function start() {
                 senderId: msg.sender,
                 userPubkey: dmUserPubkeyMap[msg.sender],
                 contentHash: contentHash,
-                timestamp: msgTime.toISOString()
+                timestamp: msgTime.toISOString(),
+                rpcEndpoint: NODE_RPC_URL
               };
 
           const auditResult = await pool.query(`
@@ -7912,50 +8636,129 @@ async function start() {
         `, [m.key, m.label, m.value, m.unit, m.category]);
       }
     }
+      } catch (dbInitErr) {
+        console.error('[DB] Database initialization error:', dbInitErr.message);
+        console.log('[STARTUP] Continuing with degraded functionality');
+      }
+    }
 
     // Start hourly milestone post generator (runs every hour with 24-hour cooldown)
     // Create initial milestone post on startup if cooldown allows
-    if (await shouldCreateMilestonePost()) {
-      await createMilestonePost();
+    if (dbConnected) {
+      try {
+        if (await shouldCreateMilestonePost()) {
+          await createMilestonePost();
+        }
+      } catch (err) {
+        console.warn('[STARTUP] Failed to create initial milestone post:', err.message);
+      }
     }
 
     // Set interval to check and create milestone post every hour (3600000 ms)
     // Only creates if 24 hours have passed since the last post
-    setInterval(async () => {
-      if (await shouldCreateMilestonePost()) {
-        await createMilestonePost();
-      }
-    }, 3600000);
+    if (dbConnected) {
+      setInterval(async () => {
+        try {
+          if (await shouldCreateMilestonePost()) {
+            await createMilestonePost();
+          }
+        } catch (err) {
+          console.warn('[BOT] Milestone post creation failed:', err.message);
+        }
+      }, 3600000);
+    }
 
     // Start Crypto Daily bot (runs every 2 hours)
     // Create initial post on startup if cooldown check passes
-    if (await shouldCreateCryptoDailyPost()) {
-      await createCryptoDailyPost();
+    if (dbConnected) {
+      try {
+        if (await shouldCreateCryptoDailyPost()) {
+          await createCryptoDailyPost();
+        }
+      } catch (err) {
+        console.warn('[STARTUP] Failed to create initial Crypto Daily post:', err.message);
+      }
     }
 
     // Set interval to create a new Crypto Daily post every 2 hours (7200000 ms)
     // Conditionally create posts only when cooldown criteria are met
-    setInterval(async () => {
-      if (await shouldCreateCryptoDailyPost()) {
-        await createCryptoDailyPost();
-      }
-    }, 7200000);
+    if (dbConnected) {
+      setInterval(async () => {
+        try {
+          if (await shouldCreateCryptoDailyPost()) {
+            await createCryptoDailyPost();
+          }
+        } catch (err) {
+          console.warn('[BOT] Crypto Daily post creation failed:', err.message);
+        }
+      }, 7200000);
+    }
 
     // Start GuardiAI bot (runs every 12 hours)
     // Create initial post on startup if cooldown check passes
-    if (await shouldCreateGuardiAIPost()) {
-      await createGuardiAIPost();
+    if (dbConnected) {
+      try {
+        if (await shouldCreateGuardiAIPost()) {
+          await createGuardiAIPost();
+        }
+      } catch (err) {
+        console.warn('[STARTUP] Failed to create initial GuardiAI post:', err.message);
+      }
     }
 
     // Set interval to create a new GuardiAI post every 12 hours (43200000 ms)
     // Conditionally create posts only when cooldown criteria are met
-    setInterval(async () => {
-      if (await shouldCreateGuardiAIPost()) {
-        await createGuardiAIPost();
-      }
-    }, 43200000);
+    if (dbConnected) {
+      setInterval(async () => {
+        try {
+          if (await shouldCreateGuardiAIPost()) {
+            await createGuardiAIPost();
+          }
+        } catch (err) {
+          console.warn('[BOT] GuardiAI post creation failed:', err.message);
+        }
+      }, 43200000);
+    }
 
-    app.listen(port, () => console.log(`Listening on :${port}`));
+    // Initialize Usernode blockchain usernames cache for real-time search
+    try {
+      console.log('[UsernamesCache] Initializing on server startup...');
+      const usernamesCache = createUsernamesCache({
+        nodeRpcUrl: NODE_RPC_URL,
+        refreshIntervalMs: 300000, // 5 minutes
+        isStaging: IS_STAGING
+      });
+      await usernamesCache.initialize();
+      console.log('[UsernamesCache] ✅ Cache initialized:', usernamesCache.stats());
+
+      // Store cache in global scope for access by API endpoints
+      global.usernamesCache = usernamesCache;
+    } catch (cacheErr) {
+      console.warn('[UsernamesCache] Initialization failed:', cacheErr.message);
+      // Create a no-op cache that returns empty results
+      global.usernamesCache = {
+        searchUsernames: () => [],
+        getUsername: () => null,
+        getUsernameByPubkey: () => null,
+        ready: () => false,
+        stats: () => ({ initialized: false, usernameCount: 0 })
+      };
+    }
+
+    app.listen(port, () => {
+      console.log(`Listening on :${port}`);
+      console.log(`[CONFIG] USERNODE_ENV: ${process.env.USERNODE_ENV || 'not set'}`);
+      console.log(`[CONFIG] NETWORK_MODE: ${NETWORK_MODE}`);
+      console.log(`[CONFIG] IS_STAGING: ${IS_STAGING}`);
+      if (NETWORK_MODE === 'testnet') {
+        console.log(`[CONFIG] Real Testnet mode - RPC enabled: ${NODE_RPC_URL ? 'yes' : 'no'}`);
+        if (NODE_RPC_URL) {
+          console.log(`[CONFIG] NODE_RPC_URL: ${NODE_RPC_URL}`);
+        }
+      } else {
+        console.log(`[CONFIG] Demo mode - using bridge/fallback exclusively, RPC disabled`);
+      }
+    });
   } catch (err) {
     console.error(err);
     process.exit(1);
