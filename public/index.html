@@ -607,14 +607,32 @@
       <div id="headerContent" class="flex flex-col items-start flex-1 gap-0">
         <div class="flex items-center gap-2">
           <span id="headerTitle" class="hidden"></span>
-          <!-- Guardian Nexus Logo -->
+          <!-- Guardian Nexus Logo
+               Stylized chat bubble composed of network nodes connected by lines.
+               Design: Rounded rectangular speech bubble with 7 small circles (nodes) and connecting lines
+               that form a mesh topology, symbolizing decentralized conversation and network connectivity.
+
+               SVG viewBox: 0 0 28 28 (1:1 aspect ratio, matches standard icon size)
+               Stroke style: 1.5px, currentColor (inherits from Tailwind color classes)
+               Colors: text-cyan-600 (light mode) / text-cyan-400 (dark mode)
+               Sizing: w-7 h-7 (28x28px at 1x, scales responsively)
+
+               Layout composition:
+               - Main bubble: rounded rect (2,2,18,15) with 3px corner radius
+               - Tail: triangle pointing down-left (8,17 -> 6,22 -> 10,17)
+               - Nodes: 7 circles (r=1.2) positioned at bubble perimeter corners and midpoints
+               - Edges: 7 lines connecting adjacent nodes in sequence (perimeter outline)
+               - Diagonals: 2 lines across bubble interior (network mesh reinforcement)
+
+               Theme behavior: Automatically switches between light/dark via Tailwind dark: prefix,
+               matching the app's existing color scheme for UI consistency.
+          -->
           <svg id="headerLogo" class="w-7 h-7 text-cyan-600 dark:text-cyan-400 flex-shrink-0" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <!-- Chat bubble outline with network nodes -->
-            <!-- Main bubble shape with rounded corners -->
+            <!-- Main chat bubble shape with rounded corners -->
             <rect x="2" y="2" width="18" height="15" rx="3" ry="3"/>
-            <!-- Bubble tail pointing down -->
+            <!-- Bubble tail/pointer pointing downward -->
             <path d="M 8 17 L 6 22 L 10 17 Z"/>
-            <!-- Network nodes positioned around bubble -->
+            <!-- Network nodes: 7 circles positioned around bubble perimeter -->
             <circle cx="5" cy="5" r="1.2"/>
             <circle cx="14" cy="5" r="1.2"/>
             <circle cx="19" cy="8" r="1.2"/>
@@ -622,7 +640,7 @@
             <circle cx="14" cy="15" r="1.2"/>
             <circle cx="5" cy="15" r="1.2"/>
             <circle cx="2" cy="8" r="1.2"/>
-            <!-- Connecting lines between nodes -->
+            <!-- Perimeter lines: Connect adjacent nodes to form outer network boundary -->
             <line x1="5" y1="5" x2="14" y2="5"/>
             <line x1="14" y1="5" x2="19" y2="8"/>
             <line x1="19" y1="8" x2="19" y2="14"/>
@@ -630,7 +648,7 @@
             <line x1="14" y1="15" x2="5" y2="15"/>
             <line x1="5" y1="15" x2="2" y2="8"/>
             <line x1="2" y1="8" x2="5" y2="5"/>
-            <!-- Diagonal mesh lines for network feel -->
+            <!-- Diagonal mesh lines: Add depth and network topology feel -->
             <line x1="5" y1="5" x2="19" y2="14"/>
             <line x1="14" y1="5" x2="5" y2="15"/>
           </svg>
