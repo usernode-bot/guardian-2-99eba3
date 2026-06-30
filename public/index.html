@@ -3994,8 +3994,11 @@
           }
           closeCreateChannelModal();
           await loadChannels();
-          // Refresh the feed if user is on the feed view
-          if (!document.getElementById('feedView').classList.contains('hidden')) {
+          // Show the newly created channel detail view
+          if (data && data.id) {
+            await showChannelPosts(data.id);
+          } else if (!document.getElementById('feedView').classList.contains('hidden')) {
+            // Fallback: refresh the feed if user is on the feed view
             const currentTab = document.getElementById('feedTabFollowing').classList.contains('border-cyan-600') ? 'following' : 'discover';
             await switchFeedTab(currentTab);
           }
