@@ -3964,7 +3964,11 @@
             });
           }
           closeCreateChannelModal();
-          loadChannels();
+          await loadChannels();
+          // Refresh the channel list display if user is on the feed view
+          if (currentChannelId === null && !document.getElementById('feedView').classList.contains('hidden')) {
+            showChannelList();
+          }
         } else if (data && data.error) {
           showToast(`Failed to create channel: ${data.error}`, 'error');
           throw new Error(data.error);
@@ -6228,7 +6232,14 @@
 
     async function showChannelPosts(channelId) {
       currentChannelId = channelId;
-      const channel = channelsList.find(ch => ch.id === channelId);
+      let channel = channelsList.find(ch => ch.id === channelId);
+
+      // If channel not found, reload channels (in case a newly created channel hasn't loaded yet)
+      if (!channel) {
+        await loadChannels();
+        channel = channelsList.find(ch => ch.id === channelId);
+      }
+
       if (!channel) return;
 
       document.getElementById('feedHeader').style.display = 'none';
