@@ -317,7 +317,19 @@ const MOCK_CHANNEL_POSTS = {
       type: 'text'
     }
   ],
-  303: [], // support
+  303: [ // support
+    {
+      id: 5025,
+      channel_id: 303,
+      author_id: 1,
+      authorUsername: 'alice',
+      content: 'Check the help center for frequently asked questions and troubleshooting guides.',
+      created_at: getTimeOffset(240),
+      likeCount: 8,
+      commentCount: 3,
+      type: 'text'
+    }
+  ],
   304: [ // random
     {
       id: 5030,

@@ -5610,21 +5610,7 @@ app.post('/api/channels/:channelId/posts', async (req, res) => {
       return res.status(400).json({ error: 'Invalid channel ID' });
     }
 
-    // Verify channel exists and user is owner
-    const { rows: channelRows } = await pool.query(`
-      SELECT owner_id FROM channels WHERE id = $1
-    `, [channelId]);
-
-    if (channelRows.length === 0) {
-      return res.status(404).json({ error: 'Channel not found' });
-    }
-
-    const channel = channelRows[0];
-    if (channel.owner_id !== req.user.id) {
-      return res.status(403).json({ error: 'Only the channel owner can post' });
-    }
-
-    // Validate content
+    // Validate content early
     const { content } = req.body;
     if (!content || !content.text) {
       return res.status(400).json({ error: 'Content with text is required' });
@@ -5637,6 +5623,50 @@ app.post('/api/channels/:channelId/posts', async (req, res) => {
 
     if (text.length > 2000) {
       return res.status(400).json({ error: 'Post exceeds 2000 character limit' });
+    }
+
+    // In demo mode, validate but return mock success without database write
+    if (ENABLE_DEMO_MODE) {
+      const mockMockChannels = mockData.MOCK_CHANNELS || [];
+      const mockChannelExists = mockMockChannels.find(c => c.id === channelId);
+
+      if (!mockChannelExists) {
+        return res.status(404).json({ error: 'Channel not found' });
+      }
+
+      // In demo mode, check if the user can post to this channel (for mock channels with owner_id set)
+      if (mockChannelExists.owner_id !== null && mockChannelExists.owner_id !== req.user.id && mockChannelExists.owner_id !== -1) {
+        return res.status(403).json({ error: 'Only the channel owner can post' });
+      }
+
+      // Return mock success with deterministic ID
+      const now = new Date();
+      return res.status(201).json({
+        id: 9001 + Math.floor(Math.random() * 1000),
+        userId: req.user.id,
+        username: req.user.username,
+        verified: false,
+        avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${req.user.username}`,
+        content: content,
+        createdAt: now,
+        updatedAt: now,
+        isEdited: false,
+        onChain: false
+      });
+    }
+
+    // Non-demo mode: Verify channel exists and user is owner
+    const { rows: channelRows } = await pool.query(`
+      SELECT owner_id FROM channels WHERE id = $1
+    `, [channelId]);
+
+    if (channelRows.length === 0) {
+      return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    const channel = channelRows[0];
+    if (channel.owner_id !== req.user.id) {
+      return res.status(403).json({ error: 'Only the channel owner can post' });
     }
 
     // Insert the post
@@ -7689,9 +7719,30 @@ async function start() {
           ('Community Highlights', 'Best posts from the community', -1, 'Community', TRUE),
           ('Announcements', 'Important network announcements', -1, 'Announcements', TRUE),
           ('[Staging] General Discussion', 'Staging demo general channel', -1, 'General', FALSE),
-          ('[Staging] Dev Updates', 'Staging demo dev channel', -1, 'Updates', FALSE)
+          ('[Staging] Dev Updates', 'Staging demo dev channel', -1, 'Updates', FALSE),
+          ('[Staging] My Channel', 'Demo channel for testing owner post composition', 1, 'General', FALSE)
         ON CONFLICT (name) DO NOTHING
       `);
+
+      // Seed example posts in the owner-demo channel
+      const ownerChannelResult = await pool.query(`
+        SELECT id FROM channels WHERE name = '[Staging] My Channel'
+      `);
+
+      if (ownerChannelResult.rows.length > 0) {
+        const stagingOwnedChannelId = ownerChannelResult.rows[0].id;
+        await pool.query(`
+          INSERT INTO feed_posts (user_id, content, channel_id, created_at)
+          VALUES
+            (1, $1, $2, NOW() - INTERVAL '2 hours'),
+            (1, $3, $2, NOW() - INTERVAL '1 hour')
+          ON CONFLICT DO NOTHING
+        `, [
+          JSON.stringify({ text: '[Staging] Welcome to my channel! This is a demo post for testing channel owner composition features.' }),
+          stagingOwnedChannelId,
+          JSON.stringify({ text: '[Staging] You can use this channel to test posting, following, and unfollowing features.' })
+        ]);
+      }
     }
 
     // Create feed_posts table (public - feed posts are shared with all users)
