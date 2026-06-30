@@ -3933,6 +3933,19 @@
       if (!name) return alert('Channel name is required');
       if (!category) return alert('Category is required');
 
+      // Disable form inputs and button to prevent duplicate submissions
+      const createBtn = document.querySelector('#createChannelModal button[onclick="createChannel()"]');
+      const nameInput = document.getElementById('channelNameInput');
+      const descInput = document.getElementById('channelDescInput');
+      const categorySelect = document.getElementById('channelCategoryInput');
+
+      const originalBtnText = createBtn.textContent;
+      createBtn.disabled = true;
+      createBtn.textContent = 'Creating...';
+      nameInput.disabled = true;
+      descInput.disabled = true;
+      categorySelect.disabled = true;
+
       try {
         // Phase 1: Create pending audit log
         const auditLogId = await createPendingAuditLog();
@@ -3978,6 +3991,13 @@
           console.error('Create channel error:', err);
           showToast(`Error: ${err.message}`, 'error');
         }
+      } finally {
+        // Re-enable form inputs and button
+        createBtn.disabled = false;
+        createBtn.textContent = originalBtnText;
+        nameInput.disabled = false;
+        descInput.disabled = false;
+        categorySelect.disabled = false;
       }
     }
 
@@ -6177,6 +6197,10 @@
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
       if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
 
+      // Reset search state
+      currentSearchQuery = '';
+      document.getElementById('searchChannelsInput').value = '';
+
       // Load channels
       await loadChannels();
       // Show channel list initially
@@ -6189,9 +6213,13 @@
         if (data && data.channels) {
           channelsList = data.channels;
           filteredChannelsList = channelsList;
+        } else if (data && data.error) {
+          console.error('Error loading channels:', data.error);
+          showToast('Failed to load channels', 'error');
         }
       } catch (err) {
         console.error('Error loading channels:', err);
+        showToast('Error loading channels', 'error');
       }
     }
 
@@ -6236,6 +6264,8 @@
 
     async function showChannelPosts(channelId) {
       currentChannelId = channelId;
+      channelPostsOffset = 0;
+      channelPostsHasMore = false;
       let channel = channelsList.find(ch => ch.id === channelId);
 
       // If channel not found, reload channels (in case a newly created channel hasn't loaded yet)
@@ -6253,23 +6283,73 @@
       document.getElementById('channelDetailFollowers').textContent = '0 followers';
 
       try {
+        isLoadingChannelPosts = true;
         const data = await apiCall(`/api/channels/${channelId}/posts?limit=50&offset=0`);
         if (data && data.posts) {
+          channelPostsHasMore = data.hasMore || false;
           let html = '';
           if (data.posts.length === 0) {
             html = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">No posts in this channel</div>';
           } else {
-            html = '<div class="space-y-3 p-2">';
+            html = '<div class="space-y-3 p-2" id="channelPostsContainer">';
             data.posts.forEach(post => {
               html += renderChannelPost(post);
             });
             html += '</div>';
+
+            if (channelPostsHasMore) {
+              html += '<div class="p-2"><button onclick="loadMoreChannelPosts(' + channelId + ')" class="w-full py-2 px-3 text-sm font-medium text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition border border-cyan-600 dark:border-cyan-500 rounded">Load more posts</button></div>';
+            }
           }
           document.getElementById('feedMainContent').innerHTML = html;
+          channelPostsOffset = 50;
+        } else if (data && data.error) {
+          throw new Error(data.error);
         }
       } catch (err) {
         console.error('Error loading channel posts:', err);
+        showToast('Error loading channel posts', 'error');
         document.getElementById('feedMainContent').innerHTML = '<div class="text-center py-8 text-red-600 dark:text-red-400">Error loading posts</div>';
+      } finally {
+        isLoadingChannelPosts = false;
+      }
+    }
+
+    async function loadMoreChannelPosts(channelId) {
+      if (isLoadingChannelPosts || !channelPostsHasMore) return;
+
+      try {
+        isLoadingChannelPosts = true;
+        const data = await apiCall(`/api/channels/${channelId}/posts?limit=50&offset=${channelPostsOffset}`);
+        if (data && data.posts) {
+          const container = document.getElementById('channelPostsContainer');
+          if (container) {
+            let postsHtml = '';
+            data.posts.forEach(post => {
+              postsHtml += renderChannelPost(post);
+            });
+            container.innerHTML += postsHtml;
+          }
+
+          channelPostsHasMore = data.hasMore || false;
+          channelPostsOffset += 50;
+
+          const loadMoreBtn = document.querySelector('[onclick*="loadMoreChannelPosts"]');
+          if (loadMoreBtn) {
+            if (channelPostsHasMore) {
+              loadMoreBtn.style.display = 'block';
+            } else {
+              loadMoreBtn.style.display = 'none';
+            }
+          }
+        } else if (data && data.error) {
+          throw new Error(data.error);
+        }
+      } catch (err) {
+        console.error('Error loading more channel posts:', err);
+        showToast('Error loading more posts', 'error');
+      } finally {
+        isLoadingChannelPosts = false;
       }
     }
 
@@ -7471,6 +7551,9 @@
     let channelsList = [];
     let filteredChannelsList = [];
     let currentSearchQuery = '';
+    let channelPostsOffset = 0;
+    let channelPostsHasMore = false;
+    let isLoadingChannelPosts = false;
 
     async function loadUserLikes() {
       try {
