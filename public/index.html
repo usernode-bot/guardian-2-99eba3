@@ -818,9 +818,10 @@
                   </label>
                   <select id="networkModeSelect" onchange="updateNetworkMode(this.value)" class="w-full px-2 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none">
                     <option value="real_testnet">Real Testnet (Live Transactions)</option>
+                    <option value="devnet">Devnet (Database Only)</option>
                     <option value="demo">Demo (Simulated)</option>
                   </select>
-                  <p class="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed"><strong>Testnet:</strong> Real blockchain transactions; wallet confirmation required; transactions remain pending until blockchain confirms. <strong>Demo:</strong> Transactions are simulated with fake hashes; audit logs immediately mark as confirmed.</p>
+                  <p class="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed"><strong>Real Testnet:</strong> Live blockchain transactions; wallet confirmation required; transactions remain pending until blockchain confirms. <strong>Devnet:</strong> Database-only transactions; immediate confirmation; useful for testing. <strong>Demo:</strong> Transactions are simulated with fake hashes; audit logs immediately mark as confirmed.</p>
                 </div>
 
                 <!-- RPC Endpoint Configuration (only shown in testnet mode) -->
@@ -2277,12 +2278,12 @@
           settings.networkMode = mode;
           saveSettings(settings);
 
-          updateConfigDotColor(mode === 'demo');
-          const modeName = mode === 'demo' ? 'Demo' : 'Testnet';
+          updateConfigDotColor(mode === 'demo' || mode === 'devnet');
+          const modeName = mode === 'demo' ? 'Demo' : (mode === 'devnet' ? 'Devnet' : 'Testnet');
           showToast('Switched to ' + modeName + ' mode', 'success');
 
           // Show/hide RPC endpoint config based on mode
-          if (mode === 'testnet') {
+          if (mode === 'real_testnet') {
             rpcEndpointConfig.classList.remove('hidden');
           } else {
             rpcEndpointConfig.classList.add('hidden');
