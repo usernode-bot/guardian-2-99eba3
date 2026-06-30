@@ -12,7 +12,24 @@ const mockData = require('./server-mock-data');
 // Docker build validation: dependencies synchronized and clean. All required modules (express, pg, jsonwebtoken) properly declared in package.json
 const app = express();
 const port = process.env.PORT || 3000;
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+// Initialize database pool with graceful error handling for missing DATABASE_URL
+let pool;
+let databaseConfigured = true;
+try {
+  if (!process.env.DATABASE_URL) {
+    console.warn('[CONFIG] ⚠️  DATABASE_URL not set - database features will be unavailable');
+    databaseConfigured = false;
+    pool = new Pool({ connectionString: 'postgresql://localhost/dummy' });
+  } else {
+    pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  }
+} catch (err) {
+  console.error('[CONFIG] ❌ Error creating database pool:', err.message);
+  databaseConfigured = false;
+  pool = new Pool({ connectionString: 'postgresql://localhost/dummy' });
+}
+
 const JWT_SECRET = process.env.JWT_SECRET;
 const IS_STAGING = process.env.USERNODE_ENV === 'staging';
 
@@ -972,8 +989,11 @@ app.use(async (req, res, next) => {
     }
   }
 
+  // Attach database availability flag to request for endpoint handling
+  req.databaseAvailable = databaseConfigured;
+
   // Upsert user on first request: ensure user exists in DB with wallet identity
-  if (req.user) {
+  if (req.user && databaseConfigured) {
     try {
       await pool.query(`
         INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at)
@@ -999,7 +1019,12 @@ app.use(async (req, res, next) => {
   next();
 });
 
-app.get('/health', (_req, res) => res.json({ status: 'ok', staging: IS_STAGING, environment: IS_STAGING ? 'staging' : 'production' }));
+app.get('/health', (_req, res) => res.json({
+  status: 'ok',
+  staging: IS_STAGING,
+  environment: IS_STAGING ? 'staging' : 'production',
+  database: databaseConfigured ? 'connected' : 'unavailable'
+}));
 
 // Debug endpoint to verify GuardiAI user exists (public for troubleshooting)
 app.get('/api/debug/guardiAI', async (_req, res) => {
@@ -6759,10 +6784,37 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// ===== GRACEFUL DEGRADATION FOR MISSING DATABASE =====
+
+async function startServerWithoutDatabase() {
+  try {
+    app.listen(port, () => {
+      console.log(`Listening on :${port}`);
+      console.log(`[CONFIG] USERNODE_ENV: ${process.env.USERNODE_ENV || 'not set'}`);
+      console.log(`[CONFIG] NETWORK_MODE: ${NETWORK_MODE}`);
+      console.log(`[CONFIG] IS_STAGING: ${IS_STAGING}`);
+      console.log('[CONFIG] ⚠️  DATABASE is UNAVAILABLE - app running in degraded mode');
+      console.log('[CONFIG] Health check: GET /health (will report database: unavailable)');
+    });
+  } catch (err) {
+    console.error('[STARTUP] ❌ Failed to start server:', err);
+    process.exit(1);
+  }
+}
+
 // ===== DATABASE INITIALIZATION =====
 
 async function start() {
   try {
+    // Check if DATABASE_URL is configured before attempting migrations
+    if (!databaseConfigured) {
+      console.warn('[STARTUP] ⚠️  Skipping database initialization - DATABASE_URL not set');
+      console.log('[STARTUP] Health check endpoint available at /health');
+      console.log('[STARTUP] Database-dependent features will return 503 Service Unavailable');
+      await startServerWithoutDatabase();
+      return;
+    }
+
     // Drop old presses table if it exists (for demo purposes)
     await pool.query(`DROP TABLE IF EXISTS presses CASCADE`);
 
