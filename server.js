@@ -31,7 +31,148 @@ let ENABLE_DEMO_MODE = getEnableDemoMode();
 // Usernode blockchain configuration
 const APP_PUBKEY = process.env.APP_PUBKEY || 'ut1Fww7onqF9LsRSb6d6BozgQWtjNYqQJghYxXmBc8foncb';
 const APP_SECRET_KEY = process.env.APP_SECRET_KEY || 'guardian_sk_mqudwes5_ae613cf56214808e';
-let NODE_RPC_URL = process.env.NODE_RPC_URL || 'http://localhost:3001';
+
+// RPC Configuration with validation (Real Testnet mode only)
+function validateAndConfigureRPC() {
+  // RPC configuration only applies when NETWORK_MODE === 'testnet'
+  // In demo mode, bridge/fallback is used exclusively
+
+  let configuredUrl = process.env.NODE_RPC_URL;
+
+  // If NODE_RPC_URL is set, validate it's a valid URL (only in testnet mode)
+  if (configuredUrl && NETWORK_MODE === 'testnet') {
+    try {
+      new URL(configuredUrl);
+    } catch (err) {
+      console.warn(`[CONFIG] NODE_RPC_URL is invalid URL: ${configuredUrl}, error: ${err.message}`);
+      configuredUrl = null;
+    }
+  }
+
+  // If not set or invalid, use intelligent defaults based on environment
+  if (!configuredUrl && NETWORK_MODE === 'testnet') {
+    if (IS_STAGING) {
+      configuredUrl = 'http://host.docker.internal:3001';
+      console.log(`[CONFIG] NODE_RPC_URL not set in staging, using default: ${configuredUrl}`);
+    } else {
+      console.warn(`[CONFIG] NODE_RPC_URL not configured in production testnet mode — token transfers and blockchain features may be unavailable`);
+      configuredUrl = null; // Will trigger fallback to bridge mode
+    }
+  }
+
+  // In demo mode, return null to skip RPC entirely
+  if (NETWORK_MODE === 'demo') {
+    return null;
+  }
+
+  return configuredUrl;
+}
+
+let NODE_RPC_URL = validateAndConfigureRPC();
+
+// RPC health check cache
+let rpcHealthCache = null;
+let rpcHealthCacheTime = 0;
+const RPC_HEALTH_CACHE_MS = 30000; // 30 seconds
+
+async function checkRPCHealth() {
+  // RPC health checks only in testnet mode
+  if (NETWORK_MODE !== 'testnet') {
+    return { rpcUrl: null, reachable: false, error: 'Demo mode - RPC not used' };
+  }
+
+  if (!NODE_RPC_URL) {
+    return { rpcUrl: null, reachable: false, error: 'NODE_RPC_URL not configured' };
+  }
+
+  const now = Date.now();
+  if (rpcHealthCache && (now - rpcHealthCacheTime) < RPC_HEALTH_CACHE_MS) {
+    return rpcHealthCache;
+  }
+
+  return new Promise((resolve) => {
+    const startTime = Date.now();
+    const url = new URL('/health', NODE_RPC_URL);
+    const isHttps = NODE_RPC_URL.startsWith('https');
+    const client = isHttps ? https : http;
+
+    const options = {
+      hostname: url.hostname,
+      port: url.port,
+      path: url.pathname,
+      method: 'GET',
+      timeout: 3000
+    };
+
+    const req = client.request(options, (res) => {
+      const responseTime = Date.now() - startTime;
+      const result = {
+        rpcUrl: NODE_RPC_URL,
+        reachable: res.statusCode >= 200 && res.statusCode < 300,
+        responseTime,
+        lastChecked: new Date().toISOString(),
+        error: null
+      };
+      rpcHealthCache = result;
+      rpcHealthCacheTime = now;
+      resolve(result);
+    });
+
+    req.on('error', (err) => {
+      const responseTime = Date.now() - startTime;
+      const result = {
+        rpcUrl: NODE_RPC_URL,
+        reachable: false,
+        responseTime,
+        lastChecked: new Date().toISOString(),
+        error: err.code || err.message
+      };
+      rpcHealthCache = result;
+      rpcHealthCacheTime = now;
+      resolve(result);
+    });
+
+    req.on('timeout', () => {
+      req.destroy();
+      const responseTime = Date.now() - startTime;
+      const result = {
+        rpcUrl: NODE_RPC_URL,
+        reachable: false,
+        responseTime,
+        lastChecked: new Date().toISOString(),
+        error: 'ETIMEDOUT'
+      };
+      rpcHealthCache = result;
+      rpcHealthCacheTime = now;
+      resolve(result);
+    });
+
+    req.end();
+  });
+}
+
+// Helper function to classify RPC errors
+function classifyRPCError(err) {
+  if (!err) return { type: 'unknown', message: 'Unknown error' };
+
+  const message = err.message || '';
+  const code = err.code || '';
+
+  if (code === 'ECONNREFUSED' || message.includes('ECONNREFUSED')) {
+    return { type: 'ECONNREFUSED', message: `RPC connection refused at ${NODE_RPC_URL}` };
+  }
+  if (code === 'ENOTFOUND' || message.includes('ENOTFOUND')) {
+    return { type: 'ENOTFOUND', message: `RPC hostname not found: ${NODE_RPC_URL}` };
+  }
+  if (code === 'ETIMEDOUT' || message.includes('ETIMEDOUT')) {
+    return { type: 'ETIMEDOUT', message: `RPC connection timeout: ${NODE_RPC_URL}` };
+  }
+  if (message.includes('timeout') || code === 'ESOCKETTIMEDOUT') {
+    return { type: 'timeout', message: `RPC request timeout (>10s): ${NODE_RPC_URL}` };
+  }
+
+  return { type: 'unknown', message: message || code || 'Unknown RPC error' };
+}
 
 // Helper function to get RPC endpoint from database
 async function getRpcEndpointFromDatabase() {
@@ -48,14 +189,15 @@ async function getRpcEndpointFromDatabase() {
   return null;
 }
 
-// Initialize RPC URL from database if available
+// Initialize RPC URL from database if available (testnet only)
 async function initializeRpcUrl() {
+  if (NETWORK_MODE !== 'testnet') return;
   const dbRpcUrl = await getRpcEndpointFromDatabase();
   if (dbRpcUrl) {
     NODE_RPC_URL = dbRpcUrl;
     console.log('[RPC Config] RPC endpoint initialized from database:', NODE_RPC_URL);
   } else {
-    NODE_RPC_URL = process.env.NODE_RPC_URL || 'http://localhost:3001';
+    NODE_RPC_URL = validateAndConfigureRPC();
     console.log('[RPC Config] RPC endpoint initialized from environment:', NODE_RPC_URL);
   }
 }
@@ -329,13 +471,13 @@ async function sendOutgoingPayment(recipient, amount, memo) {
   try {
     console.log(`[BLOCKCHAIN-SUBMIT] sendOutgoingPayment: recipient=${recipient}, amount=${amount}, memo=${memo ? 'provided' : 'none'}`);
 
-    // In staging or without RPC URL, return demo transaction
-    if (IS_STAGING || !NODE_RPC_URL) {
-      console.log(`[BLOCKCHAIN-SUBMIT] Demo/staging mode: would send ${amount} to ${recipient}`);
+    // In demo mode or without RPC URL in testnet, use bridge/fallback
+    if (NETWORK_MODE === 'demo' || !NODE_RPC_URL) {
+      console.log(`[BLOCKCHAIN-SUBMIT] Bridge/fallback mode: would send ${amount} to ${recipient}`);
       return { success: true, transactionHash: 'ut1staging-token-demo-' + Date.now() };
     }
 
-    // In production: POST to NODE_RPC_URL /wallet/send
+    // In testnet mode with RPC: POST to NODE_RPC_URL /wallet/send
     // Pattern: Last One Wins wallet_send RPC format
     const rpcPayload = {
       method: 'wallet_send',
@@ -347,7 +489,7 @@ async function sendOutgoingPayment(recipient, amount, memo) {
       }
     };
 
-    console.log(`[BLOCKCHAIN-SUBMIT] Submitting real payment tx to ${NODE_RPC_URL}/wallet/send with payload: ${JSON.stringify(rpcPayload)}`);
+    console.log(`[BLOCKCHAIN-RPC] Attempting to connect to ${NODE_RPC_URL}/wallet/send, timeout=10000ms, method=wallet_send`);
 
     return new Promise((resolve, reject) => {
       const url = new URL('/wallet/send', NODE_RPC_URL);
@@ -374,26 +516,35 @@ async function sendOutgoingPayment(recipient, amount, memo) {
             const response = JSON.parse(data);
             if (res.statusCode >= 200 && res.statusCode < 300) {
               const txHash = response.txHash || response.hash || 'ut1-tx-' + Math.random().toString(36).substr(2, 9);
-              console.log(`[BLOCKCHAIN-SUBMIT] Payment submitted successfully: statusCode=${res.statusCode}, txHash=${txHash}, response=${JSON.stringify(response)}`);
+              console.log(`[BLOCKCHAIN-SUBMIT] Payment submitted successfully: statusCode=${res.statusCode}, txHash=${txHash}`);
               resolve({
                 success: true,
                 transactionHash: txHash
               });
+            } else if (res.statusCode >= 500) {
+              console.error(`[BLOCKCHAIN-RPC] Server error (HTTP ${res.statusCode}): ${response.error || JSON.stringify(response)}`);
+              reject(new Error(`RPC server error (HTTP ${res.statusCode}): ${response.error || 'unknown'}`));
             } else {
-              console.error(`[BLOCKCHAIN-SUBMIT] RPC error: statusCode=${res.statusCode}, response=${JSON.stringify(response)}`);
-              reject(new Error(`RPC error: ${response.error || res.statusCode}`));
+              console.error(`[BLOCKCHAIN-RPC] Client error (HTTP ${res.statusCode}): ${response.error || JSON.stringify(response)}`);
+              reject(new Error(`RPC error (HTTP ${res.statusCode}): ${response.error || 'unknown'}`));
             }
           } catch (err) {
-            console.error(`[BLOCKCHAIN-SUBMIT] Failed to parse RPC response: ${err.message}`);
+            console.error(`[BLOCKCHAIN-RPC] Failed to parse RPC response: ${err.message}`);
             reject(new Error(`Failed to parse RPC response: ${err.message}`));
           }
         });
       });
 
-      req.on('error', reject);
+      req.on('error', (err) => {
+        const errorClass = classifyRPCError(err);
+        console.error(`[BLOCKCHAIN-RPC] Connection failed (${errorClass.type}): ${errorClass.message}`);
+        reject(new Error(`${errorClass.type}: ${errorClass.message}`));
+      });
+
       req.on('timeout', () => {
         req.destroy();
-        reject(new Error('Sidecar RPC request timeout'));
+        console.error(`[BLOCKCHAIN-RPC] Request timeout (>10s): ${NODE_RPC_URL}/wallet/send`);
+        reject(new Error('RPC_TIMEOUT: Request timeout (exceeded 10 seconds)'));
       });
 
       req.write(JSON.stringify(rpcPayload));
@@ -405,18 +556,18 @@ async function sendOutgoingPayment(recipient, amount, memo) {
   }
 }
 
-// Send message transaction to blockchain via RPC
+// Send message transaction to blockchain via RPC (Real Testnet mode only)
 async function sendMessageToBlockchain(messagePayload, memo, network = 'testnet') {
   try {
     console.log(`[BLOCKCHAIN-SUBMIT] sendMessageToBlockchain: messageId=${messagePayload.messageId}, memo=${memo ? 'provided' : 'none'}`);
 
-    // In staging or without RPC URL, return demo transaction
-    if (IS_STAGING || !NODE_RPC_URL) {
-      console.log(`[BLOCKCHAIN-SUBMIT] Demo/staging mode: would submit message ${messagePayload.messageId} to network ${network}`);
+    // In demo mode or without RPC URL in testnet, use bridge/fallback
+    if (NETWORK_MODE === 'demo' || !NODE_RPC_URL) {
+      console.log(`[BLOCKCHAIN-SUBMIT] Bridge/fallback mode: would submit message ${messagePayload.messageId} to network ${network}`);
       return { transactionHash: 'ut1staging-' + network + '-message-' + Date.now() };
     }
 
-    // In production: POST to NODE_RPC_URL /transaction/submit
+    // In testnet mode with RPC: POST to NODE_RPC_URL /transaction/submit
     const rpcPayload = {
       method: 'transaction_submit',
       params: {
@@ -427,7 +578,7 @@ async function sendMessageToBlockchain(messagePayload, memo, network = 'testnet'
       }
     };
 
-    console.log(`[BLOCKCHAIN-SUBMIT] Submitting message tx to ${NODE_RPC_URL}/transaction/submit, messageId=${messagePayload.messageId}`);
+    console.log(`[BLOCKCHAIN-RPC] Attempting to connect to ${NODE_RPC_URL}/transaction/submit, timeout=10000ms, method=transaction_submit`);
 
     return new Promise((resolve, reject) => {
       const url = new URL('/transaction/submit', NODE_RPC_URL);
@@ -458,21 +609,30 @@ async function sendMessageToBlockchain(messagePayload, memo, network = 'testnet'
               resolve({
                 transactionHash: txHash
               });
+            } else if (res.statusCode >= 500) {
+              console.error(`[BLOCKCHAIN-RPC] Server error (HTTP ${res.statusCode}): ${response.error || JSON.stringify(response)}`);
+              reject(new Error(`RPC server error (HTTP ${res.statusCode}): ${response.error || 'unknown'}`));
             } else {
-              console.error(`[BLOCKCHAIN-SUBMIT] RPC error: statusCode=${res.statusCode}, response=${JSON.stringify(response)}`);
-              reject(new Error(`RPC error: ${response.error || res.statusCode}`));
+              console.error(`[BLOCKCHAIN-RPC] Client error (HTTP ${res.statusCode}): ${response.error || JSON.stringify(response)}`);
+              reject(new Error(`RPC error (HTTP ${res.statusCode}): ${response.error || 'unknown'}`));
             }
           } catch (err) {
-            console.error(`[BLOCKCHAIN-SUBMIT] Failed to parse RPC response: ${err.message}`);
+            console.error(`[BLOCKCHAIN-RPC] Failed to parse RPC response: ${err.message}`);
             reject(new Error(`Failed to parse RPC response: ${err.message}`));
           }
         });
       });
 
-      req.on('error', reject);
+      req.on('error', (err) => {
+        const errorClass = classifyRPCError(err);
+        console.error(`[BLOCKCHAIN-RPC] Connection failed (${errorClass.type}): ${errorClass.message}`);
+        reject(new Error(`${errorClass.type}: ${errorClass.message}`));
+      });
+
       req.on('timeout', () => {
         req.destroy();
-        reject(new Error('Message submission RPC request timeout'));
+        console.error(`[BLOCKCHAIN-RPC] Request timeout (>10s): ${NODE_RPC_URL}/transaction/submit`);
+        reject(new Error('RPC_TIMEOUT: Request timeout (exceeded 10 seconds)'));
       });
 
       req.write(JSON.stringify(rpcPayload));
@@ -484,18 +644,18 @@ async function sendMessageToBlockchain(messagePayload, memo, network = 'testnet'
   }
 }
 
-// Send group creation transaction to blockchain via RPC
+// Send group creation transaction to blockchain via RPC (Real Testnet mode only)
 async function sendGroupToBlockchain(groupPayload, memo, memberPubkeys, network = 'testnet') {
   try {
     console.log(`[BLOCKCHAIN-SUBMIT] sendGroupToBlockchain: groupId=${groupPayload.groupId}, memo=${memo ? 'provided' : 'none'}`);
 
-    // In staging or without RPC URL, return demo transaction
-    if (IS_STAGING || !NODE_RPC_URL) {
-      console.log(`[BLOCKCHAIN-SUBMIT] Demo/staging mode: would create group ${groupPayload.groupId} to network ${network}`);
+    // In demo mode or without RPC URL in testnet, use bridge/fallback
+    if (NETWORK_MODE === 'demo' || !NODE_RPC_URL) {
+      console.log(`[BLOCKCHAIN-SUBMIT] Bridge/fallback mode: would create group ${groupPayload.groupId} to network ${network}`);
       return { transactionHash: 'ut1staging-' + network + '-group-' + Date.now() };
     }
 
-    // In production: POST to NODE_RPC_URL /transaction/submit
+    // In testnet mode with RPC: POST to NODE_RPC_URL /transaction/submit
     const rpcPayload = {
       method: 'transaction_submit',
       params: {
@@ -506,7 +666,7 @@ async function sendGroupToBlockchain(groupPayload, memo, memberPubkeys, network 
       }
     };
 
-    console.log(`[BLOCKCHAIN-SUBMIT] Submitting group tx to ${NODE_RPC_URL}/transaction/submit, groupId=${groupPayload.groupId}`);
+    console.log(`[BLOCKCHAIN-RPC] Attempting to connect to ${NODE_RPC_URL}/transaction/submit, timeout=10000ms, method=transaction_submit`);
 
     return new Promise((resolve, reject) => {
       const url = new URL('/transaction/submit', NODE_RPC_URL);
@@ -537,21 +697,30 @@ async function sendGroupToBlockchain(groupPayload, memo, memberPubkeys, network 
               resolve({
                 transactionHash: txHash
               });
+            } else if (res.statusCode >= 500) {
+              console.error(`[BLOCKCHAIN-RPC] Server error (HTTP ${res.statusCode}): ${response.error || JSON.stringify(response)}`);
+              reject(new Error(`RPC server error (HTTP ${res.statusCode}): ${response.error || 'unknown'}`));
             } else {
-              console.error(`[BLOCKCHAIN-SUBMIT] RPC error: statusCode=${res.statusCode}, response=${JSON.stringify(response)}`);
-              reject(new Error(`RPC error: ${response.error || res.statusCode}`));
+              console.error(`[BLOCKCHAIN-RPC] Client error (HTTP ${res.statusCode}): ${response.error || JSON.stringify(response)}`);
+              reject(new Error(`RPC error (HTTP ${res.statusCode}): ${response.error || 'unknown'}`));
             }
           } catch (err) {
-            console.error(`[BLOCKCHAIN-SUBMIT] Failed to parse RPC response: ${err.message}`);
+            console.error(`[BLOCKCHAIN-RPC] Failed to parse RPC response: ${err.message}`);
             reject(new Error(`Failed to parse RPC response: ${err.message}`));
           }
         });
       });
 
-      req.on('error', reject);
+      req.on('error', (err) => {
+        const errorClass = classifyRPCError(err);
+        console.error(`[BLOCKCHAIN-RPC] Connection failed (${errorClass.type}): ${errorClass.message}`);
+        reject(new Error(`${errorClass.type}: ${errorClass.message}`));
+      });
+
       req.on('timeout', () => {
         req.destroy();
-        reject(new Error('Group submission RPC request timeout'));
+        console.error(`[BLOCKCHAIN-RPC] Request timeout (>10s): ${NODE_RPC_URL}/transaction/submit`);
+        reject(new Error('RPC_TIMEOUT: Request timeout (exceeded 10 seconds)'));
       });
 
       req.write(JSON.stringify(rpcPayload));
@@ -1121,6 +1290,21 @@ app.get('/api/config', async (req, res) => {
     // Check if user is authorized (first user OR has created a group)
     const canEdit = userId === 1 || (await userHasCreatedGroup(userId));
 
+    // Get RPC health status only in testnet mode
+    const rpcHealth = NETWORK_MODE === 'testnet' ? await checkRPCHealth() : null;
+
+    const nodeRpcUrlSecret = {
+      key: 'NODE_RPC_URL',
+      value: NODE_RPC_URL,
+      required: false,
+      private: false
+    };
+
+    // Only include rpcStatus in testnet mode
+    if (NETWORK_MODE === 'testnet') {
+      nodeRpcUrlSecret.rpcStatus = rpcHealth;
+    }
+
     res.json({
       networkMode: NETWORK_MODE,
       isDemoMode: ENABLE_DEMO_MODE,
@@ -1141,12 +1325,7 @@ app.get('/api/config', async (req, res) => {
           required: true,
           private: true
         },
-        {
-          key: 'NODE_RPC_URL',
-          value: NODE_RPC_URL,
-          required: false,
-          private: false
-        }
+        nodeRpcUrlSecret
       ]
     });
   } catch (err) {
@@ -1229,6 +1408,21 @@ app.put('/api/config/demo-mode', async (req, res) => {
   } catch (err) {
     console.error('Error updating config:', err);
     res.status(500).json({ error: 'Failed to update configuration' });
+  }
+});
+
+// RPC health check endpoint
+app.get('/api/health/rpc', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const rpcHealth = await checkRPCHealth();
+    res.json(rpcHealth);
+  } catch (err) {
+    console.error('Error checking RPC health:', err);
+    res.status(500).json({ error: 'Failed to check RPC health' });
   }
 });
 
@@ -1713,7 +1907,8 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
             console.error('Error starting chain poller:', err);
           });
         } catch (err) {
-          console.error('Background blockchain submission error:', err);
+          const errorClass = classifyRPCError(err);
+          console.error(`[BLOCKCHAIN-FALLBACK] RPC failed (${errorClass.type}), using bridge fallback for messageId=${messageId}: ${err.message}`);
 
           // Fallback: try bridge approach (generates placeholder hash)
           try {
@@ -1724,6 +1919,8 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
               UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
             `, [bridgeResult.txHash, blockchainRecordingId]);
 
+            console.log(`[BLOCKCHAIN-FALLBACK] Updated audit log with bridge tx hash: txHash=${bridgeResult.txHash}, auditLogId=${blockchainRecordingId}`);
+
             // Start polling with placeholder (will timeout after 20 attempts)
             // This allows audit log to be marked as 'failed' after max polls
             startChainPoller(network, bridgeResult.txHash, blockchainRecordingId).catch(pollerErr => {
@@ -1731,7 +1928,7 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
             });
           } catch (bridgeErr) {
             // Both RPC and fallback failed — mark as failed immediately
-            console.error('Fallback blockchain submission also failed:', bridgeErr);
+            console.error(`[BLOCKCHAIN-FALLBACK] Bridge fallback also failed: ${bridgeErr.message}`);
             await pool.query(`
               UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
             `, [bridgeErr.message, blockchainRecordingId]);
@@ -2023,18 +2220,20 @@ app.post('/api/tokens/send', async (req, res) => {
             });
           }
         } catch (err) {
-          console.error('Sidecar token transfer error:', err);
+          const errorClass = classifyRPCError(err);
+          console.error(`[BLOCKCHAIN-FALLBACK] RPC failed (${errorClass.type}), using bridge fallback for token transfer: ${err.message}`);
           // Fall back to bridge approach
           try {
             const result = await sendTransactionToBridge(transactionPayload, null, network);
             await pool.query(`
               UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
             `, [result.txHash, blockchainRecordingId]);
+            console.log(`[BLOCKCHAIN-FALLBACK] Updated audit log with bridge tx hash: txHash=${result.txHash}, auditLogId=${blockchainRecordingId}`);
             monitorBlockchainStatus(blockchainRecordingId, result.txHash).catch(err => {
               console.error('Error monitoring blockchain status:', err);
             });
           } catch (bridgeErr) {
-            console.error('Bridge fallback error:', bridgeErr);
+            console.error(`[BLOCKCHAIN-FALLBACK] Bridge fallback also failed: ${bridgeErr.message}`);
             await pool.query(`
               UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
             `, [bridgeErr.message, blockchainRecordingId]);
@@ -3541,7 +3740,8 @@ app.post('/api/groups', async (req, res) => {
             console.error(`[POST /api/groups::BLOCKCHAIN::ASYNC] Error starting chain poller: ${err.message}`, err);
           });
         } catch (err) {
-          console.error(`[POST /api/groups::BLOCKCHAIN::ASYNC] Background blockchain submission error: ${err.message}`, err);
+          const errorClass = classifyRPCError(err);
+          console.error(`[BLOCKCHAIN-FALLBACK] RPC failed (${errorClass.type}), using bridge fallback for groupId=${groupId}: ${err.message}`);
 
           // Fallback: try bridge approach
           try {
@@ -3551,12 +3751,14 @@ app.post('/api/groups', async (req, res) => {
               UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
             `, [bridgeResult.txHash, blockchainRecordingId]);
 
+            console.log(`[BLOCKCHAIN-FALLBACK] Updated audit log with bridge tx hash: txHash=${bridgeResult.txHash}, auditLogId=${blockchainRecordingId}`);
+
             // Start polling with placeholder so it eventually marks as 'failed'
             startChainPoller(network, bridgeResult.txHash, blockchainRecordingId).catch(pollerErr => {
               console.error(`[POST /api/groups::BLOCKCHAIN::ASYNC] Error starting fallback chain poller: ${pollerErr.message}`, pollerErr);
             });
           } catch (bridgeErr) {
-            console.error(`[POST /api/groups::BLOCKCHAIN::ASYNC] Fallback also failed: ${bridgeErr.message}`, bridgeErr);
+            console.error(`[BLOCKCHAIN-FALLBACK] Bridge fallback also failed: ${bridgeErr.message}`);
             await pool.query(`
               UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
             `, [bridgeErr.message, blockchainRecordingId]);
@@ -8400,7 +8602,20 @@ async function start() {
     // Store cache in global scope for access by API endpoints
     global.usernamesCache = usernamesCache;
 
-    app.listen(port, () => console.log(`Listening on :${port}`));
+    app.listen(port, () => {
+      console.log(`Listening on :${port}`);
+      console.log(`[CONFIG] USERNODE_ENV: ${process.env.USERNODE_ENV || 'not set'}`);
+      console.log(`[CONFIG] NETWORK_MODE: ${NETWORK_MODE}`);
+      console.log(`[CONFIG] IS_STAGING: ${IS_STAGING}`);
+      if (NETWORK_MODE === 'testnet') {
+        console.log(`[CONFIG] Real Testnet mode - RPC enabled: ${NODE_RPC_URL ? 'yes' : 'no'}`);
+        if (NODE_RPC_URL) {
+          console.log(`[CONFIG] NODE_RPC_URL: ${NODE_RPC_URL}`);
+        }
+      } else {
+        console.log(`[CONFIG] Demo mode - using bridge/fallback exclusively, RPC disabled`);
+      }
+    });
   } catch (err) {
     console.error(err);
     process.exit(1);
