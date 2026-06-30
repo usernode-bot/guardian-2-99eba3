@@ -2909,11 +2909,11 @@ app.post('/api/contacts', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
-    if (!usernode_pubkey && !ENABLE_DEMO_MODE) {
+    if (!usernode_pubkey) {
       return res.status(400).json({ error: 'usernode_pubkey is required' });
     }
 
-    if (usernode_pubkey && !usernode_pubkey.startsWith('ut1')) {
+    if (!usernode_pubkey.startsWith('ut1')) {
       return res.status(400).json({ error: 'Invalid Usernode address format' });
     }
 
