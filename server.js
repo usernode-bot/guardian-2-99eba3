@@ -5052,7 +5052,9 @@ app.get('/api/channels', async (req, res) => {
       SELECT c.id, c.name, c.description, c.is_system, c.owner_id, c.category, c.is_verified, c.verified_at, c.is_featured, c.created_at, c.updated_at,
              u.username as ownerUsername,
              (SELECT COUNT(*) FROM channel_unread WHERE user_id = $1 AND channel_id = c.id AND unread_count > 0)::INTEGER as unreadCount,
-             (SELECT COUNT(*) FROM pinned_channels WHERE user_id = $1 AND channel_id = c.id)::INTEGER as isPinned
+             (SELECT COUNT(*) FROM pinned_channels WHERE user_id = $1 AND channel_id = c.id)::INTEGER as isPinned,
+             (SELECT COUNT(*) FROM channel_followers WHERE channel_id = c.id)::INTEGER as followerCount,
+             (SELECT COUNT(*) FROM channel_followers WHERE user_id = $1 AND channel_id = c.id)::INTEGER as isFollowing
       FROM channels c
       LEFT JOIN users u ON c.owner_id = u.id
       WHERE 1=1
@@ -5088,7 +5090,9 @@ app.get('/api/channels', async (req, res) => {
         createdAt: c.created_at,
         updatedAt: c.updated_at,
         unreadCount: parseInt(c.unreadCount) || 0,
-        isPinned: parseInt(c.isPinned) > 0
+        isPinned: parseInt(c.isPinned) > 0,
+        followerCount: parseInt(c.followerCount) || 0,
+        isFollowing: parseInt(c.isFollowing) > 0
       }))
     });
   } catch (err) {
@@ -5277,6 +5281,13 @@ app.post('/api/channels', async (req, res) => {
 
     const ownerUsername = userRows.length > 0 ? userRows[0].username : null;
 
+    // Auto-follow: creator automatically follows their own channel
+    await pool.query(`
+      INSERT INTO channel_followers (user_id, channel_id, followed_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (user_id, channel_id) DO NOTHING
+    `, [userId, channel.id]);
+
     // Update audit log with txHash
     if (auditLogId) {
       await pool.query(`
@@ -5423,6 +5434,140 @@ app.delete('/api/channels/:channelId', async (req, res) => {
   } catch (err) {
     console.error('Error deleting channel:', err);
     res.status(500).json({ error: 'Failed to delete channel' });
+  }
+});
+
+// GET /api/user/followed-channels - List channels the user follows with latest post preview
+app.get('/api/user/followed-channels', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { rows: followedChannels } = await pool.query(`
+      SELECT c.id, c.name, c.description, c.owner_id, c.category, c.is_verified, c.verified_at, c.is_featured, c.is_system, c.created_at, c.updated_at,
+             u.username as ownerUsername,
+             cf.followed_at,
+             (SELECT COUNT(*) FROM channel_followers WHERE channel_id = c.id)::INTEGER as followerCount,
+             fp.id as latestPostId,
+             fp.user_id as latestPostUserId,
+             fp.content as latestPostContent,
+             fp.created_at as latestPostCreatedAt,
+             pu.username as latestPostUsername
+      FROM channel_followers cf
+      JOIN channels c ON cf.channel_id = c.id
+      LEFT JOIN users u ON c.owner_id = u.id
+      LEFT JOIN (
+        SELECT DISTINCT ON (channel_id) id, user_id, content, created_at, channel_id
+        FROM feed_posts
+        ORDER BY channel_id, created_at DESC
+      ) fp ON c.id = fp.channel_id
+      LEFT JOIN users pu ON fp.user_id = pu.id
+      WHERE cf.user_id = $1
+      ORDER BY fp.created_at DESC NULLS LAST, cf.followed_at DESC
+    `, [req.user.id]);
+
+    const channels = followedChannels.map(ch => {
+      const contentObj = ch.latestPostContent ? JSON.parse(ch.latestPostContent) : null;
+      const contentSnippet = contentObj?.text ? contentObj.text.substring(0, 100) + (contentObj.text.length > 100 ? '...' : '') : null;
+
+      return {
+        id: ch.id,
+        name: ch.name,
+        description: ch.description,
+        ownerId: ch.owner_id,
+        ownerUsername: ch.ownerUsername,
+        category: ch.category,
+        isVerified: ch.is_verified,
+        verifiedAt: ch.verified_at,
+        isFeatured: ch.is_featured,
+        isSystem: ch.is_system,
+        createdAt: ch.created_at,
+        updatedAt: ch.updated_at,
+        followerCount: parseInt(ch.followerCount) || 0,
+        followedAt: ch.followed_at,
+        latestPost: ch.latestPostId ? {
+          id: ch.latestPostId,
+          authorUsername: ch.latestPostUsername,
+          contentSnippet: contentSnippet,
+          createdAt: ch.latestPostCreatedAt
+        } : null
+      };
+    });
+
+    res.json({ channels });
+  } catch (err) {
+    console.error('Error fetching followed channels:', err);
+    res.status(500).json({ error: 'Failed to fetch followed channels' });
+  }
+});
+
+// POST /api/channels/:channelId/follow - Follow a channel
+app.post('/api/channels/:channelId/follow', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const channelId = parseInt(req.params.channelId);
+    if (isNaN(channelId)) {
+      return res.status(400).json({ error: 'Invalid channel ID' });
+    }
+
+    // Check if channel exists
+    const { rows: channelCheck } = await pool.query(`
+      SELECT id FROM channels WHERE id = $1
+    `, [channelId]);
+
+    if (channelCheck.length === 0) {
+      return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    // Try to insert follower relationship
+    const { rows: result } = await pool.query(`
+      INSERT INTO channel_followers (user_id, channel_id, followed_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (user_id, channel_id) DO NOTHING
+      RETURNING id
+    `, [req.user.id, channelId]);
+
+    if (result.length === 0) {
+      return res.status(409).json({ error: 'Already following this channel' });
+    }
+
+    res.json({ success: true, message: 'Channel followed' });
+  } catch (err) {
+    console.error('Error following channel:', err);
+    res.status(500).json({ error: 'Failed to follow channel' });
+  }
+});
+
+// DELETE /api/channels/:channelId/follow - Unfollow a channel
+app.delete('/api/channels/:channelId/follow', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const channelId = parseInt(req.params.channelId);
+    if (isNaN(channelId)) {
+      return res.status(400).json({ error: 'Invalid channel ID' });
+    }
+
+    const { rows: result } = await pool.query(`
+      DELETE FROM channel_followers
+      WHERE user_id = $1 AND channel_id = $2
+      RETURNING id
+    `, [req.user.id, channelId]);
+
+    if (result.length === 0) {
+      return res.status(404).json({ error: 'Not following this channel' });
+    }
+
+    res.json({ success: true, message: 'Channel unfollowed' });
+  } catch (err) {
+    console.error('Error unfollowing channel:', err);
+    res.status(500).json({ error: 'Failed to unfollow channel' });
   }
 });
 
@@ -7338,6 +7483,25 @@ async function start() {
         ON channel_unread(user_id, channel_id)
     `);
 
+    // Create channel_followers table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS channel_followers (
+        id BIGSERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        channel_id BIGINT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+        followed_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(user_id, channel_id)
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_channel_followers_user_id
+        ON channel_followers(user_id, followed_at DESC)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_channel_followers_channel_id
+        ON channel_followers(channel_id)
+    `);
+
     // Create channel_categories table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS channel_categories (
@@ -8773,6 +8937,18 @@ async function start() {
           console.log(`[Channel Seed] Created ${posts.length} demo posts in channel: ${channel.name}`);
         }
       }
+
+      // Seed channel followers for demo user (user 1 follows all channels)
+      console.log('[Channel Seed] Adding follower relationships...');
+      const { rows: channelRows } = await pool.query(`SELECT id FROM channels ORDER BY created_at ASC`);
+      for (const ch of channelRows) {
+        await pool.query(`
+          INSERT INTO channel_followers (user_id, channel_id, followed_at)
+          VALUES ($1, $2, NOW())
+          ON CONFLICT (user_id, channel_id) DO NOTHING
+        `, [1, ch.id]);
+      }
+      console.log(`[Channel Seed] ✅ Added follower relationships (demo user follows ${channelRows.length} channels)`);
 
       console.log('[Channel Seed] ✅ Channel seed data completed');
     }
