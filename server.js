@@ -25,6 +25,9 @@ const pool = new Pool({
   query_timeout: 10000
 });
 
+const JWT_SECRET = process.env.JWT_SECRET;
+const IS_STAGING = process.env.USERNODE_ENV === 'staging';
+
 // Track database connection state with comprehensive monitoring
 let dbConnected = false;
 let dbPoolMetrics = { connects: 0, errors: 0, lastError: null };
@@ -56,9 +59,6 @@ setInterval(() => {
     console.warn('[DB] Pool has encountered errors:', dbPoolMetrics.lastError);
   }
 }, IS_STAGING ? 10000 : 30000);
-
-const JWT_SECRET = process.env.JWT_SECRET;
-const IS_STAGING = process.env.USERNODE_ENV === 'staging';
 
 // Initialize network mode with priority: NETWORK_MODE env var > ENABLE_DEMO_MODE env var > USERNODE_ENV==='staging' > default 'testnet'
 let NETWORK_MODE = process.env.NETWORK_MODE && ['demo', 'testnet'].includes(process.env.NETWORK_MODE)
