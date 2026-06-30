@@ -6576,11 +6576,11 @@
 
       const actionButton = currentUser && channel.ownerId === currentUser.id
         ? ''
-        : `<button onclick="toggleFollowChannel(${channel.id}, ${!channel.isFollowing})" class="px-3 py-1 text-sm font-medium rounded transition ${
+        : `<button class="channel-follow-btn px-3 py-1 text-sm font-medium rounded transition ${
             channel.isFollowing
               ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-300 dark:hover:bg-zinc-600'
               : 'bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white'
-          }">
+          }" data-channel-id="${channel.id}" data-following="${channel.isFollowing ? 'true' : 'false'}">
             ${channel.isFollowing ? 'Following' : 'Follow'}
           </button>`;
 
@@ -6606,7 +6606,6 @@
     }
 
     async function toggleFollowChannel(channelId, shouldFollow) {
-      event.stopPropagation();
       try {
         if (shouldFollow) {
           const data = await apiCall(`/api/channels/${channelId}/follow`, { method: 'POST' });
@@ -6614,6 +6613,8 @@
             showToast('Channel followed', 'success');
             await loadChannels();
             await switchFeedTab('discover');
+          } else if (data && data.error) {
+            showToast(data.error, 'error');
           }
         } else {
           const data = await apiCall(`/api/channels/${channelId}/follow`, { method: 'DELETE' });
@@ -6622,6 +6623,8 @@
             await loadChannels();
             const currentTab = document.getElementById('feedTabFollowing').classList.contains('border-cyan-600') ? 'following' : 'discover';
             await switchFeedTab(currentTab);
+          } else if (data && data.error) {
+            showToast(data.error, 'error');
           }
         }
       } catch (err) {
@@ -6629,6 +6632,16 @@
         showToast('Error updating follow status', 'error');
       }
     }
+
+    // Event delegation for follow buttons
+    document.addEventListener('click', (e) => {
+      if (e.target.classList.contains('channel-follow-btn')) {
+        e.stopPropagation();
+        const channelId = parseInt(e.target.dataset.channelId);
+        const isFollowing = e.target.dataset.following === 'true';
+        toggleFollowChannel(channelId, !isFollowing);
+      }
+    });
 
     function showProfileView() {
       updateMenuHighlight('profile');
