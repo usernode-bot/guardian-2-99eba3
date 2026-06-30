@@ -2607,38 +2607,71 @@
       showConversationsView();
     }
 
+    // Fix #6: Implement fetch timeout with AbortController and exponential backoff retry
     async function apiCall(path, opts = {}) {
-      try {
-        const response = await fetch(path, {
-          ...opts,
-          headers: { 'Content-Type': 'application/json', ...headers, ...opts.headers }
-        });
-        if (!response.ok) {
-          try {
-            const data = await response.json();
-            let errorMsg = 'Request failed';
-            if (data && typeof data === 'object' && data.error) {
-              errorMsg = typeof data.error === 'string' ? data.error : 'Request failed';
-            }
-            console.error(`API error (${response.status}) on ${path}:`, { errorMsg, data });
-            return { error: errorMsg, status: response.status };
-          } catch (parseErr) {
-            const text = await response.text().catch(() => '');
-            console.error(`API error (${response.status}) on ${path} with invalid JSON:`, text);
-            return { error: 'Request failed', status: response.status };
-          }
-        }
+      const maxRetries = 3;
+      const baseDelayMs = 100;
+
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
-          const data = await response.json();
-          return data;
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
+          try {
+            const response = await fetch(path, {
+              ...opts,
+              signal: controller.signal,
+              headers: { 'Content-Type': 'application/json', ...headers, ...opts.headers }
+            });
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+              try {
+                const data = await response.json();
+                let errorMsg = 'Request failed';
+                if (data && typeof data === 'object' && data.error) {
+                  errorMsg = typeof data.error === 'string' ? data.error : 'Request failed';
+                }
+                console.error(`API error (${response.status}) on ${path}:`, { errorMsg, data });
+                return { error: errorMsg, status: response.status };
+              } catch (parseErr) {
+                const text = await response.text().catch(() => '');
+                console.error(`API error (${response.status}) on ${path} with invalid JSON:`, text);
+                return { error: 'Request failed', status: response.status };
+              }
+            }
+            try {
+              const data = await response.json();
+              return data;
+            } catch (err) {
+              const text = await response.text().catch(() => '');
+              console.error(`Failed to parse JSON response from ${path}:`, { error: err.message, text });
+              return { error: 'Invalid response format', status: response.status };
+            }
+          } catch (fetchErr) {
+            clearTimeout(timeoutId);
+
+            // Don't retry non-timeout network errors
+            if (fetchErr.name !== 'AbortError') {
+              console.error(`Network error on ${path}:`, fetchErr.message);
+              return { error: fetchErr.message || 'Network error', status: 0 };
+            }
+
+            // Timeout error - retry with exponential backoff
+            if (attempt < maxRetries) {
+              const delayMs = baseDelayMs * Math.pow(2, attempt);
+              console.warn(`[apiCall] Timeout on ${path}, retry ${attempt + 1}/${maxRetries} in ${delayMs}ms`);
+              await new Promise(resolve => setTimeout(resolve, delayMs));
+              continue;
+            } else {
+              console.error(`Network timeout on ${path} after ${maxRetries} retries`);
+              return { error: 'Network timeout - request took too long', status: 0 };
+            }
+          }
         } catch (err) {
-          const text = await response.text().catch(() => '');
-          console.error(`Failed to parse JSON response from ${path}:`, { error: err.message, text });
-          return { error: 'Invalid response format', status: response.status };
+          console.error(`Unexpected error in apiCall for ${path}:`, err.message);
+          return { error: err.message || 'Unexpected error', status: 0 };
         }
-      } catch (err) {
-        console.error(`Network error on ${path}:`, err.message);
-        return { error: err.message || 'Network error', status: 0 };
       }
     }
 
@@ -3835,13 +3868,18 @@
         // Phase 2: Request wallet signature and register txHash
         const txHash = await requestWalletSignature('Create Group', { name, description: desc || '(none)' }, auditLogId);
 
+        // Fix #4: Generate idempotency key for group create
+        const idempotencyKey = generateIdempotencyKey();
+        storeIdempotencyKey(`group_${auditLogId}`, idempotencyKey);
+
         const data = await apiCall('/api/groups', {
           method: 'POST',
           body: JSON.stringify({
             name,
             description: desc || null,
             txHash: txHash,
-            auditLogId: auditLogId
+            auditLogId: auditLogId,
+            idempotencyKey: idempotencyKey
           })
         });
 
@@ -5192,6 +5230,19 @@
       return '';
     }
 
+    // Fix #4: Generate and manage idempotency keys
+    function generateIdempotencyKey() {
+      return 'idempotency-' + crypto.getRandomValues(new Uint8Array(16)).reduce((a, b) => a + b.toString(16), '');
+    }
+
+    function getStoredIdempotencyKey(key) {
+      return localStorage.getItem(`idempotency_${key}`);
+    }
+
+    function storeIdempotencyKey(key, value) {
+      localStorage.setItem(`idempotency_${key}`, value);
+    }
+
     async function sendMessage() {
       const input = document.getElementById('msgInput');
       const text = input.value.trim();
@@ -5210,13 +5261,18 @@
         const txDetails = { message: text.substring(0, 50) + (text.length > 50 ? '...' : '') };
         const txHash = await requestWalletSignature('Send Message', txDetails, auditLogId);
 
+        // Fix #4: Generate idempotency key for message send
+        const idempotencyKey = generateIdempotencyKey();
+        storeIdempotencyKey(`message_${auditLogId}`, idempotencyKey);
+
         const data = await apiCall(endpoint, {
           method: 'POST',
           body: JSON.stringify({
             type: 'text',
             content: { text },
             txHash: txHash,
-            auditLogId: auditLogId
+            auditLogId: auditLogId,
+            idempotencyKey: idempotencyKey
           })
         });
 
@@ -5262,9 +5318,14 @@
           const auditLogId = await createPendingAuditLog();
 
           const txHash = await requestWalletSignature('Send Image', { imageSize: imageSizeKb + ' KB' }, auditLogId);
+
+          // Fix #4: Generate idempotency key for image send
+          const idempotencyKey = generateIdempotencyKey();
+          storeIdempotencyKey(`image_${auditLogId}`, idempotencyKey);
+
           const data = await apiCall(endpoint, {
             method: 'POST',
-            body: JSON.stringify({ type: 'image', content: { imageUrl: dataUri }, txHash: txHash, auditLogId: auditLogId })
+            body: JSON.stringify({ type: 'image', content: { imageUrl: dataUri }, txHash: txHash, auditLogId: auditLogId, idempotencyKey: idempotencyKey })
           });
 
           if (data && !data.error) {
@@ -5327,6 +5388,10 @@
 
           const txHash = await requestWalletSignature('Send Tokens', { recipient: 'selected contact', amount: `${amount} tokens`, memo: memo || '(none)' }, auditLogId);
 
+          // Fix #4: Generate idempotency key for token send
+          const idempotencyKey = generateIdempotencyKey();
+          storeIdempotencyKey(`token_${auditLogId}`, idempotencyKey);
+
           const data = await apiCall('/api/tokens/send', {
             method: 'POST',
             body: JSON.stringify({
@@ -5334,7 +5399,8 @@
               amount: parseInt(amount),
               memo,
               txHash: txHash,
-              auditLogId: auditLogId
+              auditLogId: auditLogId,
+              idempotencyKey: idempotencyKey
             })
           });
 
@@ -5460,19 +5526,25 @@
           const errorMsg = auditData.errorMessage ? ` — ${auditData.errorMessage}` : '';
           // Fix #10: Add debounce to prevent double-click retry races
           statusEl.innerHTML = `✗ Failed${errorMsg} | <button id="retry-btn-${auditLogId}" class="underline" data-disabled="false">Retry</button>`;
-          document.getElementById(`retry-btn-${auditLogId}`).addEventListener('click', () => {
-            const btn = document.getElementById(`retry-btn-${auditLogId}`);
-            if (btn && btn.dataset.disabled === 'false') {
-              btn.dataset.disabled = 'true';
-              btn.style.opacity = '0.5';
-              retryFailedTransaction(auditLogId, messageId).finally(() => {
-                if (btn) {
-                  btn.dataset.disabled = 'false';
-                  btn.style.opacity = '1';
-                }
-              });
-            }
-          });
+          // Fix #1: Remove old event listeners before adding new ones to prevent memory leak
+          const retryBtn = document.getElementById(`retry-btn-${auditLogId}`);
+          if (retryBtn) {
+            const newBtn = retryBtn.cloneNode(true);
+            retryBtn.parentNode.replaceChild(newBtn, retryBtn);
+            newBtn.addEventListener('click', () => {
+              const btn = document.getElementById(`retry-btn-${auditLogId}`);
+              if (btn && btn.dataset.disabled === 'false') {
+                btn.dataset.disabled = 'true';
+                btn.style.opacity = '0.5';
+                retryFailedTransaction(auditLogId, messageId).finally(() => {
+                  if (btn) {
+                    btn.dataset.disabled = 'false';
+                    btn.style.opacity = '1';
+                  }
+                });
+              }
+            });
+          }
           statusEl.classList.remove('text-amber-600', 'dark:text-amber-400');
           statusEl.classList.add('text-red-600', 'dark:text-red-400');
           statusEl.title = auditData.errorMessage || 'Transaction failed - click Retry to try again';
@@ -5510,19 +5582,25 @@
             statusEl2.innerHTML = `✗ Retry failed — ${data.error} | <button id="retry-btn-${auditLogId}" class="underline" data-disabled="false">Try again</button>`;
             statusEl2.classList.remove('text-amber-600', 'dark:text-amber-400');
             statusEl2.classList.add('text-red-600', 'dark:text-red-400');
-            document.getElementById(`retry-btn-${auditLogId}`).addEventListener('click', () => {
-              const btn = document.getElementById(`retry-btn-${auditLogId}`);
-              if (btn && btn.dataset.disabled === 'false') {
-                btn.dataset.disabled = 'true';
-                btn.style.opacity = '0.5';
-                retryFailedTransaction(auditLogId, messageId).finally(() => {
-                  if (btn) {
-                    btn.dataset.disabled = 'false';
-                    btn.style.opacity = '1';
-                  }
-                });
-              }
-            });
+            // Fix #2: Remove old event listeners by cloning and replacing
+            const oldBtn = document.getElementById(`retry-btn-${auditLogId}`);
+            if (oldBtn) {
+              const newBtn = oldBtn.cloneNode(true);
+              oldBtn.parentNode.replaceChild(newBtn, oldBtn);
+              newBtn.addEventListener('click', () => {
+                const btn = document.getElementById(`retry-btn-${auditLogId}`);
+                if (btn && btn.dataset.disabled === 'false') {
+                  btn.dataset.disabled = 'true';
+                  btn.style.opacity = '0.5';
+                  retryFailedTransaction(auditLogId, messageId).finally(() => {
+                    if (btn) {
+                      btn.dataset.disabled = 'false';
+                      btn.style.opacity = '1';
+                    }
+                  });
+                }
+              });
+            }
           }
           showToast(data.error, 'error');
         } else if (data && data.blockchainRecordingId) {
@@ -5538,15 +5616,20 @@
             statusEl2.innerHTML = `✗ Retry failed | <button id="retry-btn-${auditLogId}" class="underline" data-disabled="false">Try again</button>`;
             statusEl2.classList.remove('text-amber-600', 'dark:text-amber-400');
             statusEl2.classList.add('text-red-600', 'dark:text-red-400');
-            document.getElementById(`retry-btn-${auditLogId}`).addEventListener('click', () => {
-              const btn = document.getElementById(`retry-btn-${auditLogId}`);
-              if (btn && btn.dataset.disabled === 'false') {
-                btn.dataset.disabled = 'true';
-                btn.style.opacity = '0.5';
-                retryFailedTransaction(auditLogId, messageId).finally(() => {
-                  if (btn) {
-                    btn.dataset.disabled = 'false';
-                    btn.style.opacity = '1';
+            // Fix #2: Remove old event listeners by cloning and replacing
+            const oldBtn = document.getElementById(`retry-btn-${auditLogId}`);
+            if (oldBtn) {
+              const newBtn = oldBtn.cloneNode(true);
+              oldBtn.parentNode.replaceChild(newBtn, oldBtn);
+              newBtn.addEventListener('click', () => {
+                const btn = document.getElementById(`retry-btn-${auditLogId}`);
+                if (btn && btn.dataset.disabled === 'false') {
+                  btn.dataset.disabled = 'true';
+                  btn.style.opacity = '0.5';
+                  retryFailedTransaction(auditLogId, messageId).finally(() => {
+                    if (btn) {
+                      btn.dataset.disabled = 'false';
+                      btn.style.opacity = '1';
                   }
                 });
               }

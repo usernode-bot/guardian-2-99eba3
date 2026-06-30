@@ -222,6 +222,12 @@ function classifyRPCError(err) {
 
   const message = err.message || '';
   const code = err.code || '';
+  const status = err.status || err.statusCode || 0;
+
+  // Fix #7: Explicit 429 rate limit handling
+  if (status === 429 || message.includes('429') || message.includes('too many requests') || message.includes('rate limit')) {
+    return { type: 'rate_limited', message: `Rate limited by RPC endpoint. Please wait before retrying.` };
+  }
 
   if (code === 'ECONNREFUSED' || message.includes('ECONNREFUSED')) {
     return { type: 'ECONNREFUSED', message: `RPC connection refused at ${NODE_RPC_URL}` };
@@ -1920,7 +1926,7 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
     }
 
     const { convId } = req.params;
-    const { type, content, txHash, auditLogId, contentHash: frontendContentHash } = req.body;
+    const { type, content, txHash, auditLogId, contentHash: frontendContentHash, idempotencyKey } = req.body;
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
@@ -1929,7 +1935,27 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
     console.log(`[MESSAGE] POST /api/conversations/${convId}/messages by user ${userId}`);
     console.log(`[MESSAGE] txHash provided: ${txHash ? 'yes - ' + txHash : 'no'}`);
     console.log(`[MESSAGE] Frontend content hash: ${frontendContentHash || 'none'}`);
+    console.log(`[MESSAGE] Idempotency key: ${idempotencyKey || 'none'}`);
     console.log(`[MESSAGE] Demo mode: ${ENABLE_DEMO_MODE}`);
+
+    // Fix #4: Idempotency check - if same idempotency key, return existing result
+    if (idempotencyKey) {
+      const { rows: idempRows } = await pool.query(`
+        SELECT id, tx_hash, blockchain_audit_log_id FROM blockchain_audit_logs
+        WHERE user_id = $1 AND idempotency_key = $2 LIMIT 1
+      `, [userId, idempotencyKey]);
+      if (idempRows.length > 0) {
+        const existingLog = idempRows[0];
+        console.log(`[MESSAGE] Idempotent request detected! Returning existing audit log ${existingLog.id}`);
+        res.json({
+          id: messageId || existingLog.id,
+          blockchainRecordingId: existingLog.id,
+          isDuplicate: true,
+          note: 'Idempotent request - returning cached result'
+        });
+        return;
+      }
+    }
 
     // Validate wallet connection before proceeding with message transaction (skip in demo mode)
     if (!ENABLE_DEMO_MODE && !req.user.usernode_pubkey) {
@@ -2046,9 +2072,9 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       console.log(`[MESSAGE] Using existing audit log: id=${auditLogId}`);
       await pool.query(`
         UPDATE blockchain_audit_logs
-        SET message_id = $1, message_type = $2, tx_hash = $3, transaction_payload = $4, status = $5, confirmed_at = $6, content_hash = $7, user_pubkey = $8, action_timestamp = $9, updated_at = NOW()
-        WHERE id = $10 AND user_id = $11
-      `, [messageId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, auditLogId, userId]);
+        SET message_id = $1, message_type = $2, tx_hash = $3, transaction_payload = $4, status = $5, confirmed_at = $6, content_hash = $7, user_pubkey = $8, action_timestamp = $9, idempotency_key = $10, updated_at = NOW()
+        WHERE id = $11 AND user_id = $12
+      `, [messageId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, idempotencyKey || null, auditLogId, userId]);
       blockchainRecordingId = auditLogId;
       console.log(`[MESSAGE] Updated existing audit log: id=${blockchainRecordingId}`);
     } else {
@@ -2059,10 +2085,10 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       }
 
       const auditRes = await pool.query(`
-        INSERT INTO blockchain_audit_logs (user_id, message_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
+        INSERT INTO blockchain_audit_logs (user_id, message_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, idempotency_key, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
         RETURNING id
-      `, [userId, messageId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, now]);
+      `, [userId, messageId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, idempotencyKey || null, now]);
       blockchainRecordingId = auditRes.rows[0].id;
 
       console.log(`[MESSAGE] Blockchain audit log created: auditLogId=${blockchainRecordingId}`);
@@ -2288,7 +2314,7 @@ app.post('/api/tokens/send', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const { recipientId, amount, memo, txHash, auditLogId, contentHash: frontendContentHash } = req.body;
+    const { recipientId, amount, memo, txHash, auditLogId, contentHash: frontendContentHash, idempotencyKey } = req.body;
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
@@ -2298,6 +2324,26 @@ app.post('/api/tokens/send', async (req, res) => {
     console.log(`[TOKEN] Recipient: ${recipientId}, Amount: ${amount}`);
     console.log(`[TOKEN] txHash provided: ${txHash ? 'yes - ' + txHash : 'no'}`);
     console.log(`[TOKEN] Frontend content hash: ${frontendContentHash || 'none'}`);
+    console.log(`[TOKEN] Idempotency key: ${idempotencyKey || 'none'}`);
+
+    // Fix #4: Idempotency check - if same idempotency key, return existing result
+    if (idempotencyKey) {
+      const { rows: idempRows } = await pool.query(`
+        SELECT id, tx_hash FROM blockchain_audit_logs
+        WHERE user_id = $1 AND idempotency_key = $2 LIMIT 1
+      `, [userId, idempotencyKey]);
+      if (idempRows.length > 0) {
+        const existingLog = idempRows[0];
+        console.log(`[TOKEN] Idempotent request detected! Returning existing audit log ${existingLog.id}`);
+        res.json({
+          blockchainRecordingId: existingLog.id,
+          txHash: existingLog.tx_hash,
+          isDuplicate: true,
+          note: 'Idempotent request - returning cached result'
+        });
+        return;
+      }
+    }
 
     // Validate wallet connection before proceeding with transaction
     if (!req.user.usernode_pubkey) {
@@ -2390,18 +2436,18 @@ app.post('/api/tokens/send', async (req, res) => {
       console.log(`[TOKEN] Using existing audit log: id=${auditLogId}`);
       await pool.query(`
         UPDATE blockchain_audit_logs
-        SET message_type = $1, tx_hash = $2, transaction_payload = $3, status = $4, confirmed_at = $5, content_hash = $6, user_pubkey = $7, action_timestamp = $8, updated_at = NOW()
-        WHERE id = $9 AND user_id = $10
-      `, ['token_transfer', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, req.user.usernode_pubkey || null, now, auditLogId, userId]);
+        SET message_type = $1, tx_hash = $2, transaction_payload = $3, status = $4, confirmed_at = $5, content_hash = $6, user_pubkey = $7, action_timestamp = $8, idempotency_key = $9, updated_at = NOW()
+        WHERE id = $10 AND user_id = $11
+      `, ['token_transfer', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, req.user.usernode_pubkey || null, now, idempotencyKey || null, auditLogId, userId]);
       blockchainRecordingId = auditLogId;
       console.log(`[TOKEN] Updated existing audit log: id=${blockchainRecordingId}`);
     } else {
       // Single-phase flow: create new audit log
       const auditRes = await pool.query(`
-        INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
+        INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, idempotency_key, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
         RETURNING id
-      `, [userId, 'token_transfer', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, req.user.usernode_pubkey || null, now, now]);
+      `, [userId, 'token_transfer', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, req.user.usernode_pubkey || null, now, idempotencyKey || null, now]);
       blockchainRecordingId = auditRes.rows[0].id;
 
       console.log(`[TOKEN] Blockchain audit log created: auditLogId=${blockchainRecordingId}`);
@@ -3836,7 +3882,26 @@ app.post('/api/groups', async (req, res) => {
     }
     console.log(`[POST /api/groups::VALIDATE] Authentication successful: userId=${req.user.id}`);
 
-    const { name, description, initialMemberIds, txHash, auditLogId, contentHash: frontendContentHash } = req.body;
+    const { name, description, initialMemberIds, txHash, auditLogId, contentHash: frontendContentHash, idempotencyKey } = req.body;
+
+    // Fix #4: Idempotency check - if same idempotency key, return existing result
+    if (idempotencyKey) {
+      const { rows: idempRows } = await pool.query(`
+        SELECT id, tx_hash FROM blockchain_audit_logs
+        WHERE user_id = $1 AND idempotency_key = $2 LIMIT 1
+      `, [parseInt(req.user.id, 10), idempotencyKey]);
+      if (idempRows.length > 0) {
+        const existingLog = idempRows[0];
+        console.log(`[POST /api/groups::IDEMPOTENT] Idempotent request detected! Returning existing audit log ${existingLog.id}`);
+        res.json({
+          blockchainRecordingId: existingLog.id,
+          txHash: existingLog.tx_hash,
+          isDuplicate: true,
+          note: 'Idempotent request - returning cached result'
+        });
+        return;
+      }
+    }
 
     // Validation: parse and validate user ID
     const userId = parseInt(req.user.id, 10);
@@ -3962,9 +4027,9 @@ app.post('/api/groups', async (req, res) => {
 
       await pool.query(`
         UPDATE blockchain_audit_logs
-        SET group_id = $1, message_type = $2, tx_hash = $3, transaction_payload = $4, status = $5, confirmed_at = $6, content_hash = $7, user_pubkey = $8, action_timestamp = $9, updated_at = NOW()
-        WHERE id = $10 AND user_id = $11
-      `, [groupId, 'group_create', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, req.user.usernode_pubkey || null, now, auditLogId, userId]);
+        SET group_id = $1, message_type = $2, tx_hash = $3, transaction_payload = $4, status = $5, confirmed_at = $6, content_hash = $7, user_pubkey = $8, action_timestamp = $9, idempotency_key = $10, updated_at = NOW()
+        WHERE id = $11 AND user_id = $12
+      `, [groupId, 'group_create', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, req.user.usernode_pubkey || null, now, idempotencyKey || null, auditLogId, userId]);
       blockchainRecordingId = auditLogId;
       console.log(`[POST /api/groups::BLOCKCHAIN] Updated existing audit log: id=${blockchainRecordingId}`);
     } else {
@@ -3987,10 +4052,10 @@ app.post('/api/groups', async (req, res) => {
       }
 
       const auditRes = await pool.query(`
-        INSERT INTO blockchain_audit_logs (user_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
+        INSERT INTO blockchain_audit_logs (user_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, idempotency_key, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
         RETURNING id
-      `, [userId, groupId, 'group_create', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, req.user.usernode_pubkey || null, now, now]);
+      `, [userId, groupId, 'group_create', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, req.user.usernode_pubkey || null, now, idempotencyKey || null, now]);
 
       if (auditRes.rows.length === 0) {
         console.error(`[POST /api/groups::BLOCKCHAIN] Audit log insert returned no rows`);
