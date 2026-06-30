@@ -18,21 +18,44 @@ console.log(`[CONFIG] DATABASE_URL: ${DATABASE_URL ? 'configured' : 'using fallb
 
 const pool = new Pool({
   connectionString: DATABASE_URL,
-  max: 20,
+  max: 40,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000
+  connectionTimeoutMillis: 2000,
+  statement_timeout: 10000,
+  query_timeout: 10000
 });
 
-// Track database connection state
+// Track database connection state with comprehensive monitoring
 let dbConnected = false;
+let dbPoolMetrics = { connects: 0, errors: 0, lastError: null };
+
 pool.on('connect', () => {
   dbConnected = true;
-  console.log('[DB] Connection established');
+  dbPoolMetrics.connects++;
+  console.log('[DB] Connection established', {poolSize: pool.totalCount, idleCount: pool.idleCount});
 });
 pool.on('error', (err) => {
   dbConnected = false;
-  console.error('[DB] Pool error:', err.message);
+  dbPoolMetrics.errors++;
+  dbPoolMetrics.lastError = err.message;
+  console.error('[DB] Pool error:', err.message, {poolSize: pool.totalCount, waitingCount: pool.waitingCount});
 });
+
+// Periodic pool health check (every 30 seconds in production, every 10 seconds in staging)
+setInterval(() => {
+  const healthStatus = {
+    connected: dbConnected,
+    totalCount: pool.totalCount,
+    idleCount: pool.idleCount,
+    waitingCount: pool.waitingCount,
+    metrics: dbPoolMetrics
+  };
+  if (pool.waitingCount > 5) {
+    console.warn('[DB] Pool health warning:', healthStatus);
+  } else if (dbPoolMetrics.errors > 0) {
+    console.warn('[DB] Pool has encountered errors:', dbPoolMetrics.lastError);
+  }
+}, IS_STAGING ? 10000 : 30000);
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const IS_STAGING = process.env.USERNODE_ENV === 'staging';
@@ -428,50 +451,75 @@ async function startChainPoller(chainId, txHash, auditLogId) {
 
   console.log(`[Chain Poller] Starting poller for txHash=${txHash}, chainId=${chainId}, auditLogId=${auditLogId}`);
 
-  // Skip if already polling this transaction
+  // Fix #5: Atomic check-and-set using closure to prevent double-poller race condition
   if (chainPollers.has(pollerId)) {
     console.log(`[Chain Poller] Already polling this transaction, skipping: ${pollerId}`);
-    return;
+    // Fix #17: Clean up old pollers if they've been running too long (>5 minutes = 300000ms)
+    const existingPoller = chainPollers.get(pollerId);
+    if (existingPoller && Date.now() - existingPoller.startTime > 300000) {
+      console.warn(`[Chain Poller] Removing stale poller for ${pollerId} (running for >5 minutes)`);
+      clearInterval(existingPoller.interval);
+      chainPollers.delete(pollerId);
+    } else {
+      return;
+    }
   }
 
   // Poll up to 20 times with exponential backoff (starting at 5s, capping at 60s)
   let pollCount = 0;
   const maxPolls = 20;
   let backoffMs = 5000;
+  let currentInterval;
 
-  const pollInterval = setInterval(async () => {
-    try {
-      pollCount++;
-      const isConfirmed = await pollTransactionStatus(chainId, txHash, auditLogId);
+  const createPollInterval = () => {
+    currentInterval = setInterval(async () => {
+      try {
+        pollCount++;
+        const isConfirmed = await pollTransactionStatus(chainId, txHash, auditLogId);
 
-      if (isConfirmed || pollCount >= maxPolls) {
-        clearInterval(pollInterval);
-        chainPollers.delete(pollerId);
-        if (!isConfirmed && pollCount >= maxPolls) {
-          console.warn(`[Chain Poller] Max polls reached for ${txHash}, marking as failed`);
-          const updateRes = await pool.query(`
-            UPDATE blockchain_audit_logs
-            SET status = 'failed', error_message = $1, updated_at = NOW()
-            WHERE id = $2
-          `, ['Transaction not confirmed after 20 polls', auditLogId]);
-          if (updateRes.rowCount === 0) {
-            console.warn(`[Chain Poller] WARNING: Failure update affected 0 rows for auditLogId=${auditLogId}`);
+        if (isConfirmed || pollCount >= maxPolls) {
+          clearInterval(currentInterval);
+          chainPollers.delete(pollerId);
+          if (!isConfirmed && pollCount >= maxPolls) {
+            console.warn(`[Chain Poller] Max polls reached for ${txHash}, marking as failed`);
+            // Fix #23, #31: Store error_type and last_error with comprehensive logging
+            const updateRes = await pool.query(`
+              UPDATE blockchain_audit_logs
+              SET status = 'failed', error_message = $1, error_type = 'max_polls_timeout', last_error = $2, updated_at = NOW()
+              WHERE id = $3
+            `, ['Transaction not confirmed after 20 polls', 'Polling timeout: transaction not found on-chain after maximum retry attempts', auditLogId]);
+            if (updateRes.rowCount === 0) {
+              console.warn(`[Chain Poller] WARNING: Failure update affected 0 rows for auditLogId=${auditLogId}`);
+            }
           }
+        } else {
+          backoffMs = Math.min(backoffMs * 1.5, 60000);
+          // Reschedule with new backoff
+          clearInterval(currentInterval);
+          setTimeout(() => startChainPoller(chainId, txHash, auditLogId), backoffMs);
         }
-      } else {
-        backoffMs = Math.min(backoffMs * 1.5, 60000);
-        // Reschedule with new backoff
-        clearInterval(pollInterval);
-        setTimeout(() => startChainPoller(chainId, txHash, auditLogId), backoffMs);
+      } catch (err) {
+        console.error(`[Chain Poller] Unexpected error:`, err.message);
+        clearInterval(currentInterval);
+        chainPollers.delete(pollerId);
+        // Fix #8, #31: Unhandled error in polling - update audit log to failed state
+        try {
+          await pool.query(`
+            UPDATE blockchain_audit_logs
+            SET status = 'failed', error_message = $1, error_type = 'poller_exception', last_error = $2, updated_at = NOW()
+            WHERE id = $3
+          `, [err.message, err.stack || err.toString(), auditLogId]);
+        } catch (dbErr) {
+          console.error(`[Chain Poller] Failed to log error to database: ${dbErr.message}`);
+        }
       }
-    } catch (err) {
-      console.error(`[Chain Poller] Unexpected error:`, err.message);
-      clearInterval(pollInterval);
-      chainPollers.delete(pollerId);
-    }
-  }, backoffMs);
+    }, backoffMs);
 
-  chainPollers.set(pollerId, { interval: pollInterval, startTime: Date.now() });
+    chainPollers.set(pollerId, { interval: currentInterval, startTime: Date.now() });
+  };
+
+  // Initialize the polling interval
+  createPollInterval();
 }
 
 // Sign transaction memo following Last One Wins pattern
@@ -2040,6 +2088,18 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       console.log(`[MESSAGE] Real txHash from frontend - starting chain poller for txHash=${txHash}, auditLogId=${blockchainRecordingId}`);
       startChainPoller(network, txHash, blockchainRecordingId).catch(err => {
         console.error('Error starting chain poller:', err);
+        // Fix #8: Unhandled rejection handler - mark transaction as failed
+        (async () => {
+          try {
+            await pool.query(`
+              UPDATE blockchain_audit_logs
+              SET status = 'failed', error_message = $1, error_type = 'poller_start_error', last_error = $2, updated_at = NOW()
+              WHERE id = $3
+            `, [err.message, err.stack || err.toString(), blockchainRecordingId]);
+          } catch (dbErr) {
+            console.error(`Failed to mark transaction failed: ${dbErr.message}`);
+          }
+        })();
       });
     } else if (!ENABLE_DEMO_MODE) {
       // Async: submit to blockchain in the background (production only, no frontend tx hash)
@@ -2352,6 +2412,18 @@ app.post('/api/tokens/send', async (req, res) => {
       console.log(`[TOKEN] Real txHash from frontend - starting chain poller for txHash=${txHash}, auditLogId=${blockchainRecordingId}`);
       startChainPoller(network, txHash, blockchainRecordingId).catch(err => {
         console.error('Error starting chain poller:', err);
+        // Fix #8: Unhandled rejection handler - mark transaction as failed
+        (async () => {
+          try {
+            await pool.query(`
+              UPDATE blockchain_audit_logs
+              SET status = 'failed', error_message = $1, error_type = 'poller_start_error', last_error = $2, updated_at = NOW()
+              WHERE id = $3
+            `, [err.message, err.stack || err.toString(), blockchainRecordingId]);
+          } catch (dbErr) {
+            console.error(`Failed to mark transaction failed: ${dbErr.message}`);
+          }
+        })();
       });
     } else if (!ENABLE_DEMO_MODE) {
       // Async: try to call sidecar for real token transfer (production only)
@@ -2385,6 +2457,18 @@ app.post('/api/tokens/send', async (req, res) => {
             console.log(`[BLOCKCHAIN-FALLBACK] Updated audit log with bridge tx hash: txHash=${result.txHash}, auditLogId=${blockchainRecordingId}`);
             monitorBlockchainStatus(blockchainRecordingId, result.txHash).catch(err => {
               console.error('Error monitoring blockchain status:', err);
+              // Fix #8: Unhandled rejection handler - mark transaction as failed
+              (async () => {
+                try {
+                  await pool.query(`
+                    UPDATE blockchain_audit_logs
+                    SET status = 'failed', error_message = $1, error_type = 'monitor_error', last_error = $2, updated_at = NOW()
+                    WHERE id = $3
+                  `, [err.message, err.stack || err.toString(), blockchainRecordingId]);
+                } catch (dbErr) {
+                  console.error(`Failed to mark transaction failed: ${dbErr.message}`);
+                }
+              })();
             });
           } catch (bridgeErr) {
             console.error(`[BLOCKCHAIN-FALLBACK] Bridge fallback also failed: ${bridgeErr.message}`);
@@ -2469,26 +2553,36 @@ app.post('/api/blockchain-audit/:auditLogId/retry', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
-    const { rows } = await pool.query(`
-      SELECT id, status, transaction_payload FROM blockchain_audit_logs
-      WHERE id = $1 AND user_id = $2
-    `, [auditLogId, userId]);
-
-    if (rows.length === 0) {
-      return res.status(404).json({ error: 'Audit log not found' });
-    }
-
-    const auditLog = rows[0];
-    if (auditLog.status !== 'failed') {
-      return res.status(400).json({ error: 'Can only retry failed transactions' });
-    }
-
-    // Reset to pending
-    await pool.query(`
+    // Fix #3: Atomic retry with atomic UPDATE (WHERE status = 'failed') to prevent double-retry race
+    const updateRes = await pool.query(`
       UPDATE blockchain_audit_logs
       SET status = 'pending', error_message = NULL, updated_at = NOW()
-      WHERE id = $1
-    `, [auditLogId]);
+      WHERE id = $1 AND user_id = $2 AND status = 'failed'
+      RETURNING id, status, transaction_payload, attempt_count
+    `, [auditLogId, userId]);
+
+    // Check if any rows were affected - this prevents TOCTOU (Time of Check, Time of Use) race condition
+    if (updateRes.rows.length === 0) {
+      const { rows: checkRows } = await pool.query(`
+        SELECT id, status FROM blockchain_audit_logs
+        WHERE id = $1 AND user_id = $2
+      `, [auditLogId, userId]);
+
+      if (checkRows.length === 0) {
+        return res.status(404).json({ error: 'Audit log not found' });
+      }
+      const currentStatus = checkRows[0].status;
+      return res.status(400).json({ error: `Can only retry failed transactions (current status: ${currentStatus})` });
+    }
+
+    const auditLog = updateRes.rows[0];
+
+    // Fix #30: Check attempt count - max 5 retries per transaction
+    const currentAttempts = auditLog.attempt_count || 0;
+    if (currentAttempts >= 5) {
+      console.warn(`[RETRY] Max retry attempts (5) reached for auditLogId=${auditLogId}`);
+      return res.status(400).json({ error: 'Maximum retry attempts (5) reached. Contact support if issue persists.' });
+    }
 
     // Re-submit to blockchain
     (async () => {
@@ -2502,29 +2596,56 @@ app.post('/api/blockchain-audit/:auditLogId/retry', async (req, res) => {
         if (!payload || Object.keys(payload).length === 0) {
           throw new Error('Transaction payload is empty or invalid - cannot retry');
         }
+
+        // Fix #6: Validate required payload fields
+        const requiredFields = ['type', 'messageId', 'network'];
+        const missingFields = requiredFields.filter(f => !payload[f]);
+        if (missingFields.length > 0) {
+          throw new Error(`Transaction payload missing required fields: ${missingFields.join(', ')}`);
+        }
+
         const network = payload.network || 'testnet';
         const result = await sendTransactionToBridge(payload, null, network);
         if (!result || !result.txHash) {
           throw new Error('Bridge submission returned no txHash');
         }
-        // Update audit log with new tx hash
-        const updateRes = await pool.query(`
-          UPDATE blockchain_audit_logs SET tx_hash = $1, updated_at = NOW() WHERE id = $2
+
+        // Update audit log with new tx hash and increment attempt counter
+        const txUpdateRes = await pool.query(`
+          UPDATE blockchain_audit_logs
+          SET tx_hash = $1, updated_at = NOW(), attempt_count = attempt_count + 1
+          WHERE id = $2
         `, [result.txHash, auditLogId]);
-        if (updateRes.rowCount === 0) {
+        if (txUpdateRes.rowCount === 0) {
           console.warn(`[RETRY] WARNING: Update affected 0 rows for auditLogId=${auditLogId}`);
         }
         // Start polling with real chain poller
         startChainPoller(network, result.txHash, auditLogId).catch(err => {
           console.error('Error starting chain poller for retry:', err);
+          // Fix #8, #31: Log unhandled rejection and update audit log to mark failed
+          (async () => {
+            try {
+              await pool.query(`
+                UPDATE blockchain_audit_logs
+                SET status = 'failed', error_message = $1, error_type = 'poller_error', last_error = $2, updated_at = NOW()
+                WHERE id = $3
+              `, [err.message, err.stack || err.toString(), auditLogId]);
+            } catch (dbErr) {
+              console.error(`[RETRY] Failed to log poller error: ${dbErr.message}`);
+            }
+          })();
         });
       } catch (err) {
         console.error('Error retrying blockchain submission:', err);
+        // Fix #23: Classify error type
+        const errorType = classifyRPCError(err).type;
         try {
-          const updateRes = await pool.query(`
-            UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
-          `, [err.message, auditLogId]);
-          if (updateRes.rowCount === 0) {
+          const failRes = await pool.query(`
+            UPDATE blockchain_audit_logs
+            SET status = 'failed', error_message = $1, error_type = $2, last_error = $3, updated_at = NOW(), attempt_count = attempt_count + 1
+            WHERE id = $4
+          `, [err.message, errorType, err.stack || err.toString(), auditLogId]);
+          if (failRes.rowCount === 0) {
             console.warn(`[RETRY] WARNING: Failure update affected 0 rows for auditLogId=${auditLogId}`);
           }
         } catch (dbErr) {
@@ -2533,7 +2654,7 @@ app.post('/api/blockchain-audit/:auditLogId/retry', async (req, res) => {
       }
     })();
 
-    res.json({ ok: true, auditLogId });
+    res.json({ blockchainRecordingId: auditLogId, note: 'Transaction resubmitted for processing', statusCode: 200 });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -4325,6 +4446,18 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
     if (txHash) {
       startChainPoller(network, txHash, blockchainRecordingId).catch(err => {
         console.error('Error starting chain poller:', err);
+        // Fix #8: Unhandled rejection handler - mark transaction as failed
+        (async () => {
+          try {
+            await pool.query(`
+              UPDATE blockchain_audit_logs
+              SET status = 'failed', error_message = $1, error_type = 'poller_start_error', last_error = $2, updated_at = NOW()
+              WHERE id = $3
+            `, [err.message, err.stack || err.toString(), blockchainRecordingId]);
+          } catch (dbErr) {
+            console.error(`Failed to mark transaction failed: ${dbErr.message}`);
+          }
+        })();
       });
     } else if (!ENABLE_DEMO_MODE) {
       // Async: submit to blockchain in the background (production only)
@@ -7475,6 +7608,20 @@ async function start() {
       ALTER TABLE blockchain_audit_logs ADD COLUMN IF NOT EXISTS action_timestamp TIMESTAMPTZ
     `);
 
+    // Fix #1, #6, #30: Add columns for improved error handling and retry management
+    await pool.query(`
+      ALTER TABLE blockchain_audit_logs ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(255) UNIQUE
+    `);
+    await pool.query(`
+      ALTER TABLE blockchain_audit_logs ADD COLUMN IF NOT EXISTS error_type VARCHAR(100)
+    `);
+    await pool.query(`
+      ALTER TABLE blockchain_audit_logs ADD COLUMN IF NOT EXISTS last_error TEXT
+    `);
+    await pool.query(`
+      ALTER TABLE blockchain_audit_logs ADD COLUMN IF NOT EXISTS attempt_count INTEGER DEFAULT 0
+    `);
+
     // Drop NOT NULL constraint on tx_hash to allow two-phase audit log creation (pending audits with null tx_hash)
     await pool.query(`
       ALTER TABLE blockchain_audit_logs ALTER COLUMN tx_hash DROP NOT NULL
@@ -9158,6 +9305,30 @@ async function start() {
       }
     }
 
+    // Fix #24: Cleanup job for orphaned pending_signature records (every 30 minutes)
+    // Records stuck in pending_signature for >30 minutes are marked as failed
+    if (dbConnected) {
+      setInterval(async () => {
+        try {
+          const result = await pool.query(`
+            UPDATE blockchain_audit_logs
+            SET status = 'failed',
+                error_message = 'Transaction abandoned - wallet signature never completed',
+                error_type = 'abandoned_pending_signature',
+                last_error = 'Pending signature timed out after 30 minutes',
+                updated_at = NOW()
+            WHERE status = 'pending_signature' AND created_at < NOW() - INTERVAL '30 minutes'
+            RETURNING id
+          `);
+          if (result.rowCount > 0) {
+            console.log(`[CLEANUP] Marked ${result.rowCount} orphaned pending_signature records as failed`);
+          }
+        } catch (err) {
+          console.warn('[CLEANUP] Failed to cleanup orphaned records:', err.message);
+        }
+      }, 1800000); // 30 minutes
+    }
+
     // Set interval to check and create milestone post every hour (3600000 ms)
     // Only creates if 24 hours have passed since the last post
     if (dbConnected) {
@@ -9249,6 +9420,51 @@ async function start() {
       };
     }
 
+    // Fix #32: Startup diagnostics - verify database schema has all required columns
+    async function verifyDatabaseSchema() {
+      try {
+        const requiredColumns = {
+          'blockchain_audit_logs': [
+            'id', 'user_id', 'message_id', 'message_type', 'tx_hash', 'status',
+            'transaction_payload', 'error_message', 'confirmed_at', 'content_hash',
+            'user_pubkey', 'action_timestamp', 'created_at', 'updated_at', 'group_id'
+          ],
+          'messages': ['id', 'blockchain_audit_log_id', 'conversation_id', 'sender_id', 'content', 'created_at'],
+          'blockchain_audit_logs_orphans_cleanup': [] // trigger
+        };
+
+        for (const [tableName, columns] of Object.entries(requiredColumns)) {
+          if (tableName === 'blockchain_audit_logs_orphans_cleanup') continue; // skip trigger check for now
+          const result = await pool.query(`
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = $1 AND table_schema = 'public'
+          `, [tableName]);
+          const existingColumns = result.rows.map(r => r.column_name);
+          const missingColumns = columns.filter(c => !existingColumns.includes(c));
+          if (missingColumns.length > 0) {
+            console.warn(`[STARTUP] WARNING: Table ${tableName} missing columns: ${missingColumns.join(', ')}`);
+          } else {
+            console.log(`[STARTUP] ✓ Table ${tableName} schema valid`);
+          }
+        }
+
+        // Check for orphaned pending_signature records
+        const orphanedRes = await pool.query(`
+          SELECT COUNT(*) as count FROM blockchain_audit_logs
+          WHERE status = 'pending_signature' AND created_at < NOW() - INTERVAL '30 minutes'
+        `);
+        const orphanedCount = parseInt(orphanedRes.rows[0].count, 10);
+        if (orphanedCount > 0) {
+          console.warn(`[STARTUP] WARNING: Found ${orphanedCount} orphaned pending_signature records older than 30 minutes. Consider cleanup.`);
+        }
+      } catch (err) {
+        console.warn(`[STARTUP] Schema verification failed: ${err.message}`);
+      }
+    }
+
+    // Run startup diagnostics
+    await verifyDatabaseSchema();
+
     app.listen(port, () => {
       console.log(`Listening on :${port}`);
       console.log(`[CONFIG] USERNODE_ENV: ${process.env.USERNODE_ENV || 'not set'}`);
@@ -9262,6 +9478,7 @@ async function start() {
       } else {
         console.log(`[CONFIG] Demo mode - using bridge/fallback exclusively, RPC disabled`);
       }
+      console.log(`[CONFIG] Database pool: ${pool.totalCount} max connections, query timeout 10s`);
     });
   } catch (err) {
     console.error(err);

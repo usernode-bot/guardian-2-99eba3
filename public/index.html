@@ -5431,7 +5431,8 @@
 
     async function pollBlockchainStatus(auditLogId, messageId, onComplete) {
       let isComplete = false;
-      const maxAttempts = 60;
+      // Fix #C2: Increase maxAttempts to 600 (10 minutes) to match backend polling (20 polls * ~30s backoff)
+      const maxAttempts = 600;
       let attempt = 0;
 
       while (!isComplete && attempt < maxAttempts) {
@@ -5439,19 +5440,39 @@
         await new Promise(resolve => setTimeout(resolve, 1000));
 
         const auditData = await apiCall(`/api/blockchain-audit/${auditLogId}`);
-        if (!auditData) continue;
+        // Fix #25: Validate auditData is not null before accessing properties
+        if (!auditData || typeof auditData !== 'object') {
+          continue;
+        }
 
         const statusEl = document.getElementById(`blockchain-status-${messageId}`);
+        // Fix #9: Check element exists before updating
         if (!statusEl) break;
 
         if (auditData.status === 'confirmed') {
-          statusEl.innerHTML = `✓ Confirmed | <span class="font-mono text-xs" title="${auditData.txHash}">${auditData.txHash.substring(0, 10)}...</span>`;
+          // Fix #9: Add null check for txHash before substring operation
+          const txHashDisplay = auditData.txHash ? auditData.txHash.substring(0, 10) : 'unknown';
+          statusEl.innerHTML = `✓ Confirmed | <span class="font-mono text-xs" title="${auditData.txHash || 'unknown'}">${txHashDisplay}...</span>`;
           statusEl.classList.remove('text-amber-600', 'dark:text-amber-400');
           statusEl.classList.add('text-green-600', 'dark:text-green-400');
           isComplete = true;
         } else if (auditData.status === 'failed') {
           const errorMsg = auditData.errorMessage ? ` — ${auditData.errorMessage}` : '';
-          statusEl.innerHTML = `✗ Failed${errorMsg} | <button onclick="retryFailedTransaction(${auditLogId}, ${messageId})" class="underline">Retry</button>`;
+          // Fix #10: Add debounce to prevent double-click retry races
+          statusEl.innerHTML = `✗ Failed${errorMsg} | <button id="retry-btn-${auditLogId}" class="underline" data-disabled="false">Retry</button>`;
+          document.getElementById(`retry-btn-${auditLogId}`).addEventListener('click', () => {
+            const btn = document.getElementById(`retry-btn-${auditLogId}`);
+            if (btn && btn.dataset.disabled === 'false') {
+              btn.dataset.disabled = 'true';
+              btn.style.opacity = '0.5';
+              retryFailedTransaction(auditLogId, messageId).finally(() => {
+                if (btn) {
+                  btn.dataset.disabled = 'false';
+                  btn.style.opacity = '1';
+                }
+              });
+            }
+          });
           statusEl.classList.remove('text-amber-600', 'dark:text-amber-400');
           statusEl.classList.add('text-red-600', 'dark:text-red-400');
           statusEl.title = auditData.errorMessage || 'Transaction failed - click Retry to try again';
@@ -5468,6 +5489,7 @@
     async function retryFailedTransaction(auditLogId, messageId) {
       try {
         const statusEl = document.getElementById(`blockchain-status-${messageId}`);
+        // Fix #9: Check element exists before updating
         if (!statusEl) return;
 
         // Update UI to show retrying state
@@ -5480,25 +5502,78 @@
           body: JSON.stringify({})
         });
 
-        if (data && data.ok) {
+        // Fix #8: Validate response - check for error field first
+        if (data && data.error) {
+          // Error response from API
+          const statusEl2 = document.getElementById(`blockchain-status-${messageId}`);
+          if (statusEl2) {
+            statusEl2.innerHTML = `✗ Retry failed — ${data.error} | <button id="retry-btn-${auditLogId}" class="underline" data-disabled="false">Try again</button>`;
+            statusEl2.classList.remove('text-amber-600', 'dark:text-amber-400');
+            statusEl2.classList.add('text-red-600', 'dark:text-red-400');
+            document.getElementById(`retry-btn-${auditLogId}`).addEventListener('click', () => {
+              const btn = document.getElementById(`retry-btn-${auditLogId}`);
+              if (btn && btn.dataset.disabled === 'false') {
+                btn.dataset.disabled = 'true';
+                btn.style.opacity = '0.5';
+                retryFailedTransaction(auditLogId, messageId).finally(() => {
+                  if (btn) {
+                    btn.dataset.disabled = 'false';
+                    btn.style.opacity = '1';
+                  }
+                });
+              }
+            });
+          }
+          showToast(data.error, 'error');
+        } else if (data && data.blockchainRecordingId) {
+          // Success response
           // Add small delay before polling to let backend process
           await new Promise(resolve => setTimeout(resolve, 500));
           // Resume polling
           pollBlockchainStatus(auditLogId, messageId);
         } else {
-          // Show error if retry failed
-          statusEl.innerHTML = `✗ Retry failed | <button onclick="retryFailedTransaction(${auditLogId}, ${messageId})" class="underline">Try again</button>`;
-          statusEl.classList.remove('text-amber-600', 'dark:text-amber-400');
-          statusEl.classList.add('text-red-600', 'dark:text-red-400');
-          showToast(data?.error || 'Failed to retry transaction', 'error');
+          // Unknown response format
+          const statusEl2 = document.getElementById(`blockchain-status-${messageId}`);
+          if (statusEl2) {
+            statusEl2.innerHTML = `✗ Retry failed | <button id="retry-btn-${auditLogId}" class="underline" data-disabled="false">Try again</button>`;
+            statusEl2.classList.remove('text-amber-600', 'dark:text-amber-400');
+            statusEl2.classList.add('text-red-600', 'dark:text-red-400');
+            document.getElementById(`retry-btn-${auditLogId}`).addEventListener('click', () => {
+              const btn = document.getElementById(`retry-btn-${auditLogId}`);
+              if (btn && btn.dataset.disabled === 'false') {
+                btn.dataset.disabled = 'true';
+                btn.style.opacity = '0.5';
+                retryFailedTransaction(auditLogId, messageId).finally(() => {
+                  if (btn) {
+                    btn.dataset.disabled = 'false';
+                    btn.style.opacity = '1';
+                  }
+                });
+              }
+            });
+          }
+          showToast('Failed to retry transaction', 'error');
         }
       } catch (err) {
         console.error('Error retrying transaction:', err);
         const statusEl = document.getElementById(`blockchain-status-${messageId}`);
         if (statusEl) {
-          statusEl.innerHTML = `✗ Retry error | <button onclick="retryFailedTransaction(${auditLogId}, ${messageId})" class="underline">Try again</button>`;
+          statusEl.innerHTML = `✗ Retry error | <button id="retry-btn-${auditLogId}" class="underline" data-disabled="false">Try again</button>`;
           statusEl.classList.remove('text-amber-600', 'dark:text-amber-400');
           statusEl.classList.add('text-red-600', 'dark:text-red-400');
+          document.getElementById(`retry-btn-${auditLogId}`).addEventListener('click', () => {
+            const btn = document.getElementById(`retry-btn-${auditLogId}`);
+            if (btn && btn.dataset.disabled === 'false') {
+              btn.dataset.disabled = 'true';
+              btn.style.opacity = '0.5';
+              retryFailedTransaction(auditLogId, messageId).finally(() => {
+                if (btn) {
+                  btn.dataset.disabled = 'false';
+                  btn.style.opacity = '1';
+                }
+              });
+            }
+          });
         }
         showToast(`Error retrying transaction: ${err.message}`, 'error');
       }
