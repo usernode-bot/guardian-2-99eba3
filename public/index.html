@@ -823,6 +823,24 @@
                   <p class="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed"><strong>Testnet:</strong> Real blockchain transactions; wallet confirmation required; transactions remain pending until blockchain confirms. <strong>Demo:</strong> Transactions are simulated with fake hashes; audit logs immediately mark as confirmed.</p>
                 </div>
 
+                <!-- RPC Endpoint Configuration (only shown in testnet mode) -->
+                <div id="rpcEndpointConfig" class="hidden space-y-2">
+                  <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400 flex items-center gap-2">
+                    <span>RPC Endpoint URL</span>
+                    <span id="rpcEndpointLoading" class="hidden inline-block w-3 h-3 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></span>
+                  </label>
+                  <input
+                    id="rpcEndpointInput"
+                    type="text"
+                    placeholder="e.g., http://localhost:3001 or https://testnet-rpc.usernodelabs.org"
+                    class="w-full px-2 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  />
+                  <button id="rpcEndpointSave" onclick="updateRpcEndpoint()" class="w-full px-3 py-1.5 bg-cyan-500 text-white rounded text-xs font-medium hover:bg-cyan-600 transition">
+                    Save RPC Endpoint
+                  </button>
+                  <p class="text-xs text-zinc-600 dark:text-zinc-400">Usernode testnet RPC endpoint for submitting transactions.</p>
+                </div>
+
                 <!-- Permission Notice -->
                 <div id="configNoPermission" class="hidden text-xs text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800 p-2 rounded">
                   You don't have permission to change configuration settings.
@@ -2032,11 +2050,22 @@
           const dropdown = document.getElementById('networkModeSelect');
           const noPermission = document.getElementById('configNoPermission');
           const accordion = document.getElementById('configAccordion');
+          const rpcEndpointConfig = document.getElementById('rpcEndpointConfig');
+          const rpcEndpointInput = document.getElementById('rpcEndpointInput');
 
           // Set dropdown to current network mode, defaulting to networkMode if available, else isDemoMode for backward compat
           const currentMode = config.networkMode || (config.isDemoMode ? 'demo' : 'testnet');
           dropdown.value = currentMode;
           dropdown.disabled = !config.canEdit;
+
+          // Show/hide RPC endpoint config based on network mode and permission
+          if (currentMode === 'testnet' && config.canEditRpc) {
+            rpcEndpointConfig.classList.remove('hidden');
+            rpcEndpointInput.value = config.rpcEndpoint || 'http://localhost:3001';
+            rpcEndpointInput.disabled = !config.canEditRpc;
+          } else {
+            rpcEndpointConfig.classList.add('hidden');
+          }
 
           // Save to localStorage
           const settings = loadSettings();
@@ -2167,6 +2196,7 @@
     async function updateNetworkMode(mode) {
       const dropdown = document.getElementById('networkModeSelect');
       const loading = document.getElementById('networkModeLoading');
+      const rpcEndpointConfig = document.getElementById('rpcEndpointConfig');
       const previousMode = dropdown.value;
 
       try {
@@ -2188,6 +2218,16 @@
           const modeName = mode === 'demo' ? 'Demo' : 'Testnet';
           showToast('Switched to ' + modeName + ' mode', 'success');
 
+          // Show/hide RPC endpoint config based on mode
+          if (mode === 'testnet') {
+            rpcEndpointConfig.classList.remove('hidden');
+          } else {
+            rpcEndpointConfig.classList.add('hidden');
+          }
+
+          // Reload config state to refresh all UI elements
+          await loadConfigState();
+
           // Refresh all data after mode change
           try {
             if (document.getElementById('conversationsView') && !document.getElementById('conversationsView').classList.contains('hidden')) {
@@ -2199,7 +2239,7 @@
             if (document.getElementById('feedView') && !document.getElementById('feedView').classList.contains('hidden')) {
               await loadChannels();
             }
-            // Refresh transaction history
+            // Transaction history accordion is always visible; just ensure polling is active
             pollTransactionHistory();
             if (transactionHistoryIntervalId) clearInterval(transactionHistoryIntervalId);
             transactionHistoryIntervalId = setInterval(pollTransactionHistory, 2000);
@@ -2221,6 +2261,54 @@
       } finally {
         loading.classList.add('hidden');
         dropdown.disabled = false;
+      }
+    }
+
+    async function updateRpcEndpoint() {
+      const input = document.getElementById('rpcEndpointInput');
+      const loading = document.getElementById('rpcEndpointLoading');
+      const saveBtn = document.getElementById('rpcEndpointSave');
+      const rpcUrl = input.value.trim();
+
+      if (!rpcUrl) {
+        showToast('RPC endpoint cannot be empty', 'error');
+        return;
+      }
+
+      // Validate URL format
+      try {
+        new URL(rpcUrl);
+      } catch (err) {
+        showToast('Invalid URL format for RPC endpoint', 'error');
+        return;
+      }
+
+      try {
+        loading.classList.remove('hidden');
+        saveBtn.disabled = true;
+
+        const result = await apiCall('/api/config/rpc-endpoint', {
+          method: 'PUT',
+          body: JSON.stringify({ rpcEndpoint: rpcUrl })
+        });
+
+        if (result && !result.error) {
+          showToast('RPC endpoint updated successfully', 'success');
+          // Reload config state to refresh the display
+          await loadConfigState();
+        } else if (result && result.error) {
+          if (result.error.includes('Not authorized')) {
+            showToast('You do not have permission to change RPC endpoint', 'error');
+          } else {
+            showToast('Failed to update RPC endpoint: ' + result.error, 'error');
+          }
+        }
+      } catch (err) {
+        console.error('Error updating RPC endpoint:', err);
+        showToast('Error updating RPC endpoint', 'error');
+      } finally {
+        loading.classList.add('hidden');
+        saveBtn.disabled = false;
       }
     }
 
