@@ -5149,6 +5149,17 @@ app.get('/api/channels/:channelId/posts', async (req, res) => {
 // GET /api/channels/categories - List all available categories
 app.get('/api/channels/categories', async (req, res) => {
   try {
+    if (ENABLE_DEMO_MODE) {
+      return res.json({
+        categories: [
+          { id: 1, name: 'Updates', description: 'System and important updates' },
+          { id: 2, name: 'General', description: 'General discussion' },
+          { id: 3, name: 'Announcements', description: 'Official announcements' },
+          { id: 4, name: 'Community', description: 'Community-driven content' }
+        ]
+      });
+    }
+
     const { rows: categories } = await pool.query(`
       SELECT id, name, description FROM channel_categories ORDER BY name
     `);
