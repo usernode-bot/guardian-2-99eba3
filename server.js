@@ -129,8 +129,8 @@ function calculateRankData(foregroundHours) {
   return { rank, hoursBracket, contributionLevel };
 }
 
-// Helper function to get foreground hours for a user (staging: mock data, prod: placeholder)
-function getForegroundHours(userId) {
+// Helper function to get foreground hours for a user (staging: mock data, prod: from sessions table)
+async function getForegroundHours(userId) {
   if (IS_STAGING) {
     // In staging, provide mock data based on user ID for consistency
     const numUserId = parseInt(userId, 10);
@@ -138,10 +138,19 @@ function getForegroundHours(userId) {
     // Use modulo to deterministically map user ID to a value
     return mockDataSet[numUserId % mockDataSet.length];
   } else {
-    // In production, fetch from peers/usernode
-    // For now, default to 0 hours as a placeholder
-    // TODO: Integrate with usernode peer discovery to fetch real foreground hours
-    return 0;
+    // In production, sum foreground hours from sessions table
+    try {
+      const { rows } = await pool.query(`
+        SELECT COALESCE(SUM(duration_seconds), 0) as total_seconds
+        FROM user_foreground_sessions
+        WHERE user_id = $1
+      `, [userId]);
+      const totalSeconds = rows[0].total_seconds || 0;
+      return Math.floor(totalSeconds / 3600); // Convert seconds to hours
+    } catch (err) {
+      console.error('Error fetching foreground hours from sessions:', err);
+      return 0;
+    }
   }
 }
 
@@ -1157,8 +1166,8 @@ app.put('/api/config/network-mode', async (req, res) => {
     }
 
     const { networkMode } = req.body;
-    if (!['demo', 'testnet'].includes(networkMode)) {
-      return res.status(400).json({ error: 'Invalid input: networkMode must be "demo" or "testnet"' });
+    if (!['demo', 'real_testnet'].includes(networkMode)) {
+      return res.status(400).json({ error: 'Invalid input: networkMode must be "demo" or "real_testnet"' });
     }
 
     // Check authorization (first user OR has created a group)
@@ -3129,7 +3138,7 @@ app.get('/api/users/by-username/:username', async (req, res) => {
     `, [username]);
     if (!rows.length) return res.status(404).json({ error: 'User not found' });
     const user = rows[0];
-    const foregroundHours = getForegroundHours(user.id);
+    const foregroundHours = await getForegroundHours(user.id);
     const { rank, hoursBracket, contributionLevel } = calculateRankData(foregroundHours);
     res.json({
       id: user.id,
@@ -3162,7 +3171,7 @@ app.get('/api/users/:userId', async (req, res) => {
     }
 
     const user = rows[0];
-    const foregroundHours = getForegroundHours(userId);
+    const foregroundHours = await getForegroundHours(userId);
     const { rank, hoursBracket, contributionLevel } = calculateRankData(foregroundHours);
 
     res.json({
@@ -4468,7 +4477,7 @@ app.get('/api/user/guardians', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const foregroundHours = getForegroundHours(req.user.id);
+    const foregroundHours = await getForegroundHours(req.user.id);
     const { rank, hoursBracket, contributionLevel } = calculateRankData(foregroundHours);
 
     res.json({
@@ -4546,6 +4555,118 @@ app.get('/api/network/peer-count', async (req, res) => {
   } catch (err) {
     console.error('Error fetching peer count:', err);
     res.status(500).json({ error: 'Failed to fetch peer count' });
+  }
+});
+
+// Get user-specific peer count (testnet peers connected to this user)
+// Only available when user has network_mode set to 'real_testnet'
+app.get('/api/user/peers/connected', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
+
+    // Check if network mode is real_testnet for this user
+    const { rows: userRows } = await pool.query(`
+      SELECT network FROM users WHERE id = $1
+    `, [userId]);
+
+    if (!userRows.length || userRows[0].network !== 'real_testnet') {
+      return res.status(403).json({
+        error: 'Peer count feature is not enabled',
+        available: false
+      });
+    }
+
+    if (IS_STAGING) {
+      // In staging, provide mock data cycling through [3, 7, 5, 9, 6] every 10 seconds
+      const mockPeerCounts = [3, 7, 5, 9, 6];
+      const timeWindow = Math.floor(Date.now() / 10000); // 10-second windows
+      const userPeerCount = mockPeerCounts[(timeWindow + userId) % mockPeerCounts.length];
+      // Generate deterministic mock peer IDs
+      const peerIds = Array.from({ length: userPeerCount }, (_, i) =>
+        `ut1peer${userId}${i.toString().padStart(3, '0')}`
+      );
+
+      return res.json({
+        userPeerCount,
+        peerIds,
+        lastUpdatedAt: new Date().toISOString()
+      });
+    } else {
+      // In production, query user_peers table
+      const { rows } = await pool.query(`
+        SELECT peer_id FROM user_peers
+        WHERE user_id = $1 AND last_seen_at > NOW() - INTERVAL '30 seconds'
+        ORDER BY last_seen_at DESC
+      `, [userId]);
+
+      const peerIds = rows.map(r => r.peer_id);
+      return res.json({
+        userPeerCount: peerIds.length,
+        peerIds,
+        lastUpdatedAt: new Date().toISOString()
+      });
+    }
+  } catch (err) {
+    console.error('Error fetching user peer count:', err);
+    res.status(500).json({ error: 'Failed to fetch user peer count' });
+  }
+});
+
+// Log a foreground session
+app.post('/api/user/foreground-session', express.json(), async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
+
+    const { sessionDurationSeconds } = req.body;
+    if (typeof sessionDurationSeconds !== 'number' || sessionDurationSeconds < 0) {
+      return res.status(400).json({ error: 'Invalid sessionDurationSeconds' });
+    }
+
+    // Skip session logging for very short sessions (< 1 second)
+    if (sessionDurationSeconds < 1) {
+      return res.json({ status: 'skipped', reason: 'Session too short' });
+    }
+
+    if (IS_STAGING) {
+      // In staging, accept the request but don't persist
+      return res.json({
+        status: 'accepted',
+        message: 'Session logged (staging mode)',
+        durationSeconds: sessionDurationSeconds
+      });
+    } else {
+      // In production, log the session
+      const now = new Date();
+      const sessionStart = new Date(now.getTime() - sessionDurationSeconds * 1000);
+      const sessionEnd = now;
+
+      await pool.query(`
+        INSERT INTO user_foreground_sessions (user_id, session_start, session_end, duration_seconds)
+        VALUES ($1, $2, $3, $4)
+      `, [userId, sessionStart, sessionEnd, Math.round(sessionDurationSeconds)]);
+
+      return res.json({
+        status: 'logged',
+        durationSeconds: sessionDurationSeconds
+      });
+    }
+  } catch (err) {
+    console.error('Error logging foreground session:', err);
+    res.status(500).json({ error: 'Failed to log foreground session' });
   }
 });
 
@@ -6405,7 +6526,7 @@ async function start() {
 
     // Add network column if it doesn't exist (idempotent migration)
     await pool.query(`
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS network VARCHAR(50) DEFAULT 'testnet'
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS network VARCHAR(50) DEFAULT 'real_testnet'
     `);
 
     // Add view_mode column if it doesn't exist (idempotent migration)
@@ -6439,6 +6560,7 @@ async function start() {
       console.error('[Migration] ❌ ERROR adding is_bot column:', err.message);
       throw err;
     }
+
 
     // Create conversations table (marked private)
     await pool.query(`
@@ -6986,6 +7108,42 @@ async function start() {
         ON crypto_data_cache(last_fetched_at DESC)
     `);
 
+    // Create user_peers table (tracks peers connected to each user)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_peers (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        peer_id VARCHAR(100) NOT NULL,
+        connected_at TIMESTAMPTZ DEFAULT NOW(),
+        last_seen_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(user_id, peer_id)
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_peers_user_id
+        ON user_peers(user_id, last_seen_at DESC)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_peers_peer_id
+        ON user_peers(peer_id)
+    `);
+
+    // Create user_foreground_sessions table (tracks foreground tab sessions per user)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_foreground_sessions (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        session_start TIMESTAMPTZ NOT NULL,
+        session_end TIMESTAMPTZ NOT NULL,
+        duration_seconds INTEGER NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_foreground_sessions_user_id
+        ON user_foreground_sessions(user_id, created_at DESC)
+    `);
+
     // Mark tables as private
     await pool.query(`COMMENT ON TABLE conversations IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE messages IS 'staging:private'`);
@@ -6996,6 +7154,8 @@ async function start() {
     await pool.query(`COMMENT ON TABLE group_members IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE group_messages IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE group_read_receipts IS 'staging:private'`);
+    await pool.query(`COMMENT ON TABLE user_peers IS 'staging:private'`);
+    await pool.query(`COMMENT ON TABLE user_foreground_sessions IS 'staging:private'`);
 
     // Initialize RPC endpoint from database or environment
     await initializeRpcUrl();
