@@ -1670,6 +1670,13 @@
           txHashHtml = `<div class="text-sm"><span class="text-zinc-600 dark:text-zinc-400">Hash:</span> <span class="font-mono text-xs text-zinc-500">${escapeHtml(txHashShort)}...</span></div>`;
         }
 
+        let errorMessageHtml = '';
+        if (data.status === 'failed' && data.errorMessage) {
+          errorMessageHtml = `<div class="text-sm p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-red-700 dark:text-red-300">
+            <span class="text-zinc-600 dark:text-zinc-400">Reason:</span> ${escapeHtml(data.errorMessage)}
+          </div>`;
+        }
+
         content.innerHTML = `
           <div class="space-y-4">
             <div>
@@ -1687,6 +1694,7 @@
                   <span class="capitalize font-medium">${data.status}</span>
                 </span>
               </div>
+              ${errorMessageHtml}
               ${txHashHtml}
               <div class="text-sm"><span class="text-zinc-600 dark:text-zinc-400">Timestamp:</span> <span class="text-zinc-900 dark:text-zinc-100">${timestamp}</span></div>
             </div>
@@ -4082,6 +4090,8 @@
       if (currentUser && currentUser.isDemoMode) {
         console.log('Demo mode: Skipping wallet signature for action:', action);
         showToast('Demo mode: Skipping wallet confirmation', 'info');
+        // Add realistic delay for demo mode (1-2 seconds)
+        await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1000));
         return 'demo-tx-hash-' + Date.now();
       }
 
@@ -5440,9 +5450,11 @@
           statusEl.classList.add('text-green-600', 'dark:text-green-400');
           isComplete = true;
         } else if (auditData.status === 'failed') {
-          statusEl.innerHTML = `✗ Failed | <button onclick="retryFailedTransaction(${auditLogId}, ${messageId})" class="underline">Retry</button>`;
+          const errorMsg = auditData.errorMessage ? ` — ${auditData.errorMessage}` : '';
+          statusEl.innerHTML = `✗ Failed${errorMsg} | <button onclick="retryFailedTransaction(${auditLogId}, ${messageId})" class="underline">Retry</button>`;
           statusEl.classList.remove('text-amber-600', 'dark:text-amber-400');
           statusEl.classList.add('text-red-600', 'dark:text-red-400');
+          statusEl.title = auditData.errorMessage || 'Transaction failed - click Retry to try again';
           isComplete = true;
         } else {
           statusEl.innerHTML = `⏳ Pending confirmation...`;
@@ -5454,19 +5466,41 @@
     }
 
     async function retryFailedTransaction(auditLogId, messageId) {
-      const data = await apiCall(`/api/blockchain-audit/${auditLogId}/retry`, {
-        method: 'POST',
-        body: JSON.stringify({})
-      });
+      try {
+        const statusEl = document.getElementById(`blockchain-status-${messageId}`);
+        if (!statusEl) return;
 
-      if (data && data.ok) {
+        // Update UI to show retrying state
+        statusEl.innerHTML = `⏳ Retrying...`;
+        statusEl.classList.remove('text-red-600', 'dark:text-red-400');
+        statusEl.classList.add('text-amber-600', 'dark:text-amber-400');
+
+        const data = await apiCall(`/api/blockchain-audit/${auditLogId}/retry`, {
+          method: 'POST',
+          body: JSON.stringify({})
+        });
+
+        if (data && data.ok) {
+          // Add small delay before polling to let backend process
+          await new Promise(resolve => setTimeout(resolve, 500));
+          // Resume polling
+          pollBlockchainStatus(auditLogId, messageId);
+        } else {
+          // Show error if retry failed
+          statusEl.innerHTML = `✗ Retry failed | <button onclick="retryFailedTransaction(${auditLogId}, ${messageId})" class="underline">Try again</button>`;
+          statusEl.classList.remove('text-amber-600', 'dark:text-amber-400');
+          statusEl.classList.add('text-red-600', 'dark:text-red-400');
+          showToast(data?.error || 'Failed to retry transaction', 'error');
+        }
+      } catch (err) {
+        console.error('Error retrying transaction:', err);
         const statusEl = document.getElementById(`blockchain-status-${messageId}`);
         if (statusEl) {
-          statusEl.innerHTML = `⏳ Retrying...`;
-          statusEl.classList.remove('text-red-600', 'dark:text-red-400');
-          statusEl.classList.add('text-amber-600', 'dark:text-amber-400');
+          statusEl.innerHTML = `✗ Retry error | <button onclick="retryFailedTransaction(${auditLogId}, ${messageId})" class="underline">Try again</button>`;
+          statusEl.classList.remove('text-amber-600', 'dark:text-amber-400');
+          statusEl.classList.add('text-red-600', 'dark:text-red-400');
         }
-        pollBlockchainStatus(auditLogId, messageId);
+        showToast(`Error retrying transaction: ${err.message}`, 'error');
       }
     }
 

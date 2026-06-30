@@ -46,6 +46,14 @@ let NETWORK_MODE = process.env.NETWORK_MODE && ['demo', 'testnet'].includes(proc
       ? 'demo'
       : 'testnet';
 
+// Validate NETWORK_MODE at startup
+if (!['demo', 'testnet'].includes(NETWORK_MODE)) {
+  console.warn(`[CONFIG] WARNING: Invalid NETWORK_MODE="${NETWORK_MODE}". Valid values are "demo" or "testnet". Defaulting to "testnet".`);
+  NETWORK_MODE = 'testnet';
+}
+
+console.log(`[CONFIG] Network mode: ${NETWORK_MODE} (${IS_STAGING ? 'staging' : 'production'} environment)`);
+
 // Derive ENABLE_DEMO_MODE for backward compatibility with existing transaction code
 const getEnableDemoMode = () => NETWORK_MODE === 'demo';
 let ENABLE_DEMO_MODE = getEnableDemoMode();
@@ -91,6 +99,18 @@ function validateAndConfigureRPC() {
 }
 
 let NODE_RPC_URL = validateAndConfigureRPC();
+
+// Validate RPC configuration at startup
+if (NETWORK_MODE === 'testnet' && !NODE_RPC_URL && !IS_STAGING) {
+  console.warn(`[CONFIG] WARNING: NETWORK_MODE is 'testnet' but NODE_RPC_URL is not configured.`);
+  console.warn(`[CONFIG]   → Set NODE_RPC_URL environment variable to enable blockchain transactions.`);
+  console.warn(`[CONFIG]   → Example: NODE_RPC_URL="http://localhost:3001"`);
+  console.warn(`[CONFIG]   → Transactions will fall back to demo mode if RPC is unavailable.`);
+}
+
+if (NETWORK_MODE === 'demo') {
+  console.log(`[CONFIG] Running in DEMO mode — blockchain transactions will be simulated.`);
+}
 
 // RPC health check cache
 let rpcHealthCache = null;
@@ -328,8 +348,11 @@ const CHAIN_IDS = {
 
 async function pollTransactionStatus(chainId, txHash, auditLogId) {
   try {
-    // In demo/staging mode, immediately confirm via our mock explorer endpoint
-    // In production, this would call the real blockchain explorer via /explorer-api proxy
+    // Validate inputs
+    if (!chainId || !txHash || !auditLogId) {
+      console.warn(`[Chain Poller] Invalid poll request: chainId=${chainId}, txHash=${txHash}, auditLogId=${auditLogId}`);
+      return null;
+    }
 
     // Call our local explorer API proxy endpoint
     const explorerPath = `/explorer-api/${chainId}/transactions/${txHash}`;
@@ -355,42 +378,52 @@ async function pollTransactionStatus(chainId, txHash, auditLogId) {
             if (isConfirmed) {
               // Update audit log to confirmed
               const confirmTime = new Date();
-              await pool.query(`
+              const updateRes = await pool.query(`
                 UPDATE blockchain_audit_logs
                 SET status = 'confirmed', confirmed_at = $1, updated_at = $1
                 WHERE id = $2
               `, [confirmTime, auditLogId]);
+              if (updateRes.rowCount === 0) {
+                console.warn(`[Chain Poller] WARNING: Update affected 0 rows for auditLogId=${auditLogId}`);
+              }
               console.log(`[Chain Poller] ✓ Transaction ${txHash} confirmed at ${confirmTime.toISOString()} for audit log ${auditLogId}`);
               resolve(true);
             } else {
               resolve(false);
             }
           } catch (err) {
-            console.error(`[Chain Poller] Error parsing explorer response:`, err);
+            console.error(`[Chain Poller] Error parsing explorer response or updating DB:`, err.message);
             resolve(null);
           }
         });
       });
 
       req.on('error', (err) => {
-        console.warn(`[Chain Poller] Explorer unreachable for tx ${txHash}:`, err.message);
+        console.warn(`[Chain Poller] Explorer unreachable for tx ${txHash}: ${err.message}`);
         resolve(null);
       });
 
       req.on('timeout', () => {
         req.destroy();
+        console.warn(`[Chain Poller] Explorer request timeout for tx ${txHash}`);
         resolve(null);
       });
 
       req.end();
     });
   } catch (err) {
-    console.error(`[Chain Poller] Error polling tx ${txHash}:`, err);
+    console.error(`[Chain Poller] Error polling tx ${txHash}: ${err.message}`);
     return null;
   }
 }
 
 async function startChainPoller(chainId, txHash, auditLogId) {
+  // Validate inputs
+  if (!chainId || !txHash || !auditLogId) {
+    console.error(`[Chain Poller] Cannot start poller with invalid params: chainId=${chainId}, txHash=${txHash}, auditLogId=${auditLogId}`);
+    return;
+  }
+
   const pollerId = `${chainId}:${txHash}`;
 
   console.log(`[Chain Poller] Starting poller for txHash=${txHash}, chainId=${chainId}, auditLogId=${auditLogId}`);
@@ -416,11 +449,14 @@ async function startChainPoller(chainId, txHash, auditLogId) {
         chainPollers.delete(pollerId);
         if (!isConfirmed && pollCount >= maxPolls) {
           console.warn(`[Chain Poller] Max polls reached for ${txHash}, marking as failed`);
-          await pool.query(`
+          const updateRes = await pool.query(`
             UPDATE blockchain_audit_logs
             SET status = 'failed', error_message = $1, updated_at = NOW()
             WHERE id = $2
           `, ['Transaction not confirmed after 20 polls', auditLogId]);
+          if (updateRes.rowCount === 0) {
+            console.warn(`[Chain Poller] WARNING: Failure update affected 0 rows for auditLogId=${auditLogId}`);
+          }
         }
       } else {
         backoffMs = Math.min(backoffMs * 1.5, 60000);
@@ -429,7 +465,7 @@ async function startChainPoller(chainId, txHash, auditLogId) {
         setTimeout(() => startChainPoller(chainId, txHash, auditLogId), backoffMs);
       }
     } catch (err) {
-      console.error(`[Chain Poller] Unexpected error:`, err);
+      console.error(`[Chain Poller] Unexpected error:`, err.message);
       clearInterval(pollInterval);
       chainPollers.delete(pollerId);
     }
@@ -442,19 +478,44 @@ async function startChainPoller(chainId, txHash, auditLogId) {
 // Memo format: { app: "guardian", type: "message|group_create|token_transfer", ... }
 function signTransactionMemo(payload) {
   try {
+    // Validate payload
+    if (!payload) {
+      console.error('[MEMO] Cannot sign memo: payload is null or undefined');
+      return null;
+    }
+
+    if (typeof payload !== 'object') {
+      console.error('[MEMO] Cannot sign memo: payload is not an object');
+      return null;
+    }
+
     const memo = {
       app: 'guardian',
-      type: payload.type,
+      type: payload.type || 'unknown',
       senderId: payload.senderId,
       timestamp: payload.timestamp,
       contentHash: payload.contentHash || null
     };
 
+    // Validate memo before stringifying
+    if (!memo.senderId || !memo.timestamp) {
+      console.error('[MEMO] Invalid memo: missing senderId or timestamp');
+      return null;
+    }
+
+    // Stringify and validate
+    const memoStr = JSON.stringify(memo);
+    if (!memoStr || memoStr.length === 0) {
+      console.error('[MEMO] Memo stringify produced empty result');
+      return null;
+    }
+
     // In production, could sign memo with APP_SECRET_KEY for integrity
     // For now, return memo as-is (bridge handles signing)
-    return JSON.stringify(memo);
+    console.log(`[MEMO] Signed memo for action: ${memo.type}, contentHash=${memo.contentHash}, length=${memoStr.length}`);
+    return memoStr;
   } catch (err) {
-    console.error('Error signing memo:', err);
+    console.error('[MEMO] Error signing memo:', err.message);
     return null;
   }
 }
@@ -787,35 +848,23 @@ async function sendTransactionToBridge(payload, txHashFromFrontend, network = 't
   }
 }
 
-// Monitor blockchain transaction status
-async function monitorBlockchainStatus(auditLogId, txHash) {
+// Monitor blockchain transaction status (NOW USES REAL POLLING VIA startChainPoller)
+async function monitorBlockchainStatus(auditLogId, txHash, chainId = 'testnet') {
   try {
-    // In staging, instantly confirm after a delay
-    if (IS_STAGING) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      await pool.query(`
-        UPDATE blockchain_audit_logs
-        SET status = 'confirmed', confirmed_at = NOW(), updated_at = NOW()
-        WHERE id = $1
-      `, [auditLogId]);
-      return;
-    }
-
-    // In production: would poll explorer API via /explorer-api/* proxy
-    // For now, simulate confirmation after delay
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    await pool.query(`
-      UPDATE blockchain_audit_logs
-      SET status = 'confirmed', confirmed_at = NOW(), updated_at = NOW()
-      WHERE id = $1
-    `, [auditLogId]);
+    // Delegate to real chain poller for consistent behavior
+    await startChainPoller(chainId, txHash, auditLogId);
   } catch (err) {
     console.error('Error monitoring blockchain status:', err);
-    await pool.query(`
-      UPDATE blockchain_audit_logs
-      SET status = 'failed', error_message = $1, updated_at = NOW()
-      WHERE id = $2
-    `, [err.message, auditLogId]);
+    // Mark as failed if polling setup fails
+    try {
+      await pool.query(`
+        UPDATE blockchain_audit_logs
+        SET status = 'failed', error_message = $1, updated_at = NOW()
+        WHERE id = $2
+      `, [err.message, auditLogId]);
+    } catch (dbErr) {
+      console.error('Error updating audit log after monitor failure:', dbErr.message);
+    }
   }
 }
 
@@ -2319,9 +2368,9 @@ app.post('/api/tokens/send', async (req, res) => {
             await pool.query(`
               UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
             `, [sidecarResult.transactionHash, blockchainRecordingId]);
-            // Start monitoring with real tx hash
-            pollTransactionStatus(blockchainRecordingId, sidecarResult.transactionHash).catch(err => {
-              console.error('Error polling transaction status:', err);
+            // Start polling with real tx hash (using proper chain poller)
+            startChainPoller(network, sidecarResult.transactionHash, blockchainRecordingId).catch(err => {
+              console.error('Error starting chain poller for token transfer:', err);
             });
           }
         } catch (err) {
@@ -2444,24 +2493,43 @@ app.post('/api/blockchain-audit/:auditLogId/retry', async (req, res) => {
     // Re-submit to blockchain
     (async () => {
       try {
+        if (!auditLog.transaction_payload) {
+          throw new Error('Transaction payload is missing or null - cannot retry');
+        }
         const payload = typeof auditLog.transaction_payload === 'string'
           ? JSON.parse(auditLog.transaction_payload)
           : (auditLog.transaction_payload || {});
+        if (!payload || Object.keys(payload).length === 0) {
+          throw new Error('Transaction payload is empty or invalid - cannot retry');
+        }
         const network = payload.network || 'testnet';
         const result = await sendTransactionToBridge(payload, null, network);
+        if (!result || !result.txHash) {
+          throw new Error('Bridge submission returned no txHash');
+        }
         // Update audit log with new tx hash
-        await pool.query(`
-          UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
+        const updateRes = await pool.query(`
+          UPDATE blockchain_audit_logs SET tx_hash = $1, updated_at = NOW() WHERE id = $2
         `, [result.txHash, auditLogId]);
-        // Start monitoring
-        monitorBlockchainStatus(auditLogId, result.txHash).catch(err => {
-          console.error('Error monitoring blockchain status:', err);
+        if (updateRes.rowCount === 0) {
+          console.warn(`[RETRY] WARNING: Update affected 0 rows for auditLogId=${auditLogId}`);
+        }
+        // Start polling with real chain poller
+        startChainPoller(network, result.txHash, auditLogId).catch(err => {
+          console.error('Error starting chain poller for retry:', err);
         });
       } catch (err) {
         console.error('Error retrying blockchain submission:', err);
-        await pool.query(`
-          UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
-        `, [err.message, auditLogId]);
+        try {
+          const updateRes = await pool.query(`
+            UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
+          `, [err.message, auditLogId]);
+          if (updateRes.rowCount === 0) {
+            console.warn(`[RETRY] WARNING: Failure update affected 0 rows for auditLogId=${auditLogId}`);
+          }
+        } catch (dbErr) {
+          console.error('Error updating audit log after retry failure:', dbErr.message);
+        }
       }
     })();
 
