@@ -1047,6 +1047,33 @@ app.get('/health', async (_req, res) => {
   }
 });
 
+// Staging-only endpoint to generate test tokens for Accept/Decline testing
+app.get('/api/staging/test-token/:userId', (_req, res) => {
+  if (!IS_STAGING) {
+    return res.status(403).json({ error: 'Only available in staging' });
+  }
+
+  const userId = parseInt(req.params.userId, 10);
+  if (isNaN(userId)) {
+    return res.status(400).json({ error: 'Invalid user ID' });
+  }
+
+  if (!JWT_SECRET) {
+    return res.status(500).json({ error: 'JWT_SECRET not configured' });
+  }
+
+  try {
+    const token = jwt.sign(
+      { id: userId, username: `staging-demo-user-${userId}`, usernode_pubkey: null },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+    res.json({ token, userId, url: `/?token=${token}` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Debug endpoint to verify GuardiAI user exists (public for troubleshooting)
 app.get('/api/debug/guardiAI', async (_req, res) => {
   try {
@@ -7265,6 +7292,42 @@ async function start() {
     await pool.query(`
       ALTER TABLE user_contacts ADD COLUMN IF NOT EXISTS muted_by INTEGER[]
     `);
+
+    // Seed staging data for testing Accept/Decline functionality
+    if (IS_STAGING) {
+      // Create two test users
+      await pool.query(`
+        INSERT INTO users (id, username, usernode_pubkey, verified_at)
+        VALUES (1, 'staging-demo-user-alice', 'ut1alice123', NOW())
+        ON CONFLICT (id) DO NOTHING
+      `);
+
+      await pool.query(`
+        INSERT INTO users (id, username, usernode_pubkey, verified_at)
+        VALUES (2, 'staging-demo-user-bob', 'ut1bob456', NOW())
+        ON CONFLICT (id) DO NOTHING
+      `);
+
+      await pool.query(`
+        INSERT INTO users (id, username, usernode_pubkey, verified_at)
+        VALUES (3, 'staging-demo-user-charlie', 'ut1charlie789', NOW())
+        ON CONFLICT (id) DO NOTHING
+      `);
+
+      // Create a pending conversation between user 1 (Alice) and user 2 (Bob)
+      await pool.query(`
+        INSERT INTO conversations (participant_a_id, participant_b_id, status_a, status_b)
+        VALUES (1, 2, 'pending', 'pending')
+        ON CONFLICT (participant_a_id, participant_b_id) DO NOTHING
+      `);
+
+      // Create a pending conversation between user 1 (Alice) and user 3 (Charlie)
+      await pool.query(`
+        INSERT INTO conversations (participant_a_id, participant_b_id, status_a, status_b)
+        VALUES (1, 3, 'pending', 'pending')
+        ON CONFLICT (participant_a_id, participant_b_id) DO NOTHING
+      `);
+    }
 
     // Create blockchain_audit_logs table (marked private)
     await pool.query(`
