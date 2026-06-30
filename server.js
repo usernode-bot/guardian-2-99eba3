@@ -38,7 +38,7 @@ const JWT_SECRET = process.env.JWT_SECRET;
 const IS_STAGING = process.env.USERNODE_ENV === 'staging';
 
 // Initialize network mode with priority: NETWORK_MODE env var > ENABLE_DEMO_MODE env var > USERNODE_ENV==='staging' > default 'testnet'
-let NETWORK_MODE = process.env.NETWORK_MODE && ['demo', 'testnet'].includes(process.env.NETWORK_MODE)
+let NETWORK_MODE = process.env.NETWORK_MODE && ['demo', 'testnet', 'devnet'].includes(process.env.NETWORK_MODE)
   ? process.env.NETWORK_MODE
   : process.env.ENABLE_DEMO_MODE === 'true'
     ? 'demo'
@@ -493,6 +493,13 @@ async function sendOutgoingPayment(recipient, amount, memo) {
   try {
     console.log(`[BLOCKCHAIN-SUBMIT] sendOutgoingPayment: recipient=${recipient}, amount=${amount}, memo=${memo ? 'provided' : 'none'}`);
 
+    // In devnet mode, record database-only transaction
+    if (NETWORK_MODE === 'devnet') {
+      const txHash = `devnet-token-${Date.now()}`;
+      console.log(`[DEVNET] Recording database-only token transfer: txHash=${txHash}`);
+      return { success: true, transactionHash: txHash, isDevnet: true };
+    }
+
     // In demo mode or without RPC URL in testnet, use bridge/fallback
     if (NETWORK_MODE === 'demo' || !NODE_RPC_URL) {
       console.log(`[BLOCKCHAIN-SUBMIT] Bridge/fallback mode: would send ${amount} to ${recipient}`);
@@ -578,10 +585,27 @@ async function sendOutgoingPayment(recipient, amount, memo) {
   }
 }
 
+// Send transaction to database only (Devnet mode)
+async function sendTransactionDevnet(messageType, payload, memo, auditLogId = null, userId = null, messageId = null) {
+  try {
+    const txHash = `devnet-${messageType}-${auditLogId || messageId}-${Date.now()}`;
+    console.log(`[DEVNET] Recording database-only transaction: txHash=${txHash}, messageType=${messageType}`);
+    return { transactionHash: txHash, isDevnet: true };
+  } catch (err) {
+    console.error('[DEVNET] Error in sendTransactionDevnet:', err.message);
+    throw err;
+  }
+}
+
 // Send message transaction to blockchain via RPC (Real Testnet mode only)
 async function sendMessageToBlockchain(messagePayload, memo, network = 'testnet') {
   try {
     console.log(`[BLOCKCHAIN-SUBMIT] sendMessageToBlockchain: messageId=${messagePayload.messageId}, memo=${memo ? 'provided' : 'none'}`);
+
+    // In devnet mode, record database-only transaction
+    if (NETWORK_MODE === 'devnet') {
+      return await sendTransactionDevnet('message', messagePayload, memo, null, null, messagePayload.messageId);
+    }
 
     // In demo mode or without RPC URL in testnet, use bridge/fallback
     if (NETWORK_MODE === 'demo' || !NODE_RPC_URL) {
@@ -670,6 +694,11 @@ async function sendMessageToBlockchain(messagePayload, memo, network = 'testnet'
 async function sendGroupToBlockchain(groupPayload, memo, memberPubkeys, network = 'testnet') {
   try {
     console.log(`[BLOCKCHAIN-SUBMIT] sendGroupToBlockchain: groupId=${groupPayload.groupId}, memo=${memo ? 'provided' : 'none'}`);
+
+    // In devnet mode, record database-only transaction
+    if (NETWORK_MODE === 'devnet') {
+      return await sendTransactionDevnet('group', groupPayload, memo, null, null, groupPayload.groupId);
+    }
 
     // In demo mode or without RPC URL in testnet, use bridge/fallback
     if (NETWORK_MODE === 'demo' || !NODE_RPC_URL) {
@@ -1385,7 +1414,7 @@ app.get('/api/config', async (req, res) => {
       rpcEndpoint: NODE_RPC_URL,
       canEdit: canEdit,
       canEditRpc: canEdit,
-      description: 'Demo mode: all blockchain transactions use fake tx hashes and audit logs are immediately confirmed. Testnet mode: real wallet interaction is required and audit logs are pending until blockchain confirmation.',
+      description: 'Devnet: database-only transactions with immediate confirmation; no blockchain or RPC required. Demo: simulated transactions with fake hashes. Real Testnet: live blockchain transactions requiring wallet confirmation.',
       secrets: [
         {
           key: 'APP_PUBKEY',
@@ -1420,12 +1449,12 @@ app.put('/api/config/network-mode', async (req, res) => {
     }
 
     const { networkMode } = req.body;
-    if (!['demo', 'real_testnet'].includes(networkMode)) {
-      return res.status(400).json({ error: 'Invalid input: networkMode must be "demo" or "real_testnet"' });
+    if (!['demo', 'real_testnet', 'devnet'].includes(networkMode)) {
+      return res.status(400).json({ error: 'Invalid input: networkMode must be "demo", "real_testnet", or "devnet"' });
     }
 
-    // Check authorization (first user OR has created a group)
-    const canEdit = userId === 1 || (await userHasCreatedGroup(userId));
+    // Check authorization: devnet is available to all authenticated users; demo/real_testnet require first user OR group creator
+    const canEdit = networkMode === 'devnet' || userId === 1 || (await userHasCreatedGroup(userId));
     if (!canEdit) {
       return res.status(403).json({ error: 'Not authorized to modify configuration' });
     }
@@ -1912,7 +1941,23 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       console.warn(`[MESSAGE] Fallback tx_hash generated: ${actualTxHash}`);
     }
 
-    const auditStatus = txHash ? 'pending' : (ENABLE_DEMO_MODE ? 'confirmed' : 'pending');
+    // Determine audit status and network origin based on mode
+    let auditStatus = 'pending';
+    let networkOriginValue = null;
+
+    if (txHash) {
+      auditStatus = 'pending';
+      networkOriginValue = 'blockchain';
+    } else if (NETWORK_MODE === 'devnet') {
+      auditStatus = 'confirmed';
+      networkOriginValue = 'database';
+    } else if (ENABLE_DEMO_MODE) {
+      auditStatus = 'confirmed';
+      networkOriginValue = 'demo';
+    } else {
+      auditStatus = 'pending';
+      networkOriginValue = 'bridge';
+    }
 
     // Log audit creation with all critical fields
     console.log(`[AUDIT LOG] MESSAGE: txHash=${actualTxHash}, messageId=${messageId}, status=${auditStatus}, contentHash=${contentHash}`);
@@ -1924,9 +1969,9 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       console.log(`[MESSAGE] Using existing audit log: id=${auditLogId}`);
       await pool.query(`
         UPDATE blockchain_audit_logs
-        SET message_id = $1, message_type = $2, tx_hash = $3, transaction_payload = $4, status = $5, confirmed_at = $6, content_hash = $7, user_pubkey = $8, action_timestamp = $9, updated_at = NOW()
-        WHERE id = $10 AND user_id = $11
-      `, [messageId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, auditLogId, userId]);
+        SET message_id = $1, message_type = $2, tx_hash = $3, transaction_payload = $4, status = $5, confirmed_at = $6, content_hash = $7, user_pubkey = $8, action_timestamp = $9, network_origin = $10, updated_at = NOW()
+        WHERE id = $11 AND user_id = $12
+      `, [messageId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, networkOriginValue, auditLogId, userId]);
       blockchainRecordingId = auditLogId;
       console.log(`[MESSAGE] Updated existing audit log: id=${blockchainRecordingId}`);
     } else {
@@ -1937,10 +1982,10 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       }
 
       const auditRes = await pool.query(`
-        INSERT INTO blockchain_audit_logs (user_id, message_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
+        INSERT INTO blockchain_audit_logs (user_id, message_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, network_origin, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
         RETURNING id
-      `, [userId, messageId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, now]);
+      `, [userId, messageId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, networkOriginValue, now]);
       blockchainRecordingId = auditRes.rows[0].id;
 
       console.log(`[MESSAGE] Blockchain audit log created: auditLogId=${blockchainRecordingId}`);
@@ -1961,13 +2006,13 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       UPDATE conversations SET archived_by = array_remove(archived_by, $1) WHERE id = $2 AND archived_by @> ARRAY[$1]::integer[]
     `, [otherId, convId]);
 
-    // If real tx hash provided from frontend, start polling immediately
-    if (txHash) {
+    // If real tx hash provided from frontend, start polling immediately (skip for devnet)
+    if (txHash && NETWORK_MODE !== 'devnet') {
       console.log(`[MESSAGE] Real txHash from frontend - starting chain poller for txHash=${txHash}, auditLogId=${blockchainRecordingId}`);
       startChainPoller(network, txHash, blockchainRecordingId).catch(err => {
         console.error('Error starting chain poller:', err);
       });
-    } else if (!ENABLE_DEMO_MODE) {
+    } else if (!ENABLE_DEMO_MODE && NETWORK_MODE !== 'devnet') {
       // Async: submit to blockchain in the background (production only, no frontend tx hash)
       (async () => {
         try {
@@ -2246,7 +2291,24 @@ app.post('/api/tokens/send', async (req, res) => {
 
     // Use real tx hash from frontend if provided, otherwise generate placeholder
     const actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-token-' + Date.now() : 'ut1-' + network + '-tx-token-' + Math.random().toString(36).substr(2, 9));
-    const auditStatus = txHash ? 'pending' : (ENABLE_DEMO_MODE ? 'confirmed' : 'pending');
+
+    // Determine audit status and network origin based on mode
+    let auditStatus = 'pending';
+    let networkOriginValue = null;
+
+    if (txHash) {
+      auditStatus = 'pending';
+      networkOriginValue = 'blockchain';
+    } else if (NETWORK_MODE === 'devnet') {
+      auditStatus = 'confirmed';
+      networkOriginValue = 'database';
+    } else if (ENABLE_DEMO_MODE) {
+      auditStatus = 'confirmed';
+      networkOriginValue = 'demo';
+    } else {
+      auditStatus = 'pending';
+      networkOriginValue = 'bridge';
+    }
 
     console.log(`[TOKEN] Recording blockchain audit log: txHash=${actualTxHash}, status=${auditStatus}, contentHash=${contentHash}`);
 
@@ -2256,30 +2318,30 @@ app.post('/api/tokens/send', async (req, res) => {
       console.log(`[TOKEN] Using existing audit log: id=${auditLogId}`);
       await pool.query(`
         UPDATE blockchain_audit_logs
-        SET message_type = $1, tx_hash = $2, transaction_payload = $3, status = $4, confirmed_at = $5, content_hash = $6, user_pubkey = $7, action_timestamp = $8, updated_at = NOW()
-        WHERE id = $9 AND user_id = $10
-      `, ['token_transfer', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, req.user.usernode_pubkey || null, now, auditLogId, userId]);
+        SET message_type = $1, tx_hash = $2, transaction_payload = $3, status = $4, confirmed_at = $5, content_hash = $6, user_pubkey = $7, action_timestamp = $8, network_origin = $9, updated_at = NOW()
+        WHERE id = $10 AND user_id = $11
+      `, ['token_transfer', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, req.user.usernode_pubkey || null, now, networkOriginValue, auditLogId, userId]);
       blockchainRecordingId = auditLogId;
       console.log(`[TOKEN] Updated existing audit log: id=${blockchainRecordingId}`);
     } else {
       // Single-phase flow: create new audit log
       const auditRes = await pool.query(`
-        INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
+        INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, network_origin, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
         RETURNING id
-      `, [userId, 'token_transfer', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, req.user.usernode_pubkey || null, now, now]);
+      `, [userId, 'token_transfer', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, req.user.usernode_pubkey || null, now, networkOriginValue, now]);
       blockchainRecordingId = auditRes.rows[0].id;
 
       console.log(`[TOKEN] Blockchain audit log created: auditLogId=${blockchainRecordingId}`);
     }
 
-    // If real tx hash provided from frontend, start polling immediately
-    if (txHash) {
+    // If real tx hash provided from frontend, start polling immediately (skip for devnet)
+    if (txHash && NETWORK_MODE !== 'devnet') {
       console.log(`[TOKEN] Real txHash from frontend - starting chain poller for txHash=${txHash}, auditLogId=${blockchainRecordingId}`);
       startChainPoller(network, txHash, blockchainRecordingId).catch(err => {
         console.error('Error starting chain poller:', err);
       });
-    } else if (!ENABLE_DEMO_MODE) {
+    } else if (!ENABLE_DEMO_MODE && NETWORK_MODE !== 'devnet') {
       // Async: try to call sidecar for real token transfer (production only)
       (async () => {
         try {
@@ -3744,13 +3806,29 @@ app.post('/api/groups', async (req, res) => {
         console.warn(`[POST /api/groups::BLOCKCHAIN] Fallback tx_hash generated: ${actualTxHash}`);
       }
 
-      const auditStatus = txHash ? 'pending' : (ENABLE_DEMO_MODE ? 'confirmed' : 'pending');
+      // Determine audit status and network origin based on mode
+      let auditStatus = 'pending';
+      let networkOriginValue = null;
+
+      if (txHash) {
+        auditStatus = 'pending';
+        networkOriginValue = 'blockchain';
+      } else if (NETWORK_MODE === 'devnet') {
+        auditStatus = 'confirmed';
+        networkOriginValue = 'database';
+      } else if (ENABLE_DEMO_MODE) {
+        auditStatus = 'confirmed';
+        networkOriginValue = 'demo';
+      } else {
+        auditStatus = 'pending';
+        networkOriginValue = 'bridge';
+      }
 
       await pool.query(`
         UPDATE blockchain_audit_logs
-        SET group_id = $1, message_type = $2, tx_hash = $3, transaction_payload = $4, status = $5, confirmed_at = $6, content_hash = $7, user_pubkey = $8, action_timestamp = $9, updated_at = NOW()
-        WHERE id = $10 AND user_id = $11
-      `, [groupId, 'group_create', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, req.user.usernode_pubkey || null, now, auditLogId, userId]);
+        SET group_id = $1, message_type = $2, tx_hash = $3, transaction_payload = $4, status = $5, confirmed_at = $6, content_hash = $7, user_pubkey = $8, action_timestamp = $9, network_origin = $10, updated_at = NOW()
+        WHERE id = $11 AND user_id = $12
+      `, [groupId, 'group_create', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, req.user.usernode_pubkey || null, now, networkOriginValue, auditLogId, userId]);
       blockchainRecordingId = auditLogId;
       console.log(`[POST /api/groups::BLOCKCHAIN] Updated existing audit log: id=${blockchainRecordingId}`);
     } else {
@@ -3763,7 +3841,24 @@ app.post('/api/groups', async (req, res) => {
         console.warn(`[POST /api/groups::BLOCKCHAIN] Fallback tx_hash generated: ${actualTxHash}`);
       }
 
-      const auditStatus = txHash ? 'pending' : (ENABLE_DEMO_MODE ? 'confirmed' : 'pending');
+      // Determine audit status and network origin based on mode
+      let auditStatus = 'pending';
+      let networkOriginValue = null;
+
+      if (txHash) {
+        auditStatus = 'pending';
+        networkOriginValue = 'blockchain';
+      } else if (NETWORK_MODE === 'devnet') {
+        auditStatus = 'confirmed';
+        networkOriginValue = 'database';
+      } else if (ENABLE_DEMO_MODE) {
+        auditStatus = 'confirmed';
+        networkOriginValue = 'demo';
+      } else {
+        auditStatus = 'pending';
+        networkOriginValue = 'bridge';
+      }
+
       console.log(`[AUDIT LOG] GROUP_CREATE: txHash=${actualTxHash}, groupId=${groupId}, status=${auditStatus}, memberCount=${memberPubkeys.length}`);
       console.log(`[POST /api/groups::BLOCKCHAIN] Creating new audit log: txHash=${actualTxHash}, status=${auditStatus}, env=${IS_STAGING ? 'staging' : 'production'}, demoMode=${ENABLE_DEMO_MODE}`);
 
@@ -3773,10 +3868,10 @@ app.post('/api/groups', async (req, res) => {
       }
 
       const auditRes = await pool.query(`
-        INSERT INTO blockchain_audit_logs (user_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
+        INSERT INTO blockchain_audit_logs (user_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, network_origin, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
         RETURNING id
-      `, [userId, groupId, 'group_create', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, req.user.usernode_pubkey || null, now, now]);
+      `, [userId, groupId, 'group_create', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, req.user.usernode_pubkey || null, now, networkOriginValue, now]);
 
       if (auditRes.rows.length === 0) {
         console.error(`[POST /api/groups::BLOCKCHAIN] Audit log insert returned no rows`);
@@ -3786,8 +3881,8 @@ app.post('/api/groups', async (req, res) => {
       console.log(`[POST /api/groups::BLOCKCHAIN] Audit log created: id=${blockchainRecordingId}, rowCount=${auditRes.rowCount}`);
     }
 
-    // Blockchain: If real tx hash provided from frontend, start polling immediately
-    if (txHash) {
+    // Blockchain: If real tx hash provided from frontend, start polling immediately (skip for devnet)
+    if (txHash && NETWORK_MODE !== 'devnet') {
       console.log(`[POST /api/groups::BLOCKCHAIN] Real txHash provided from frontend, starting polling`);
       (async () => {
         try {
@@ -3796,7 +3891,7 @@ app.post('/api/groups', async (req, res) => {
           console.error('Error polling transaction status:', err);
         }
       })();
-    } else if (!ENABLE_DEMO_MODE) {
+    } else if (!ENABLE_DEMO_MODE && NETWORK_MODE !== 'devnet') {
       console.log(`[POST /api/groups::BLOCKCHAIN] Spawning background blockchain submission task (production only)`);
       (async () => {
         try {
@@ -7385,6 +7480,11 @@ async function start() {
     // Drop NOT NULL constraint on tx_hash to allow two-phase audit log creation (pending audits with null tx_hash)
     await pool.query(`
       ALTER TABLE blockchain_audit_logs ALTER COLUMN tx_hash DROP NOT NULL
+    `);
+
+    // Add network_origin column to track where transaction was recorded (blockchain, devnet, demo, bridge)
+    await pool.query(`
+      ALTER TABLE blockchain_audit_logs ADD COLUMN IF NOT EXISTS network_origin VARCHAR(50) DEFAULT NULL
     `);
 
     await pool.query(`
