@@ -994,7 +994,7 @@ app.use(async (req, res, next) => {
   }
 
   // Upsert user on first request: ensure user exists in DB with wallet identity
-  if (req.user) {
+  if (req.user && dbConnected) {
     try {
       await pool.query(`
         INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at)
@@ -1552,8 +1552,14 @@ app.get('/api/conversations', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
+    // Return empty conversations if database is not connected
+    if (!dbConnected) {
+      return res.json({ conversations: { active: [], pending: [], archived: [] } });
+    }
+
     if (ENABLE_DEMO_MODE) {
-      return res.json(mockData.getMockConversations(1, limit, offset));
+      const mockConvs = mockData.getMockConversations(1, limit, offset);
+      return res.json({ conversations: mockConvs });
     }
 
     // Optimized query using joins to eliminate N+1 lookups
