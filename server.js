@@ -2085,8 +2085,8 @@ app.post('/api/tokens/send', async (req, res) => {
     console.log(`[TOKEN] txHash provided: ${txHash ? 'yes - ' + txHash : 'no'}`);
     console.log(`[TOKEN] Frontend content hash: ${frontendContentHash || 'none'}`);
 
-    // Validate wallet connection before proceeding with transaction
-    if (!req.user.usernode_pubkey) {
+    // Validate wallet connection before proceeding with transaction (skip in demo mode)
+    if (!ENABLE_DEMO_MODE && !req.user.usernode_pubkey) {
       return res.status(401).json({ error: 'Must be connected to Usernode wallet to send tokens' });
     }
 
@@ -2116,9 +2116,10 @@ app.post('/api/tokens/send', async (req, res) => {
     const contentHash = frontendContentHash || computeContentHash(recipientPubkey + amount);
 
     // Prepare transaction payload (Usernode chain format)
+    const senderPubkey = req.user.usernode_pubkey || (ENABLE_DEMO_MODE ? 'ut1demo-user-' + userId : APP_PUBKEY);
     const transactionPayload = {
       type: 'token_transfer',
-      sender: req.user.usernode_pubkey || APP_PUBKEY,
+      sender: senderPubkey,
       recipient: recipientPubkey,
       amount: parseInt(amount),
       memo: memo || '',
@@ -2908,11 +2909,11 @@ app.post('/api/contacts', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
-    if (!usernode_pubkey) {
+    if (!usernode_pubkey && !ENABLE_DEMO_MODE) {
       return res.status(400).json({ error: 'usernode_pubkey is required' });
     }
 
-    if (!usernode_pubkey.startsWith('ut1')) {
+    if (usernode_pubkey && !usernode_pubkey.startsWith('ut1')) {
       return res.status(400).json({ error: 'Invalid Usernode address format' });
     }
 
@@ -3904,8 +3905,8 @@ app.put('/api/groups/:groupId', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
-    // Validate wallet connection before proceeding with group update
-    if (!req.user.usernode_pubkey) {
+    // Validate wallet connection before proceeding with group update (skip in demo mode)
+    if (!ENABLE_DEMO_MODE && !req.user.usernode_pubkey) {
       return res.status(401).json({ error: 'Must be connected to Usernode wallet to update groups' });
     }
 
@@ -3933,11 +3934,12 @@ app.put('/api/groups/:groupId', async (req, res) => {
     `, [name || groupRows[0].name, description || null, groupId]);
 
     // Prepare transaction payload for blockchain
+    const creatorPubkey = req.user.usernode_pubkey || (ENABLE_DEMO_MODE ? 'ut1demo-user-' + userId : null);
     const transactionPayload = {
       type: 'group_update',
       groupId: groupId,
       groupName: name || groupRows[0].name,
-      creatorPubkey: req.user.usernode_pubkey,
+      creatorPubkey: creatorPubkey,
       network: network
     };
 
@@ -4288,15 +4290,22 @@ app.post('/api/groups/:groupId/members', async (req, res) => {
     const network = 'testnet';
     const now = new Date();
 
-    // Validate and resolve member wallet addresses
+    // Validate and resolve member wallet addresses (skip in demo mode)
     const filterredUserIds = userIds.filter(id => id !== userId);
     let memberPubkeys = [];
     if (filterredUserIds.length > 0) {
-      try {
-        const resolved = await validateAndResolvePubkeys(filterredUserIds);
-        memberPubkeys = resolved.map(r => r.pubkey);
-      } catch (err) {
-        return res.status(err.statusCode || 400).json({ error: err.message });
+      if (ENABLE_DEMO_MODE) {
+        // In demo mode, generate mock pubkeys for members without wallets
+        for (const memberId of filterredUserIds) {
+          memberPubkeys.push('ut1demo-user-' + memberId);
+        }
+      } else {
+        try {
+          const resolved = await validateAndResolvePubkeys(filterredUserIds);
+          memberPubkeys = resolved.map(r => r.pubkey);
+        } catch (err) {
+          return res.status(err.statusCode || 400).json({ error: err.message });
+        }
       }
     }
 
@@ -4419,13 +4428,18 @@ app.delete('/api/groups/:groupId/members/:userId', async (req, res) => {
     // Fetch user's network preference
     const network = 'testnet';
 
-    // Validate and resolve target user wallet address
+    // Validate and resolve target user wallet address (skip in demo mode)
     let targetUserPubkey;
-    try {
-      const resolved = await validateAndResolvePubkeys(targetId);
-      targetUserPubkey = resolved.pubkey;
-    } catch (err) {
-      return res.status(err.statusCode || 400).json({ error: err.message });
+    if (ENABLE_DEMO_MODE) {
+      // In demo mode, use mock pubkey for target user
+      targetUserPubkey = 'ut1demo-user-' + targetId;
+    } else {
+      try {
+        const resolved = await validateAndResolvePubkeys(targetId);
+        targetUserPubkey = resolved.pubkey;
+      } catch (err) {
+        return res.status(err.statusCode || 400).json({ error: err.message });
+      }
     }
 
     // Remove member
@@ -5157,8 +5171,8 @@ app.post('/api/channels', async (req, res) => {
       return res.status(400).json({ error: 'Invalid user ID' });
     }
 
-    // Verify wallet is connected
-    if (!req.user.usernode_pubkey) {
+    // Verify wallet is connected (skip in demo mode)
+    if (!req.user.usernode_pubkey && !ENABLE_DEMO_MODE) {
       return res.status(401).json({ error: 'Must be connected to Usernode wallet to create channels' });
     }
 
