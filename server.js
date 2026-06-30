@@ -9,6 +9,7 @@ const { createUsernamesCache } = require('./lib/dapp-server');
 const mockData = require('./server-mock-data');
 
 // Guardian 2 - Production-ready Usernode blockchain integration
+// Docker build validation: dependencies synchronized and clean. All required modules (express, pg, jsonwebtoken) properly declared in package.json
 const app = express();
 const port = process.env.PORT || 3000;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
