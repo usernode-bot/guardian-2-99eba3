@@ -1168,11 +1168,12 @@ app.get('/api/user', async (req, res) => {
         appPubkey: APP_PUBKEY,
       });
     }
-    const userRes = await pool.query(`SELECT view_mode, avatar_url, created_at, bio FROM users WHERE id = $1`, [req.user.id]);
+    const userRes = await pool.query(`SELECT view_mode, avatar_url, created_at, bio, skip_signature_in_devnet FROM users WHERE id = $1`, [req.user.id]);
     const view_mode = userRes.rows[0]?.view_mode || 'web';
     const avatar_url = userRes.rows[0]?.avatar_url || null;
     const created_at = userRes.rows[0]?.created_at || null;
     const bio = userRes.rows[0]?.bio || null;
+    const skip_signature_in_devnet = userRes.rows[0]?.skip_signature_in_devnet || false;
     res.json({
       id: req.user.id,
       username: req.user.username,
@@ -1183,6 +1184,7 @@ app.get('/api/user', async (req, res) => {
       avatar_url: avatar_url,
       created_at: created_at,
       bio: bio,
+      skipSignatureInDevnet: skip_signature_in_devnet,
       isDemoMode: ENABLE_DEMO_MODE,
       appPubkey: APP_PUBKEY,
     });
@@ -1208,6 +1210,25 @@ app.put('/api/user/view-mode', async (req, res) => {
   } catch (err) {
     console.error('Error updating view mode:', err);
     res.status(500).json({ error: 'Failed to update view mode' });
+  }
+});
+
+app.put('/api/user/skip-signature-devnet', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { skipSignature } = req.body;
+    if (typeof skipSignature !== 'boolean') {
+      return res.status(400).json({ error: 'Invalid input: skipSignature must be a boolean' });
+    }
+
+    await pool.query(`UPDATE users SET skip_signature_in_devnet = $1 WHERE id = $2`, [skipSignature, req.user.id]);
+    res.json({ skipSignatureInDevnet: skipSignature, status: 'updated' });
+  } catch (err) {
+    console.error('Error updating skip-signature-devnet:', err);
+    res.status(500).json({ error: 'Failed to update skip-signature-devnet' });
   }
 });
 
@@ -7296,6 +7317,17 @@ async function start() {
       throw err;
     }
 
+    // Add skip_signature_in_devnet column to users table (idempotent migration)
+    try {
+      console.log('[Migration] Adding skip_signature_in_devnet column to users table...');
+      await pool.query(`
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS skip_signature_in_devnet BOOLEAN DEFAULT FALSE
+      `);
+      console.log('[Migration] ✅ skip_signature_in_devnet column migration completed');
+    } catch (err) {
+      console.error('[Migration] ❌ ERROR adding skip_signature_in_devnet column:', err.message);
+      throw err;
+    }
 
     // Create conversations table (marked private)
     await pool.query(`
