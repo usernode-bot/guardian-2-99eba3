@@ -5900,16 +5900,17 @@ app.delete('/api/channels/:channelId', async (req, res) => {
   }
 });
 
-// GET /api/user/followed-channels - List owned channels and channels the user follows with latest post preview
+// GET /api/user/followed-channels - List owned channels and channels the user follows with latest post preview (deduplicated) + user contacts
 app.get('/api/user/followed-channels', async (req, res) => {
   try {
     if (!req.user) {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
+    // Get deduplicated channels (owned or followed)
     const { rows: allChannels } = await pool.query(`
-      -- Get followed channels
-      SELECT c.id, c.name, c.description, c.owner_id, c.category, c.is_verified, c.verified_at, c.is_featured, c.is_system, c.created_at, c.updated_at,
+      SELECT DISTINCT ON (c.id)
+             c.id, c.name, c.description, c.owner_id, c.category, c.is_verified, c.verified_at, c.is_featured, c.is_system, c.created_at, c.updated_at,
              u.username as ownerUsername,
              cf.followed_at,
              (SELECT COUNT(*) FROM channel_followers WHERE channel_id = c.id)::INTEGER as followerCount,
@@ -5918,40 +5919,17 @@ app.get('/api/user/followed-channels', async (req, res) => {
              fp.content as latestPostContent,
              fp.created_at as latestPostCreatedAt,
              pu.username as latestPostUsername
-      FROM channel_followers cf
-      JOIN channels c ON cf.channel_id = c.id
-      LEFT JOIN users u ON c.owner_id = u.id
-      LEFT JOIN (
-        SELECT DISTINCT ON (channel_id) id, user_id, content, created_at, channel_id
-        FROM feed_posts
-        ORDER BY channel_id, created_at DESC
-      ) fp ON c.id = fp.channel_id
-      LEFT JOIN users pu ON fp.user_id = pu.id
-      WHERE cf.user_id = $1
-
-      UNION
-
-      -- Get owned channels
-      SELECT c.id, c.name, c.description, c.owner_id, c.category, c.is_verified, c.verified_at, c.is_featured, c.is_system, c.created_at, c.updated_at,
-             u.username as ownerUsername,
-             NULL::TIMESTAMPTZ as followed_at,
-             (SELECT COUNT(*) FROM channel_followers WHERE channel_id = c.id)::INTEGER as followerCount,
-             fp.id as latestPostId,
-             fp.user_id as latestPostUserId,
-             fp.content as latestPostContent,
-             fp.created_at as latestPostCreatedAt,
-             pu.username as latestPostUsername
       FROM channels c
       LEFT JOIN users u ON c.owner_id = u.id
+      LEFT JOIN channel_followers cf ON c.id = cf.channel_id AND cf.user_id = $1
       LEFT JOIN (
         SELECT DISTINCT ON (channel_id) id, user_id, content, created_at, channel_id
         FROM feed_posts
         ORDER BY channel_id, created_at DESC
       ) fp ON c.id = fp.channel_id
       LEFT JOIN users pu ON fp.user_id = pu.id
-      WHERE c.owner_id = $1
-
-      ORDER BY latestPostCreatedAt DESC NULLS LAST
+      WHERE c.owner_id = $1 OR cf.user_id = $1
+      ORDER BY c.id, cf.followed_at DESC NULLS LAST, c.created_at DESC
     `, [req.user.id]);
 
     const channels = allChannels.map(ch => {
@@ -5974,6 +5952,7 @@ app.get('/api/user/followed-channels', async (req, res) => {
         followerCount: parseInt(ch.followerCount) || 0,
         followedAt: ch.followed_at,
         isFollowing: !!ch.followed_at,
+        isOwner: ch.owner_id === req.user.id,
         latestPost: ch.latestPostId ? {
           id: ch.latestPostId,
           authorUsername: ch.latestPostUsername,
@@ -5983,7 +5962,34 @@ app.get('/api/user/followed-channels', async (req, res) => {
       };
     });
 
-    res.json({ channels });
+    // Sort channels by latest post date (most recent first)
+    channels.sort((a, b) => {
+      if (!a.latestPost && !b.latestPost) return 0;
+      if (!a.latestPost) return 1;
+      if (!b.latestPost) return -1;
+      return new Date(b.latestPost.createdAt) - new Date(a.latestPost.createdAt);
+    });
+
+    // Get user contacts
+    const { rows: userContacts } = await pool.query(`
+      SELECT uc.id, u.id as user_id, u.username, u.usernode_pubkey, u.verified_at, u.avatar_url, uc.nickname
+      FROM user_contacts uc
+      JOIN users u ON uc.contact_user_id = u.id
+      WHERE uc.user_id = $1 AND (uc.archived_by IS NULL OR NOT $1 = ANY(uc.archived_by))
+      ORDER BY u.username ASC
+    `, [req.user.id]);
+
+    const users = userContacts.map(r => ({
+      id: r.id,
+      userId: r.user_id,
+      username: r.username,
+      usernode_pubkey: r.usernode_pubkey || null,
+      nickname: r.nickname,
+      verified: !!r.verified_at,
+      avatar_url: r.avatar_url || null
+    }));
+
+    res.json({ channels, users });
   } catch (err) {
     console.error('Error fetching followed channels:', err);
     res.status(500).json({ error: 'Failed to fetch followed channels' });
@@ -9567,6 +9573,22 @@ async function start() {
         `, [1, ch.id]);
       }
       console.log(`[Channel Seed] ✅ Added follower relationships (demo user follows ${channelRows.length} channels)`);
+
+      // Seed user contacts for demo user (user 1 has contacts with users 2, 3, 4)
+      console.log('[Channel Seed] Adding user contacts...');
+      const contacts = [
+        { contact_user_id: 2, nickname: 'Demo User Two' },
+        { contact_user_id: 3, nickname: 'Demo User Three' },
+        { contact_user_id: 4, nickname: 'Demo User Four' }
+      ];
+      for (const contact of contacts) {
+        await pool.query(`
+          INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
+          VALUES ($1, $2, $3, NOW())
+          ON CONFLICT (user_id, contact_user_id) DO NOTHING
+        `, [1, contact.contact_user_id, contact.nickname]);
+      }
+      console.log(`[Channel Seed] ✅ Added user contacts (demo user has ${contacts.length} contacts)`);
 
       console.log('[Channel Seed] ✅ Channel seed data completed');
     }

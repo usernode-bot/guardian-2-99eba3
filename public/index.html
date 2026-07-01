@@ -1233,7 +1233,7 @@
 
   <!-- Modals -->
   <!-- Share Contact Modal -->
-  <div id="shareContactModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+  <div id="shareContactModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
       <div class="flex justify-between items-start">
         <h2 class="text-xl font-semibold text-zinc-900 dark:text-white">Share Contact</h2>
@@ -1258,7 +1258,7 @@
   </div>
 
   <!-- QR Code Modal -->
-  <div id="qrModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+  <div id="qrModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
       <div class="flex justify-between items-start">
         <h2 class="text-xl font-semibold text-zinc-900 dark:text-white">Contact QR Code</h2>
@@ -1270,7 +1270,7 @@
   </div>
 
   <!-- Image Lightbox -->
-  <div id="imageLightbox" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+  <div id="imageLightbox" class="hidden fixed inset-0 z-[999] bg-black/80 flex items-center justify-center p-4">
     <div class="relative max-w-2xl max-h-[90vh]">
       <img id="lightboxImage" src="" alt="Message image" class="max-w-full max-h-[90vh] rounded-lg">
       <button id="closeLightbox" class="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white w-8 h-8 rounded-full flex items-center justify-center transition">✕</button>
@@ -1278,7 +1278,7 @@
   </div>
 
   <!-- Token Transfer Modal -->
-  <div id="tokenModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+  <div id="tokenModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
       <h2 class="text-xl font-semibold text-zinc-900 dark:text-white">Send Tokens</h2>
       <div class="space-y-2">
@@ -1301,7 +1301,7 @@
   </div>
 
   <!-- Delete Contact Modal -->
-  <div id="deleteContactModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+  <div id="deleteContactModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
       <h2 class="text-xl font-semibold text-zinc-900 dark:text-white" id="deleteContactTitle">Delete contact?</h2>
       <p class="text-sm text-zinc-600 dark:text-zinc-400">This cannot be undone.</p>
@@ -1316,7 +1316,7 @@
   </div>
 
   <!-- Archive Conversation Modal -->
-  <div id="deleteConversationModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+  <div id="deleteConversationModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
       <h2 class="text-xl font-semibold text-zinc-900 dark:text-white" id="deleteConversationTitle">Archive this conversation?</h2>
       <p class="text-sm text-zinc-600 dark:text-zinc-400">It will be hidden from your inbox. You can unarchive it any time — no messages are deleted.</p>
@@ -1348,7 +1348,7 @@
 
   <!-- Message Options Menu -->
   <!-- Delete Message Modal -->
-  <div id="deleteMessageModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onclick="closeDeleteMessageModal()">
+  <div id="deleteMessageModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4" onclick="closeDeleteMessageModal()">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4" onclick="event.stopPropagation()">
       <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Delete this message?</h2>
       <p class="text-sm text-zinc-600 dark:text-zinc-400">This message will be deleted from your view. The other person will still see it.</p>
@@ -1360,7 +1360,7 @@
   </div>
 
   <!-- Delete Post Modal -->
-  <div id="deletePostModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onclick="closeDeletePostModal()">
+  <div id="deletePostModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4" onclick="closeDeletePostModal()">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4" onclick="event.stopPropagation()">
       <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Delete this post?</h2>
       <p class="text-sm text-zinc-600 dark:text-zinc-400">This cannot be undone.</p>
@@ -1372,7 +1372,7 @@
   </div>
 
   <!-- Create Group Modal -->
-  <div id="createGroupModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+  <div id="createGroupModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
       <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Create Group</h2>
       <input id="groupNameInput" type="text" placeholder="Group name" maxlength="255" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
@@ -1385,15 +1385,31 @@
   </div>
 
   <!-- Create Channel Modal -->
-  <div id="createChannelModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
-      <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Create Channel</h2>
-      <input id="channelNameInput" type="text" placeholder="Channel name" maxlength="255" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
-      <textarea id="channelDescInput" placeholder="Description (optional)" maxlength="1000" rows="3" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"></textarea>
-      <select id="channelCategoryInput" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
-        <option value="">Select a category...</option>
-      </select>
-      <div class="flex gap-2">
+  <div id="createChannelModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-sm">
+      <!-- Header section -->
+      <div class="p-6 border-b border-zinc-300 dark:border-zinc-700">
+        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Create Channel</h2>
+      </div>
+      <!-- Content section -->
+      <div class="p-6 space-y-3">
+        <div>
+          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300 block mb-1">Channel Name</label>
+          <input id="channelNameInput" type="text" placeholder="Channel name" maxlength="255" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+        </div>
+        <div>
+          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300 block mb-1">Description (Optional)</label>
+          <textarea id="channelDescInput" placeholder="Description (optional)" maxlength="1000" rows="3" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"></textarea>
+        </div>
+        <div>
+          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300 block mb-1">Category</label>
+          <select id="channelCategoryInput" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+            <option value="">Select a category...</option>
+          </select>
+        </div>
+      </div>
+      <!-- Footer section -->
+      <div class="p-6 border-t border-zinc-300 dark:border-zinc-700 flex gap-2">
         <button onclick="closeCreateChannelModal()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
         <button onclick="createChannel()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Create</button>
       </div>
@@ -1402,7 +1418,7 @@
 
   <!-- Welcome Screen Modal -->
   <!-- Manage Group Members Modal -->
-  <div id="manageGroupMembersModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+  <div id="manageGroupMembersModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-2xl max-h-[90vh] flex flex-col">
       <div class="p-6 border-b border-zinc-300 dark:border-zinc-700 flex justify-between items-center">
         <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Manage Group Members</h2>
@@ -1432,7 +1448,7 @@
   </div>
 
   <!-- Message History Modal -->
-  <div id="messageHistoryModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+  <div id="messageHistoryModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-2xl max-h-[90vh] flex flex-col">
       <div class="p-6 border-b border-zinc-300 dark:border-zinc-700 flex justify-between items-center">
         <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Message History</h2>
@@ -1449,7 +1465,7 @@
   </div>
 
   <!-- View Group Info Modal -->
-  <div id="viewGroupInfoModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+  <div id="viewGroupInfoModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-md max-h-[90vh] flex flex-col">
       <div class="p-6 border-b border-zinc-300 dark:border-zinc-700 flex justify-between items-center">
         <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Group Info</h2>
@@ -1478,7 +1494,7 @@
   </div>
 
   <!-- Rename Group Modal -->
-  <div id="renameGroupModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+  <div id="renameGroupModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-sm">
       <div class="p-6 border-b border-zinc-300 dark:border-zinc-700">
         <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Rename Group</h2>
@@ -1496,7 +1512,7 @@
   </div>
 
   <!-- Leave Group Modal -->
-  <div id="leaveGroupModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+  <div id="leaveGroupModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-sm">
       <div class="p-6 border-b border-zinc-300 dark:border-zinc-700">
         <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Leave Group</h2>
@@ -1513,7 +1529,7 @@
   </div>
 
   <!-- Delete All Messages Modal -->
-  <div id="deleteAllMessagesModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+  <div id="deleteAllMessagesModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-sm">
       <div class="p-6 border-b border-zinc-300 dark:border-zinc-700">
         <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Delete All Messages</h2>
@@ -1530,7 +1546,7 @@
   </div>
 
   <!-- Delete Group Modal -->
-  <div id="deleteGroupModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+  <div id="deleteGroupModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-sm">
       <div class="p-6 border-b border-zinc-300 dark:border-zinc-700">
         <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Delete Group</h2>
@@ -1555,7 +1571,7 @@
   <div id="persistentNotificationContainer" class="fixed top-4 right-4 z-40 flex flex-col gap-3 pointer-events-none max-w-sm"></div>
 
   <!-- Transaction Details Modal -->
-  <div id="transactionDetailsModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+  <div id="transactionDetailsModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 rounded-lg shadow-xl max-w-md w-full max-h-[80vh] overflow-y-auto">
       <div class="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
         <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Transaction Details</h2>
@@ -6747,7 +6763,7 @@
 
       const modal = document.createElement('div');
       modal.id = `edit-modal-${postId}`;
-      modal.className = 'fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4';
+      modal.className = 'fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4';
       modal.innerHTML = `
         <div class="bg-white dark:bg-zinc-900 rounded-lg shadow-xl max-w-md w-full max-h-[80vh] overflow-y-auto">
           <div class="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
@@ -6836,7 +6852,7 @@
 
       const confirmDialog = document.createElement('div');
       confirmDialog.id = `delete-confirm-${postId}`;
-      confirmDialog.className = 'fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4';
+      confirmDialog.className = 'fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4';
       confirmDialog.innerHTML = `
         <div class="bg-white dark:bg-zinc-900 rounded-lg shadow-xl max-w-md w-full">
           <div class="px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
@@ -6973,21 +6989,36 @@
     async function loadFollowingChannels() {
       try {
         const data = await apiCall('/api/user/followed-channels');
-        if (data && data.channels) {
-          channelsList = data.channels;
-          filteredChannelsList = channelsList;
+        if (data) {
+          const channels = data.channels || [];
+          const users = data.users || [];
+          channelsList = channels;
+          filteredChannelsList = channels;
           let html = '';
-          if (data.channels.length === 0) {
+          if (channels.length === 0 && users.length === 0) {
             html = `<div class="text-center py-12 text-zinc-600 dark:text-zinc-500">
-              <p class="text-lg font-medium mb-2">You don't follow any channels yet</p>
-              <p class="text-sm mb-4">Discover channels to follow and build your feed.</p>
+              <p class="text-lg font-medium mb-2">You don't follow any channels or contacts yet</p>
+              <p class="text-sm mb-4">Discover channels to follow and add contacts to build your feed.</p>
               <button onclick="switchFeedTab('discover')" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition">Discover Channels</button>
             </div>`;
           } else {
             html = '<div class="space-y-3 p-4">';
-            data.channels.forEach(channel => {
-              html += renderChannelCard(channel, true);
-            });
+            if (users.length > 0) {
+              html += renderFollowingUsersSection(users);
+              if (channels.length > 0) {
+                html += '<div class="border-t border-zinc-200 dark:border-zinc-700 pt-4 mt-4"></div>';
+              }
+            }
+            if (channels.length > 0) {
+              html += '<div>';
+              if (users.length > 0) {
+                html += '<h3 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-3 px-0">Following Channels</h3>';
+              }
+              channels.forEach(channel => {
+                html += renderChannelCard(channel, true);
+              });
+              html += '</div>';
+            }
             html += '</div>';
           }
           document.getElementById('feedContentWrapper').innerHTML = html;
@@ -7024,6 +7055,28 @@
         console.error('Error loading discover channels:', err);
         showToast('Error loading discover channels', 'error');
       }
+    }
+
+    function renderFollowingUsersSection(users) {
+      const heading = users.length > 0 ? '<h3 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-3 px-0">Following Users</h3>' : '';
+      const userCards = users.map(user => {
+        const verifiedBadge = user.verified ? '<span class="text-xs bg-cyan-100 dark:bg-cyan-900 text-cyan-700 dark:text-cyan-300 px-2 py-1 rounded">✓ Verified</span>' : '';
+        return `
+          <div class="p-4 bg-white dark:bg-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-lg border border-zinc-200 dark:border-zinc-700 transition space-y-2">
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1">
+                  <h3 class="font-semibold text-zinc-900 dark:text-zinc-100 truncate">${escapeHtml(user.username)}</h3>
+                  ${verifiedBadge}
+                </div>
+                <p class="text-xs text-zinc-600 dark:text-zinc-400 truncate">${escapeHtml(user.usernode_pubkey || 'No wallet linked')}</p>
+                ${user.nickname ? `<p class="text-sm text-zinc-700 dark:text-zinc-300 mt-1">${escapeHtml(user.nickname)}</p>` : ''}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+      return heading + '<div class="space-y-2">' + userCards + '</div>';
     }
 
     function renderChannelCard(channel, isFollowing) {
@@ -7588,7 +7641,7 @@
       // Create modal
       const modal = document.createElement('div');
       modal.id = 'guardianRankModal';
-      modal.className = 'fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4';
+      modal.className = 'fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4';
       modal.onclick = (e) => {
         if (e.target === modal) closeGuardianRankModal();
       };
@@ -7652,7 +7705,7 @@
       // Create modal
       const modal = document.createElement('div');
       modal.id = 'peerModal';
-      modal.className = 'fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4';
+      modal.className = 'fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4';
       modal.onclick = (e) => {
         if (e.target === modal) closePeerModal();
       };
@@ -7688,7 +7741,7 @@
     function showErrorModal(title, message) {
       const modal = document.createElement('div');
       modal.id = 'errorModal';
-      modal.className = 'fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4';
+      modal.className = 'fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4';
       modal.onclick = (e) => {
         if (e.target === modal) {
           const m = document.getElementById('errorModal');
@@ -7746,7 +7799,7 @@
 
         const modal = document.createElement('div');
         modal.id = 'guardiaNFTModal';
-        modal.className = 'fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4';
+        modal.className = 'fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4';
         modal.onclick = (e) => {
           if (e.target === modal) closeGuardiaNFTModal();
         };
@@ -7852,7 +7905,7 @@
     function displayUserProfileModal(user) {
       const modal = document.createElement('div');
       modal.id = 'userProfileModal';
-      modal.className = 'fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4';
+      modal.className = 'fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4';
 
       // Create avatar HTML
       const avatarInitial = user.username ? user.username.charAt(0).toUpperCase() : '?';
@@ -8050,7 +8103,7 @@
       const currentBio = document.getElementById('profileBio').textContent === '—' ? '' : document.getElementById('profileBio').textContent;
       const modal = document.createElement('div');
       modal.id = 'bioEditModal';
-      modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+      modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[999]';
       modal.innerHTML = `
         <div class="bg-white dark:bg-zinc-900 rounded-lg p-6 max-w-md w-full mx-4 shadow-lg">
           <h3 class="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-4">Edit Bio</h3>
