@@ -1168,12 +1168,13 @@ app.get('/api/user', async (req, res) => {
         appPubkey: APP_PUBKEY,
       });
     }
-    const userRes = await pool.query(`SELECT view_mode, avatar_url, created_at, bio, skip_signature_in_devnet FROM users WHERE id = $1`, [req.user.id]);
+    const userRes = await pool.query(`SELECT view_mode, avatar_url, created_at, bio, skip_signature_in_devnet, network_mode FROM users WHERE id = $1`, [req.user.id]);
     const view_mode = userRes.rows[0]?.view_mode || 'web';
     const avatar_url = userRes.rows[0]?.avatar_url || null;
     const created_at = userRes.rows[0]?.created_at || null;
     const bio = userRes.rows[0]?.bio || null;
     const skip_signature_in_devnet = userRes.rows[0]?.skip_signature_in_devnet || false;
+    const network_mode = userRes.rows[0]?.network_mode || 'devnet';
     res.json({
       id: req.user.id,
       username: req.user.username,
@@ -1185,6 +1186,7 @@ app.get('/api/user', async (req, res) => {
       created_at: created_at,
       bio: bio,
       skipSignatureInDevnet: skip_signature_in_devnet,
+      networkMode: network_mode,
       isDemoMode: ENABLE_DEMO_MODE,
       appPubkey: APP_PUBKEY,
     });
@@ -1229,6 +1231,25 @@ app.put('/api/user/skip-signature-devnet', async (req, res) => {
   } catch (err) {
     console.error('Error updating skip-signature-devnet:', err);
     res.status(500).json({ error: 'Failed to update skip-signature-devnet' });
+  }
+});
+
+app.put('/api/user/network-mode', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { networkMode } = req.body;
+    if (!['devnet', 'real_testnet', 'demo'].includes(networkMode)) {
+      return res.status(400).json({ error: 'Invalid input: networkMode must be "devnet", "real_testnet", or "demo"' });
+    }
+
+    await pool.query(`UPDATE users SET network_mode = $1 WHERE id = $2`, [networkMode, req.user.id]);
+    res.json({ networkMode: networkMode, status: 'updated' });
+  } catch (err) {
+    console.error('Error updating network-mode:', err);
+    res.status(500).json({ error: 'Failed to update network-mode' });
   }
 });
 
@@ -7648,6 +7669,30 @@ async function start() {
       console.log('[Migration] ✅ skip_signature_in_devnet column migration completed');
     } catch (err) {
       console.error('[Migration] ❌ ERROR adding skip_signature_in_devnet column:', err.message);
+      throw err;
+    }
+
+    // Add network_mode column to users table (idempotent migration)
+    try {
+      console.log('[Migration] Adding network_mode column to users table...');
+      await pool.query(`
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS network_mode VARCHAR(50) DEFAULT 'devnet'
+      `);
+      console.log('[Migration] ✅ network_mode column migration completed');
+    } catch (err) {
+      console.error('[Migration] ❌ ERROR adding network_mode column:', err.message);
+      throw err;
+    }
+
+    // Update skip_signature_in_devnet default from FALSE to TRUE (idempotent migration)
+    try {
+      console.log('[Migration] Updating skip_signature_in_devnet default to TRUE...');
+      await pool.query(`
+        ALTER TABLE users ALTER COLUMN skip_signature_in_devnet SET DEFAULT TRUE
+      `);
+      console.log('[Migration] ✅ skip_signature_in_devnet default migration completed');
+    } catch (err) {
+      console.error('[Migration] ❌ ERROR updating skip_signature_in_devnet default:', err.message);
       throw err;
     }
 
