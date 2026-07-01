@@ -6480,7 +6480,7 @@
       let imageGallery = '';
       if (images.length > 0) {
         imageGallery = `<div class="flex flex-wrap gap-2 mt-2">
-          ${images.map(img => `<img src="${img}" alt="Post image" class="max-w-xs max-h-48 rounded cursor-pointer hover:opacity-80 transition" onclick="showLightbox('${img.replace(/'/g, '\\'')}')">`).join('')}
+          ${images.map(img => `<img src="${img}" alt="Post image" class="max-w-xs max-h-48 rounded cursor-pointer hover:opacity-80 transition" onclick="showLightbox(${JSON.stringify(img)})">`).join('')}
         </div>`;
       }
 
@@ -7007,7 +7007,7 @@
       let imageGallery = '';
       if (images.length > 0) {
         imageGallery = `<div class="flex flex-wrap gap-2 mt-2">
-          ${images.map(img => `<img src="${img}" alt="Post image" class="max-w-xs max-h-48 rounded cursor-pointer hover:opacity-80 transition" onclick="showLightbox('${img.replace(/'/g, '\\'')}')">`).join('')}
+          ${images.map(img => `<img src="${img}" alt="Post image" class="max-w-xs max-h-48 rounded cursor-pointer hover:opacity-80 transition" onclick="showLightbox(${JSON.stringify(img)})">`).join('')}
         </div>`;
       }
 
@@ -7070,7 +7070,7 @@
       preview.innerHTML = channelPostImages.map((img, idx) => `
         <div class="relative">
           <img src="${img}" alt="Preview" class="max-w-24 max-h-24 rounded">
-          <button onclick="removeChannelPostImage(${idx})" class="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-700">×</button>
+          <button onclick="removeChannelPostImage(${idx})" class="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-700">&times;</button>
         </div>
       `).join('');
     }
