@@ -1209,7 +1209,15 @@ app.put('/api/user/view-mode', async (req, res) => {
       return res.status(400).json({ error: 'Invalid view mode. Must be "web" or "mobile"' });
     }
 
-    await pool.query(`UPDATE users SET view_mode = $1 WHERE id = $2`, [viewMode, req.user.id]);
+    if (dbConnected) {
+      try {
+        await pool.query(`UPDATE users SET view_mode = $1 WHERE id = $2`, [viewMode, req.user.id]);
+      } catch (dbErr) {
+        console.error('Database error updating view mode:', dbErr);
+        // Continue anyway - the view mode preference can be stored in session/local storage as fallback
+      }
+    }
+
     res.json({ viewMode: viewMode, status: 'updated' });
   } catch (err) {
     console.error('Error updating view mode:', err);
@@ -1395,17 +1403,26 @@ app.get('/api/usernode/status', async (req, res) => {
       latency = null;
     }
 
-    const now = new Date().toISOString();
-    await pool.query(
-      `UPDATE users SET last_usernode_ping_at = $1 WHERE id = $2`,
-      [now, userId]
-    );
+    let lastSyncAt = null;
 
-    const lastPingRes = await pool.query(
-      `SELECT last_usernode_ping_at FROM users WHERE id = $1`,
-      [userId]
-    );
-    const lastSyncAt = lastPingRes.rows[0]?.last_usernode_ping_at || null;
+    if (dbConnected) {
+      try {
+        const now = new Date().toISOString();
+        await pool.query(
+          `UPDATE users SET last_usernode_ping_at = $1 WHERE id = $2`,
+          [now, userId]
+        );
+
+        const lastPingRes = await pool.query(
+          `SELECT last_usernode_ping_at FROM users WHERE id = $1`,
+          [userId]
+        );
+        lastSyncAt = lastPingRes.rows && lastPingRes.rows.length > 0 ? lastPingRes.rows[0].last_usernode_ping_at : null;
+      } catch (dbErr) {
+        console.error('Database error in usernode status:', dbErr);
+        // Continue without lastSyncAt if database fails
+      }
+    }
 
     res.json({
       status,
