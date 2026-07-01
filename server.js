@@ -2152,7 +2152,7 @@ app.post('/api/tokens/send', async (req, res) => {
       console.log(`[TOKEN] Returning existing audit log to prevent duplicate submission`);
       res.json({
         blockchainRecordingId: blockchainRecordingId,
-        txHash: existingLog.tx_hash,
+        txHash: existingLog.tx_hash || null,
         status: 'pending',
         sender: userId,
         recipient: recipientId,
@@ -2474,7 +2474,7 @@ app.get('/api/transactions-by-user', async (req, res) => {
         messageId: null,
         groupId: null,
         messageType: tx.message_type,
-        txHash: tx.tx_hash,
+        txHash: tx.tx_hash || null,
         status: tx.status,
         errorMessage: null,
         confirmedAt: tx.confirmed_at,
@@ -4956,7 +4956,7 @@ app.get('/api/activity', async (req, res) => {
       return {
         id: r.id,
         type: r.message_type,
-        txHash: r.tx_hash,
+        txHash: r.tx_hash || null,
         status: r.status,
         errorMessage: r.error_message || null,
         confirmedAt: r.confirmed_at || null,
@@ -6698,7 +6698,7 @@ app.get('/api/test/production-simulation', async (req, res) => {
         auditLog: {
           id: finalAuditLog.id,
           status: finalAuditLog.status,
-          txHash: finalAuditLog.tx_hash,
+          txHash: finalAuditLog.tx_hash || null,
           contentHash: finalAuditLog.content_hash,
           appPubkey: finalAuditLog.user_pubkey,
           payload: JSON.parse(finalAuditLog.transaction_payload),
