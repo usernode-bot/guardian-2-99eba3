@@ -5697,14 +5697,15 @@ app.delete('/api/channels/:channelId', async (req, res) => {
   }
 });
 
-// GET /api/user/followed-channels - List channels the user follows with latest post preview
+// GET /api/user/followed-channels - List owned channels and channels the user follows with latest post preview
 app.get('/api/user/followed-channels', async (req, res) => {
   try {
     if (!req.user) {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const { rows: followedChannels } = await pool.query(`
+    const { rows: allChannels } = await pool.query(`
+      -- Get followed channels
       SELECT c.id, c.name, c.description, c.owner_id, c.category, c.is_verified, c.verified_at, c.is_featured, c.is_system, c.created_at, c.updated_at,
              u.username as ownerUsername,
              cf.followed_at,
@@ -5724,10 +5725,33 @@ app.get('/api/user/followed-channels', async (req, res) => {
       ) fp ON c.id = fp.channel_id
       LEFT JOIN users pu ON fp.user_id = pu.id
       WHERE cf.user_id = $1
-      ORDER BY fp.created_at DESC NULLS LAST, cf.followed_at DESC
+
+      UNION
+
+      -- Get owned channels
+      SELECT c.id, c.name, c.description, c.owner_id, c.category, c.is_verified, c.verified_at, c.is_featured, c.is_system, c.created_at, c.updated_at,
+             u.username as ownerUsername,
+             NULL::TIMESTAMPTZ as followed_at,
+             (SELECT COUNT(*) FROM channel_followers WHERE channel_id = c.id)::INTEGER as followerCount,
+             fp.id as latestPostId,
+             fp.user_id as latestPostUserId,
+             fp.content as latestPostContent,
+             fp.created_at as latestPostCreatedAt,
+             pu.username as latestPostUsername
+      FROM channels c
+      LEFT JOIN users u ON c.owner_id = u.id
+      LEFT JOIN (
+        SELECT DISTINCT ON (channel_id) id, user_id, content, created_at, channel_id
+        FROM feed_posts
+        ORDER BY channel_id, created_at DESC
+      ) fp ON c.id = fp.channel_id
+      LEFT JOIN users pu ON fp.user_id = pu.id
+      WHERE c.owner_id = $1
+
+      ORDER BY latestPostCreatedAt DESC NULLS LAST
     `, [req.user.id]);
 
-    const channels = followedChannels.map(ch => {
+    const channels = allChannels.map(ch => {
       const contentObj = ch.latestPostContent ? JSON.parse(ch.latestPostContent) : null;
       const contentSnippet = contentObj?.text ? contentObj.text.substring(0, 100) + (contentObj.text.length > 100 ? '...' : '') : null;
 
@@ -5746,6 +5770,7 @@ app.get('/api/user/followed-channels', async (req, res) => {
         updatedAt: ch.updated_at,
         followerCount: parseInt(ch.followerCount) || 0,
         followedAt: ch.followed_at,
+        isFollowing: !!ch.followed_at,
         latestPost: ch.latestPostId ? {
           id: ch.latestPostId,
           authorUsername: ch.latestPostUsername,
