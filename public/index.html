@@ -207,6 +207,11 @@
       pointer-events: none;
     }
 
+    /* On non-mobile (web/desktop), overlay should never block interactions */
+    body:not(.layout-mobile) #sidebarOverlay {
+      pointer-events: none !important;
+    }
+
     .message-bubble {
       word-wrap: break-word;
       overflow-wrap: break-word;
@@ -263,136 +268,6 @@
       to { opacity: 1; }
     }
 
-    @keyframes feedPostEnter {
-      from {
-        opacity: 0;
-      }
-      to {
-        opacity: 1;
-      }
-    }
-
-    .feed-post-enter {
-      animation: feedPostEnter 0.4s ease-out;
-    }
-
-    #feedView {
-      contain: layout style paint;
-    }
-
-    /* Compose Modal Styles */
-    #feedComposeModal {
-      backdrop-filter: blur(4px);
-      opacity: 0;
-      transition: opacity 0.3s ease-out;
-      pointer-events: none;
-    }
-
-    #feedComposeModal.hidden {
-      display: none;
-    }
-
-    #feedComposeModal:not(.hidden) {
-      display: flex;
-      pointer-events: auto;
-    }
-
-    #feedComposeContainer {
-      animation: slideUpModal 0.3s ease-out forwards;
-    }
-
-    @keyframes slideUpModal {
-      from {
-        opacity: 0;
-        transform: scale(0.95) translateY(16px);
-      }
-      to {
-        opacity: 1;
-        transform: scale(1) translateY(0);
-      }
-    }
-
-    /* FAB entrance animation */
-    #feedFAB {
-      animation: fabFadeIn 0.4s ease-out 0.1s backwards;
-    }
-
-    @keyframes fabFadeIn {
-      from {
-        opacity: 0;
-        transform: scale(0.8);
-      }
-      to {
-        opacity: 1;
-        transform: scale(1);
-      }
-    }
-
-    /* FAB hover and active states */
-    #feedFAB {
-      transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
-                  box-shadow 0.2s ease-out,
-                  background-color 0.2s ease-out;
-    }
-
-    #feedFAB:hover {
-      transform: scale(1.1);
-      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15);
-    }
-
-    #feedFAB:active {
-      transform: scale(0.95);
-    }
-
-    /* Modal close button animation */
-    #feedComposeModal button {
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-
-    #feedComposeModal .text-lg:hover {
-      transform: rotate(90deg);
-    }
-
-
-    /* Textarea smooth focus animation */
-    #feedComposeInput {
-      transition: border-color 0.2s ease-out,
-                  box-shadow 0.2s ease-out,
-                  background-color 0.2s ease-out;
-    }
-
-    #feedComposeInput:focus {
-      background-color: transparent;
-      border-color: rgba(6, 182, 212, 0.5);
-    }
-
-    /* Button color smooth transitions */
-    button.transition {
-      transition: background-color 0.2s ease-out,
-                  color 0.2s ease-out,
-                  transform 0.2s ease-out;
-    }
-
-    #feedComposeContainer {
-      width: 92vw;
-      max-width: calc(100vw - 32px);
-      height: 55vh;
-      max-height: 60vh;
-    }
-
-    @media (max-width: 639px) {
-      #feedComposeContainer {
-        width: 95vw;
-        max-width: calc(100vw - 16px);
-        height: 57vh;
-      }
-    }
-
-    @media (min-width: 640px) {
-      #feedComposeContainer {
-        width: 92vw;
-        max-width: calc(100vw - 32px);
-        height: 55vh;
       }
     }
 
@@ -591,7 +466,7 @@
     <div class="splash-tagline">Built on UserNode</div>
   </div>
 
-  <div id="app" class="flex flex-col flex-1 relative h-screen overflow-hidden">
+  <div id="app" class="flex flex-col flex-1 h-screen overflow-hidden">
     <!-- Header -->
     <div id="header" class="bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-300 dark:border-zinc-800 px-4 py-3 flex items-start gap-3 fixed top-0 left-0 right-0 z-40 w-full header-in-view">
       <button id="menuBtn" class="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition" title="Toggle sidebar">
@@ -603,7 +478,7 @@
         <button id="backBtn" class="text-lg text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition">←</button>
         <div class="absolute -bottom-6 left-0 px-2 py-1 bg-zinc-900 dark:bg-zinc-700 text-white dark:text-zinc-100 text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">Back</div>
       </div>
-      <!-- Guardian branding + page label system (used for Feed, Messages, Contacts, Settings, Groups) -->
+      <!-- Guardian branding + page label system (used for Channels, Messages, Contacts, Settings, Groups) -->
       <div id="headerContent" class="flex flex-col items-start flex-1 gap-0">
         <div class="flex items-center gap-2">
           <span id="headerTitle" class="hidden"></span>
@@ -618,6 +493,7 @@
         <div id="headerPageLabel" class="text-sm text-zinc-600 dark:text-zinc-500 leading-tight truncate">Messages</div>
       </div>
       <div id="headerRight" class="text-sm text-zinc-600 dark:text-zinc-500 relative flex flex-1 justify-end items-center gap-2">
+        <button id="postBtn" class="hidden text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition font-medium" title="Create a post" onclick="openPostModal()">✎ Post</button>
         <button id="messageHistoryBtn" class="hidden text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare mr-3" title="Message history" onclick="openMessageHistory()">📜</button>
         <button id="conversationMenuBtn" class="hidden text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare" title="Conversation options" onclick="toggleConversationMenu(event)">⋯</button>
         <div id="conversationMenuDropdown" class="hidden absolute right-0 mt-2 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg shadow-lg z-50 min-w-40">
@@ -657,11 +533,11 @@
           </svg>
           Contacts
         </button>
-        <button id="navFeedBtn" onclick="showFeedView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
+        <button id="navChannelsBtn" onclick="showFeedView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
           <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v.756a3.5 3.5 0 015.618 1.401M12 8v8m-4-4h8" />
           </svg>
-          Feed
+          Channels
         </button>
         <button id="navProfileBtn" onclick="showProfileView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
           <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -812,15 +688,51 @@
 
                 <!-- Network Mode Selection -->
                 <div class="space-y-2">
-                  <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400 flex items-center gap-2">
+                  <label class="text-xs sm:text-sm font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-2">
                     <span>Network Mode</span>
                     <span id="networkModeLoading" class="hidden inline-block w-3 h-3 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></span>
                   </label>
-                  <select id="networkModeSelect" onchange="updateNetworkMode(this.value)" class="w-full px-2 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none">
-                    <option value="testnet">Testnet (Real Transactions)</option>
+                  <select id="networkModeSelect" onchange="updateNetworkMode(this.value)" class="w-full px-3 py-2.5 sm:py-2 bg-zinc-50 dark:bg-zinc-700 border border-zinc-400 dark:border-zinc-600 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-400 text-sm">
+                    <option value="real_testnet">Real Testnet (Live Transactions)</option>
+                    <option value="devnet">Devnet (Database Only)</option>
                     <option value="demo">Demo (Simulated)</option>
                   </select>
-                  <p class="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed"><strong>Testnet:</strong> Real blockchain transactions; wallet confirmation required; transactions remain pending until blockchain confirms. <strong>Demo:</strong> Transactions are simulated with fake hashes; audit logs immediately mark as confirmed.</p>
+                  <p class="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed break-words">
+                    <strong class="block mb-1">Real Testnet:</strong> Live blockchain transactions; wallet confirmation required; transactions remain pending until blockchain confirms.
+                    <strong class="block mb-1 mt-2">Devnet:</strong> Database-only transactions; immediate confirmation; useful for testing.
+                    <strong class="block mb-1 mt-2">Demo:</strong> Transactions are simulated with fake hashes; audit logs immediately mark as confirmed.
+                  </p>
+                </div>
+
+                <!-- Transaction Preferences -->
+                <div class="space-y-3 border-t border-zinc-300 dark:border-zinc-600 pt-3 mt-3">
+                  <label class="text-xs sm:text-sm font-medium text-zinc-700 dark:text-zinc-300 block">Transaction Preferences</label>
+                  <div class="flex items-start gap-3 p-3 bg-zinc-100 dark:bg-zinc-800 rounded">
+                    <input type="checkbox" id="skipSignatureDevnetToggle" onchange="updateSkipSignatureDevnet(this.checked)" class="w-5 h-5 rounded cursor-pointer mt-0.5 flex-shrink-0">
+                    <div class="flex-1 min-w-0">
+                      <label for="skipSignatureDevnetToggle" class="text-xs sm:text-sm font-medium text-zinc-900 dark:text-zinc-100 cursor-pointer block mb-1">Skip signature confirmation in devnet mode</label>
+                      <p class="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">When enabled and devnet is the active network mode, transactions will broadcast immediately without wallet confirmation.</p>
+                      <p class="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed mt-1"><em>Only applies when devnet mode is active above.</em></p>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- RPC Endpoint Configuration (only shown in testnet mode) -->
+                <div id="rpcEndpointConfig" class="hidden space-y-2">
+                  <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400 flex items-center gap-2">
+                    <span>RPC Endpoint URL</span>
+                    <span id="rpcEndpointLoading" class="hidden inline-block w-3 h-3 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></span>
+                  </label>
+                  <input
+                    id="rpcEndpointInput"
+                    type="text"
+                    placeholder="e.g., http://localhost:3001 or https://testnet-rpc.usernodelabs.org"
+                    class="w-full px-2 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  />
+                  <button id="rpcEndpointSave" onclick="updateRpcEndpoint()" class="w-full px-3 py-1.5 bg-cyan-500 text-white rounded text-xs font-medium hover:bg-cyan-600 transition">
+                    Save RPC Endpoint
+                  </button>
+                  <p class="text-xs text-zinc-600 dark:text-zinc-400">Usernode testnet RPC endpoint for submitting transactions.</p>
                 </div>
 
                 <!-- Permission Notice -->
@@ -842,6 +754,20 @@
 
     <!-- Main content -->
     <div id="content" class="flex-1 overflow-hidden flex flex-col pt-16">
+      <!-- Development Status Banner (dismiss: session-based) -->
+      <div id="devStatusBanner" class="mt-2 bg-blue-100 dark:bg-blue-950 border-b border-blue-300 dark:border-blue-800 px-3 py-2 sm:px-4 sm:py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
+        <div class="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
+          <span class="text-blue-700 dark:text-blue-300 flex-shrink-0 mt-0.5">ℹ️</span>
+          <p class="text-xs sm:text-sm text-blue-900 dark:text-blue-100 leading-snug break-words font-medium">
+            <strong>Note:</strong> Testnet mode is still in development. Expect changes and improvements. You can change network mode in Settings (gear icon) → Preferences → Network Mode.
+          </p>
+        </div>
+        <button onclick="dismissDevStatusBanner()" class="text-blue-700 dark:text-blue-300 hover:text-blue-900 dark:hover:text-blue-100 transition flex-shrink-0 mt-1 sm:mt-0 self-end sm:self-center p-1" title="Dismiss">
+          <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
       <!-- Messages View with Sticky Footer Toggle -->
       <div id="messagesView" class="hidden flex flex-col flex-1 overflow-hidden">
         <!-- Direct Messages List -->
@@ -879,37 +805,60 @@
         <div id="messageList" class="flex-1 overflow-y-auto space-y-1 p-4 pb-28 pt-20"></div>
       </div>
 
-      <!-- Feed View -->
+      <!-- Channels View -->
       <div id="feedView" class="hidden flex flex-col flex-1 overflow-hidden relative">
-        <!-- Sticky Feed Header -->
-        <div id="feedHeader" class="sticky top-0 z-[100] bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0">
-          <div class="p-4">
-            <div class="flex items-center justify-between mb-3">
-              <h2 class="text-lg font-bold text-zinc-900 dark:text-zinc-100">Feed</h2>
+        <!-- Channel List or Posts Container (now contains sticky headers) -->
+        <div id="feedMainContent" class="flex-1 overflow-y-auto flex flex-col">
+          <!-- Sticky Channels Header with Tabs -->
+          <div id="feedHeader" class="sticky top-0 z-30 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0">
+            <div class="p-4">
+              <div class="flex items-center justify-between mb-3">
+                <h2 class="text-lg font-bold text-zinc-900 dark:text-zinc-100">Channels</h2>
+              </div>
+              <!-- Tab Buttons -->
+              <div class="flex gap-2 mb-3 border-b border-zinc-200 dark:border-zinc-800">
+                <button id="feedTabHome" onclick="switchFeedTab('home')" class="pb-2 px-1 font-medium text-sm text-zinc-600 dark:text-zinc-400 border-b-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100 transition active-tab">Home</button>
+                <button id="feedTabDiscover" onclick="switchFeedTab('discover')" class="pb-2 px-1 font-medium text-sm text-zinc-600 dark:text-zinc-400 border-b-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100 transition">Discover</button>
+                <button id="feedTabMyChannels" onclick="switchFeedTab('my-channels')" class="pb-2 px-1 font-medium text-sm text-zinc-600 dark:text-zinc-400 border-b-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100 transition">My Channels</button>
+              </div>
+              <!-- Search and Create for Home Tab -->
+              <div id="feedHeaderHome" class="space-y-2">
+                <button onclick="openCreateChannelModal()" class="w-full px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition duration-200 ease-out active:scale-95" title="Create a new channel">Create Channel</button>
+              </div>
+              <!-- Search for Discover Tab (hidden initially) -->
+              <div id="feedHeaderDiscover" class="space-y-2 hidden">
+                <input id="searchChannelsInput" type="text" placeholder="Search channels..." class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition text-sm" oninput="handleChannelSearch(this.value)">
+              </div>
+              <!-- My Channels Tab Header (hidden initially) -->
+              <div id="feedHeaderMyChannels" class="space-y-2 hidden">
+              </div>
             </div>
-            <input id="searchChannelsInput" type="text" placeholder="Search channels..." class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition text-sm" oninput="handleChannelSearch(this.value)">
-            <div class="mt-3 text-xs text-zinc-600 dark:text-zinc-400">
-              <div class="opacity-50 cursor-default">Discover Channels</div>
-            </div>
-            <button onclick="openCreateChannelModal()" class="mt-2 w-full px-3 py-2 bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded text-sm font-medium hover:bg-zinc-300 dark:hover:bg-zinc-700 active:scale-95 transition" title="Create a new channel">Create Channel</button>
           </div>
-        </div>
-        <!-- Channel List or Posts Container -->
-        <div id="feedMainContent" class="flex-1 overflow-y-auto">
-          <!-- Channel list or posts will be inserted here -->
-          <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading channels...</div>
-        </div>
-        <!-- Channel Detail Header (hidden until a channel is selected) -->
-        <div id="channelDetailHeader" class="sticky top-0 z-[100] bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0 hidden p-4">
-          <div class="flex items-start justify-between">
-            <div class="flex-1">
-              <h3 id="channelDetailName" class="text-lg font-bold text-zinc-900 dark:text-zinc-100">Channel Name</h3>
-              <p id="channelDetailDescription" class="text-sm text-zinc-600 dark:text-zinc-400 mt-1">Channel description</p>
-              <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-2" id="channelDetailFollowers">0 followers</div>
+          <!-- Channel Detail Header (hidden until a channel is selected) -->
+          <div id="channelDetailHeader" class="fixed inset-x-0 top-14 z-20 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0 hidden">
+            <!-- Main header row with back button, title, and action buttons -->
+            <div class="flex items-center justify-between p-4">
+              <div class="flex items-center gap-3 flex-1 min-w-0">
+                <button id="channelBackBtn" onclick="backToChannelList()" class="flex-shrink-0 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition text-xl">←</button>
+                <div class="min-w-0 flex-1">
+                  <h3 id="channelDetailName" class="text-lg font-bold text-zinc-900 dark:text-zinc-100 truncate">Channel Name</h3>
+                </div>
+              </div>
+              <div id="channelActionButtons" class="flex items-center gap-2 flex-shrink-0 ml-4">
+                <button id="channelFollowBtn" onclick="showChannelFollowToast()" class="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition active:scale-95">Follow</button>
+              </div>
             </div>
-            <button id="channelFollowBtn" onclick="showChannelFollowToast()" class="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition active:scale-95">Follow</button>
+            <!-- Info row with description (followers hidden) -->
+            <div class="px-4 pb-3 border-t border-zinc-100 dark:border-zinc-800">
+              <p id="channelDetailDescription" class="text-sm text-zinc-600 dark:text-zinc-400">Channel description</p>
+              <div class="hidden text-xs text-zinc-500 dark:text-zinc-500 mt-1" id="channelDetailFollowers">0 followers</div>
+            </div>
           </div>
-          <button id="channelBackBtn" onclick="backToChannelList()" class="mt-3 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 text-sm transition">← Back to channels</button>
+          <!-- Content wrapper for scrollable channel/post content -->
+          <div id="feedContentWrapper" class="flex-1">
+            <!-- Channel list or posts will be inserted here -->
+            <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading channels...</div>
+          </div>
         </div>
       </div>
 
@@ -1164,7 +1113,7 @@
 
   <!-- Modals -->
   <!-- Share Contact Modal -->
-  <div id="shareContactModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+  <div id="shareContactModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
       <div class="flex justify-between items-start">
         <h2 class="text-xl font-semibold text-zinc-900 dark:text-white">Share Contact</h2>
@@ -1189,7 +1138,7 @@
   </div>
 
   <!-- QR Code Modal -->
-  <div id="qrModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+  <div id="qrModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
       <div class="flex justify-between items-start">
         <h2 class="text-xl font-semibold text-zinc-900 dark:text-white">Contact QR Code</h2>
@@ -1201,7 +1150,7 @@
   </div>
 
   <!-- Image Lightbox -->
-  <div id="imageLightbox" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+  <div id="imageLightbox" class="hidden fixed inset-0 z-[999] bg-black/80 flex items-center justify-center p-4">
     <div class="relative max-w-2xl max-h-[90vh]">
       <img id="lightboxImage" src="" alt="Message image" class="max-w-full max-h-[90vh] rounded-lg">
       <button id="closeLightbox" class="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white w-8 h-8 rounded-full flex items-center justify-center transition">✕</button>
@@ -1209,7 +1158,7 @@
   </div>
 
   <!-- Token Transfer Modal -->
-  <div id="tokenModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+  <div id="tokenModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
       <h2 class="text-xl font-semibold text-zinc-900 dark:text-white">Send Tokens</h2>
       <div class="space-y-2">
@@ -1232,7 +1181,7 @@
   </div>
 
   <!-- Delete Contact Modal -->
-  <div id="deleteContactModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+  <div id="deleteContactModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
       <h2 class="text-xl font-semibold text-zinc-900 dark:text-white" id="deleteContactTitle">Delete contact?</h2>
       <p class="text-sm text-zinc-600 dark:text-zinc-400">This cannot be undone.</p>
@@ -1247,7 +1196,7 @@
   </div>
 
   <!-- Archive Conversation Modal -->
-  <div id="deleteConversationModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+  <div id="deleteConversationModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
       <h2 class="text-xl font-semibold text-zinc-900 dark:text-white" id="deleteConversationTitle">Archive this conversation?</h2>
       <p class="text-sm text-zinc-600 dark:text-zinc-400">It will be hidden from your inbox. You can unarchive it any time — no messages are deleted.</p>
@@ -1279,7 +1228,7 @@
 
   <!-- Message Options Menu -->
   <!-- Delete Message Modal -->
-  <div id="deleteMessageModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onclick="closeDeleteMessageModal()">
+  <div id="deleteMessageModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4" onclick="closeDeleteMessageModal()">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4" onclick="event.stopPropagation()">
       <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Delete this message?</h2>
       <p class="text-sm text-zinc-600 dark:text-zinc-400">This message will be deleted from your view. The other person will still see it.</p>
@@ -1291,7 +1240,7 @@
   </div>
 
   <!-- Delete Post Modal -->
-  <div id="deletePostModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onclick="closeDeletePostModal()">
+  <div id="deletePostModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4" onclick="closeDeletePostModal()">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4" onclick="event.stopPropagation()">
       <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Delete this post?</h2>
       <p class="text-sm text-zinc-600 dark:text-zinc-400">This cannot be undone.</p>
@@ -1303,7 +1252,7 @@
   </div>
 
   <!-- Create Group Modal -->
-  <div id="createGroupModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+  <div id="createGroupModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
       <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Create Group</h2>
       <input id="groupNameInput" type="text" placeholder="Group name" maxlength="255" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
@@ -1316,24 +1265,79 @@
   </div>
 
   <!-- Create Channel Modal -->
-  <div id="createChannelModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
-      <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Create Channel</h2>
-      <input id="channelNameInput" type="text" placeholder="Channel name" maxlength="255" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
-      <textarea id="channelDescInput" placeholder="Description (optional)" maxlength="1000" rows="3" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"></textarea>
-      <select id="channelCategoryInput" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
-        <option value="">Select a category...</option>
-      </select>
-      <div class="flex gap-2">
+  <div id="createChannelModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-sm">
+      <!-- Header section -->
+      <div class="p-6 border-b border-zinc-300 dark:border-zinc-700">
+        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Create Channel</h2>
+      </div>
+      <!-- Content section -->
+      <div class="p-6 space-y-3">
+        <div>
+          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300 block mb-1">Channel Name</label>
+          <input id="channelNameInput" type="text" placeholder="Channel name" maxlength="255" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+        </div>
+        <div>
+          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300 block mb-1">Description (Optional)</label>
+          <textarea id="channelDescInput" placeholder="Description (optional)" maxlength="1000" rows="3" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"></textarea>
+        </div>
+        <div>
+          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300 block mb-1">Category</label>
+          <select id="channelCategoryInput" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+            <option value="">Select a category...</option>
+          </select>
+        </div>
+      </div>
+      <!-- Footer section -->
+      <div class="p-6 border-t border-zinc-300 dark:border-zinc-700 flex gap-2">
         <button onclick="closeCreateChannelModal()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
         <button onclick="createChannel()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Create</button>
       </div>
     </div>
   </div>
 
+  <!-- Post Modal -->
+  <div id="postModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-sm">
+      <!-- Header section -->
+      <div class="p-6 border-b border-zinc-300 dark:border-zinc-700 flex justify-between items-center">
+        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Create a post</h2>
+        <button onclick="closePostModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
+      </div>
+      <!-- Content section -->
+      <div class="p-6 space-y-3">
+        <div>
+          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300 block mb-1">Channel</label>
+          <select id="postChannelSelect" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition" onchange="updatePostSubmitState()">
+            <option value="">Select a channel...</option>
+          </select>
+        </div>
+        <div>
+          <textarea id="postInput" placeholder="Share your thoughts..." maxlength="2000" rows="4" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition" oninput="updatePostCharCount(); updatePostSubmitState();"></textarea>
+        </div>
+        <div id="postImagePreview" class="flex flex-wrap gap-2"></div>
+        <div class="flex items-center justify-between">
+          <div class="flex gap-2 items-center">
+            <span id="postCharCount" class="text-xs text-zinc-500 dark:text-zinc-500">0/2000</span>
+            <button
+              onclick="attachImageToPost()"
+              class="px-2 py-1 text-xs text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition"
+              title="Attach image"
+            >📎</button>
+          </div>
+        </div>
+      </div>
+      <!-- Footer section -->
+      <div class="p-6 border-t border-zinc-300 dark:border-zinc-700 flex gap-2">
+        <button onclick="closePostModal()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
+        <button id="submitPostBtn" onclick="submitPost()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium disabled:opacity-50 disabled:cursor-not-allowed" disabled>Post</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Welcome Screen Modal -->
   <!-- Manage Group Members Modal -->
-  <div id="manageGroupMembersModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+  <div id="manageGroupMembersModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-2xl max-h-[90vh] flex flex-col">
       <div class="p-6 border-b border-zinc-300 dark:border-zinc-700 flex justify-between items-center">
         <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Manage Group Members</h2>
@@ -1363,7 +1367,7 @@
   </div>
 
   <!-- Message History Modal -->
-  <div id="messageHistoryModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+  <div id="messageHistoryModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-2xl max-h-[90vh] flex flex-col">
       <div class="p-6 border-b border-zinc-300 dark:border-zinc-700 flex justify-between items-center">
         <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Message History</h2>
@@ -1380,7 +1384,7 @@
   </div>
 
   <!-- View Group Info Modal -->
-  <div id="viewGroupInfoModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+  <div id="viewGroupInfoModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-md max-h-[90vh] flex flex-col">
       <div class="p-6 border-b border-zinc-300 dark:border-zinc-700 flex justify-between items-center">
         <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Group Info</h2>
@@ -1409,7 +1413,7 @@
   </div>
 
   <!-- Rename Group Modal -->
-  <div id="renameGroupModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+  <div id="renameGroupModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-sm">
       <div class="p-6 border-b border-zinc-300 dark:border-zinc-700">
         <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Rename Group</h2>
@@ -1427,7 +1431,7 @@
   </div>
 
   <!-- Leave Group Modal -->
-  <div id="leaveGroupModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+  <div id="leaveGroupModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-sm">
       <div class="p-6 border-b border-zinc-300 dark:border-zinc-700">
         <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Leave Group</h2>
@@ -1444,7 +1448,7 @@
   </div>
 
   <!-- Delete All Messages Modal -->
-  <div id="deleteAllMessagesModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+  <div id="deleteAllMessagesModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-sm">
       <div class="p-6 border-b border-zinc-300 dark:border-zinc-700">
         <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Delete All Messages</h2>
@@ -1461,7 +1465,7 @@
   </div>
 
   <!-- Delete Group Modal -->
-  <div id="deleteGroupModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+  <div id="deleteGroupModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-sm">
       <div class="p-6 border-b border-zinc-300 dark:border-zinc-700">
         <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Delete Group</h2>
@@ -1478,7 +1482,7 @@
   </div>
 
 
-  <!-- Feed Compose Modal -->
+  <!-- Channel Compose Modal -->
   <!-- Toast Notification Container -->
   <div id="toastContainer" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
@@ -1486,7 +1490,7 @@
   <div id="persistentNotificationContainer" class="fixed top-4 right-4 z-40 flex flex-col gap-3 pointer-events-none max-w-sm"></div>
 
   <!-- Transaction Details Modal -->
-  <div id="transactionDetailsModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+  <div id="transactionDetailsModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 rounded-lg shadow-xl max-w-md w-full max-h-[80vh] overflow-y-auto">
       <div class="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
         <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Transaction Details</h2>
@@ -1498,6 +1502,89 @@
       <div class="flex items-center gap-2 px-6 py-4 border-t border-zinc-200 dark:border-zinc-800">
         <button onclick="closeTransactionDetailsModal()" class="flex-1 px-4 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 rounded-lg transition font-medium">Close</button>
         <a id="txExplorerLink" href="#" target="_blank" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium text-center">[ View Explorer ]</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Channel Settings Modal -->
+  <div id="channelSettingsModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <!-- Header section -->
+      <div class="p-6 border-b border-zinc-300 dark:border-zinc-700 flex justify-between items-center sticky top-0 bg-white dark:bg-zinc-900">
+        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Channel Settings</h2>
+        <button onclick="closeChannelSettingsModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 text-xl">✕</button>
+      </div>
+      <!-- Content section -->
+      <div class="p-6 space-y-6">
+        <div id="channelSettingsSpinner" class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading channel settings...</div>
+        <div id="channelSettingsContent" class="hidden space-y-6">
+          <!-- Channel Info Section -->
+          <div class="space-y-3 pb-4 border-b border-zinc-200 dark:border-zinc-800">
+            <h3 class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Channel Information</h3>
+            <div class="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <p class="text-zinc-600 dark:text-zinc-400 mb-1">Created</p>
+                <p id="channelSettingsCreatedAt" class="text-zinc-900 dark:text-zinc-100 font-medium">—</p>
+              </div>
+              <div>
+                <p class="text-zinc-600 dark:text-zinc-400 mb-1">Last Updated</p>
+                <p id="channelSettingsUpdatedAt" class="text-zinc-900 dark:text-zinc-100 font-medium">—</p>
+              </div>
+              <div>
+                <p class="text-zinc-600 dark:text-zinc-400 mb-1">Category</p>
+                <p id="channelSettingsCategory" class="text-zinc-900 dark:text-zinc-100 font-medium">—</p>
+              </div>
+              <div>
+                <p class="text-zinc-600 dark:text-zinc-400 mb-1">Verified</p>
+                <p id="channelSettingsVerified" class="text-zinc-900 dark:text-zinc-100 font-medium">—</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Edit Section -->
+          <div class="space-y-3">
+            <h3 class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Edit Channel Details</h3>
+            <div>
+              <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300 block mb-1">Channel Name</label>
+              <input id="channelSettingsNameInput" type="text" maxlength="255" placeholder="Channel name" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+            </div>
+            <div>
+              <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300 block mb-1">Description</label>
+              <textarea id="channelSettingsDescInput" maxlength="1000" placeholder="Channel description (optional)" rows="4" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"></textarea>
+            </div>
+          </div>
+
+          <!-- Delete Section -->
+          <div class="pt-4 border-t border-zinc-200 dark:border-zinc-800">
+            <button id="channelDeleteBtn" onclick="openDeleteChannelConfirm()" class="w-full px-4 py-2 bg-red-600 hover:bg-red-700 dark:hover:bg-red-500 text-white rounded-lg transition font-medium">Delete Channel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer section -->
+      <div id="channelSettingsFooter" class="hidden p-6 border-t border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 flex gap-2">
+        <button onclick="closeChannelSettingsModal()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100 font-medium">Cancel</button>
+        <button id="channelSettingsSaveBtn" onclick="submitChannelSettings()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Channel Confirmation Modal -->
+  <div id="deleteChannelConfirmModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-sm">
+      <!-- Header section -->
+      <div class="p-6 border-b border-zinc-300 dark:border-zinc-700">
+        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Delete Channel</h2>
+      </div>
+      <!-- Content section -->
+      <div class="p-6 space-y-4">
+        <p class="text-zinc-700 dark:text-zinc-300">Are you sure you want to delete this channel? This cannot be undone.</p>
+        <p class="text-sm text-zinc-600 dark:text-zinc-400">All posts in this channel will also be deleted.</p>
+      </div>
+      <!-- Footer section -->
+      <div class="p-6 border-t border-zinc-300 dark:border-zinc-700 flex gap-2">
+        <button onclick="closeDeleteChannelConfirm()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100 font-medium">Cancel</button>
+        <button onclick="submitDeleteChannel()" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 dark:hover:bg-red-500 text-white rounded-lg transition font-medium">Delete</button>
       </div>
     </div>
   </div>
@@ -1879,6 +1966,53 @@
       return instrumented;
     }
 
+    // ===== Foreground Visibility Tracker =====
+    class VisibilityTracker {
+      constructor() {
+        this.isTabActive = !document.hidden;
+        this.sessionStartTime = Date.now();
+        this.lastSessionData = null;
+        this.initialized = false;
+        this.setupListeners();
+      }
+
+      setupListeners() {
+        document.addEventListener('visibilitychange', () => {
+          if (document.hidden) {
+            this.handleTabLoseFocus();
+          } else {
+            this.handleTabRegainFocus();
+          }
+        });
+        this.initialized = true;
+      }
+
+      handleTabLoseFocus() {
+        const now = Date.now();
+        const sessionDurationSeconds = (now - this.sessionStartTime) / 1000;
+        this.isTabActive = false;
+        this.logSession(sessionDurationSeconds);
+      }
+
+      handleTabRegainFocus() {
+        this.isTabActive = true;
+        this.sessionStartTime = Date.now();
+      }
+
+      logSession(durationSeconds) {
+        if (durationSeconds < 1) return; // Skip very short sessions
+
+        apiCall('/api/user/foreground-session', {
+          method: 'POST',
+          body: JSON.stringify({ sessionDurationSeconds: durationSeconds })
+        }).catch(err => {
+          console.error('Error logging foreground session:', err);
+        });
+      }
+    }
+
+    const visibilityTracker = new VisibilityTracker();
+
     // Wallet signature timeout in milliseconds (90 seconds)
     // NOTE: Timeout duration is NOT the root cause of hangs. Root cause is unresolved promises
     // in Promise.race(). Extending this value doesn't help; the withTimeout() function now
@@ -1924,9 +2058,10 @@
       return {
         theme: theme,
         layout: stored.layout || 'comfortable',
-        network: stored.network || 'testnet',
+        network: stored.network || 'devnet',
         view_mode: stored.view_mode || 'web',
-        networkMode: stored.networkMode || 'testnet',
+        networkMode: stored.networkMode || 'devnet',
+        skipSignatureInDevnet: stored.skipSignatureInDevnet || false,
       };
     }
 
@@ -1936,7 +2071,25 @@
     }
 
     function getCurrentNetwork() {
-      return 'testnet';
+      return 'real_testnet';
+    }
+
+    function dismissDevStatusBanner() {
+      const banner = document.getElementById('devStatusBanner');
+      if (banner) {
+        banner.style.display = 'none';
+        sessionStorage.setItem('devStatusBannerDismissed', 'true');
+      }
+    }
+
+    function initDevStatusBanner() {
+      const dismissed = sessionStorage.getItem('devStatusBannerDismissed');
+      if (dismissed === 'true') {
+        const banner = document.getElementById('devStatusBanner');
+        if (banner) {
+          banner.style.display = 'none';
+        }
+      }
     }
 
     function initSettings() {
@@ -1947,6 +2100,24 @@
       document.getElementById('themeSelect').value = settings.theme;
       updateLayoutButtons(settings.layout);
       updateViewModeButtons(settings.view_mode);
+
+      // Initialize development status banner
+      initDevStatusBanner();
+
+      // Load skip signature in devnet preference from API
+      if (currentUser && currentUser.skipSignatureInDevnet !== undefined) {
+        settings.skipSignatureInDevnet = currentUser.skipSignatureInDevnet;
+        document.getElementById('skipSignatureDevnetToggle').checked = currentUser.skipSignatureInDevnet;
+      }
+
+      // Load network mode preference from API
+      if (currentUser && currentUser.networkMode !== undefined) {
+        settings.networkMode = currentUser.networkMode;
+        const networkModeSelect = document.getElementById('networkModeSelect');
+        if (networkModeSelect) {
+          networkModeSelect.value = currentUser.networkMode;
+        }
+      }
 
       // Start transaction history polling
       pollTransactionHistory();
@@ -2032,11 +2203,24 @@
           const dropdown = document.getElementById('networkModeSelect');
           const noPermission = document.getElementById('configNoPermission');
           const accordion = document.getElementById('configAccordion');
+          const rpcEndpointConfig = document.getElementById('rpcEndpointConfig');
+          const rpcEndpointInput = document.getElementById('rpcEndpointInput');
 
           // Set dropdown to current network mode, defaulting to networkMode if available, else isDemoMode for backward compat
-          const currentMode = config.networkMode || (config.isDemoMode ? 'demo' : 'testnet');
+          const currentMode = config.networkMode || (config.isDemoMode ? 'demo' : 'devnet');
           dropdown.value = currentMode;
-          dropdown.disabled = !config.canEdit;
+          // Network mode dropdown is always enabled for authenticated users (personal preference)
+          // It calls /api/user/network-mode which is available to all authenticated users
+          dropdown.disabled = false;
+
+          // Show/hide RPC endpoint config based on network mode and permission
+          if (currentMode === 'real_testnet' && config.canEditRpc) {
+            rpcEndpointConfig.classList.remove('hidden');
+            rpcEndpointInput.value = config.rpcEndpoint || 'http://localhost:3001';
+            rpcEndpointInput.disabled = !config.canEditRpc;
+          } else {
+            rpcEndpointConfig.classList.add('hidden');
+          }
 
           // Save to localStorage
           const settings = loadSettings();
@@ -2164,16 +2348,49 @@
       }
     }
 
+    async function updateSkipSignatureDevnet(checked) {
+      const toggle = document.getElementById('skipSignatureDevnetToggle');
+      const previousState = !checked;
+
+      try {
+        const result = await apiCall('/api/user/skip-signature-devnet', {
+          method: 'PUT',
+          body: JSON.stringify({ skipSignature: checked })
+        });
+
+        if (result && !result.error) {
+          // Update in-memory settings
+          const settings = loadSettings();
+          settings.skipSignatureInDevnet = checked;
+          saveSettings(settings);
+
+          if (currentUser) {
+            currentUser.skipSignatureInDevnet = checked;
+          }
+
+          showToast('Preference saved', 'success');
+        } else if (result && result.error) {
+          toggle.checked = previousState;
+          showToast('Failed to save preference: ' + result.error, 'error');
+        }
+      } catch (err) {
+        console.error('Error updating skip signature preference:', err);
+        toggle.checked = previousState;
+        showToast('Failed to save preference', 'error');
+      }
+    }
+
     async function updateNetworkMode(mode) {
       const dropdown = document.getElementById('networkModeSelect');
       const loading = document.getElementById('networkModeLoading');
+      const rpcEndpointConfig = document.getElementById('rpcEndpointConfig');
       const previousMode = dropdown.value;
 
       try {
         loading.classList.remove('hidden');
         dropdown.disabled = true;
 
-        const result = await apiCall('/api/config/network-mode', {
+        const result = await apiCall('/api/user/network-mode', {
           method: 'PUT',
           body: JSON.stringify({ networkMode: mode })
         });
@@ -2184,29 +2401,92 @@
           settings.networkMode = mode;
           saveSettings(settings);
 
-          updateConfigDotColor(mode === 'demo');
-          const modeName = mode === 'demo' ? 'Demo' : 'Testnet';
+          // Update currentUser
+          if (currentUser) {
+            currentUser.networkMode = mode;
+          }
+
+          updateConfigDotColor(mode === 'demo' || mode === 'devnet');
+          const modeName = mode === 'demo' ? 'Demo' : (mode === 'devnet' ? 'Devnet' : 'Testnet');
           showToast('Switched to ' + modeName + ' mode', 'success');
 
-          // Transaction history accordion is always visible; just ensure polling is active
-          pollTransactionHistory();
-          if (transactionHistoryIntervalId) clearInterval(transactionHistoryIntervalId);
-          transactionHistoryIntervalId = setInterval(pollTransactionHistory, 2000);
+          // Show/hide RPC endpoint config based on mode
+          if (mode === 'real_testnet') {
+            rpcEndpointConfig.classList.remove('hidden');
+          } else {
+            rpcEndpointConfig.classList.add('hidden');
+          }
+
+          // Reload config state to refresh all UI elements
+          await loadConfigState();
+
+          // Refresh all data after mode change
+          try {
+            if (document.getElementById('conversationsView') && !document.getElementById('conversationsView').classList.contains('hidden')) {
+              await loadConversations();
+            }
+          } catch (e) {
+            console.log('Could not refresh data after network mode change:', e.message);
+          }
         } else if (result && result.error) {
           dropdown.value = previousMode;
-          if (result.error.includes('Not authorized')) {
-            showToast('You do not have permission to change this setting', 'error');
-          } else {
-            showToast('Failed to update network mode: ' + result.error, 'error');
-          }
+          showToast('Failed to update network mode: ' + result.error, 'error');
         }
       } catch (err) {
         console.error('Error updating network mode:', err);
         dropdown.value = previousMode;
-        showToast('Error updating configuration', 'error');
+        showToast('Failed to update network mode', 'error');
       } finally {
         loading.classList.add('hidden');
         dropdown.disabled = false;
+      }
+    }
+
+    async function updateRpcEndpoint() {
+      const input = document.getElementById('rpcEndpointInput');
+      const loading = document.getElementById('rpcEndpointLoading');
+      const saveBtn = document.getElementById('rpcEndpointSave');
+      const rpcUrl = input.value.trim();
+
+      if (!rpcUrl) {
+        showToast('RPC endpoint cannot be empty', 'error');
+        return;
+      }
+
+      // Validate URL format
+      try {
+        new URL(rpcUrl);
+      } catch (err) {
+        showToast('Invalid URL format for RPC endpoint', 'error');
+        return;
+      }
+
+      try {
+        loading.classList.remove('hidden');
+        saveBtn.disabled = true;
+
+        const result = await apiCall('/api/config/rpc-endpoint', {
+          method: 'PUT',
+          body: JSON.stringify({ rpcEndpoint: rpcUrl })
+        });
+
+        if (result && !result.error) {
+          showToast('RPC endpoint updated successfully', 'success');
+          // Reload config state to refresh the display
+          await loadConfigState();
+        } else if (result && result.error) {
+          if (result.error.includes('Not authorized')) {
+            showToast('You do not have permission to change RPC endpoint', 'error');
+          } else {
+            showToast('Failed to update RPC endpoint: ' + result.error, 'error');
+          }
+        }
+      } catch (err) {
+        console.error('Error updating RPC endpoint:', err);
+        showToast('Error updating RPC endpoint', 'error');
+      } finally {
+        loading.classList.add('hidden');
+        saveBtn.disabled = false;
       }
     }
 
@@ -2308,11 +2588,24 @@
 
         let html = '';
         for (const tx of response.transactions) {
+          // Diagnostic: log null values to identify source
+          if (!tx.txHash) {
+            console.warn('[TransactionHistory] Null txHash encountered:', {
+              txId: tx.id,
+              messageType: tx.messageType,
+              status: tx.status,
+              createdAt: tx.createdAt,
+              txHash: tx.txHash,
+              txHashType: typeof tx.txHash,
+              fullTx: tx
+            });
+          }
+
           const badge = await getTransactionBadge(tx.messageType);
           const typeLabel = getTransactionTypeLabel(tx.messageType);
           const context = getTransactionContext(tx);
           const timestamp = formatTimestamp(tx.createdAt);
-          const shortHash = tx.txHash.substring(0, 10);
+          const shortHash = tx.txHash ? tx.txHash.substring(0, 10) : '(pending)';
 
           let statusClass = 'text-gray-500';
           let statusText = '⏳ Pending';
@@ -2325,11 +2618,11 @@
           }
 
           html += `
-            <div class="p-2 bg-zinc-100 dark:bg-zinc-800 rounded border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition cursor-pointer" title="${tx.txHash}">
+            <div class="p-2 bg-zinc-100 dark:bg-zinc-800 rounded border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition cursor-pointer" title="${tx.txHash || 'Hash pending'}">
               <div class="flex justify-between items-start gap-2">
                 <div class="flex-1 min-w-0">
                   <div class="text-xs font-medium text-zinc-900 dark:text-zinc-100 truncate">${badge} ${typeLabel}${context ? ' ' + context : ''}</div>
-                  <div class="text-xs text-zinc-600 dark:text-zinc-400">Hash: <span class="font-mono">${shortHash}...</span></div>
+                  <div class="text-xs text-zinc-600 dark:text-zinc-400">Hash: <span class="font-mono">${shortHash}${tx.txHash ? '...' : ''}</span></div>
                 </div>
                 <div class="text-right flex-shrink-0">
                   <div class="text-xs font-medium ${statusClass}">${statusText}</div>
@@ -2349,8 +2642,8 @@
       currentActiveView = viewName;
       const buttons = {
         'messages': document.getElementById('navMessagesBtn'),
-        'feed': document.getElementById('navFeedBtn'),
         'contacts': document.getElementById('navContactsBtn'),
+        'channels': document.getElementById('navChannelsBtn'),
         'settings': document.getElementById('navSettingsBtn'),
         'profile': document.getElementById('navProfileBtn')
       };
@@ -2466,6 +2759,7 @@
       document.getElementById('chatView').classList.add('hidden');
       document.getElementById('chatView').classList.remove('active-chat');
       document.getElementById('contactsView').classList.add('hidden');
+      document.getElementById('feedView').classList.add('hidden');
       document.getElementById('sidebar').classList.add('hidden');
       document.getElementById('settingsPanel').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
@@ -2478,6 +2772,7 @@
       document.getElementById('backBtnContainer').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
+      document.getElementById('postBtn').classList.add('hidden');
       sidebarOpen = false;
     }
 
@@ -2545,21 +2840,30 @@
       sidebarOpen = !sidebarOpen;
       const sidebar = document.getElementById('sidebar');
       const overlay = document.getElementById('sidebarOverlay');
+      const isMobileLayout = document.body.classList.contains('layout-mobile');
 
       if (sidebarOpen) {
         sidebar.classList.remove('hidden');
-        overlay.classList.remove('hidden');
+        // Only show overlay on mobile layouts
+        if (isMobileLayout) {
+          overlay.classList.remove('hidden');
+          overlay.classList.add('sidebar-overlay-visible');
+          overlay.classList.remove('sidebar-overlay-hidden');
+        }
         void sidebar.offsetWidth;
         sidebar.classList.add('sidebar-enter');
-        overlay.classList.add('sidebar-overlay-visible');
-        overlay.classList.remove('sidebar-overlay-hidden');
       } else {
         sidebar.classList.add('sidebar-exit');
-        overlay.classList.add('sidebar-overlay-hidden');
-        overlay.classList.remove('sidebar-overlay-visible');
+        // Only manage overlay visibility on mobile
+        if (isMobileLayout) {
+          overlay.classList.add('sidebar-overlay-hidden');
+          overlay.classList.remove('sidebar-overlay-visible');
+        }
         setTimeout(() => {
           sidebar.classList.add('hidden');
-          overlay.classList.add('hidden');
+          if (isMobileLayout) {
+            overlay.classList.add('hidden');
+          }
           sidebar.classList.remove('sidebar-enter', 'sidebar-exit');
         }, 250);
       }
@@ -3145,7 +3449,7 @@
 
             const viewMode = user.view_mode || 'web';
       const settings = loadSettings();
-      settings.network = 'testnet';
+      settings.network = 'real_testnet';
       settings.view_mode = viewMode;
       saveSettings(settings);
       document.getElementById('sidebarUsername').textContent = user.username + (user.verified ? ' ✓' : '');
@@ -3218,7 +3522,8 @@
         if (e.key === 'Escape') {
           closeAttachmentSheet();
           hideDeleteContactModal();
-          closeFeedComposeModal();
+          closeChannelSettingsModal();
+          closeDeleteChannelConfirm();
         }
       });
 
@@ -3784,6 +4089,19 @@
       if (!name) return alert('Channel name is required');
       if (!category) return alert('Category is required');
 
+      // Disable form inputs and button to prevent duplicate submissions
+      const createBtn = document.querySelector('#createChannelModal button[onclick="createChannel()"]');
+      const nameInput = document.getElementById('channelNameInput');
+      const descInput = document.getElementById('channelDescInput');
+      const categorySelect = document.getElementById('channelCategoryInput');
+
+      const originalBtnText = createBtn.textContent;
+      createBtn.disabled = true;
+      createBtn.textContent = 'Creating...';
+      nameInput.disabled = true;
+      descInput.disabled = true;
+      categorySelect.disabled = true;
+
       try {
         // Phase 1: Create pending audit log
         const auditLogId = await createPendingAuditLog();
@@ -3815,7 +4133,11 @@
             });
           }
           closeCreateChannelModal();
-          loadChannels();
+          // Channel created but Feed view has been removed
+          // Show the newly created channel detail view if possible
+          if (data && data.id) {
+            await showChannelPosts(data.id);
+          }
         } else if (data && data.error) {
           showToast(`Failed to create channel: ${data.error}`, 'error');
           throw new Error(data.error);
@@ -3825,6 +4147,13 @@
           console.error('Create channel error:', err);
           showToast(`Error: ${err.message}`, 'error');
         }
+      } finally {
+        // Re-enable form inputs and button
+        createBtn.disabled = false;
+        createBtn.textContent = originalBtnText;
+        nameInput.disabled = false;
+        descInput.disabled = false;
+        categorySelect.disabled = false;
       }
     }
 
@@ -3914,6 +4243,22 @@
 
     // Unified wallet signature flow - single dialog, direct to wallet
     async function requestWalletSignature(action, details, auditLogId = null) {
+      // In demo mode, skip wallet confirmation entirely
+      if (currentUser && currentUser.isDemoMode) {
+        console.log('Demo mode: Skipping wallet signature for action:', action);
+        showToast('Demo mode: Skipping wallet confirmation', 'info');
+        return 'demo-tx-hash-' + Date.now();
+      }
+
+      // In devnet mode with skip signature enabled, skip wallet confirmation
+      const networkModeDropdown = document.getElementById('networkModeSelect');
+      const currentNetworkMode = networkModeDropdown ? networkModeDropdown.value : 'devnet';
+      if (currentNetworkMode === 'devnet' && currentUser && currentUser.skipSignatureInDevnet) {
+        console.log('Devnet + skip-signature enabled: skipping wallet confirmation for action:', action);
+        showToast('Signature skipped (devnet mode)', 'info');
+        return 'devnet-skipped-' + Date.now();
+      }
+
       // Validate wallet connection
       if (!currentUser || !currentUser.usernode_pubkey) {
         console.error('Wallet not connected: currentUser=', currentUser);
@@ -4699,6 +5044,7 @@
       messageHistoryOldestTimestamp = null;
       messageHistoryHasMore = true;
 
+      document.getElementById('postBtn').classList.add('hidden');
       const modal = document.getElementById('messageHistoryModal');
       modal.classList.remove('hidden');
 
@@ -4763,6 +5109,182 @@
       document.getElementById('messageHistoryModal').classList.add('hidden');
       messageHistoryGroupId = null;
       messageHistoryOldestTimestamp = null;
+    }
+
+    // Post modal functions
+    let postImages = [];
+
+    async function openPostModal() {
+      document.getElementById('postModal').classList.remove('hidden');
+      document.getElementById('postInput').value = '';
+      document.getElementById('postChannelSelect').value = '';
+      postImages = [];
+      updatePostImagePreview();
+      updatePostCharCount();
+      document.getElementById('submitPostBtn').disabled = true;
+
+      // Fetch and populate channels
+      try {
+        const channelsData = await apiCall('/api/channels');
+        if (channelsData && channelsData.channels) {
+          const ownedChannels = channelsData.channels.filter(ch =>
+            currentUser && parseInt(ch.ownerId, 10) === parseInt(currentUser.id, 10)
+          );
+
+          const select = document.getElementById('postChannelSelect');
+          select.innerHTML = '<option value="">Select a channel...</option>';
+
+          if (ownedChannels.length === 0) {
+            const option = document.createElement('option');
+            option.disabled = true;
+            option.textContent = 'No channels created. Create a channel first.';
+            select.appendChild(option);
+          } else {
+            ownedChannels.forEach(channel => {
+              const option = document.createElement('option');
+              option.value = channel.id;
+              option.textContent = channel.name;
+              select.appendChild(option);
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching channels:', err);
+        showToast('Error loading channels', 'error');
+      }
+    }
+
+    function closePostModal() {
+      document.getElementById('postModal').classList.add('hidden');
+      document.getElementById('postInput').value = '';
+      postImages = [];
+      updatePostImagePreview();
+      updatePostCharCount();
+      document.getElementById('submitPostBtn').disabled = true;
+    }
+
+    function hidePostModal() {
+      closePostModal();
+    }
+
+    function updatePostCharCount() {
+      const textarea = document.getElementById('postInput');
+      const counter = document.getElementById('postCharCount');
+      if (textarea && counter) {
+        const count = textarea.value.length;
+        counter.textContent = count + '/2000';
+      }
+    }
+
+    function updatePostSubmitState() {
+      const select = document.getElementById('postChannelSelect');
+      const textarea = document.getElementById('postInput');
+      const btn = document.getElementById('submitPostBtn');
+
+      const channelSelected = select && select.value !== '';
+      const hasContent = textarea && (textarea.value.trim().length > 0 || postImages.length > 0);
+
+      btn.disabled = !channelSelected || !hasContent;
+    }
+
+    function attachImageToPost() {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          const maxSize = 5 * 1024 * 1024;
+          if (file.size > maxSize) {
+            showToast('Image must be less than 5MB', 'error');
+            return;
+          }
+
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const dataUri = e.target.result;
+            if (postImages.length < 4) {
+              postImages.push(dataUri);
+              updatePostImagePreview();
+              updatePostSubmitState();
+            } else {
+              showToast('Maximum 4 images per post', 'error');
+            }
+          };
+          reader.readAsDataURL(file);
+        }
+      };
+      input.click();
+    }
+
+    function removePostImage(index) {
+      postImages.splice(index, 1);
+      updatePostImagePreview();
+      updatePostSubmitState();
+    }
+
+    function updatePostImagePreview() {
+      const preview = document.getElementById('postImagePreview');
+      if (!preview) return;
+
+      preview.innerHTML = postImages.map((img, idx) => `
+        <div class="relative">
+          <img src="${img}" alt="Preview" class="max-w-24 max-h-24 rounded">
+          <button onclick="removePostImage(${idx})" class="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-700">&times;</button>
+        </div>
+      `).join('');
+    }
+
+    async function submitPost() {
+      const textarea = document.getElementById('postInput');
+      const select = document.getElementById('postChannelSelect');
+      const btn = document.getElementById('submitPostBtn');
+
+      if (!textarea || !btn || !select) return;
+
+      let content = textarea.value.trim();
+      const channelId = select.value;
+
+      if (!channelId) {
+        showToast('Please select a channel', 'error');
+        return;
+      }
+
+      if (!content && postImages.length === 0) {
+        showToast('Post must contain either text or images', 'error');
+        return;
+      }
+
+      if (content.length > 2000) {
+        showToast('Post is too long (exceeds 2000 characters)', 'error');
+        return;
+      }
+
+      btn.disabled = true;
+
+      try {
+        const response = await apiCall(`/api/channels/${channelId}/posts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            content: content,
+            imageUrls: postImages
+          })
+        });
+
+        if (response && !response.error) {
+          showToast('Post created', 'success');
+          closePostModal();
+        } else {
+          const errorMsg = response?.error || 'Unable to create post';
+          showToast(errorMsg, 'error');
+        }
+      } catch (err) {
+        console.error('Error creating post:', err);
+        showToast('Unable to create post', 'error');
+      } finally {
+        btn.disabled = false;
+      }
     }
 
     async function openConversation(convId, otherId, username) {
@@ -5264,7 +5786,8 @@
         if (!statusEl) break;
 
         if (auditData.status === 'confirmed') {
-          statusEl.innerHTML = `✓ Confirmed | <span class="font-mono text-xs" title="${auditData.txHash}">${auditData.txHash.substring(0, 10)}...</span>`;
+          const txHashShort = auditData.txHash ? auditData.txHash.substring(0, 10) : 'unknown';
+          statusEl.innerHTML = `✓ Confirmed | <span class="font-mono text-xs" title="${auditData.txHash || 'N/A'}">${txHashShort}...</span>`;
           statusEl.classList.remove('text-amber-600', 'dark:text-amber-400');
           statusEl.classList.add('text-green-600', 'dark:text-green-400');
           isComplete = true;
@@ -5308,9 +5831,10 @@
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.add('hidden');
       document.getElementById('chatView').classList.remove('active-chat');
-      document.getElementById('feedView').classList.add('hidden');
       document.getElementById('profileView').classList.add('hidden');
       document.getElementById('contactsView').classList.add('hidden');
+      document.getElementById('feedView').classList.add('hidden');
+      document.getElementById('feedView').classList.add('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('footer-in-view');
       document.getElementById('header').classList.remove('header-chat-fixed');
@@ -5322,6 +5846,7 @@
       document.getElementById('backBtnContainer').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
+      document.getElementById('postBtn').classList.add('hidden');
 
       // Clear all polling intervals when returning to messages view
       if (pollInterval) clearInterval(pollInterval);
@@ -5331,6 +5856,7 @@
       // Clear modals/menus when returning to messages view
       closeManageGroupMembersModal();
       document.getElementById('groupContextMenu').classList.add('hidden');
+      document.getElementById('channelDetailHeader').classList.add('hidden');
 
       // Initialize tabs
       await switchMessagesTab(activeMessagesTab);
@@ -5503,11 +6029,31 @@
             </div>
           </div>
           <div class="flex gap-2">
-            <button onclick="acceptContactRequest(${conv.id})" class="flex-1 px-2 py-1 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white text-xs rounded transition font-medium">✓ Accept</button>
-            <button onclick="declineContactRequest(${conv.id})" class="flex-1 px-2 py-1 bg-zinc-400 hover:bg-zinc-500 dark:bg-zinc-600 dark:hover:bg-zinc-500 text-white text-xs rounded transition font-medium">✗ Decline</button>
+            <button data-action="accept" data-conv-id="${conv.id}" class="flex-1 px-2 py-1 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white text-xs rounded transition font-medium">✓ Accept</button>
+            <button data-action="decline" data-conv-id="${conv.id}" class="flex-1 px-2 py-1 bg-zinc-400 hover:bg-zinc-500 dark:bg-zinc-600 dark:hover:bg-zinc-500 text-white text-xs rounded transition font-medium">✗ Decline</button>
           </div>
         </div>
       `).join('');
+
+      // Attach event delegation listener to pending requests list
+      if (!pendingRequestsList.__delegationListenerAttached) {
+        pendingRequestsList.__delegationListenerAttached = true;
+        pendingRequestsList.addEventListener('click', (event) => {
+          const button = event.target.closest('button[data-action]');
+          if (!button) return;
+
+          const action = button.getAttribute('data-action');
+          const convId = parseInt(button.getAttribute('data-conv-id'), 10);
+
+          if (isNaN(convId)) return;
+
+          if (action === 'accept') {
+            acceptContactRequest(convId);
+          } else if (action === 'decline') {
+            declineContactRequest(convId);
+          }
+        });
+      }
     }
 
     async function acceptContactRequest(convId) {
@@ -5591,6 +6137,7 @@
             usernode_pubkey: result.usernode_pubkey,
             verified: result.verified,
             avatar_url: result.avatar_url,
+            source: result.source || 'local',
             isSearchResult: true,
             id: undefined
           });
@@ -5612,13 +6159,16 @@
         const isSaved = !item.isSearchResult;
         const displayName = item.nickname || item.username;
         const wallet = item.usernode_pubkey || 'No wallet';
+        const isBlockchainSource = item.source === 'blockchain';
+        const sourceLabel = isBlockchainSource ? ' <span class="text-xs font-medium text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-900/30 px-2 py-1 rounded">Usernode</span>' : '';
+        const userId = item.userId || item.id;
 
         if (isSaved) {
           return `
-            <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer" onclick="startConversationWithContact(${item.userId}, '${item.username}')">
+            <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer" onclick="startConversationWithContact(${userId}, '${item.username}')">
               <div class="flex justify-between items-start gap-2">
                 <div class="flex-1 min-w-0">
-                  <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${displayName} ${item.verified ? '<span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
+                  <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${displayName}${sourceLabel} ${item.verified ? '<span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
                   <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${wallet}</div>
                 </div>
                 <button onclick="event.stopPropagation(); showDeleteContactModal(${item.id}, '${displayName.replace(/'/g, "\\'")}')" class="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/30 rounded p-1 transition flex-shrink-0" title="Delete contact">🗑️</button>
@@ -5627,13 +6177,13 @@
           `;
         } else {
           return `
-            <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer" onclick="startConversationWithContact(${item.userId}, '${item.username}')">
+            <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer" onclick="startConversationWithContact(${userId}, '${item.username}')">
               <div class="flex justify-between items-start gap-2">
                 <div class="flex-1 min-w-0">
-                  <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${displayName} ${item.verified ? '<span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
+                  <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${displayName}${sourceLabel} ${item.verified ? '<span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
                   <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${wallet}</div>
                 </div>
-                <button onclick="event.stopPropagation(); addContactFromSearch(${item.userId}, '${item.username}')" class="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 text-sm transition">➕ Add</button>
+                <button onclick="event.stopPropagation(); addContactFromSearch(${userId}, '${item.username}')" class="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 text-sm transition">➕ Add</button>
               </div>
             </div>
           `;
@@ -5955,9 +6505,9 @@
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.remove('hidden');
       document.getElementById('chatView').classList.add('active-chat');
-      document.getElementById('feedView').classList.add('hidden');
       document.getElementById('profileView').classList.add('hidden');
       document.getElementById('contactsView').classList.add('hidden');
+      document.getElementById('feedView').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('footer-in-view');
       document.getElementById('header').classList.add('header-chat-fixed');
@@ -5970,9 +6520,9 @@
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.add('hidden');
       document.getElementById('chatView').classList.remove('active-chat');
-      document.getElementById('feedView').classList.add('hidden');
       document.getElementById('profileView').classList.add('hidden');
       document.getElementById('contactsView').classList.remove('hidden');
+      document.getElementById('feedView').classList.add('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('footer-in-view');
       document.getElementById('header').classList.remove('header-chat-fixed');
@@ -5984,6 +6534,8 @@
       document.getElementById('backBtnContainer').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
+      document.getElementById('postBtn').classList.add('hidden');
+      document.getElementById('channelDetailHeader').classList.add('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
       if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
       document.getElementById('contactsSearchInput').value = '';
@@ -5991,7 +6543,7 @@
     }
 
     async function showFeedView() {
-      updateMenuHighlight('feed');
+      updateMenuHighlight('channels');
       document.getElementById('messagesView').classList.add('hidden');
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.add('hidden');
@@ -6002,21 +6554,26 @@
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('footer-in-view');
       document.getElementById('header').classList.remove('header-chat-fixed');
-      document.getElementById('headerTitle').textContent = 'Feed';
+      document.getElementById('headerTitle').textContent = 'Channels';
       document.getElementById('backBtnContainer').classList.add('hidden');
       document.getElementById('headerContent').classList.remove('hidden');
       document.getElementById('headerBranding').textContent = 'Guardian';
-      document.getElementById('headerPageLabel').textContent = 'Feed';
+      document.getElementById('headerPageLabel').textContent = 'Channels';
       document.getElementById('backBtnContainer').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
+      document.getElementById('postBtn').classList.remove('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
       if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
 
-      // Load channels
+      // Reset search state
+      currentSearchQuery = '';
+      document.getElementById('searchChannelsInput').value = '';
+
+      // Load channels list for Discover
       await loadChannels();
-      // Show channel list initially
-      showChannelList();
+      // Load Home tab by default (posts from followed channels)
+      await switchFeedTab('home');
     }
 
     async function loadChannels() {
@@ -6025,9 +6582,13 @@
         if (data && data.channels) {
           channelsList = data.channels;
           filteredChannelsList = channelsList;
+        } else if (data && data.error) {
+          console.error('Error loading channels:', data.error);
+          showToast('Failed to load channels', 'error');
         }
       } catch (err) {
         console.error('Error loading channels:', err);
+        showToast('Error loading channels', 'error');
       }
     }
 
@@ -6068,72 +6629,1057 @@
         });
         html += '</div>';
       }
-      document.getElementById('feedMainContent').innerHTML = html;
+      document.getElementById('feedContentWrapper').innerHTML = html;
     }
 
     async function showChannelPosts(channelId) {
       currentChannelId = channelId;
-      const channel = channelsList.find(ch => ch.id === channelId);
+      channelPostsOffset = 0;
+      channelPostsHasMore = false;
+      let channel = channelsList.find(ch => ch.id === channelId);
+
+      // If channel not found, reload channels (in case a newly created channel hasn't loaded yet)
+      if (!channel) {
+        await loadChannels();
+        channel = channelsList.find(ch => ch.id === channelId);
+      }
+
       if (!channel) return;
 
-      document.getElementById('feedHeader').style.display = 'none';
+      currentChannel = channel;
+
+      // Clear composition state from previous channel
+      const channelPostInput = document.getElementById('channelPostInput');
+      if (channelPostInput) {
+        channelPostInput.value = '';
+      }
+      const channelPostCharCount = document.getElementById('channelPostCharCount');
+      if (channelPostCharCount) {
+        channelPostCharCount.textContent = '0/2000';
+      }
+
       document.getElementById('channelDetailHeader').classList.remove('hidden');
       document.getElementById('channelDetailName').textContent = channel.name;
       document.getElementById('channelDetailDescription').textContent = channel.description || '';
-      document.getElementById('channelDetailFollowers').textContent = '0 followers';
+
+      // Set up action buttons based on ownership
+      // Debug logging
+      console.log('showChannelPosts debug:', {
+        currentUserId: currentUser?.id,
+        currentUserIdType: typeof currentUser?.id,
+        channelOwnerId: channel.ownerId,
+        channelOwnerIdType: typeof channel.ownerId,
+        currentUser: currentUser,
+        channel: channel
+      });
+      const isOwner = currentUser && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
+      const isFollowing = currentUser && channel.isFollowing;
+      console.log('isOwner:', isOwner);
+      const actionButtonsContainer = document.getElementById('channelActionButtons');
+      if (isOwner) {
+        actionButtonsContainer.innerHTML = `
+          <button onclick="openChannelSettingsModal(${channel.id})" class="px-3 py-1 bg-zinc-200 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-300 dark:hover:bg-zinc-600 rounded text-sm font-medium transition active:scale-95">Settings</button>
+        `;
+      } else {
+        const followBtnText = isFollowing ? 'Following' : 'Follow';
+        const followBtnClass = isFollowing
+          ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-300 dark:hover:bg-zinc-600'
+          : 'bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white';
+        actionButtonsContainer.innerHTML = `
+          <button id="channelFollowBtn" class="px-3 py-1 ${followBtnClass} rounded text-sm font-medium transition active:scale-95" onclick="toggleFollowChannel(${channel.id}, ${!isFollowing})">${followBtnText}</button>
+        `;
+      }
 
       try {
+        isLoadingChannelPosts = true;
         const data = await apiCall(`/api/channels/${channelId}/posts?limit=50&offset=0`);
         if (data && data.posts) {
+          channelPostsHasMore = data.hasMore || false;
           let html = '';
+
+          // Add compose box for owner or followers
+          if (isOwner || isFollowing) {
+            html += `
+              <div class="sticky top-0 z-[99] p-4 border-b-2 border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 mb-2">
+                <textarea
+                  id="channelPostInput"
+                  placeholder="Write a post in #${escapeHtml(channel.name)}..."
+                  maxlength="2000"
+                  rows="3"
+                  class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"
+                  oninput="updateChannelPostCharCount()"
+                ></textarea>
+                <div id="channelPostImagePreview" class="mt-2 flex flex-wrap gap-2"></div>
+                <div class="flex items-center justify-between mt-2">
+                  <div class="flex gap-2 items-center">
+                    <span id="channelPostCharCount" class="text-xs text-zinc-500 dark:text-zinc-500">0/2000</span>
+                    <button
+                      onclick="attachImageToChannelPost()"
+                      class="px-2 py-1 text-xs text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition"
+                      title="Attach image"
+                    >📎</button>
+                  </div>
+                  <button
+                    id="channelPostBtn"
+                    onclick="submitChannelPost()"
+                    class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled
+                  >Post</button>
+                </div>
+              </div>
+            `;
+          }
+
           if (data.posts.length === 0) {
-            html = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">No posts in this channel</div>';
+            html += `<div class="text-center py-12 text-zinc-600 dark:text-zinc-500">
+              <p class="text-lg font-medium mb-2">No posts yet in #${escapeHtml(channel.name)}</p>
+              <p class="text-sm">Be the first to post in this channel!</p>
+            </div>`;
           } else {
-            html = '<div class="space-y-3 p-2">';
+            html += '<div class="space-y-3 p-4" id="channelPostsContainer">';
             data.posts.forEach(post => {
               html += renderChannelPost(post);
             });
             html += '</div>';
+
+            if (channelPostsHasMore) {
+              html += '<div class="p-4 flex justify-center"><button onclick="loadMoreChannelPosts(' + channelId + ')" class="py-2 px-6 text-sm font-medium text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition border border-cyan-600 dark:border-cyan-500 rounded">Load more posts</button></div>';
+            } else if (data.posts.length > 0) {
+              html += '<div class="p-4 text-center text-xs text-zinc-500 dark:text-zinc-500">No more posts</div>';
+            }
           }
-          document.getElementById('feedMainContent').innerHTML = html;
+          document.getElementById('feedContentWrapper').innerHTML = html;
+          channelPostsOffset = 50;
+        } else if (data && data.error) {
+          throw new Error(data.error);
         }
       } catch (err) {
         console.error('Error loading channel posts:', err);
-        document.getElementById('feedMainContent').innerHTML = '<div class="text-center py-8 text-red-600 dark:text-red-400">Error loading posts</div>';
+        showToast('Error loading channel posts', 'error');
+      } finally {
+        isLoadingChannelPosts = false;
+      }
+    }
+
+    async function loadMoreChannelPosts(channelId) {
+      if (isLoadingChannelPosts || !channelPostsHasMore) return;
+
+      try {
+        isLoadingChannelPosts = true;
+        const data = await apiCall(`/api/channels/${channelId}/posts?limit=50&offset=${channelPostsOffset}`);
+        if (data && data.posts) {
+          const container = document.getElementById('channelPostsContainer');
+          if (container) {
+            let postsHtml = '';
+            data.posts.forEach(post => {
+              postsHtml += renderChannelPost(post);
+            });
+            container.innerHTML += postsHtml;
+          }
+
+          channelPostsHasMore = data.hasMore || false;
+          channelPostsOffset += 50;
+
+          const loadMoreBtn = document.querySelector('[onclick*="loadMoreChannelPosts"]');
+          if (loadMoreBtn) {
+            if (channelPostsHasMore) {
+              loadMoreBtn.style.display = 'block';
+            } else {
+              loadMoreBtn.style.display = 'none';
+            }
+          }
+        } else if (data && data.error) {
+          throw new Error(data.error);
+        }
+      } catch (err) {
+        console.error('Error loading more channel posts:', err);
+        showToast('Error loading more posts', 'error');
+      } finally {
+        isLoadingChannelPosts = false;
       }
     }
 
     function renderChannelPost(post) {
       const timestamp = new Date(post.createdAt);
       const formattedTime = formatRelativeTime(post.createdAt);
-      const contentText = post.content?.text || '[No text]';
+      const contentText = post.content?.text || '';
+      const isOwner = currentUser && (parseInt(post.userId, 10) === parseInt(currentUser.id, 10) || (currentChannel && parseInt(currentChannel.ownerId, 10) === parseInt(currentUser.id, 10)));
+      const editedTime = post.isEdited ? formatRelativeTime(post.updatedAt) : null;
+      const images = post.imageUrls || [];
+
+      let actionMenu = '';
+      if (isOwner) {
+        actionMenu = `<div class="relative group">
+          <button onclick="togglePostMenu(${post.id}, event)" class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 text-lg transition">⋮</button>
+          <div id="menu-${post.id}" class="hidden absolute right-0 mt-1 bg-white dark:bg-zinc-800 rounded-lg shadow-lg border border-zinc-200 dark:border-zinc-700 z-50 min-w-[120px]">
+            <button onclick="openEditPostModal(${currentChannelId}, ${post.id})" class="block w-full text-left px-4 py-2 text-sm text-zinc-900 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-700">Edit</button>
+            <button onclick="openDeletePostConfirm(${currentChannelId}, ${post.id})" class="block w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-zinc-100 dark:hover:bg-zinc-700 border-t border-zinc-200 dark:border-zinc-700">Delete</button>
+          </div>
+        </div>`;
+      }
+
+      let imageGallery = '';
+      if (images.length > 0) {
+        imageGallery = `<div class="flex flex-wrap gap-2 mt-2">
+          ${images.map(img => `<img src="${img}" alt="Post image" class="max-w-xs max-h-48 rounded cursor-pointer hover:opacity-80 transition" onclick="showLightbox(${JSON.stringify(img)})">`).join('')}
+        </div>`;
+      }
 
       return `
-        <div class="p-3 bg-white dark:bg-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-lg transition">
+        <div class="pb-3 border-b border-zinc-100 dark:border-zinc-800 last:border-b-0 relative group" data-post-id="${post.id}">
           <div class="flex items-start gap-3">
-            <div class="flex-shrink-0 w-10 h-10 bg-zinc-300 dark:bg-zinc-700 rounded-full flex items-center justify-center text-xs font-bold text-zinc-600 dark:text-zinc-400">
-              ${post.username ? post.username.substring(0, 2).toUpperCase() : 'U'}
-            </div>
             <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-2">
-                <span class="font-semibold text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username || 'System')}</span>
-                ${post.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs">✓</span>' : ''}
+              <div class="flex items-center gap-2 justify-between">
+                <div class="flex items-center gap-2 flex-1">
+                  <span class="text-xs text-zinc-500 dark:text-zinc-500">Posted in ${escapeHtml(post.channelName || 'Unknown')}</span>
+                </div>
+                ${actionMenu}
               </div>
-              <p class="text-zinc-900 dark:text-zinc-100 mb-2 text-sm mt-1">${escapeHtml(contentText)}</p>
-              <div class="text-xs text-zinc-500 dark:text-zinc-500">${formattedTime}</div>
+              ${contentText ? `<p class="text-zinc-900 dark:text-zinc-100 text-sm mt-1 mb-2 whitespace-pre-wrap break-words">${escapeHtml(contentText)}</p>` : ''}
+              ${imageGallery}
+              <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-2">
+                ${formattedTime}${editedTime ? ` • edited ${editedTime}` : ''}
+              </div>
             </div>
           </div>
         </div>
       `;
     }
 
+    function updateChannelPostCharCount() {
+      const textarea = document.getElementById('channelPostInput');
+      const charCount = document.getElementById('channelPostCharCount');
+      const postBtn = document.getElementById('channelPostBtn');
+
+      if (!textarea || !charCount) return;
+
+      const count = textarea.value.length;
+      charCount.textContent = `${count}/2000`;
+
+      // Enable button if content or images exist, and content is under limit
+      if (postBtn) {
+        const hasContent = count > 0 || channelPostImages.length > 0;
+        postBtn.disabled = !hasContent || count > 2000;
+      }
+    }
+
+    async function submitChannelPost() {
+      const textarea = document.getElementById('channelPostInput');
+      const postBtn = document.getElementById('channelPostBtn');
+
+      if (!textarea || !postBtn) return;
+
+      let content = textarea.value.trim();
+
+      // Validate content and images
+      if (!content && channelPostImages.length === 0) {
+        showToast('Post must contain either text or images', 'error');
+        return;
+      }
+
+      if (content.length > 2000) {
+        showToast('Post is too long (exceeds 2000 characters)', 'error');
+        return;
+      }
+
+      // Disable button and show loading state
+      postBtn.disabled = true;
+
+      try {
+        const response = await apiCall(`/api/channels/${currentChannelId}/posts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            content: content,
+            imageUrls: channelPostImages
+          })
+        });
+
+        if (response && !response.error) {
+          showToast('Post created', 'success');
+          textarea.value = '';
+          channelPostImages = [];
+          updateChannelPostCharCount();
+          updateChannelImagePreview();
+          // Reload posts to show the new post
+          await loadChannelPostsAfterSubmit(currentChannelId);
+        } else {
+          const errorMsg = response?.error || 'Unable to create post';
+          showToast(errorMsg, 'error');
+        }
+      } catch (err) {
+        console.error('Error creating channel post:', err);
+        showToast('Unable to create post', 'error');
+      } finally {
+        postBtn.disabled = false;
+      }
+    }
+
+    async function loadChannelPostsAfterSubmit(channelId) {
+      try {
+        isLoadingChannelPosts = true;
+        channelPostsOffset = 0;
+        channelPostsHasMore = false;
+
+        const data = await apiCall(`/api/channels/${channelId}/posts?limit=50&offset=0`);
+        if (data && data.posts) {
+          channelPostsHasMore = data.hasMore || false;
+          let html = '';
+
+          // Re-add compose box for owner
+          const channel = channelsList.find(ch => ch.id === channelId);
+          const isOwner = currentUser && channel && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
+
+          if (isOwner) {
+            html += `
+              <div class="sticky top-0 z-[99] p-4 border-b-2 border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 mb-2">
+                <textarea
+                  id="channelPostInput"
+                  placeholder="Write a post in #${escapeHtml(channel.name)}..."
+                  maxlength="2000"
+                  rows="3"
+                  class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"
+                  oninput="updateChannelPostCharCount()"
+                ></textarea>
+                <div id="channelPostImagePreview" class="mt-2 flex flex-wrap gap-2"></div>
+                <div class="flex items-center justify-between mt-2">
+                  <div class="flex gap-2 items-center">
+                    <span id="channelPostCharCount" class="text-xs text-zinc-500 dark:text-zinc-500">0/2000</span>
+                    <button
+                      onclick="attachImageToChannelPost()"
+                      class="px-2 py-1 text-xs text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition"
+                      title="Attach image"
+                    >📎</button>
+                  </div>
+                  <button
+                    id="channelPostBtn"
+                    onclick="submitChannelPost()"
+                    class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled
+                  >Post</button>
+                </div>
+              </div>
+            `;
+          }
+
+          if (data.posts.length === 0) {
+            html += `<div class="text-center py-12 text-zinc-600 dark:text-zinc-500">
+              <p class="text-lg font-medium mb-2">No posts yet in #${escapeHtml(channel.name)}</p>
+              <p class="text-sm">Be the first to post in this channel!</p>
+            </div>`;
+          } else {
+            html += '<div class="space-y-3 p-4" id="channelPostsContainer">';
+            data.posts.forEach(post => {
+              html += renderChannelPost(post);
+            });
+            html += '</div>';
+
+            if (channelPostsHasMore) {
+              html += '<div class="p-4 flex justify-center"><button onclick="loadMoreChannelPosts(' + channelId + ')" class="py-2 px-6 text-sm font-medium text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition border border-cyan-600 dark:border-cyan-500 rounded">Load more posts</button></div>';
+            } else if (data.posts.length > 0) {
+              html += '<div class="p-4 text-center text-xs text-zinc-500 dark:text-zinc-500">No more posts</div>';
+            }
+          }
+
+          channelPostsOffset = 50;
+        } else if (data && data.error) {
+          console.error('Error reloading posts:', data.error);
+        }
+      } catch (err) {
+        console.error('Error reloading channel posts:', err);
+      } finally {
+        isLoadingChannelPosts = false;
+      }
+    }
+
+    function togglePostMenu(postId, event) {
+      event.stopPropagation();
+      const menu = document.getElementById(`menu-${postId}`);
+      if (menu) {
+        menu.classList.toggle('hidden');
+        // Close menu when clicking outside
+        const closeMenu = () => {
+          menu.classList.add('hidden');
+          document.removeEventListener('click', closeMenu);
+        };
+        setTimeout(() => {
+          document.addEventListener('click', closeMenu);
+        }, 0);
+      }
+    }
+
+    function openEditPostModal(channelId, postId) {
+      // Close any open menu
+      document.querySelectorAll('[id^="menu-"]').forEach(m => m.classList.add('hidden'));
+
+      const modal = document.createElement('div');
+      modal.id = `edit-modal-${postId}`;
+      modal.className = 'fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4';
+      modal.innerHTML = `
+        <div class="bg-white dark:bg-zinc-900 rounded-lg shadow-xl max-w-md w-full max-h-[70vh] overflow-y-auto">
+          <div class="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
+            <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Edit Post</h2>
+            <button onclick="document.getElementById('edit-modal-${postId}').remove()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition text-xl">✕</button>
+          </div>
+          <div class="p-6 space-y-3">
+            <textarea
+              id="editPostInput-${postId}"
+              placeholder="Edit your post..."
+              maxlength="2000"
+              rows="4"
+              class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"
+              oninput="updateEditCharCount(${postId})"
+            ></textarea>
+            <div class="flex items-center justify-between">
+              <span id="editCharCount-${postId}" class="text-xs text-zinc-500 dark:text-zinc-500">0/2000</span>
+              <div class="space-x-2">
+                <button onclick="document.getElementById('edit-modal-${postId}').remove()" class="px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100 text-sm font-medium">Cancel</button>
+                <button onclick="submitEditPost(${channelId}, ${postId})" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition text-sm font-medium">Save</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+
+      // Pre-fill with current post content
+      const textarea = document.getElementById(`editPostInput-${postId}`);
+      const post = document.querySelector(`[data-post-id="${postId}"]`);
+      if (post) {
+        const contentEl = post.querySelector('p');
+        if (contentEl) {
+          textarea.value = contentEl.textContent;
+          updateEditCharCount(postId);
+        }
+      }
+      textarea.focus();
+    }
+
+    function updateEditCharCount(postId) {
+      const textarea = document.getElementById(`editPostInput-${postId}`);
+      const charCount = document.getElementById(`editCharCount-${postId}`);
+      if (textarea && charCount) {
+        charCount.textContent = `${textarea.value.length}/2000`;
+      }
+    }
+
+    async function submitEditPost(channelId, postId) {
+      const textarea = document.getElementById(`editPostInput-${postId}`);
+      const content = textarea.value.trim();
+
+      if (!content) {
+        showToast('Post content cannot be empty', 'error');
+        return;
+      }
+
+      if (content.length > 2000) {
+        showToast('Post is too long (exceeds 2000 characters)', 'error');
+        return;
+      }
+
+      try {
+        const response = await apiCall(`/api/channels/${channelId}/posts/${postId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: content })
+        });
+
+        if (response && !response.error) {
+          showToast('Post updated', 'success');
+          document.getElementById(`edit-modal-${postId}`).remove();
+          await loadChannelPostsAfterSubmit(channelId);
+        } else {
+          showToast(response?.error || 'Unable to update post', 'error');
+        }
+      } catch (err) {
+        console.error('Error editing post:', err);
+        showToast('Unable to update post', 'error');
+      }
+    }
+
+    function openDeletePostConfirm(channelId, postId) {
+      // Close any open menu
+      document.querySelectorAll('[id^="menu-"]').forEach(m => m.classList.add('hidden'));
+
+      const confirmDialog = document.createElement('div');
+      confirmDialog.id = `delete-confirm-${postId}`;
+      confirmDialog.className = 'fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4';
+      confirmDialog.innerHTML = `
+        <div class="bg-white dark:bg-zinc-900 rounded-lg shadow-xl max-w-md w-full">
+          <div class="px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
+            <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Delete Post</h2>
+          </div>
+          <div class="px-6 py-4">
+            <p class="text-zinc-700 dark:text-zinc-300">Delete this post? This action cannot be undone.</p>
+          </div>
+          <div class="px-6 py-4 border-t border-zinc-200 dark:border-zinc-800 flex gap-3">
+            <button onclick="document.getElementById('delete-confirm-${postId}').remove()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100 text-sm font-medium">Cancel</button>
+            <button onclick="submitDeletePost(${channelId}, ${postId})" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition text-sm font-medium">Delete</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(confirmDialog);
+    }
+
+    async function submitDeletePost(channelId, postId) {
+      try {
+        const response = await apiCall(`/api/channels/${channelId}/posts/${postId}`, {
+          method: 'DELETE'
+        });
+
+        if (response && !response.error) {
+          showToast('Post deleted', 'success');
+          document.getElementById(`delete-confirm-${postId}`).remove();
+          await loadChannelPostsAfterSubmit(channelId);
+        } else {
+          showToast(response?.error || 'Unable to delete post', 'error');
+        }
+      } catch (err) {
+        console.error('Error deleting post:', err);
+        showToast('Unable to delete post', 'error');
+      }
+    }
+
     function backToChannelList() {
       showChannelList();
     }
 
-    function showChannelFollowToast() {
-      showToast('Follow feature coming soon', 'info');
+
+    function editChannelModal(channelId) {
+      const channel = channelsList.find(ch => ch.id === channelId);
+      if (!channel) return;
+
+      const newName = prompt('Edit channel name:', channel.name);
+      if (newName === null) return;
+      if (newName.trim().length === 0) {
+        showToast('Channel name cannot be empty', 'error');
+        return;
+      }
+
+      const newDesc = prompt('Edit channel description:', channel.description || '');
+      if (newDesc === null) return;
+
+      updateChannel(channelId, newName.trim(), newDesc.trim());
     }
+
+    async function updateChannel(channelId, name, description) {
+      try {
+        const data = await apiCall(`/api/channels/${channelId}`, {
+          method: 'PUT',
+          body: JSON.stringify({ name, description })
+        });
+
+        if (data && data.error) {
+          showToast(`Error updating channel: ${data.error}`, 'error');
+          return;
+        }
+
+        showToast('Channel updated successfully', 'success');
+        await loadChannels();
+        await showChannelPosts(channelId);
+      } catch (err) {
+        console.error('Error updating channel:', err);
+        showToast('Failed to update channel', 'error');
+      }
+    }
+
+    function deleteChannelConfirm(channelId) {
+      const channel = channelsList.find(ch => ch.id === channelId);
+      if (!channel) return;
+
+      if (confirm(`Are you sure you want to delete the channel "#${channel.name}"? This action cannot be undone.`)) {
+        deleteChannel(channelId);
+      }
+    }
+
+    async function deleteChannel(channelId) {
+      try {
+        const data = await apiCall(`/api/channels/${channelId}`, {
+          method: 'DELETE'
+        });
+
+        if (data && data.error) {
+          showToast(`Error deleting channel: ${data.error}`, 'error');
+          return;
+        }
+
+        showToast('Channel deleted successfully', 'success');
+        await loadChannels();
+        backToChannelList();
+      } catch (err) {
+        console.error('Error deleting channel:', err);
+        showToast('Failed to delete channel', 'error');
+      }
+    }
+
+    function formatDisplayDate(dateString) {
+      if (!dateString) return '—';
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    }
+
+    async function openChannelSettingsModal(channelId) {
+      const channel = channelsList.find(ch => ch.id === channelId);
+      if (!channel) {
+        showToast('Channel not found', 'error');
+        return;
+      }
+
+      const isOwner = currentUser && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
+      if (!isOwner) {
+        showToast('Only channel owner can access settings', 'error');
+        return;
+      }
+
+      // Show loading state
+      const modal = document.getElementById('channelSettingsModal');
+      const spinner = document.getElementById('channelSettingsSpinner');
+      const content = document.getElementById('channelSettingsContent');
+      const footer = document.getElementById('channelSettingsFooter');
+
+      spinner.classList.remove('hidden');
+      content.classList.add('hidden');
+      footer.classList.add('hidden');
+      modal.classList.remove('hidden');
+
+      // Fetch full channel data
+      try {
+        const channels = await apiCall('/api/channels');
+        const fullChannel = channels.channels.find(ch => ch.id === channelId);
+
+        if (!fullChannel) {
+          showToast('Failed to load channel settings', 'error');
+          return;
+        }
+
+        // Populate form fields
+        document.getElementById('channelSettingsNameInput').value = fullChannel.name || '';
+        document.getElementById('channelSettingsDescInput').value = fullChannel.description || '';
+        document.getElementById('channelSettingsCreatedAt').textContent = formatDisplayDate(fullChannel.createdAt);
+        document.getElementById('channelSettingsUpdatedAt').textContent = formatDisplayDate(fullChannel.updatedAt);
+        document.getElementById('channelSettingsCategory').textContent = fullChannel.category || 'General';
+        document.getElementById('channelSettingsVerified').textContent = fullChannel.isVerified ? 'Yes' : 'No';
+
+        // Hide loading, show content
+        spinner.classList.add('hidden');
+        content.classList.remove('hidden');
+        footer.classList.remove('hidden');
+      } catch (err) {
+        console.error('Error loading channel settings:', err);
+        showToast('Failed to load channel settings', 'error');
+        modal.classList.add('hidden');
+      }
+    }
+
+    function closeChannelSettingsModal() {
+      document.getElementById('channelSettingsModal').classList.add('hidden');
+    }
+
+    async function submitChannelSettings() {
+      const name = document.getElementById('channelSettingsNameInput').value.trim();
+      const description = document.getElementById('channelSettingsDescInput').value.trim();
+
+      if (!name || name.length === 0 || name.length > 255) {
+        showToast('Channel name is required and must be 1-255 characters', 'error');
+        return;
+      }
+
+      if (description && description.length > 1000) {
+        showToast('Description must be max 1000 characters', 'error');
+        return;
+      }
+
+      const saveBtn = document.getElementById('channelSettingsSaveBtn');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+
+      try {
+        const data = await apiCall(`/api/channels/${currentChannelId}`, {
+          method: 'PUT',
+          body: {
+            name: name,
+            description: description || null
+          }
+        });
+
+        if (data && data.error) {
+          showToast(`Error updating channel: ${data.error}`, 'error');
+          return;
+        }
+
+        showToast('Channel updated successfully', 'success');
+
+        // Update the channel in local list
+        const channel = channelsList.find(ch => ch.id === currentChannelId);
+        if (channel) {
+          channel.name = name;
+          channel.description = description;
+          // Update the channel detail header
+          document.getElementById('channelDetailName').textContent = name;
+          document.getElementById('channelDetailDescription').textContent = description;
+        }
+
+        closeChannelSettingsModal();
+      } catch (err) {
+        console.error('Error updating channel:', err);
+        showToast('Failed to update channel', 'error');
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save Changes';
+      }
+    }
+
+    function openDeleteChannelConfirm() {
+      document.getElementById('deleteChannelConfirmModal').classList.remove('hidden');
+    }
+
+    function closeDeleteChannelConfirm() {
+      document.getElementById('deleteChannelConfirmModal').classList.add('hidden');
+    }
+
+    async function submitDeleteChannel() {
+      const deleteBtn = document.querySelector('#deleteChannelConfirmModal button:last-child');
+      deleteBtn.disabled = true;
+      deleteBtn.textContent = 'Deleting...';
+
+      try {
+        const data = await apiCall(`/api/channels/${currentChannelId}`, {
+          method: 'DELETE'
+        });
+
+        if (data && data.error) {
+          showToast(`Error deleting channel: ${data.error}`, 'error');
+          return;
+        }
+
+        showToast('Channel deleted successfully', 'success');
+        closeDeleteChannelConfirm();
+        closeChannelSettingsModal();
+
+        // Reload channels and go back to list
+        await loadChannels();
+        backToChannelList();
+      } catch (err) {
+        console.error('Error deleting channel:', err);
+        showToast('Failed to delete channel', 'error');
+      } finally {
+        deleteBtn.disabled = false;
+        deleteBtn.textContent = 'Delete';
+      }
+    }
+
+    async function switchFeedTab(tabName) {
+      currentChannelId = null;
+      document.getElementById('channelDetailHeader').classList.add('hidden');
+
+      const homeTab = document.getElementById('feedTabHome');
+      const discoverTab = document.getElementById('feedTabDiscover');
+      const myChannelsTab = document.getElementById('feedTabMyChannels');
+      const feedHeaderHome = document.getElementById('feedHeaderHome');
+      const feedHeaderDiscover = document.getElementById('feedHeaderDiscover');
+      const feedHeaderMyChannels = document.getElementById('feedHeaderMyChannels');
+
+
+      // Reset all tabs
+      [homeTab, discoverTab, myChannelsTab].forEach(tab => {
+        if (tab) {
+          tab.classList.remove('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
+          tab.classList.add('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
+        }
+      });
+      [feedHeaderHome, feedHeaderDiscover, feedHeaderMyChannels].forEach(header => {
+        if (header) header.classList.add('hidden');
+      });
+
+      if (tabName === 'home') {
+        homeTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
+        homeTab.classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
+        feedHeaderHome.classList.remove('hidden');
+        await loadHomeFeed();
+      } else if (tabName === 'discover') {
+        discoverTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
+        discoverTab.classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
+        feedHeaderDiscover.classList.remove('hidden');
+        await loadDiscoverChannels();
+      } else if (tabName === 'my-channels') {
+        myChannelsTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
+        myChannelsTab.classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
+        feedHeaderMyChannels.classList.remove('hidden');
+        await loadMyChannels();
+      }
+    }
+
+
+    async function loadDiscoverChannels() {
+      try {
+        const data = await apiCall('/api/channels');
+        if (data && data.channels) {
+          // Store all channels so showChannelPosts() can find them
+          channelsList = data.channels;
+          const discoverChannels = data.channels.filter(ch =>
+            ch.ownerId !== currentUser.id && !ch.isFollowing
+          );
+          let html = '';
+          if (discoverChannels.length === 0) {
+            html = `<div class="text-center py-12 text-zinc-600 dark:text-zinc-500">
+              <p class="text-lg font-medium mb-2">No channels to discover</p>
+              <p class="text-sm">You follow or own all available channels!</p>
+            </div>`;
+          } else {
+            html = '<div class="space-y-3 p-4">';
+            discoverChannels.forEach(channel => {
+              html += renderChannelCard(channel, false);
+            });
+            html += '</div>';
+          }
+          document.getElementById('feedContentWrapper').innerHTML = html;
+        }
+      } catch (err) {
+        console.error('Error loading discover channels:', err);
+        showToast('Error loading discover channels', 'error');
+      }
+    }
+
+    async function loadHomeFeed() {
+      try {
+        const data = await apiCall('/api/feed/posts?limit=50&offset=0');
+        if (data && data.posts) {
+          let html = '';
+          if (data.posts.length === 0) {
+            html = `<div class="text-center py-12 text-zinc-600 dark:text-zinc-500">
+              <p class="text-lg font-medium mb-2">No posts from followed channels</p>
+              <p class="text-sm mb-4">Follow channels to build your feed.</p>
+              <button onclick="switchFeedTab('discover')" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition">Discover Channels</button>
+            </div>`;
+          } else {
+            html = '<div class="space-y-3 p-4">';
+            data.posts.forEach(post => {
+              html += renderFeedPost(post);
+            });
+            html += '</div>';
+          }
+          document.getElementById('feedContentWrapper').innerHTML = html;
+        }
+      } catch (err) {
+        console.error('Error loading home feed:', err);
+        showToast('Error loading posts', 'error');
+      }
+    }
+
+    async function loadMyChannels() {
+      try {
+        const data = await apiCall('/api/channels');
+        if (data && data.channels) {
+          const myChannels = data.channels.filter(ch =>
+            currentUser && parseInt(ch.ownerId, 10) === parseInt(currentUser.id, 10)
+          );
+          // Store the full channel list so showChannelPosts() can find any channel by ID.
+          // Filtering happens only for display; global state must contain all channels.
+          channelsList = data.channels;
+          let html = '';
+          if (myChannels.length === 0) {
+            html = `<div class="text-center py-12 text-zinc-600 dark:text-zinc-500">
+              <p class="text-lg font-medium mb-2">You don't own any channels yet</p>
+              <p class="text-sm mb-4">Create a channel to get started.</p>
+              <button onclick="openCreateChannelModal()" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition">Create Channel</button>
+            </div>`;
+          } else {
+            html = '<div class="space-y-3 p-4">';
+            myChannels.forEach(channel => {
+              html += renderChannelCard(channel, true);
+            });
+            html += '</div>';
+          }
+          document.getElementById('feedContentWrapper').innerHTML = html;
+        }
+      } catch (err) {
+        console.error('Error loading my channels:', err);
+        showToast('Error loading channels', 'error');
+      }
+    }
+
+    function renderFeedPost(post) {
+      const formattedTime = formatRelativeTime(post.createdAt);
+      const contentText = post.content?.text || '';
+      const images = post.imageUrls || [];
+
+      let imageGallery = '';
+      if (images.length > 0) {
+        imageGallery = `<div class="flex flex-wrap gap-2 mt-2">
+          ${images.map(img => `<img src="${img}" alt="Post image" class="max-w-xs max-h-48 rounded cursor-pointer hover:opacity-80 transition" onclick="showLightbox(${JSON.stringify(img)})">`).join('')}
+        </div>`;
+      }
+
+      return `
+        <div class="pb-3 border-b border-zinc-100 dark:border-zinc-800 last:border-b-0">
+          <div class="flex items-start gap-3">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-zinc-500 dark:text-zinc-500">Posted in ${escapeHtml(post.channelName || 'Unknown')}</span>
+              </div>
+              ${contentText ? `<p class="text-zinc-900 dark:text-zinc-100 text-sm mt-1 mb-2 whitespace-pre-wrap break-words">${escapeHtml(contentText)}</p>` : ''}
+              ${imageGallery}
+              <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-2">${formattedTime}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    let channelPostImages = [];
+
+    function attachImageToChannelPost() {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          const maxSize = 5 * 1024 * 1024; // 5MB
+          if (file.size > maxSize) {
+            showToast('Image must be less than 5MB', 'error');
+            return;
+          }
+
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const dataUri = e.target.result;
+            if (channelPostImages.length < 4) {
+              channelPostImages.push(dataUri);
+              updateChannelImagePreview();
+              updateChannelPostCharCount();
+            } else {
+              showToast('Maximum 4 images per post', 'error');
+            }
+          };
+          reader.readAsDataURL(file);
+        }
+      };
+      input.click();
+    }
+
+    function updateChannelImagePreview() {
+      const preview = document.getElementById('channelPostImagePreview');
+      if (!preview) return;
+
+      preview.innerHTML = channelPostImages.map((img, idx) => `
+        <div class="relative">
+          <img src="${img}" alt="Preview" class="max-w-24 max-h-24 rounded">
+          <button onclick="removeChannelPostImage(${idx})" class="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-700">&times;</button>
+        </div>
+      `).join('');
+    }
+
+    function removeChannelPostImage(idx) {
+      channelPostImages.splice(idx, 1);
+      updateChannelImagePreview();
+      updateChannelPostCharCount();
+    }
+
+    function renderFollowingUsersSection(users) {
+      const heading = users.length > 0 ? '<h3 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-3 px-0">Following Users</h3>' : '';
+      const userCards = users.map(user => {
+        const verifiedBadge = user.verified ? '<span class="text-xs bg-cyan-100 dark:bg-cyan-900 text-cyan-700 dark:text-cyan-300 px-2 py-1 rounded">✓ Verified</span>' : '';
+        return `
+          <div class="p-4 bg-white dark:bg-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-lg border border-zinc-200 dark:border-zinc-700 transition space-y-2">
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1">
+                  <h3 class="font-semibold text-zinc-900 dark:text-zinc-100 truncate">${escapeHtml(user.username)}</h3>
+                  ${verifiedBadge}
+                </div>
+                <p class="text-xs text-zinc-600 dark:text-zinc-400 truncate">${escapeHtml(user.usernode_pubkey || 'No wallet linked')}</p>
+                ${user.nickname ? `<p class="text-sm text-zinc-700 dark:text-zinc-300 mt-1">${escapeHtml(user.nickname)}</p>` : ''}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+      return heading + '<div class="space-y-2">' + userCards + '</div>';
+    }
+
+    function renderChannelCard(channel, isFollowing) {
+      const isOwner = currentUser && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
+      const ownerBadge = isOwner ? '<span class="ml-2 text-xs bg-cyan-100 dark:bg-cyan-900 text-cyan-700 dark:text-cyan-300 px-2 py-1 rounded">Owner</span>' : '';
+      const latestPostSection = channel.latestPost ? `
+        <div class="mt-3 p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded text-sm">
+          <div class="text-xs text-zinc-500 dark:text-zinc-500 mb-1">Latest from ${escapeHtml(channel.latestPost.authorUsername)}</div>
+          <p class="text-zinc-700 dark:text-zinc-300 line-clamp-2">${escapeHtml(channel.latestPost.contentSnippet)}</p>
+          <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-1">${formatRelativeTime(channel.latestPost.createdAt)}</div>
+        </div>
+      ` : '';
+
+      const actionButton = isOwner
+        ? ''
+        : `<button class="channel-follow-btn px-3 py-1 text-sm font-medium rounded transition ${
+            channel.isFollowing
+              ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-300 dark:hover:bg-zinc-600'
+              : 'bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white'
+          }" data-channel-id="${channel.id}" data-following="${channel.isFollowing ? 'true' : 'false'}">
+            ${channel.isFollowing ? 'Following' : 'Follow'}
+          </button>`;
+
+      return `
+        <div class="p-4 bg-white dark:bg-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-lg border border-zinc-200 dark:border-zinc-700 transition cursor-pointer" onclick="showChannelPosts(${channel.id})">
+          <div class="flex items-start justify-between gap-3">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 mb-1">
+                <h3 class="font-semibold text-zinc-900 dark:text-zinc-100 truncate">${escapeHtml(channel.name)}</h3>
+                ${ownerBadge}
+              </div>
+              <p class="text-sm text-zinc-600 dark:text-zinc-400">by ${escapeHtml(channel.ownerUsername || 'Unknown')}</p>
+              ${channel.description ? `<p class="text-sm text-zinc-700 dark:text-zinc-300 mt-1 line-clamp-2">${escapeHtml(channel.description)}</p>` : ''}
+              <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-2">${channel.followerCount} ${channel.followerCount === 1 ? 'follower' : 'followers'}</div>
+              ${latestPostSection}
+            </div>
+            <div class="flex-shrink-0">
+              ${actionButton}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    async function toggleFollowChannel(channelId, shouldFollow) {
+      try {
+        if (shouldFollow) {
+          const data = await apiCall(`/api/channels/${channelId}/follow`, { method: 'POST' });
+          if (data && !data.error) {
+            showToast('Channel followed', 'success');
+            await loadChannels();
+            if (currentChannelId === channelId) {
+              await showChannelPosts(channelId);
+            }
+          } else if (data && data.error) {
+            showToast(data.error, 'error');
+          }
+        } else {
+          const data = await apiCall(`/api/channels/${channelId}/follow`, { method: 'DELETE' });
+          if (data && !data.error) {
+            showToast('Channel unfollowed', 'success');
+            await loadChannels();
+            if (currentChannelId === channelId) {
+              await showChannelPosts(channelId);
+            }
+          } else if (data && data.error) {
+            showToast(data.error, 'error');
+          }
+        }
+      } catch (err) {
+        console.error('Error toggling follow:', err);
+        showToast('Error updating follow status', 'error');
+      }
+    }
+
+    // Event delegation for follow buttons
+    document.addEventListener('click', (e) => {
+      if (e.target.classList.contains('channel-follow-btn')) {
+        e.stopPropagation();
+        const channelId = parseInt(e.target.dataset.channelId);
+        const isFollowing = e.target.dataset.following === 'true';
+        toggleFollowChannel(channelId, !isFollowing);
+      }
+    });
 
     function showProfileView() {
       updateMenuHighlight('profile');
@@ -6154,6 +7700,7 @@
       document.getElementById('headerPageLabel').textContent = 'Profile';
       document.getElementById('menuBtn').classList.add('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
+      document.getElementById('postBtn').classList.add('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
 
       // Load profile data and switch to identity tab by default
@@ -6215,7 +7762,7 @@
       // Load guardian data and start polling when on guardians tab
       if (tabName === 'guardians') {
         loadGuardiansData();
-        guardianPollInterval = setInterval(refreshPeerCount, 30000);
+        // Polling will start in loadGuardiansData if network_mode is 'real_testnet'
       }
 
       // Save tab preference
@@ -6315,6 +7862,53 @@
       }
     }
 
+    async function refreshUserPeerCount() {
+      try {
+        const userPeerResponse = await apiCall('/api/user/peers/connected');
+
+        // If 403, network_mode is not 'real_testnet', so stop polling
+        if (userPeerResponse && userPeerResponse.error && userPeerResponse.available === false) {
+          console.log('[Guardian Data] Real testnet not enabled, stopping polling');
+          if (guardianPollInterval) {
+            clearInterval(guardianPollInterval);
+            guardianPollInterval = null;
+          }
+          return;
+        }
+
+        if (!userPeerResponse) return;
+
+        if (cachedGuardiansData) {
+          cachedGuardiansData.userPeerCount = userPeerResponse.userPeerCount;
+          cachedGuardiansData.userPeerIds = userPeerResponse.peerIds;
+        }
+
+        const userPeerCount = userPeerResponse.userPeerCount || 0;
+        const hours = cachedGuardiansData?.foregroundHours || 0;
+
+        const hoursDisplay = document.getElementById('profileGuardianHours');
+        if (hoursDisplay) {
+          hoursDisplay.innerHTML = `<div>${hours}</div><div class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Connected Peers: ${userPeerCount}</div>`;
+        }
+
+        // Update count in Peer Details modal if it is currently open
+        const peerModal = document.getElementById('peerModal');
+        if (peerModal) {
+          const countEl = peerModal.querySelector('.text-3xl');
+          if (countEl) countEl.textContent = userPeerCount;
+        }
+      } catch (err) {
+        console.error('Error refreshing user peer count:', err);
+        // Stop polling on 403 (testnet disabled)
+        if (err && err.status === 403) {
+          if (guardianPollInterval) {
+            clearInterval(guardianPollInterval);
+            guardianPollInterval = null;
+          }
+        }
+      }
+    }
+
     async function loadGuardiansData() {
       try {
         console.log('[Guardian Data] Loading guardians data...');
@@ -6385,22 +7979,50 @@
           }
         }
 
-        // Fetch peer count (network connectivity)
+        // Fetch user's peer count (user-specific testnet peers) - only if network_mode is 'real_testnet'
         try {
-          console.log('[Guardian Data] Fetching peer count...');
-          const peerCountResponse = await fetchPeerCount();
-          if (peerCountResponse) {
-            response.peerCount = peerCountResponse;
-            console.log('[Guardian Data] Peer count loaded:', peerCountResponse.peerCount);
+          console.log('[Guardian Data] Fetching user peer count...');
+          const userPeerResponse = await apiCall('/api/user/peers/connected');
+          if (userPeerResponse) {
+            response.userPeerCount = userPeerResponse.userPeerCount;
+            response.userPeerIds = userPeerResponse.peerIds;
+            console.log('[Guardian Data] User peer count loaded:', userPeerResponse.userPeerCount);
           }
         } catch (err) {
-          console.error('[Guardian Data] Error loading peer count:', err);
+          // 403 means network_mode is not 'real_testnet', so set to null to hide the feature
+          if (err.status === 403 || (err.response && err.response.status === 403)) {
+            console.log('[Guardian Data] Real testnet not enabled for this user (network_mode is not real_testnet)');
+            response.userPeerCount = null;
+            response.userPeerIds = [];
+          } else {
+            console.error('[Guardian Data] Error loading user peer count:', err);
+          }
+        }
+
+        // Fetch peer count (network connectivity) - only if testnet is enabled
+        if (response.userPeerCount !== null) {
+          try {
+            console.log('[Guardian Data] Fetching network peer count...');
+            const peerCountResponse = await fetchPeerCount();
+            if (peerCountResponse) {
+              response.peerCount = peerCountResponse;
+              console.log('[Guardian Data] Network peer count loaded:', peerCountResponse.peerCount);
+            }
+          } catch (err) {
+            console.error('[Guardian Data] Error loading network peer count:', err);
+          }
         }
 
         // Cache the data and update display with real data
         cachedGuardiansData = response;
         console.log('[Guardian Data] Data cached and ready');
         displayGuardiansData(response);
+
+        // Start polling if testnet is enabled
+        if (response.userPeerCount !== null && !guardianPollInterval) {
+          console.log('[Guardian Data] Starting peer count polling');
+          guardianPollInterval = setInterval(refreshUserPeerCount, 10000);
+        }
       } catch (err) {
         console.error('[Guardian Data] Unexpected error:', err);
         displayGuardiansError();
@@ -6455,12 +8077,16 @@
       const hours = data.foregroundHours || 0;
       const level = data.contributionLevel || 0;
       const rank = data.rank || 'New Guardian';
-      const peerCount = data.peerCount?.peerCount || 0;
+      const userPeerCount = data.userPeerCount !== null ? data.userPeerCount : null;
 
-      // Update hours with peer count info
+      // Update hours with user peer count info (only show peer count in testnet mode)
       const hoursDisplay = document.getElementById('profileGuardianHours');
       if (hoursDisplay) {
-        hoursDisplay.innerHTML = `<div>${hours}</div><div class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Connected Peers: ${peerCount}</div>`;
+        if (userPeerCount !== null) {
+          hoursDisplay.innerHTML = `<div>${hours}</div><div class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Connected Peers: ${userPeerCount}</div>`;
+        } else {
+          hoursDisplay.textContent = hours;
+        }
       }
 
       // Update rank
@@ -6536,7 +8162,7 @@
       // Create modal
       const modal = document.createElement('div');
       modal.id = 'guardianRankModal';
-      modal.className = 'fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4';
+      modal.className = 'fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4';
       modal.onclick = (e) => {
         if (e.target === modal) closeGuardianRankModal();
       };
@@ -6588,13 +8214,19 @@
         return;
       }
 
-      const peerCount = guardianData.peerCount?.peerCount || 0;
+      const userPeerCount = guardianData.userPeerCount;
       const foregroundHours = (guardianData.peerData && guardianData.peerData.foreground_hours) || guardianData.foregroundHours || 0;
+
+      // Check if peer count is available (null means network_mode is not 'real_testnet')
+      if (userPeerCount === null) {
+        showErrorModal('Peer Details', 'Peer count feature is not enabled. Please switch to real testnet mode in your settings to view connected peers.');
+        return;
+      }
 
       // Create modal
       const modal = document.createElement('div');
       modal.id = 'peerModal';
-      modal.className = 'fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4';
+      modal.className = 'fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4';
       modal.onclick = (e) => {
         if (e.target === modal) closePeerModal();
       };
@@ -6607,9 +8239,9 @@
           </div>
           <div class="space-y-4">
             <div class="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-              <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Connected Peers</div>
-              <div class="text-3xl font-bold text-blue-600 dark:text-blue-400">${peerCount}</div>
-              <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">peers in Usernode network</div>
+              <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Your Connected Peers</div>
+              <div class="text-3xl font-bold text-blue-600 dark:text-blue-400">${userPeerCount}</div>
+              <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">testnet peers connected to your node</div>
             </div>
             <div class="bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-200 dark:border-cyan-800 rounded-lg p-4">
               <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Your Foreground Hours</div>
@@ -6630,7 +8262,7 @@
     function showErrorModal(title, message) {
       const modal = document.createElement('div');
       modal.id = 'errorModal';
-      modal.className = 'fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4';
+      modal.className = 'fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4';
       modal.onclick = (e) => {
         if (e.target === modal) {
           const m = document.getElementById('errorModal');
@@ -6688,7 +8320,7 @@
 
         const modal = document.createElement('div');
         modal.id = 'guardiaNFTModal';
-        modal.className = 'fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4';
+        modal.className = 'fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4';
         modal.onclick = (e) => {
           if (e.target === modal) closeGuardiaNFTModal();
         };
@@ -6794,7 +8426,7 @@
     function displayUserProfileModal(user) {
       const modal = document.createElement('div');
       modal.id = 'userProfileModal';
-      modal.className = 'fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4';
+      modal.className = 'fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4';
 
       // Create avatar HTML
       const avatarInitial = user.username ? user.username.charAt(0).toUpperCase() : '?';
@@ -6992,7 +8624,7 @@
       const currentBio = document.getElementById('profileBio').textContent === '—' ? '' : document.getElementById('profileBio').textContent;
       const modal = document.createElement('div');
       modal.id = 'bioEditModal';
-      modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+      modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[999]';
       modal.innerHTML = `
         <div class="bg-white dark:bg-zinc-900 rounded-lg p-6 max-w-md w-full mx-4 shadow-lg">
           <h3 class="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-4">Edit Bio</h3>
@@ -7205,126 +8837,21 @@
     }
 
 
-    // ===== FEED FUNCTIONS =====
 
-    let feedOffset = 0;
-    let feedHasMore = true;
     let userLikedPostIds = new Set();
 
-    // Channel-based Feed variables
+    // Channel-based variables
     let currentChannelId = null;
+    let currentChannel = null;
     let channelsList = [];
     let filteredChannelsList = [];
-    let currentSearchQuery = '';
+    let channelPostsOffset = 0;
+    let channelPostsHasMore = false;
+    let isLoadingChannelPosts = false;
 
-    async function loadUserLikes() {
-      try {
-        const data = await apiCall('/api/feed/posts/likes');
-        if (data && data.likedPostIds) {
-          userLikedPostIds = new Set(data.likedPostIds);
-          updateLikeButtons();
-        }
-      } catch (err) {
-        console.error('Error loading user likes:', err);
-      }
-    }
 
-    function updateLikeButtons() {
-      userLikedPostIds.forEach(postId => {
-        const btn = document.getElementById(`likeBtn-${postId}`);
-        if (btn) {
-          btn.classList.add('text-red-600', 'dark:text-red-400');
-          btn.classList.remove('text-zinc-600', 'dark:text-zinc-400');
-        }
-      });
-    }
 
-    async function toggleLike(postId, event) {
-      event.preventDefault();
-      event.stopPropagation();
 
-      const isLiked = userLikedPostIds.has(postId);
-      const endpoint = `/api/feed/posts/${postId}/like`;
-      const method = isLiked ? 'DELETE' : 'POST';
-
-      try {
-        const data = await apiCall(endpoint, { method });
-        if (data && data.ok) {
-          if (data.liked) {
-            userLikedPostIds.add(postId);
-          } else {
-            userLikedPostIds.delete(postId);
-          }
-
-          const countEl = document.getElementById(`likeCount-${postId}`);
-          const btnEl = document.getElementById(`likeBtn-${postId}`);
-
-          if (countEl) {
-            countEl.textContent = data.likeCount || 0;
-          }
-
-          if (btnEl) {
-            if (data.liked) {
-              btnEl.classList.add('text-red-600', 'dark:text-red-400');
-              btnEl.classList.remove('text-zinc-600', 'dark:text-zinc-400');
-            } else {
-              btnEl.classList.remove('text-red-600', 'dark:text-red-400');
-              btnEl.classList.add('text-zinc-600', 'dark:text-zinc-400');
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Error toggling like:', err);
-        showToast('Failed to update like', 'error');
-      }
-    }
-
-    async function loadFeedPosts(offset) {
-      try {
-        const data = await apiCall(`/api/feed/posts?limit=50&offset=${offset}`);
-        if (!data || data.error) {
-          document.getElementById('feedList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Failed to load feed</div>';
-          return;
-        }
-
-        if (offset === 0) {
-          document.getElementById('feedList').innerHTML = '';
-          feedOffset = 0;
-        }
-
-        const posts = data.posts || [];
-        feedHasMore = data.hasMore || false;
-
-        if (posts.length === 0 && offset === 0) {
-          document.getElementById('feedList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">No posts yet. Be the first to share!</div>';
-          return;
-        }
-
-        const feedList = document.getElementById('feedList');
-        posts.forEach(post => {
-          const postEl = renderFeedPost(post);
-          feedList.appendChild(postEl);
-        });
-
-        feedOffset += posts.length;
-
-        // Setup infinite scroll
-        if (feedHasMore) {
-          const feedListEl = document.getElementById('feedList');
-          feedListEl.onscroll = () => {
-            if (feedListEl.scrollTop + feedListEl.clientHeight >= feedListEl.scrollHeight - 100) {
-              if (feedHasMore) {
-                feedHasMore = false;
-                loadFeedPosts(feedOffset);
-              }
-            }
-          };
-        }
-      } catch (err) {
-        console.error('Error loading feed:', err);
-        document.getElementById('feedList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Error loading feed</div>';
-      }
-    }
 
     function formatRelativeTime(isoDateString) {
       const date = new Date(isoDateString);
@@ -7342,96 +8869,6 @@
       return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     }
 
-    function renderFeedPost(post) {
-      const postEl = document.createElement('div');
-      postEl.className = 'p-3 bg-white dark:bg-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-lg transition feed-post-enter group';
-      postEl.id = `post-${post.id}`;
-      postEl.dataset.postText = post.content.text || '';
-
-      const isOwner = currentUser && currentUser.id === post.userId;
-      const isEdited = post.isEdited || false;
-      const timestamp = formatRelativeTime(post.createdAt);
-
-      let content = '';
-      if (post.content.text) {
-        if (post.username === 'Usernode Network Updates' || post.username === 'Crypto Daily') {
-          // Milestone and Crypto Daily posts: render metrics in monospace for proper alignment
-          const bgColor = post.username === 'Crypto Daily' ? 'bg-amber-900 dark:bg-amber-950' : 'bg-purple-900 dark:bg-purple-950';
-          content += `<pre class="${bgColor} text-zinc-100 dark:text-zinc-200 p-3 rounded font-mono text-xs overflow-x-auto mb-2"><code>${renderMentions(post.content.text)}</code></pre>`;
-        } else {
-          // Regular posts: render with proportional font
-          content += `<p class="text-zinc-900 dark:text-zinc-100 mb-2 text-sm" style="white-space: pre-wrap;">${renderMentions(post.content.text)}</p>`;
-        }
-      }
-
-      if (post.content.link) {
-        content += `
-          <a href="${escapeHtml(post.content.link)}" target="_blank" rel="noopener noreferrer" class="block p-2 bg-zinc-50 dark:bg-zinc-700/30 rounded hover:bg-zinc-100 dark:hover:bg-zinc-700/50 transition mb-2">
-            <div class="flex gap-2 items-start">
-              ${post.content.linkImage ? `<img src="${escapeHtml(post.content.linkImage)}" alt="preview" class="w-10 h-10 object-cover rounded flex-shrink-0" onerror="this.style.display='none'">` : ''}
-              <div class="flex-1 min-w-0">
-                ${post.content.linkTitle ? `<div class="font-medium text-cyan-600 dark:text-cyan-400 truncate text-xs">${escapeHtml(post.content.linkTitle)}</div>` : ''}
-              </div>
-            </div>
-          </a>
-        `;
-      }
-
-      const avatarInitial = post.username ? post.username.charAt(0).toUpperCase() : '?';
-      const avatarHtml = post.avatarUrl
-        ? `<img src="${escapeHtml(post.avatarUrl)}" alt="${escapeHtml(post.username)}" class="w-8 h-8 rounded-full object-cover flex-shrink-0 cursor-pointer hover:opacity-80 transition" onclick="event.stopPropagation(); showUserProfileModal(${post.userId})" onerror="this.style.display='none'">`
-        : `<div class="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0 cursor-pointer hover:opacity-80 transition" onclick="event.stopPropagation(); showUserProfileModal(${post.userId})">${avatarInitial}</div>`;
-
-      const onChainBadge = post.onChain ? '<span class="inline-block ml-1 px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-xs rounded font-medium">✓ On-Chain</span>' : '';
-
-      // Format username with bold and icon for system bot posts
-      let usernameDisplay;
-      if (post.username === 'Usernode Network Updates') {
-        usernameDisplay = `<span class="font-bold text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username)} 🌐</span>`;
-      } else if (post.username === 'Crypto Daily') {
-        usernameDisplay = `<span class="font-bold text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username)} 🪙</span>`;
-      } else {
-        usernameDisplay = `<span class="font-medium text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username)}</span>`;
-      }
-
-      const ownerMenu = isOwner ? `
-        <div class="relative ml-auto flex-shrink-0">
-          <button onclick="openPostMenu(${post.id}, event)" class="post-menu-btn opacity-0 group-hover:opacity-100 transition p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 rounded leading-none" title="Post options">⋯</button>
-          <div id="postMenu-${post.id}" class="hidden absolute right-0 top-7 z-10 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg py-1 min-w-[110px]">
-            <button onclick="startEditPost(${post.id})" class="w-full text-left px-3 py-1.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300">✏️ Edit</button>
-            <button onclick="deletePost(${post.id})" class="w-full text-left px-3 py-1.5 text-sm hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400">🗑️ Delete</button>
-          </div>
-        </div>
-      ` : '';
-
-      postEl.innerHTML = `
-        <div class="flex gap-2">
-          ${avatarHtml}
-          <div class="flex-1 min-w-0">
-            <div class="flex items-start gap-1 mb-1">
-              <div class="flex items-center gap-1 flex-wrap flex-1">
-                ${usernameDisplay}
-                ${post.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs">✓</span>' : ''}
-                <span class="text-xs text-zinc-500 dark:text-zinc-400">${timestamp}</span>
-                <span id="postEditedLabel-${post.id}" class="text-xs text-zinc-400 dark:text-zinc-500 italic ${isEdited ? '' : 'hidden'}">(edited)</span>
-                ${onChainBadge}
-              </div>
-              ${ownerMenu}
-            </div>
-            <div id="postContent-${post.id}">
-              ${content}
-            </div>
-            <div class="flex gap-3 mt-2 text-xs text-zinc-600 dark:text-zinc-400">
-              <button onclick="toggleLike(${post.id}, event)" class="hover:text-red-600 dark:hover:text-red-400 transition cursor-pointer" id="likeBtn-${post.id}">❤️ <span id="likeCount-${post.id}">${post.likeCount || 0}</span></button>
-              <button onclick="toggleComments(${post.id})" class="hover:text-cyan-600 dark:hover:text-cyan-400 transition">💬 <span id="commentCount-${post.id}">${post.commentCount || 0}</span></button>
-            </div>
-            <div id="commentsSection-${post.id}" class="hidden mt-2 space-y-2 max-h-48 overflow-y-auto"></div>
-          </div>
-        </div>
-      `;
-
-      return postEl;
-    }
 
     function openAttachmentMenu() {
       showToast('Image attachments coming soon (Phase 2)', 'info');
@@ -7449,7 +8886,6 @@
     }
 
     function insertMention(username) {
-      const input = document.getElementById('feedComposeInput');
       if (!input) return;
       const cursor = input.selectionStart;
       const before = input.value.slice(0, cursor);
@@ -7489,7 +8925,6 @@
     }
 
     async function handleMentionInput() {
-      const input = document.getElementById('feedComposeInput');
       if (!input) return;
       const cursor = input.selectionStart;
       const before = input.value.slice(0, cursor);
@@ -7516,52 +8951,6 @@
     }
 
 
-    async function submitFeedPost() {
-      const textInput = document.getElementById('feedTextInput');
-      const minimalInput = document.getElementById('feedMinimalInput');
-      const activeInput = minimalInput && minimalInput.offsetParent !== null ? minimalInput : textInput;
-      let text = activeInput.value.trim();
-      let link = null;
-
-      // Extract URL from text
-      const urlMatch = text.match(/(https?:\/\/[^\s]+)/);
-      if (urlMatch) {
-        link = urlMatch[1];
-        text = text.replace(urlMatch[0], '').trim();
-      }
-
-      if (!text && !link) {
-        showToast('Please enter some text or a link', 'error');
-        return;
-      }
-
-      try {
-        const payload = { text };
-        if (link) {
-          payload.link = link;
-        }
-
-        const data = await apiCall('/api/feed/posts', {
-          method: 'POST',
-          body: JSON.stringify(payload)
-        });
-
-        if (!data || data.error) {
-          showToast('Failed to post: ' + (data?.error || 'Unknown error'), 'error');
-          return;
-        }
-
-        if (textInput) textInput.value = '';
-        if (minimalInput) minimalInput.value = '';
-        feedOffset = 0;
-        feedHasMore = true;
-        loadFeedPosts(0);
-        showToast('Post published', 'success');
-      } catch (err) {
-        console.error('Error posting:', err);
-        showToast('Failed to post', 'error');
-      }
-    }
 
     function escapeHtml(text) {
       const div = document.createElement('div');
@@ -7598,183 +8987,13 @@
       return result.replace(/<bold>([\s\S]*?)<\/bold>/g, '<strong class="font-bold">$1</strong>');
     }
 
-    // ===== FEED COMMENTS FUNCTIONS =====
 
     const commentsCache = {};
 
-    async function toggleComments(postId) {
-      const section = document.getElementById(`commentsSection-${postId}`);
-      const isHidden = section.classList.contains('hidden');
 
-      if (isHidden) {
-        // Load comments if not cached
-        if (!commentsCache[postId]) {
-          await loadComments(postId);
-        }
-        section.classList.remove('hidden');
-      } else {
-        section.classList.add('hidden');
-      }
-    }
 
-    async function loadComments(postId) {
-      try {
-        const data = await apiCall(`/api/feed/posts/${postId}/comments?limit=50&offset=0`);
-        if (!data || data.error) {
-          console.error('Failed to load comments:', data?.error);
-          return;
-        }
 
-        const section = document.getElementById(`commentsSection-${postId}`);
-        section.innerHTML = '';
 
-        const comments = data.comments || [];
-
-        // Display existing comments
-        comments.forEach(comment => {
-          const commentEl = renderComment(comment, postId);
-          section.appendChild(commentEl);
-        });
-
-        // Update comment count
-        document.getElementById(`commentCount-${postId}`).textContent = data.total || comments.length;
-
-        // Add comment input if user is authenticated
-        if (currentUser) {
-          const inputEl = document.createElement('div');
-          inputEl.className = 'mt-3 pt-3 border-t border-zinc-200 dark:border-zinc-700 space-y-2';
-          inputEl.innerHTML = `
-            <textarea id="commentInput-${postId}" placeholder="Add a comment..." class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-sm resize-none" rows="2"></textarea>
-            <button onclick="submitComment(${postId})" class="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 text-white rounded text-sm">Comment</button>
-          `;
-          section.appendChild(inputEl);
-        }
-
-        commentsCache[postId] = { comments, total: data.total };
-      } catch (err) {
-        console.error('Error loading comments:', err);
-      }
-    }
-
-    function renderComment(comment, postId) {
-      const commentEl = document.createElement('div');
-      commentEl.className = 'p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg group';
-      commentEl.id = `comment-${comment.id}`;
-
-      const timestamp = formatRelativeTime(comment.createdAt);
-      const isOwner = currentUser && currentUser.id === comment.userId;
-      const avatarInitial = comment.username ? comment.username.charAt(0).toUpperCase() : '?';
-      const avatarHtml = comment.avatarUrl
-        ? `<img src="${escapeHtml(comment.avatarUrl)}" alt="${escapeHtml(comment.username)}" class="w-6 h-6 rounded-full object-cover flex-shrink-0 cursor-pointer hover:opacity-80 transition" onclick="event.stopPropagation(); showUserProfileModal(${comment.userId})" onerror="this.style.display='none'">`
-        : `<div class="w-6 h-6 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0 cursor-pointer hover:opacity-80 transition" onclick="event.stopPropagation(); showUserProfileModal(${comment.userId})">${avatarInitial}</div>`;
-
-      commentEl.innerHTML = `
-        <div class="flex gap-2 justify-between items-start">
-          <div class="flex gap-2 flex-1">
-            ${avatarHtml}
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-2 mb-1">
-                <span class="text-sm font-medium text-zinc-900 dark:text-zinc-100">${escapeHtml(comment.username)}</span>
-                ${comment.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs">✓</span>' : ''}
-                <span class="text-xs text-zinc-500 dark:text-zinc-400">${timestamp}</span>
-              </div>
-              <p class="text-sm text-zinc-700 dark:text-zinc-300">${renderMentions(comment.content)}</p>
-            </div>
-          </div>
-          ${isOwner ? `
-            <button onclick="deleteComment(${postId}, ${comment.id})" class="text-zinc-400 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition text-xs flex-shrink-0" title="Delete">
-              🗑️
-            </button>
-          ` : ''}
-        </div>
-      `;
-
-      return commentEl;
-    }
-
-    async function submitComment(postId) {
-      const input = document.getElementById(`commentInput-${postId}`);
-      const content = input.value.trim();
-
-      if (!content) {
-        alert('Comment cannot be empty');
-        return;
-      }
-
-      try {
-        const data = await apiCall(`/api/feed/posts/${postId}/comments`, {
-          method: 'POST',
-          body: JSON.stringify({ content })
-        });
-
-        if (!data || data.error) {
-          alert('Failed to post comment: ' + (data?.error || 'Unknown error'));
-          return;
-        }
-
-        // Add new comment to DOM
-        const section = document.getElementById(`commentsSection-${postId}`);
-        const commentEl = renderComment(data, postId);
-
-        // Insert before the input area
-        const inputArea = section.querySelector('[id^="commentInput-"]')?.parentElement;
-        if (inputArea) {
-          section.insertBefore(commentEl, inputArea);
-        } else {
-          section.appendChild(commentEl);
-        }
-
-        // Clear input
-        input.value = '';
-
-        // Update count
-        const countEl = document.getElementById(`commentCount-${postId}`);
-        const currentCount = parseInt(countEl.textContent);
-        countEl.textContent = currentCount + 1;
-
-        // Update cache
-        if (commentsCache[postId]) {
-          commentsCache[postId].total += 1;
-        }
-      } catch (err) {
-        console.error('Error posting comment:', err);
-        alert('Failed to post comment');
-      }
-    }
-
-    async function deleteComment(postId, commentId) {
-      if (!confirm('Delete this comment?')) return;
-
-      try {
-        const data = await apiCall(`/api/feed/posts/${postId}/comments/${commentId}`, {
-          method: 'DELETE'
-        });
-
-        if (!data || data.error) {
-          alert('Failed to delete comment');
-          return;
-        }
-
-        // Remove from DOM
-        const commentEl = document.getElementById(`comment-${commentId}`);
-        if (commentEl) {
-          commentEl.remove();
-        }
-
-        // Update count
-        const countEl = document.getElementById(`commentCount-${postId}`);
-        const currentCount = parseInt(countEl.textContent);
-        countEl.textContent = Math.max(0, currentCount - 1);
-
-        // Update cache
-        if (commentsCache[postId]) {
-          commentsCache[postId].total = Math.max(0, commentsCache[postId].total - 1);
-        }
-      } catch (err) {
-        console.error('Error deleting comment:', err);
-        alert('Failed to delete comment');
-      }
-    }
 
     // ===== DELETE POST MODAL FUNCTIONS =====
 
@@ -7785,147 +9004,11 @@
       document.getElementById('deletePostModal').classList.remove('hidden');
     }
 
-    function closeDeletePostModal() {
-      document.getElementById('deletePostModal').classList.add('hidden');
-      pendingDeletePostId = null;
-    }
 
-    async function confirmDeletePost() {
-      if (!pendingDeletePostId) return;
 
-      try {
-        const postId = pendingDeletePostId;
-        const data = await apiCall(`/api/feed/posts/${postId}`, { method: 'DELETE' });
 
-        if (!data || data.error) {
-          showToast('Failed to delete post', 'error');
-          closeDeletePostModal();
-          return;
-        }
 
-        const postEl = document.getElementById(`post-${postId}`);
-        if (postEl) {
-          postEl.style.opacity = '0';
-          postEl.style.transition = 'opacity 0.2s ease-out';
-          setTimeout(() => {
-            postEl.remove();
-          }, 200);
-        }
 
-        showToast('Post deleted', 'success');
-      } catch (err) {
-        console.error('Error deleting post:', err);
-        showToast('Failed to delete post', 'error');
-      } finally {
-        closeDeletePostModal();
-      }
-    }
-
-    // ===== FEED POST EDIT / DELETE FUNCTIONS =====
-
-    function openPostMenu(postId, event) {
-      event.stopPropagation();
-      const menu = document.getElementById(`postMenu-${postId}`);
-      if (!menu) return;
-      const isHidden = menu.classList.contains('hidden');
-      // Close all other open post menus
-      document.querySelectorAll('[id^="postMenu-"]').forEach(m => m.classList.add('hidden'));
-      if (isHidden) menu.classList.remove('hidden');
-    }
-
-    function deletePost(postId) {
-      openDeletePostModal(postId);
-    }
-
-    function startEditPost(postId) {
-      const menu = document.getElementById(`postMenu-${postId}`);
-      if (menu) menu.classList.add('hidden');
-
-      const postEl = document.getElementById(`post-${postId}`);
-      if (!postEl) return;
-
-      const contentDiv = document.getElementById(`postContent-${postId}`);
-      if (!contentDiv) return;
-
-      // Save original HTML for cancel
-      postEl.dataset.originalContent = contentDiv.innerHTML;
-
-      const currentText = postEl.dataset.postText || '';
-      const editHtml = `
-        <textarea id="postEditTextarea-${postId}" class="w-full p-2 text-sm bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded resize-none text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500" rows="3">${escapeHtml(currentText)}</textarea>
-        <div class="flex gap-2 mt-1">
-          <button onclick="saveEditPost(${postId})" class="px-3 py-1 text-xs bg-cyan-600 hover:bg-cyan-700 text-white rounded transition">Save</button>
-          <button onclick="cancelEditPost(${postId})" class="px-3 py-1 text-xs bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-300 rounded transition">Cancel</button>
-        </div>
-      `;
-
-      // Replace just the text paragraph; keep any link preview
-      const textPara = contentDiv.querySelector('p');
-      if (textPara) {
-        textPara.outerHTML = editHtml;
-      } else {
-        contentDiv.insertAdjacentHTML('afterbegin', editHtml);
-      }
-
-      const textarea = document.getElementById(`postEditTextarea-${postId}`);
-      if (textarea) {
-        textarea.focus();
-        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-      }
-    }
-
-    async function saveEditPost(postId) {
-      const textarea = document.getElementById(`postEditTextarea-${postId}`);
-      if (!textarea) return;
-
-      const text = textarea.value.trim();
-      if (!text) {
-        alert('Post text cannot be empty');
-        return;
-      }
-
-      try {
-        const data = await apiCall(`/api/feed/posts/${postId}`, {
-          method: 'PUT',
-          body: JSON.stringify({ text })
-        });
-
-        if (!data || data.error) {
-          alert('Failed to save changes');
-          return;
-        }
-
-        const postEl = document.getElementById(`post-${postId}`);
-        const contentDiv = document.getElementById(`postContent-${postId}`);
-
-        if (postEl) postEl.dataset.postText = text;
-
-        if (contentDiv && postEl && postEl.dataset.originalContent) {
-          // Restore original HTML with updated text
-          const temp = document.createElement('div');
-          temp.innerHTML = postEl.dataset.originalContent;
-          const para = temp.querySelector('p');
-          if (para) {
-            para.textContent = text;
-          } else {
-            const newPara = document.createElement('p');
-            newPara.className = 'text-zinc-900 dark:text-zinc-100 mb-2 text-sm';
-            newPara.textContent = text;
-            temp.insertBefore(newPara, temp.firstChild);
-          }
-          contentDiv.innerHTML = temp.innerHTML;
-          delete postEl.dataset.originalContent;
-        }
-
-        // Show (edited) label
-        const editedLabel = document.getElementById(`postEditedLabel-${postId}`);
-        if (editedLabel) editedLabel.classList.remove('hidden');
-
-      } catch (err) {
-        console.error('Error saving post:', err);
-        alert('Failed to save changes');
-      }
-    }
 
     function cancelEditPost(postId) {
       const postEl = document.getElementById(`post-${postId}`);
