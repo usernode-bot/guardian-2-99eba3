@@ -5298,7 +5298,7 @@ app.get('/api/channels/:channelId/posts', async (req, res) => {
         u.avatar_url
       FROM feed_posts fp
       JOIN users u ON u.id = fp.user_id
-      WHERE fp.channel_id = $1
+      WHERE fp.channel_id = $1 AND fp.deleted_at IS NULL
       ORDER BY fp.created_at DESC
       LIMIT $2 OFFSET $3
     `, [channelId, limit, offset]);
@@ -5317,7 +5317,7 @@ app.get('/api/channels/:channelId/posts', async (req, res) => {
     }));
 
     const { rows: countResult } = await pool.query(`
-      SELECT COUNT(*) as count FROM feed_posts WHERE channel_id = $1
+      SELECT COUNT(*) as count FROM feed_posts WHERE channel_id = $1 AND deleted_at IS NULL
     `, [channelId]);
 
     const total = parseInt(countResult[0].count);
@@ -5437,6 +5437,188 @@ app.post('/api/channels/:channelId/posts', async (req, res) => {
   } catch (err) {
     console.error('Error creating channel post:', err);
     res.status(500).json({ error: 'Failed to create post' });
+  }
+});
+
+// POST /api/channels/:channelId/posts/:postId - Edit a post (owner or channel owner)
+app.post('/api/channels/:channelId/posts/:postId', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const channelId = parseInt(req.params.channelId);
+    const postId = parseInt(req.params.postId);
+    const userId = parseInt(req.user.id, 10);
+    const { content } = req.body;
+
+    if (isNaN(channelId) || isNaN(postId) || isNaN(userId)) {
+      return res.status(400).json({ error: 'Invalid channel, post, or user ID' });
+    }
+
+    // Validate content
+    if (!content || typeof content !== 'string') {
+      return res.status(400).json({ error: 'Post content is required' });
+    }
+
+    const trimmedContent = content.trim();
+    if (trimmedContent.length === 0) {
+      return res.status(400).json({ error: 'Post content cannot be empty' });
+    }
+
+    if (trimmedContent.length > 2000) {
+      return res.status(400).json({ error: 'Post is too long (exceeds 2000 characters)' });
+    }
+
+    // Demo mode: validate against mock data
+    if (ENABLE_DEMO_MODE) {
+      const mockChannels = mockData.MOCK_CHANNELS || [];
+      const mockChannel = mockChannels.find(ch => ch.id === channelId);
+
+      if (!mockChannel) {
+        return res.status(404).json({ error: 'Channel not found' });
+      }
+
+      // Return mock success response
+      return res.status(200).json({
+        id: postId,
+        userId: userId,
+        username: req.user.username || 'user' + userId,
+        content: { text: trimmedContent },
+        createdAt: new Date(Date.now() - 3600000).toISOString(),
+        updatedAt: new Date().toISOString(),
+        isEdited: true,
+        onChain: false
+      });
+    }
+
+    // Get channel and post information
+    const { rows: channelCheck } = await pool.query(`
+      SELECT owner_id FROM channels WHERE id = $1
+    `, [channelId]);
+
+    if (channelCheck.length === 0) {
+      return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    const { rows: postCheck } = await pool.query(`
+      SELECT user_id FROM feed_posts WHERE id = $1 AND channel_id = $2 AND deleted_at IS NULL
+    `, [postId, channelId]);
+
+    if (postCheck.length === 0) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    // Check permission: post owner or channel owner
+    const postOwnerId = postCheck[0].user_id;
+    const channelOwnerId = channelCheck[0].owner_id;
+
+    if (userId !== postOwnerId && userId !== channelOwnerId) {
+      return res.status(403).json({ error: 'You do not have permission to edit this post' });
+    }
+
+    // Update the post
+    const { rows: updatedPost } = await pool.query(`
+      UPDATE feed_posts
+      SET content = $1, updated_at = NOW()
+      WHERE id = $2
+      RETURNING id, user_id, content, created_at, updated_at, on_chain
+    `, [JSON.stringify({ text: trimmedContent }), postId]);
+
+    if (updatedPost.length === 0) {
+      return res.status(500).json({ error: 'Failed to update post' });
+    }
+
+    const post = updatedPost[0];
+    const { rows: userRows } = await pool.query(`
+      SELECT username, verified_at, avatar_url FROM users WHERE id = $1
+    `, [post.user_id]);
+
+    const username = userRows.length > 0 ? userRows[0].username : 'user' + post.user_id;
+    const verified = userRows.length > 0 && !!userRows[0].verified_at;
+    const avatarUrl = userRows.length > 0 ? userRows[0].avatar_url : null;
+
+    res.status(200).json({
+      id: post.id,
+      userId: post.user_id,
+      username: username,
+      verified: verified,
+      avatarUrl: avatarUrl,
+      content: post.content,
+      createdAt: post.created_at,
+      updatedAt: post.updated_at,
+      isEdited: true,
+      onChain: post.on_chain || false
+    });
+  } catch (err) {
+    console.error('Error editing channel post:', err);
+    res.status(500).json({ error: 'Failed to edit post' });
+  }
+});
+
+// DELETE /api/channels/:channelId/posts/:postId - Delete a post (soft delete, owner or channel owner)
+app.delete('/api/channels/:channelId/posts/:postId', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const channelId = parseInt(req.params.channelId);
+    const postId = parseInt(req.params.postId);
+    const userId = parseInt(req.user.id, 10);
+
+    if (isNaN(channelId) || isNaN(postId) || isNaN(userId)) {
+      return res.status(400).json({ error: 'Invalid channel, post, or user ID' });
+    }
+
+    // Demo mode: return mock success
+    if (ENABLE_DEMO_MODE) {
+      const mockChannels = mockData.MOCK_CHANNELS || [];
+      const mockChannel = mockChannels.find(ch => ch.id === channelId);
+
+      if (!mockChannel) {
+        return res.status(404).json({ error: 'Channel not found' });
+      }
+
+      return res.status(200).json({ success: true, message: 'Post deleted' });
+    }
+
+    // Get channel and post information
+    const { rows: channelCheck } = await pool.query(`
+      SELECT owner_id FROM channels WHERE id = $1
+    `, [channelId]);
+
+    if (channelCheck.length === 0) {
+      return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    const { rows: postCheck } = await pool.query(`
+      SELECT user_id FROM feed_posts WHERE id = $1 AND channel_id = $2 AND deleted_at IS NULL
+    `, [postId, channelId]);
+
+    if (postCheck.length === 0) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    // Check permission: post owner or channel owner
+    const postOwnerId = postCheck[0].user_id;
+    const channelOwnerId = channelCheck[0].owner_id;
+
+    if (userId !== postOwnerId && userId !== channelOwnerId) {
+      return res.status(403).json({ error: 'You do not have permission to delete this post' });
+    }
+
+    // Soft delete: set deleted_at
+    await pool.query(`
+      UPDATE feed_posts
+      SET deleted_at = NOW()
+      WHERE id = $1
+    `, [postId]);
+
+    res.status(200).json({ success: true, message: 'Post deleted' });
+  } catch (err) {
+    console.error('Error deleting channel post:', err);
+    res.status(500).json({ error: 'Failed to delete post' });
   }
 });
 
@@ -7978,6 +8160,12 @@ async function start() {
       ADD COLUMN IF NOT EXISTS on_chain BOOLEAN DEFAULT FALSE
     `);
 
+    // Add deleted_at column to feed_posts for soft deletes
+    await pool.query(`
+      ALTER TABLE feed_posts
+      ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ
+    `);
+
     // Staging: seed example post if in staging mode
     if (process.env.USERNODE_ENV === 'staging') {
       await pool.query(`
@@ -9298,7 +9486,7 @@ async function start() {
           // Different posts for owner's channel vs other channels
           if (channel.owner_id === 1 && channel.name === '[Staging] Owner\'s Channel') {
             posts = [
-              { user_id: 1, content: 'This is my test channel! I can post here since I\'m the owner.', offset: 120 },
+              { user_id: 1, content: 'This is my test channel! I can post here since I\'m the owner.', offset: 120, editedOffset: 100 },
               { user_id: 1, content: 'The compose box at the top lets me create new posts quickly. Try clicking and typing!', offset: 60 }
             ];
           } else {
@@ -9311,11 +9499,13 @@ async function start() {
           }
 
           for (const post of posts) {
+            const created = new Date(Date.now() - post.offset * 60000);
+            const updated = post.editedOffset ? new Date(Date.now() - post.editedOffset * 60000) : created;
             await pool.query(`
-              INSERT INTO feed_posts (user_id, channel_id, content, created_at)
-              VALUES ($1, $2, $3, NOW() - INTERVAL '${post.offset} minutes')
+              INSERT INTO feed_posts (user_id, channel_id, content, created_at, updated_at)
+              VALUES ($1, $2, $3, $4, $5)
               ON CONFLICT DO NOTHING
-            `, [post.user_id, channelId, JSON.stringify({ text: post.content })]);
+            `, [post.user_id, channelId, JSON.stringify({ text: post.content }), created, updated]);
           }
           console.log(`[Channel Seed] Created ${posts.length} demo posts in channel: ${channel.name}`);
         }
