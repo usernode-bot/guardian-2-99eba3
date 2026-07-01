@@ -207,6 +207,11 @@
       pointer-events: none;
     }
 
+    /* On non-mobile (web/desktop), overlay should never block interactions */
+    body:not(.layout-mobile) #sidebarOverlay {
+      pointer-events: none !important;
+    }
+
     .message-bubble {
       word-wrap: break-word;
       overflow-wrap: break-word;
@@ -2824,21 +2829,30 @@
       sidebarOpen = !sidebarOpen;
       const sidebar = document.getElementById('sidebar');
       const overlay = document.getElementById('sidebarOverlay');
+      const isMobileLayout = document.body.classList.contains('layout-mobile');
 
       if (sidebarOpen) {
         sidebar.classList.remove('hidden');
-        overlay.classList.remove('hidden');
+        // Only show overlay on mobile layouts
+        if (isMobileLayout) {
+          overlay.classList.remove('hidden');
+          overlay.classList.add('sidebar-overlay-visible');
+          overlay.classList.remove('sidebar-overlay-hidden');
+        }
         void sidebar.offsetWidth;
         sidebar.classList.add('sidebar-enter');
-        overlay.classList.add('sidebar-overlay-visible');
-        overlay.classList.remove('sidebar-overlay-hidden');
       } else {
         sidebar.classList.add('sidebar-exit');
-        overlay.classList.add('sidebar-overlay-hidden');
-        overlay.classList.remove('sidebar-overlay-visible');
+        // Only manage overlay visibility on mobile
+        if (isMobileLayout) {
+          overlay.classList.add('sidebar-overlay-hidden');
+          overlay.classList.remove('sidebar-overlay-visible');
+        }
         setTimeout(() => {
           sidebar.classList.add('hidden');
-          overlay.classList.add('hidden');
+          if (isMobileLayout) {
+            overlay.classList.add('hidden');
+          }
           sidebar.classList.remove('sidebar-enter', 'sidebar-exit');
         }, 250);
       }
