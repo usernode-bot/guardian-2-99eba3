@@ -818,27 +818,45 @@
                   </label>
                   <select id="networkModeSelect" onchange="updateNetworkMode(this.value)" class="w-full px-2 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none">
                     <option value="real_testnet">Real Testnet (Live Transactions)</option>
-                    <option value="demo">Demo (Simulated)</option>
+                    <option value="devnet">Devnet (No Confirmation)</option>
                   </select>
-                  <p class="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed"><strong>Testnet:</strong> Real blockchain transactions; wallet confirmation required; transactions remain pending until blockchain confirms. <strong>Demo:</strong> Transactions are simulated with fake hashes; audit logs immediately mark as confirmed.</p>
+                  <p class="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed"><strong>Real Testnet:</strong> Real blockchain transactions; wallet confirmation required; transactions remain pending until blockchain confirms. <strong>Devnet:</strong> Development network; skips wallet confirmation; uses separate devnet RPC endpoint.</p>
                 </div>
 
-                <!-- RPC Endpoint Configuration (only shown in testnet mode) -->
-                <div id="rpcEndpointConfig" class="hidden space-y-2">
+                <!-- Testnet RPC Endpoint Configuration (only shown in real_testnet mode) -->
+                <div id="testnetRpcConfig" class="hidden space-y-2">
                   <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400 flex items-center gap-2">
-                    <span>RPC Endpoint URL</span>
-                    <span id="rpcEndpointLoading" class="hidden inline-block w-3 h-3 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></span>
+                    <span>Testnet RPC Endpoint URL</span>
+                    <span id="testnetRpcLoading" class="hidden inline-block w-3 h-3 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></span>
                   </label>
                   <input
-                    id="rpcEndpointInput"
+                    id="testnetRpcInput"
                     type="text"
                     placeholder="e.g., http://localhost:3001 or https://testnet-rpc.usernodelabs.org"
                     class="w-full px-2 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500"
                   />
-                  <button id="rpcEndpointSave" onclick="updateRpcEndpoint()" class="w-full px-3 py-1.5 bg-cyan-500 text-white rounded text-xs font-medium hover:bg-cyan-600 transition">
-                    Save RPC Endpoint
+                  <button id="testnetRpcSave" onclick="updateTestnetRpcEndpoint()" class="w-full px-3 py-1.5 bg-cyan-500 text-white rounded text-xs font-medium hover:bg-cyan-600 transition">
+                    Save Testnet RPC Endpoint
                   </button>
                   <p class="text-xs text-zinc-600 dark:text-zinc-400">Usernode testnet RPC endpoint for submitting transactions.</p>
+                </div>
+
+                <!-- Devnet RPC Endpoint Configuration (only shown in devnet mode) -->
+                <div id="devnetRpcConfig" class="hidden space-y-2">
+                  <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400 flex items-center gap-2">
+                    <span>Devnet RPC Endpoint URL</span>
+                    <span id="devnetRpcLoading" class="hidden inline-block w-3 h-3 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></span>
+                  </label>
+                  <input
+                    id="devnetRpcInput"
+                    type="text"
+                    placeholder="e.g., http://localhost:3001 or https://devnet-rpc.example.com"
+                    class="w-full px-2 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  />
+                  <button id="devnetRpcSave" onclick="updateDevnetRpcEndpoint()" class="w-full px-3 py-1.5 bg-cyan-500 text-white rounded text-xs font-medium hover:bg-cyan-600 transition">
+                    Save Devnet RPC Endpoint
+                  </button>
+                  <p class="text-xs text-zinc-600 dark:text-zinc-400">Devnet RPC endpoint for development transactions (wallet confirmation skipped).</p>
                 </div>
 
                 <!-- Permission Notice -->
@@ -1708,7 +1726,6 @@
     }
 
     let currentUser = null;
-    let isDemoMode = false;
     let currentConvId = null;
     let currentOtherId = null;
     let currentContactId = null;
@@ -2113,21 +2130,30 @@
           const dropdown = document.getElementById('networkModeSelect');
           const noPermission = document.getElementById('configNoPermission');
           const accordion = document.getElementById('configAccordion');
-          const rpcEndpointConfig = document.getElementById('rpcEndpointConfig');
-          const rpcEndpointInput = document.getElementById('rpcEndpointInput');
+          const testnetRpcConfig = document.getElementById('testnetRpcConfig');
+          const testnetRpcInput = document.getElementById('testnetRpcInput');
+          const devnetRpcConfig = document.getElementById('devnetRpcConfig');
+          const devnetRpcInput = document.getElementById('devnetRpcInput');
 
-          // Set dropdown to current network mode, defaulting to networkMode if available, else isDemoMode for backward compat
-          const currentMode = config.networkMode || (config.isDemoMode ? 'demo' : 'real_testnet');
+          // Set dropdown to current network mode
+          const currentMode = config.networkMode || 'real_testnet';
           dropdown.value = currentMode;
           dropdown.disabled = !config.canEdit;
 
-          // Show/hide RPC endpoint config based on network mode and permission
-          if (currentMode === 'testnet' && config.canEditRpc) {
-            rpcEndpointConfig.classList.remove('hidden');
-            rpcEndpointInput.value = config.rpcEndpoint || 'http://localhost:3001';
-            rpcEndpointInput.disabled = !config.canEditRpc;
+          // Show/hide RPC endpoint configs based on network mode and permission
+          if (currentMode === 'real_testnet' && config.canEditRpc) {
+            testnetRpcConfig.classList.remove('hidden');
+            testnetRpcInput.value = config.rpcEndpoint || 'http://localhost:3001';
+            testnetRpcInput.disabled = !config.canEditRpc;
+            devnetRpcConfig.classList.add('hidden');
+          } else if (currentMode === 'devnet' && config.canEditRpc) {
+            devnetRpcConfig.classList.remove('hidden');
+            devnetRpcInput.value = config.devnetRpcEndpoint || '';
+            devnetRpcInput.disabled = !config.canEditRpc;
+            testnetRpcConfig.classList.add('hidden');
           } else {
-            rpcEndpointConfig.classList.add('hidden');
+            testnetRpcConfig.classList.add('hidden');
+            devnetRpcConfig.classList.add('hidden');
           }
 
           // Save to localStorage
@@ -2143,13 +2169,13 @@
             accordion.classList.remove('opacity-60');
           }
 
-          // Update dot color based on network mode (demo = amber, testnet = gray)
-          updateConfigDotColor(currentMode === 'demo');
+          // Update dot color based on network mode (devnet = cyan, testnet = gray)
+          updateConfigDotColor(currentMode === 'devnet');
 
           // Render secrets display
           renderSecretsDisplay(config.secrets);
 
-          // Start polling transaction history (always, not just demo mode)
+          // Start polling transaction history
           pollTransactionHistory();
           if (transactionHistoryIntervalId) clearInterval(transactionHistoryIntervalId);
           transactionHistoryIntervalId = setInterval(pollTransactionHistory, 2000);
@@ -2259,7 +2285,8 @@
     async function updateNetworkMode(mode) {
       const dropdown = document.getElementById('networkModeSelect');
       const loading = document.getElementById('networkModeLoading');
-      const rpcEndpointConfig = document.getElementById('rpcEndpointConfig');
+      const testnetRpcConfig = document.getElementById('testnetRpcConfig');
+      const devnetRpcConfig = document.getElementById('devnetRpcConfig');
       const previousMode = dropdown.value;
 
       try {
@@ -2277,15 +2304,20 @@
           settings.networkMode = mode;
           saveSettings(settings);
 
-          updateConfigDotColor(mode === 'demo');
-          const modeName = mode === 'demo' ? 'Demo' : 'Testnet';
+          updateConfigDotColor(mode === 'devnet');
+          const modeName = mode === 'devnet' ? 'Devnet' : 'Real Testnet';
           showToast('Switched to ' + modeName + ' mode', 'success');
 
-          // Show/hide RPC endpoint config based on mode
-          if (mode === 'testnet') {
-            rpcEndpointConfig.classList.remove('hidden');
+          // Show/hide RPC endpoint configs based on mode
+          if (mode === 'real_testnet') {
+            testnetRpcConfig.classList.remove('hidden');
+            devnetRpcConfig.classList.add('hidden');
+          } else if (mode === 'devnet') {
+            devnetRpcConfig.classList.remove('hidden');
+            testnetRpcConfig.classList.add('hidden');
           } else {
-            rpcEndpointConfig.classList.add('hidden');
+            testnetRpcConfig.classList.add('hidden');
+            devnetRpcConfig.classList.add('hidden');
           }
 
           // Reload config state to refresh all UI elements
@@ -2327,14 +2359,14 @@
       }
     }
 
-    async function updateRpcEndpoint() {
-      const input = document.getElementById('rpcEndpointInput');
-      const loading = document.getElementById('rpcEndpointLoading');
-      const saveBtn = document.getElementById('rpcEndpointSave');
+    async function updateTestnetRpcEndpoint() {
+      const input = document.getElementById('testnetRpcInput');
+      const loading = document.getElementById('testnetRpcLoading');
+      const saveBtn = document.getElementById('testnetRpcSave');
       const rpcUrl = input.value.trim();
 
       if (!rpcUrl) {
-        showToast('RPC endpoint cannot be empty', 'error');
+        showToast('Testnet RPC endpoint cannot be empty', 'error');
         return;
       }
 
@@ -2342,7 +2374,7 @@
       try {
         new URL(rpcUrl);
       } catch (err) {
-        showToast('Invalid URL format for RPC endpoint', 'error');
+        showToast('Invalid URL format for testnet RPC endpoint', 'error');
         return;
       }
 
@@ -2356,19 +2388,67 @@
         });
 
         if (result && !result.error) {
-          showToast('RPC endpoint updated successfully', 'success');
+          showToast('Testnet RPC endpoint updated successfully', 'success');
           // Reload config state to refresh the display
           await loadConfigState();
         } else if (result && result.error) {
           if (result.error.includes('Not authorized')) {
             showToast('You do not have permission to change RPC endpoint', 'error');
           } else {
-            showToast('Failed to update RPC endpoint: ' + result.error, 'error');
+            showToast('Failed to update testnet RPC endpoint: ' + result.error, 'error');
           }
         }
       } catch (err) {
-        console.error('Error updating RPC endpoint:', err);
-        showToast('Error updating RPC endpoint', 'error');
+        console.error('Error updating testnet RPC endpoint:', err);
+        showToast('Error updating testnet RPC endpoint', 'error');
+      } finally {
+        loading.classList.add('hidden');
+        saveBtn.disabled = false;
+      }
+    }
+
+    async function updateDevnetRpcEndpoint() {
+      const input = document.getElementById('devnetRpcInput');
+      const loading = document.getElementById('devnetRpcLoading');
+      const saveBtn = document.getElementById('devnetRpcSave');
+      const rpcUrl = input.value.trim();
+
+      if (!rpcUrl) {
+        showToast('Devnet RPC endpoint cannot be empty', 'error');
+        return;
+      }
+
+      // Validate URL format
+      try {
+        new URL(rpcUrl);
+      } catch (err) {
+        showToast('Invalid URL format for devnet RPC endpoint', 'error');
+        return;
+      }
+
+      try {
+        loading.classList.remove('hidden');
+        saveBtn.disabled = true;
+
+        const result = await apiCall('/api/config/devnet-rpc-endpoint', {
+          method: 'PUT',
+          body: JSON.stringify({ rpcEndpoint: rpcUrl })
+        });
+
+        if (result && !result.error) {
+          showToast('Devnet RPC endpoint updated successfully', 'success');
+          // Reload config state to refresh the display
+          await loadConfigState();
+        } else if (result && result.error) {
+          if (result.error.includes('Not authorized')) {
+            showToast('You do not have permission to change RPC endpoint', 'error');
+          } else {
+            showToast('Failed to update devnet RPC endpoint: ' + result.error, 'error');
+          }
+        }
+      } catch (err) {
+        console.error('Error updating devnet RPC endpoint:', err);
+        showToast('Error updating devnet RPC endpoint', 'error');
       } finally {
         loading.classList.add('hidden');
         saveBtn.disabled = false;
@@ -2992,7 +3072,7 @@
     // The Usernode bridge exports window.sendTransaction() as a global function,
     // not as window.usernode.sendTransaction(). This is the canonical bridge API.
     function isWalletAvailable() {
-      return isDemoMode || (
+      return (currentUser && currentUser.networkMode === 'devnet') || (
         typeof window.sendTransaction === 'function' &&
         typeof window.usernode === 'object' &&
         window.usernode !== null
@@ -3140,7 +3220,7 @@
           metaMask: typeof window.metaMask
         },
         bridgeLoadState: bridgeLoadState,
-        isDemoMode: isDemoMode
+        networkMode: currentUser?.networkMode || 'unknown'
       };
 
       // Add signature state if requested (e.g., on timeout event)
@@ -3277,19 +3357,16 @@
         return;
       }
       currentUser = user;
-      isDemoMode = user.isDemoMode ?? false;
 
       // Initialize environment state and polling infrastructure
       await initializeAppState();
 
-      // Log demo mode detection prominently
+      // Log network mode initialization
       console.log('\n╔════════════════════════════════════════════════════════════════╗');
-      console.log('║              DEMO MODE INITIALIZATION DETECTED                 ║');
+      console.log('║              NETWORK MODE INITIALIZATION DETECTED              ║');
       console.log('╚════════════════════════════════════════════════════════════════╝');
-      console.log('isDemoMode from API response:', isDemoMode);
+      console.log('networkMode from API response:', user.networkMode);
       console.log('isStaging from /health:', isStaging);
-      console.log('user.isDemoMode raw value:', user.isDemoMode);
-      console.log('USERNODE_ENV at server time:', user.isDemoMode ? 'staging' : 'production');
 
       // Validate and log wallet address information
       console.log('\n--- User Profile & Wallet Address Validation ---');
@@ -3316,17 +3393,17 @@
       document.getElementById('sidebarUsername').textContent = user.username + (user.verified ? ' ✓' : '');
       document.getElementById('sidebarWallet').textContent = user.usernode_pubkey || 'No wallet linked';
 
-      // Show demo mode indicator if in staging
-      if (isDemoMode) {
+      // Show staging indicator if in staging
+      if (isStaging) {
         const headerBranding = document.getElementById('headerBranding');
         if (headerBranding) {
           const stagingBadge = document.createElement('span');
           stagingBadge.className = 'ml-2 inline-block px-2 py-1 bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-100 text-xs rounded font-semibold';
           stagingBadge.textContent = 'STAGING';
-          stagingBadge.title = 'This is a staging environment. Transactions are simulated, not real.';
+          stagingBadge.title = 'This is a staging environment with a temporary database.';
           headerBranding.appendChild(stagingBadge);
         }
-        console.log('🔄 STAGING MODE ACTIVE - All transactions are simulated and not recorded on the blockchain');
+        console.log('🔄 STAGING ENVIRONMENT ACTIVE - Using temporary database for testing');
       }
 
       initSettings();
@@ -4107,11 +4184,11 @@
 
     // Unified wallet signature flow - single dialog, direct to wallet
     async function requestWalletSignature(action, details, auditLogId = null) {
-      // In demo mode, skip wallet confirmation entirely
-      if (currentUser && currentUser.isDemoMode) {
-        console.log('Demo mode: Skipping wallet signature for action:', action);
-        showToast('Demo mode: Skipping wallet confirmation', 'info');
-        return 'demo-tx-hash-' + Date.now();
+      // In devnet mode, skip wallet confirmation entirely
+      if (currentUser && currentUser.networkMode === 'devnet') {
+        console.log('Devnet mode: Skipping wallet signature for action:', action);
+        showToast('Devnet mode: Skipping wallet confirmation', 'info');
+        return 'devnet-tx-hash-' + Date.now();
       }
 
       // Validate wallet connection
