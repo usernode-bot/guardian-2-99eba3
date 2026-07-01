@@ -8061,7 +8061,7 @@
       const currentBio = document.getElementById('profileBio').textContent === '—' ? '' : document.getElementById('profileBio').textContent;
       const modal = document.createElement('div');
       modal.id = 'bioEditModal';
-      modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+      modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[999]';
       modal.innerHTML = `
         <div class="bg-white dark:bg-zinc-900 rounded-lg p-6 max-w-md w-full mx-4 shadow-lg">
           <h3 class="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-4">Edit Bio</h3>
