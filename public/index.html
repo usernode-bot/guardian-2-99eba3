@@ -812,16 +812,16 @@
 
                 <!-- Network Mode Selection -->
                 <div class="space-y-2">
-                  <label class="text-xs sm:text-sm font-medium text-zinc-600 dark:text-zinc-400 flex items-center gap-2">
+                  <label class="text-xs sm:text-sm font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-2">
                     <span>Network Mode</span>
                     <span id="networkModeLoading" class="hidden inline-block w-3 h-3 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></span>
                   </label>
-                  <select id="networkModeSelect" onchange="updateNetworkMode(this.value)" class="w-full px-3 py-2.5 sm:py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-400 text-sm">
+                  <select id="networkModeSelect" onchange="updateNetworkMode(this.value)" class="w-full px-3 py-2.5 sm:py-2 bg-zinc-50 dark:bg-zinc-700 border border-zinc-400 dark:border-zinc-600 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-400 text-sm">
                     <option value="real_testnet">Real Testnet (Live Transactions)</option>
                     <option value="devnet">Devnet (Database Only)</option>
                     <option value="demo">Demo (Simulated)</option>
                   </select>
-                  <p class="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed break-words">
+                  <p class="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed break-words">
                     <strong class="block mb-1">Real Testnet:</strong> Live blockchain transactions; wallet confirmation required; transactions remain pending until blockchain confirms.
                     <strong class="block mb-1 mt-2">Devnet:</strong> Database-only transactions; immediate confirmation; useful for testing.
                     <strong class="block mb-1 mt-2">Demo:</strong> Transactions are simulated with fake hashes; audit logs immediately mark as confirmed.
@@ -830,13 +830,13 @@
 
                 <!-- Transaction Preferences -->
                 <div class="space-y-3 border-t border-zinc-300 dark:border-zinc-600 pt-3 mt-3">
-                  <label class="text-xs sm:text-sm font-medium text-zinc-600 dark:text-zinc-400 block">Transaction Preferences</label>
-                  <div class="flex items-start gap-3 p-2 bg-zinc-50 dark:bg-zinc-800/30 rounded">
+                  <label class="text-xs sm:text-sm font-medium text-zinc-700 dark:text-zinc-300 block">Transaction Preferences</label>
+                  <div class="flex items-start gap-3 p-3 bg-zinc-100 dark:bg-zinc-800 rounded">
                     <input type="checkbox" id="skipSignatureDevnetToggle" onchange="updateSkipSignatureDevnet(this.checked)" class="w-5 h-5 rounded cursor-pointer mt-0.5 flex-shrink-0">
                     <div class="flex-1 min-w-0">
-                      <label for="skipSignatureDevnetToggle" class="text-xs sm:text-sm font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer block mb-1">Skip signature confirmation in devnet mode</label>
-                      <p class="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">When enabled and devnet is the active network mode, transactions will broadcast immediately without wallet confirmation.</p>
-                      <p class="text-xs text-zinc-500 dark:text-zinc-500 leading-relaxed mt-1"><em>Only applies when devnet mode is active above.</em></p>
+                      <label for="skipSignatureDevnetToggle" class="text-xs sm:text-sm font-medium text-zinc-900 dark:text-zinc-100 cursor-pointer block mb-1">Skip signature confirmation in devnet mode</label>
+                      <p class="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">When enabled and devnet is the active network mode, transactions will broadcast immediately without wallet confirmation.</p>
+                      <p class="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed mt-1"><em>Only applies when devnet mode is active above.</em></p>
                     </div>
                   </div>
                 </div>
@@ -877,14 +877,14 @@
     </div>
 
     <!-- Development Status Banner (dismiss: session-based) -->
-    <div id="devStatusBanner" class="bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800 px-3 py-2 sm:px-4 sm:py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
+    <div id="devStatusBanner" class="bg-blue-100 dark:bg-blue-950 border-b border-blue-300 dark:border-blue-800 px-3 py-2 sm:px-4 sm:py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
       <div class="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
-        <span class="text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5">ℹ️</span>
-        <p class="text-xs sm:text-sm text-blue-700 dark:text-blue-300 leading-snug break-words">
+        <span class="text-blue-700 dark:text-blue-300 flex-shrink-0 mt-0.5">ℹ️</span>
+        <p class="text-xs sm:text-sm text-blue-900 dark:text-blue-100 leading-snug break-words font-medium">
           <strong>Note:</strong> Testnet mode is still in development. Expect changes and improvements. You can change network mode in Settings (gear icon) → Preferences → Network Mode.
         </p>
       </div>
-      <button onclick="dismissDevStatusBanner()" class="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition flex-shrink-0 mt-1 sm:mt-0 self-end sm:self-center p-1" title="Dismiss">
+      <button onclick="dismissDevStatusBanner()" class="text-blue-700 dark:text-blue-300 hover:text-blue-900 dark:hover:text-blue-100 transition flex-shrink-0 mt-1 sm:mt-0 self-end sm:self-center p-1" title="Dismiss">
         <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
         </svg>
