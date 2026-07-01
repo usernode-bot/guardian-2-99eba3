@@ -4179,7 +4179,7 @@ app.get('/api/channels', async (req, res) => {
         name: c.name,
         description: c.description,
         ownerId: c.owner_id,
-        ownerUsername: c.ownerUsername,
+        ownerUsername: c.ownerUsername || (c.owner_id ? `user-${c.owner_id}` : null),
         category: c.category,
         isVerified: c.is_verified,
         verifiedAt: c.verified_at,
@@ -4345,7 +4345,7 @@ app.post('/api/channels', async (req, res) => {
       SELECT username FROM users WHERE id = $1
     `, [userId]);
 
-    const ownerUsername = userRows.length > 0 ? userRows[0].username : null;
+    const ownerUsername = (userRows.length > 0 && userRows[0].username) ? userRows[0].username : `user-${userId}`;
 
     // Update audit log with txHash
     if (auditLogId) {
