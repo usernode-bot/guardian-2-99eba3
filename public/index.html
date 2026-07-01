@@ -277,7 +277,7 @@
     }
 
     #feedView {
-      contain: layout style paint;
+      /* Removed contain property to allow sticky positioning to work correctly */
     }
 
     /* Compose Modal Styles */
@@ -913,50 +913,53 @@
 
       <!-- Feed View -->
       <div id="feedView" class="hidden flex flex-col flex-1 overflow-hidden relative">
-        <!-- Sticky Feed Header with Tabs -->
-        <div id="feedHeader" class="sticky top-0 z-[100] bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0">
-          <div class="p-4">
-            <div class="flex items-center justify-between mb-3">
-              <h2 class="text-lg font-bold text-zinc-900 dark:text-zinc-100">Feed</h2>
-            </div>
-            <!-- Tab Buttons -->
-            <div class="flex gap-2 mb-3 border-b border-zinc-200 dark:border-zinc-800">
-              <button id="feedTabFollowing" onclick="switchFeedTab('following')" class="pb-2 px-1 font-medium text-sm text-zinc-600 dark:text-zinc-400 border-b-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100 transition active-tab">Following</button>
-              <button id="feedTabDiscover" onclick="switchFeedTab('discover')" class="pb-2 px-1 font-medium text-sm text-zinc-600 dark:text-zinc-400 border-b-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100 transition">Discover</button>
-            </div>
-            <!-- Search and Create for Following Tab -->
-            <div id="feedHeaderFollowing" class="space-y-2">
-              <button onclick="openCreateChannelModal()" class="w-full px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition duration-200 ease-out active:scale-95" title="Create a new channel">Create Channel</button>
-            </div>
-            <!-- Search for Discover Tab (hidden initially) -->
-            <div id="feedHeaderDiscover" class="space-y-2 hidden">
-              <input id="searchChannelsInput" type="text" placeholder="Search channels..." class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition text-sm" oninput="handleChannelSearch(this.value)">
-            </div>
-          </div>
-        </div>
-        <!-- Channel List or Posts Container -->
-        <div id="feedMainContent" class="flex-1 overflow-y-auto">
-          <!-- Channel list or posts will be inserted here -->
-          <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading channels...</div>
-        </div>
-        <!-- Channel Detail Header (hidden until a channel is selected) -->
-        <div id="channelDetailHeader" class="sticky top-0 z-[100] bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0 hidden">
-          <!-- Main header row with back button, title, and action buttons -->
-          <div class="flex items-center justify-between p-4">
-            <div class="flex items-center gap-3 flex-1 min-w-0">
-              <button id="channelBackBtn" onclick="backToChannelList()" class="flex-shrink-0 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition text-xl">←</button>
-              <div class="min-w-0 flex-1">
-                <h3 id="channelDetailName" class="text-lg font-bold text-zinc-900 dark:text-zinc-100 truncate">Channel Name</h3>
+        <!-- Channel List or Posts Container (now contains sticky headers) -->
+        <div id="feedMainContent" class="flex-1 overflow-y-auto flex flex-col">
+          <!-- Sticky Feed Header with Tabs -->
+          <div id="feedHeader" class="sticky top-0 z-[100] bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0">
+            <div class="p-4">
+              <div class="flex items-center justify-between mb-3">
+                <h2 class="text-lg font-bold text-zinc-900 dark:text-zinc-100">Feed</h2>
+              </div>
+              <!-- Tab Buttons -->
+              <div class="flex gap-2 mb-3 border-b border-zinc-200 dark:border-zinc-800">
+                <button id="feedTabFollowing" onclick="switchFeedTab('following')" class="pb-2 px-1 font-medium text-sm text-zinc-600 dark:text-zinc-400 border-b-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100 transition active-tab">Following</button>
+                <button id="feedTabDiscover" onclick="switchFeedTab('discover')" class="pb-2 px-1 font-medium text-sm text-zinc-600 dark:text-zinc-400 border-b-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100 transition">Discover</button>
+              </div>
+              <!-- Search and Create for Following Tab -->
+              <div id="feedHeaderFollowing" class="space-y-2">
+                <button onclick="openCreateChannelModal()" class="w-full px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition duration-200 ease-out active:scale-95" title="Create a new channel">Create Channel</button>
+              </div>
+              <!-- Search for Discover Tab (hidden initially) -->
+              <div id="feedHeaderDiscover" class="space-y-2 hidden">
+                <input id="searchChannelsInput" type="text" placeholder="Search channels..." class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition text-sm" oninput="handleChannelSearch(this.value)">
               </div>
             </div>
-            <div id="channelActionButtons" class="flex items-center gap-2 flex-shrink-0 ml-4">
-              <button id="channelFollowBtn" onclick="showChannelFollowToast()" class="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition active:scale-95">Follow</button>
+          </div>
+          <!-- Channel Detail Header (hidden until a channel is selected) -->
+          <div id="channelDetailHeader" class="sticky top-0 z-[100] bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0 hidden">
+            <!-- Main header row with back button, title, and action buttons -->
+            <div class="flex items-center justify-between p-4">
+              <div class="flex items-center gap-3 flex-1 min-w-0">
+                <button id="channelBackBtn" onclick="backToChannelList()" class="flex-shrink-0 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition text-xl">←</button>
+                <div class="min-w-0 flex-1">
+                  <h3 id="channelDetailName" class="text-lg font-bold text-zinc-900 dark:text-zinc-100 truncate">Channel Name</h3>
+                </div>
+              </div>
+              <div id="channelActionButtons" class="flex items-center gap-2 flex-shrink-0 ml-4">
+                <button id="channelFollowBtn" onclick="showChannelFollowToast()" class="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition active:scale-95">Follow</button>
+              </div>
+            </div>
+            <!-- Info row with description and followers -->
+            <div class="px-4 pb-3 border-t border-zinc-100 dark:border-zinc-800">
+              <p id="channelDetailDescription" class="text-sm text-zinc-600 dark:text-zinc-400">Channel description</p>
+              <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-1" id="channelDetailFollowers">0 followers</div>
             </div>
           </div>
-          <!-- Info row with description and followers -->
-          <div class="px-4 pb-3 border-t border-zinc-100 dark:border-zinc-800">
-            <p id="channelDetailDescription" class="text-sm text-zinc-600 dark:text-zinc-400">Channel description</p>
-            <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-1" id="channelDetailFollowers">0 followers</div>
+          <!-- Content wrapper for scrollable channel/post content -->
+          <div id="feedContentWrapper" class="flex-1">
+            <!-- Channel list or posts will be inserted here -->
+            <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading channels...</div>
           </div>
         </div>
       </div>
@@ -6361,7 +6364,7 @@
         });
         html += '</div>';
       }
-      document.getElementById('feedMainContent').innerHTML = html;
+      document.getElementById('feedContentWrapper').innerHTML = html;
     }
 
     async function showChannelPosts(channelId) {
@@ -6453,7 +6456,7 @@
               html += '<div class="p-4 text-center text-xs text-zinc-500 dark:text-zinc-500">No more posts</div>';
             }
           }
-          document.getElementById('feedMainContent').innerHTML = html;
+          document.getElementById('feedContentWrapper').innerHTML = html;
           channelPostsOffset = 50;
         } else if (data && data.error) {
           throw new Error(data.error);
@@ -6461,7 +6464,7 @@
       } catch (err) {
         console.error('Error loading channel posts:', err);
         showToast('Error loading channel posts', 'error');
-        document.getElementById('feedMainContent').innerHTML = '<div class="text-center py-8 text-red-600 dark:text-red-400">Error loading posts</div>';
+        document.getElementById('feedContentWrapper').innerHTML = '<div class="text-center py-8 text-red-600 dark:text-red-400">Error loading posts</div>';
       } finally {
         isLoadingChannelPosts = false;
       }
@@ -6668,7 +6671,7 @@
             }
           }
 
-          document.getElementById('feedMainContent').innerHTML = html;
+          document.getElementById('feedContentWrapper').innerHTML = html;
           channelPostsOffset = 50;
         } else if (data && data.error) {
           console.error('Error reloading posts:', data.error);
@@ -6945,7 +6948,7 @@
             });
             html += '</div>';
           }
-          document.getElementById('feedMainContent').innerHTML = html;
+          document.getElementById('feedContentWrapper').innerHTML = html;
         }
       } catch (err) {
         console.error('Error loading following channels:', err);
@@ -6973,7 +6976,7 @@
             });
             html += '</div>';
           }
-          document.getElementById('feedMainContent').innerHTML = html;
+          document.getElementById('feedContentWrapper').innerHTML = html;
         }
       } catch (err) {
         console.error('Error loading discover channels:', err);
