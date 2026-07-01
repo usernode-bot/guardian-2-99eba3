@@ -1506,6 +1506,89 @@
     </div>
   </div>
 
+  <!-- Channel Settings Modal -->
+  <div id="channelSettingsModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <!-- Header section -->
+      <div class="p-6 border-b border-zinc-300 dark:border-zinc-700 flex justify-between items-center sticky top-0 bg-white dark:bg-zinc-900">
+        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Channel Settings</h2>
+        <button onclick="closeChannelSettingsModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 text-xl">✕</button>
+      </div>
+      <!-- Content section -->
+      <div class="p-6 space-y-6">
+        <div id="channelSettingsSpinner" class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading channel settings...</div>
+        <div id="channelSettingsContent" class="hidden space-y-6">
+          <!-- Channel Info Section -->
+          <div class="space-y-3 pb-4 border-b border-zinc-200 dark:border-zinc-800">
+            <h3 class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Channel Information</h3>
+            <div class="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <p class="text-zinc-600 dark:text-zinc-400 mb-1">Created</p>
+                <p id="channelSettingsCreatedAt" class="text-zinc-900 dark:text-zinc-100 font-medium">—</p>
+              </div>
+              <div>
+                <p class="text-zinc-600 dark:text-zinc-400 mb-1">Last Updated</p>
+                <p id="channelSettingsUpdatedAt" class="text-zinc-900 dark:text-zinc-100 font-medium">—</p>
+              </div>
+              <div>
+                <p class="text-zinc-600 dark:text-zinc-400 mb-1">Category</p>
+                <p id="channelSettingsCategory" class="text-zinc-900 dark:text-zinc-100 font-medium">—</p>
+              </div>
+              <div>
+                <p class="text-zinc-600 dark:text-zinc-400 mb-1">Verified</p>
+                <p id="channelSettingsVerified" class="text-zinc-900 dark:text-zinc-100 font-medium">—</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Edit Section -->
+          <div class="space-y-3">
+            <h3 class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Edit Channel Details</h3>
+            <div>
+              <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300 block mb-1">Channel Name</label>
+              <input id="channelSettingsNameInput" type="text" maxlength="255" placeholder="Channel name" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+            </div>
+            <div>
+              <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300 block mb-1">Description</label>
+              <textarea id="channelSettingsDescInput" maxlength="1000" placeholder="Channel description (optional)" rows="4" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"></textarea>
+            </div>
+          </div>
+
+          <!-- Delete Section -->
+          <div class="pt-4 border-t border-zinc-200 dark:border-zinc-800">
+            <button id="channelDeleteBtn" onclick="openDeleteChannelConfirm()" class="w-full px-4 py-2 bg-red-600 hover:bg-red-700 dark:hover:bg-red-500 text-white rounded-lg transition font-medium">Delete Channel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer section -->
+      <div id="channelSettingsFooter" class="hidden p-6 border-t border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 flex gap-2">
+        <button onclick="closeChannelSettingsModal()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100 font-medium">Cancel</button>
+        <button id="channelSettingsSaveBtn" onclick="submitChannelSettings()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Channel Confirmation Modal -->
+  <div id="deleteChannelConfirmModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-sm">
+      <!-- Header section -->
+      <div class="p-6 border-b border-zinc-300 dark:border-zinc-700">
+        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Delete Channel</h2>
+      </div>
+      <!-- Content section -->
+      <div class="p-6 space-y-4">
+        <p class="text-zinc-700 dark:text-zinc-300">Are you sure you want to delete this channel? This cannot be undone.</p>
+        <p class="text-sm text-zinc-600 dark:text-zinc-400">All posts in this channel will also be deleted.</p>
+      </div>
+      <!-- Footer section -->
+      <div class="p-6 border-t border-zinc-300 dark:border-zinc-700 flex gap-2">
+        <button onclick="closeDeleteChannelConfirm()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100 font-medium">Cancel</button>
+        <button onclick="submitDeleteChannel()" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 dark:hover:bg-red-500 text-white rounded-lg transition font-medium">Delete</button>
+      </div>
+    </div>
+  </div>
+
   <!-- UserNode Bridge for wallet signing -->
   <script src="https://social-vibecoding.usernodelabs.org/usernode-bridge/v1/bridge.js"></script>
 
@@ -3439,6 +3522,8 @@
         if (e.key === 'Escape') {
           closeAttachmentSheet();
           hideDeleteContactModal();
+          closeChannelSettingsModal();
+          closeDeleteChannelConfirm();
         }
       });
 
@@ -6591,7 +6676,9 @@
       console.log('isOwner:', isOwner);
       const actionButtonsContainer = document.getElementById('channelActionButtons');
       if (isOwner) {
-        actionButtonsContainer.innerHTML = '';
+        actionButtonsContainer.innerHTML = `
+          <button onclick="openChannelSettingsModal(${channel.id})" class="px-3 py-1 bg-zinc-200 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-300 dark:hover:bg-zinc-600 rounded text-sm font-medium transition active:scale-95">Settings</button>
+        `;
       } else {
         const followBtnText = isFollowing ? 'Following' : 'Follow';
         const followBtnClass = isFollowing
@@ -7124,6 +7211,162 @@
       }
     }
 
+    function formatDisplayDate(dateString) {
+      if (!dateString) return '—';
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    }
+
+    async function openChannelSettingsModal(channelId) {
+      const channel = channelsList.find(ch => ch.id === channelId);
+      if (!channel) {
+        showToast('Channel not found', 'error');
+        return;
+      }
+
+      const isOwner = currentUser && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
+      if (!isOwner) {
+        showToast('Only channel owner can access settings', 'error');
+        return;
+      }
+
+      // Show loading state
+      const modal = document.getElementById('channelSettingsModal');
+      const spinner = document.getElementById('channelSettingsSpinner');
+      const content = document.getElementById('channelSettingsContent');
+      const footer = document.getElementById('channelSettingsFooter');
+
+      spinner.classList.remove('hidden');
+      content.classList.add('hidden');
+      footer.classList.add('hidden');
+      modal.classList.remove('hidden');
+
+      // Fetch full channel data
+      try {
+        const channels = await apiCall('/api/channels');
+        const fullChannel = channels.channels.find(ch => ch.id === channelId);
+
+        if (!fullChannel) {
+          showToast('Failed to load channel settings', 'error');
+          return;
+        }
+
+        // Populate form fields
+        document.getElementById('channelSettingsNameInput').value = fullChannel.name || '';
+        document.getElementById('channelSettingsDescInput').value = fullChannel.description || '';
+        document.getElementById('channelSettingsCreatedAt').textContent = formatDisplayDate(fullChannel.createdAt);
+        document.getElementById('channelSettingsUpdatedAt').textContent = formatDisplayDate(fullChannel.updatedAt);
+        document.getElementById('channelSettingsCategory').textContent = fullChannel.category || 'General';
+        document.getElementById('channelSettingsVerified').textContent = fullChannel.isVerified ? 'Yes' : 'No';
+
+        // Hide loading, show content
+        spinner.classList.add('hidden');
+        content.classList.remove('hidden');
+        footer.classList.remove('hidden');
+      } catch (err) {
+        console.error('Error loading channel settings:', err);
+        showToast('Failed to load channel settings', 'error');
+        modal.classList.add('hidden');
+      }
+    }
+
+    function closeChannelSettingsModal() {
+      document.getElementById('channelSettingsModal').classList.add('hidden');
+    }
+
+    async function submitChannelSettings() {
+      const name = document.getElementById('channelSettingsNameInput').value.trim();
+      const description = document.getElementById('channelSettingsDescInput').value.trim();
+
+      if (!name || name.length === 0 || name.length > 255) {
+        showToast('Channel name is required and must be 1-255 characters', 'error');
+        return;
+      }
+
+      if (description && description.length > 1000) {
+        showToast('Description must be max 1000 characters', 'error');
+        return;
+      }
+
+      const saveBtn = document.getElementById('channelSettingsSaveBtn');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+
+      try {
+        const data = await apiCall(`/api/channels/${currentChannelId}`, {
+          method: 'PUT',
+          body: {
+            name: name,
+            description: description || null
+          }
+        });
+
+        if (data && data.error) {
+          showToast(`Error updating channel: ${data.error}`, 'error');
+          return;
+        }
+
+        showToast('Channel updated successfully', 'success');
+
+        // Update the channel in local list
+        const channel = channelsList.find(ch => ch.id === currentChannelId);
+        if (channel) {
+          channel.name = name;
+          channel.description = description;
+          // Update the channel detail header
+          document.getElementById('channelDetailName').textContent = name;
+          document.getElementById('channelDetailDescription').textContent = description;
+        }
+
+        closeChannelSettingsModal();
+      } catch (err) {
+        console.error('Error updating channel:', err);
+        showToast('Failed to update channel', 'error');
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save Changes';
+      }
+    }
+
+    function openDeleteChannelConfirm() {
+      document.getElementById('deleteChannelConfirmModal').classList.remove('hidden');
+    }
+
+    function closeDeleteChannelConfirm() {
+      document.getElementById('deleteChannelConfirmModal').classList.add('hidden');
+    }
+
+    async function submitDeleteChannel() {
+      const deleteBtn = document.querySelector('#deleteChannelConfirmModal button:last-child');
+      deleteBtn.disabled = true;
+      deleteBtn.textContent = 'Deleting...';
+
+      try {
+        const data = await apiCall(`/api/channels/${currentChannelId}`, {
+          method: 'DELETE'
+        });
+
+        if (data && data.error) {
+          showToast(`Error deleting channel: ${data.error}`, 'error');
+          return;
+        }
+
+        showToast('Channel deleted successfully', 'success');
+        closeDeleteChannelConfirm();
+        closeChannelSettingsModal();
+
+        // Reload channels and go back to list
+        await loadChannels();
+        backToChannelList();
+      } catch (err) {
+        console.error('Error deleting channel:', err);
+        showToast('Failed to delete channel', 'error');
+      } finally {
+        deleteBtn.disabled = false;
+        deleteBtn.textContent = 'Delete';
+      }
+    }
+
     async function switchFeedTab(tabName) {
       currentChannelId = null;
       document.getElementById('channelDetailHeader').classList.add('hidden');
@@ -7229,7 +7472,9 @@
           const myChannels = data.channels.filter(ch =>
             currentUser && parseInt(ch.ownerId, 10) === parseInt(currentUser.id, 10)
           );
-          channelsList = myChannels;
+          // Store the full channel list so showChannelPosts() can find any channel by ID.
+          // Filtering happens only for display; global state must contain all channels.
+          channelsList = data.channels;
           let html = '';
           if (myChannels.length === 0) {
             html = `<div class="text-center py-12 text-zinc-600 dark:text-zinc-500">
