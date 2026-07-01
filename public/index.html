@@ -6634,6 +6634,12 @@
               <p class="text-sm">Be the first to post in this channel!</p>
             </div>`;
           } else {
+            console.log('[Channel posts rendering] State check:', {
+              currentUserExists: !!currentUser,
+              currentChannelExists: !!currentChannel,
+              currentChannelIdSet: !!currentChannelId,
+              postCount: data.posts.length
+            });
             html += '<div class="space-y-3 p-4" id="channelPostsContainer">';
             data.posts.forEach(post => {
               html += renderChannelPost(post);
@@ -6701,14 +6707,32 @@
       const timestamp = new Date(post.createdAt);
       const formattedTime = formatRelativeTime(post.createdAt);
       const contentText = post.content?.text || '';
-      const isOwner = currentUser && (parseInt(post.userId, 10) === parseInt(currentUser.id, 10) || (currentChannel && parseInt(currentChannel.ownerId, 10) === parseInt(currentUser.id, 10)));
+
+      // Enhanced ownership check with defensive programming
+      const hasCurrentUser = !!currentUser;
+      const hasCurrentChannel = !!currentChannel;
+      const postUserIdNum = parseInt(post.userId, 10);
+      const currentUserIdNum = currentUser ? parseInt(currentUser.id, 10) : null;
+      const channelOwnerIdNum = currentChannel ? parseInt(currentChannel.ownerId, 10) : null;
+
+      const isPostAuthor = hasCurrentUser && postUserIdNum === currentUserIdNum;
+      const isChannelOwner = hasCurrentUser && hasCurrentChannel && channelOwnerIdNum === currentUserIdNum;
+      const isOwner = isPostAuthor || isChannelOwner;
+
+      // Debug logging (for troubleshooting menu visibility)
+      if (!isOwner && currentUser) {
+        console.debug(`[renderChannelPost] Menu hidden - postId: ${post.id}, postUserId: ${post.userId}, currentUserId: ${currentUser.id}, channelOwnerId: ${currentChannel?.ownerId}`, {
+          postUserIdNum, currentUserIdNum, channelOwnerIdNum, isPostAuthor, isChannelOwner
+        });
+      }
+
       const editedTime = post.isEdited ? formatRelativeTime(post.updatedAt) : null;
       const images = post.imageUrls || [];
 
       let actionMenu = '';
       if (isOwner) {
         actionMenu = `<div class="relative group">
-          <button onclick="togglePostMenu(${post.id}, event)" class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 text-lg transition">⋮</button>
+          <button onclick="togglePostMenu(${post.id}, event)" class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 text-lg transition" title="Post actions">⋮</button>
           <div id="menu-${post.id}" class="hidden absolute right-0 mt-1 bg-white dark:bg-zinc-800 rounded-lg shadow-lg border border-zinc-200 dark:border-zinc-700 z-50 min-w-[120px]">
             <button onclick="openEditPostModal(${currentChannelId}, ${post.id})" class="block w-full text-left px-4 py-2 text-sm text-zinc-900 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-700">Edit</button>
             <button onclick="openDeletePostConfirm(${currentChannelId}, ${post.id})" class="block w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-zinc-100 dark:hover:bg-zinc-700 border-t border-zinc-200 dark:border-zinc-700">Delete</button>
@@ -6866,6 +6890,12 @@
               <p class="text-sm">Be the first to post in this channel!</p>
             </div>`;
           } else {
+            console.log('[Channel posts rendering] State check:', {
+              currentUserExists: !!currentUser,
+              currentChannelExists: !!currentChannel,
+              currentChannelIdSet: !!currentChannelId,
+              postCount: data.posts.length
+            });
             html += '<div class="space-y-3 p-4" id="channelPostsContainer">';
             data.posts.forEach(post => {
               html += renderChannelPost(post);
@@ -6894,7 +6924,9 @@
       event.stopPropagation();
       const menu = document.getElementById(`menu-${postId}`);
       if (menu) {
+        const wasHidden = menu.classList.contains('hidden');
         menu.classList.toggle('hidden');
+        console.log(`[togglePostMenu] Menu for post ${postId} toggled - was hidden: ${wasHidden}, now hidden: ${menu.classList.contains('hidden')}`);
         // Close menu when clicking outside
         const closeMenu = () => {
           menu.classList.add('hidden');
@@ -6903,6 +6935,8 @@
         setTimeout(() => {
           document.addEventListener('click', closeMenu);
         }, 0);
+      } else {
+        console.warn(`[togglePostMenu] Menu not found for post ${postId}`);
       }
     }
 
