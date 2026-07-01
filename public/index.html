@@ -493,6 +493,7 @@
         <div id="headerPageLabel" class="text-sm text-zinc-600 dark:text-zinc-500 leading-tight truncate">Messages</div>
       </div>
       <div id="headerRight" class="text-sm text-zinc-600 dark:text-zinc-500 relative flex flex-1 justify-end items-center gap-2">
+        <button id="postBtn" class="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition font-medium" title="Create a post" onclick="openPostModal()">✎ Post</button>
         <button id="messageHistoryBtn" class="hidden text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare mr-3" title="Message history" onclick="openMessageHistory()">📜</button>
         <button id="conversationMenuBtn" class="hidden text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare" title="Conversation options" onclick="toggleConversationMenu(event)">⋯</button>
         <div id="conversationMenuDropdown" class="hidden absolute right-0 mt-2 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg shadow-lg z-50 min-w-40">
@@ -1291,6 +1292,39 @@
       <div class="p-6 border-t border-zinc-300 dark:border-zinc-700 flex gap-2">
         <button onclick="closeCreateChannelModal()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
         <button onclick="createChannel()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Post Modal -->
+  <div id="postModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-sm">
+      <!-- Header section -->
+      <div class="p-6 border-b border-zinc-300 dark:border-zinc-700 flex justify-between items-center">
+        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Create a post</h2>
+        <button onclick="closePostModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
+      </div>
+      <!-- Content section -->
+      <div class="p-6 space-y-3">
+        <div>
+          <textarea id="postInput" placeholder="Share your thoughts..." maxlength="2000" rows="4" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition" oninput="updatePostCharCount()"></textarea>
+        </div>
+        <div id="postImagePreview" class="flex flex-wrap gap-2"></div>
+        <div class="flex items-center justify-between">
+          <div class="flex gap-2 items-center">
+            <span id="postCharCount" class="text-xs text-zinc-500 dark:text-zinc-500">0/2000</span>
+            <button
+              onclick="attachImageToPost()"
+              class="px-2 py-1 text-xs text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition"
+              title="Attach image"
+            >📎</button>
+          </div>
+        </div>
+      </div>
+      <!-- Footer section -->
+      <div class="p-6 border-t border-zinc-300 dark:border-zinc-700 flex gap-2">
+        <button onclick="closePostModal()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
+        <button id="submitPostBtn" onclick="submitPost()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium disabled:opacity-50 disabled:cursor-not-allowed" disabled>Post</button>
       </div>
     </div>
   </div>
@@ -4968,6 +5002,151 @@
       document.getElementById('messageHistoryModal').classList.add('hidden');
       messageHistoryGroupId = null;
       messageHistoryOldestTimestamp = null;
+    }
+
+    // Post modal functions
+    let postImages = [];
+
+    function openPostModal() {
+      document.getElementById('postModal').classList.remove('hidden');
+      document.getElementById('postInput').value = '';
+      postImages = [];
+      updatePostImagePreview();
+      updatePostCharCount();
+      document.getElementById('submitPostBtn').disabled = true;
+    }
+
+    function closePostModal() {
+      document.getElementById('postModal').classList.add('hidden');
+      document.getElementById('postInput').value = '';
+      postImages = [];
+      updatePostImagePreview();
+      updatePostCharCount();
+      document.getElementById('submitPostBtn').disabled = true;
+    }
+
+    function hidePostModal() {
+      closePostModal();
+    }
+
+    function updatePostCharCount() {
+      const textarea = document.getElementById('postInput');
+      const counter = document.getElementById('postCharCount');
+      const btn = document.getElementById('submitPostBtn');
+      if (textarea && counter) {
+        const count = textarea.value.length;
+        counter.textContent = count + '/2000';
+        btn.disabled = count === 0 && postImages.length === 0;
+      }
+    }
+
+    function attachImageToPost() {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          const maxSize = 5 * 1024 * 1024;
+          if (file.size > maxSize) {
+            showToast('Image must be less than 5MB', 'error');
+            return;
+          }
+
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const dataUri = e.target.result;
+            if (postImages.length < 4) {
+              postImages.push(dataUri);
+              updatePostImagePreview();
+              updatePostCharCount();
+            } else {
+              showToast('Maximum 4 images per post', 'error');
+            }
+          };
+          reader.readAsDataURL(file);
+        }
+      };
+      input.click();
+    }
+
+    function removePostImage(index) {
+      postImages.splice(index, 1);
+      updatePostImagePreview();
+      updatePostCharCount();
+    }
+
+    function updatePostImagePreview() {
+      const preview = document.getElementById('postImagePreview');
+      if (!preview) return;
+
+      preview.innerHTML = postImages.map((img, idx) => `
+        <div class="relative">
+          <img src="${img}" alt="Preview" class="max-w-24 max-h-24 rounded">
+          <button onclick="removePostImage(${idx})" class="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-700">&times;</button>
+        </div>
+      `).join('');
+    }
+
+    async function submitPost() {
+      const textarea = document.getElementById('postInput');
+      const btn = document.getElementById('submitPostBtn');
+
+      if (!textarea || !btn) return;
+
+      let content = textarea.value.trim();
+
+      if (!content && postImages.length === 0) {
+        showToast('Post must contain either text or images', 'error');
+        return;
+      }
+
+      if (content.length > 2000) {
+        showToast('Post is too long (exceeds 2000 characters)', 'error');
+        return;
+      }
+
+      btn.disabled = true;
+
+      try {
+        // Fetch user's owned channel
+        const channelsData = await apiCall('/api/channels');
+        if (!channelsData || !channelsData.channels) {
+          showToast('Unable to fetch channels', 'error');
+          return;
+        }
+
+        const ownedChannel = channelsData.channels.find(ch =>
+          currentUser && parseInt(ch.ownerId, 10) === parseInt(currentUser.id, 10)
+        );
+
+        if (!ownedChannel) {
+          showToast('You must create a channel first', 'error');
+          return;
+        }
+
+        const response = await apiCall(`/api/channels/${ownedChannel.id}/posts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            content: content,
+            imageUrls: postImages
+          })
+        });
+
+        if (response && !response.error) {
+          showToast('Post created', 'success');
+          closePostModal();
+        } else {
+          const errorMsg = response?.error || 'Unable to create post';
+          showToast(errorMsg, 'error');
+        }
+      } catch (err) {
+        console.error('Error creating post:', err);
+        showToast('Unable to create post', 'error');
+      } finally {
+        btn.disabled = false;
+      }
     }
 
     async function openConversation(convId, otherId, username) {
