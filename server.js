@@ -7238,6 +7238,8 @@ async function start() {
 
     if (dbConnected) {
       try {
+        // === CRITICAL PATH: Schema initialization only ===
+        // These must complete before app.listen() so the server can serve requests immediately
         // Drop old presses table if it exists (for demo purposes)
         await pool.query(`DROP TABLE IF EXISTS presses CASCADE`);
 
@@ -7952,12 +7954,45 @@ async function start() {
     await pool.query(`COMMENT ON TABLE user_peers IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE user_foreground_sessions IS 'staging:private'`);
 
-    // Initialize RPC endpoint from database or environment
-    await initializeRpcUrl();
+        // Schema initialization complete. Start the server immediately so healthchecks pass.
+        // All seeding and non-critical initialization will run in the background.
+        console.log('[STARTUP] Schema initialization complete, starting HTTP server...');
+      } catch (dbInitErr) {
+        console.error('[DB] Database schema initialization error:', dbInitErr.message);
+        console.log('[STARTUP] Continuing with degraded functionality');
+      }
+    }
 
-    // Seed staging data
-    // Seed mock testnet users (grace, henry, iris, jack) in all environments for user search testing
-    const grace = 11, henry = 12, iris = 13, jack = 14;
+    // Start HTTP server now, before any blocking seeding operations
+    app.listen(port, async () => {
+      console.log(`[STARTUP] ✅ Server listening on port ${port}`);
+      console.log(`[CONFIG] USERNODE_ENV: ${process.env.USERNODE_ENV || 'not set'}`);
+      console.log(`[CONFIG] NETWORK_MODE: ${NETWORK_MODE}`);
+      console.log(`[CONFIG] IS_STAGING: ${IS_STAGING}`);
+      if (NETWORK_MODE === 'testnet') {
+        console.log(`[CONFIG] Real Testnet mode - RPC enabled: ${NODE_RPC_URL ? 'yes' : 'no'}`);
+        if (NODE_RPC_URL) {
+          console.log(`[CONFIG] NODE_RPC_URL: ${NODE_RPC_URL}`);
+        }
+      } else {
+        console.log(`[CONFIG] Demo mode - using bridge/fallback exclusively, RPC disabled`);
+      }
+
+      // === BACKGROUND INITIALIZATION ===
+      // The following operations run after the server is listening.
+      // They will not block healthchecks or prevent the app from serving requests.
+
+      // Initialize RPC endpoint from database or environment
+      try {
+        await initializeRpcUrl();
+      } catch (rpcErr) {
+        console.warn('[RPC] Failed to initialize RPC URL:', rpcErr.message);
+      }
+
+      // Seed staging data
+      try {
+        // Seed mock testnet users (grace, henry, iris, jack) in all environments for user search testing
+        const grace = 11, henry = 12, iris = 13, jack = 14;
     await pool.query(`
       INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at, bio, avatar_url) VALUES
         ($1, 'test-user-grace', 'ut1staging-grace-001', NOW(), NOW() - INTERVAL '5 days', 'Test user - DevOps engineer', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2310b981%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EG%3C/text%3E%3C/svg%3E'),
@@ -9126,159 +9161,148 @@ async function start() {
       console.log('[Channel Seed] ✅ Channel seed data completed');
     }
 
-    // Create reserved system user for Crypto Daily bot (all environments)
-    await pool.query(`
-      INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at)
-      VALUES ($1, $2, $3, NOW(), NOW())
-      ON CONFLICT (id) DO UPDATE SET
-        username = EXCLUDED.username,
-        usernode_pubkey = EXCLUDED.usernode_pubkey
-    `, [-2, 'Crypto Daily', 'ut1-crypto-daily-system']);
-
-    // Seed network milestones in production (hardcoded values for now)
-    if (!IS_STAGING) {
-      const milestones = [
-        { key: 'active_nodes', label: 'Active Nodes', value: '42', unit: 'nodes', category: 'network' },
-        { key: 'network_throughput', label: 'Network Throughput', value: '2.5', unit: 'Gbps', category: 'network' },
-        { key: 'transactions_24h', label: 'Transactions (24h)', value: '187,432', unit: 'tx', category: 'activity' },
-        { key: 'avg_latency', label: 'Avg Latency', value: '125', unit: 'ms', category: 'performance' }
-      ];
-
-      for (const m of milestones) {
+        // Create reserved system user for Crypto Daily bot (all environments)
         await pool.query(`
-          INSERT INTO network_milestones (key, label, value, unit, category, last_refreshed_at)
-          VALUES ($1, $2, $3, $4, $5, NOW())
-          ON CONFLICT (key) DO UPDATE SET
-            label = EXCLUDED.label,
-            value = EXCLUDED.value,
-            unit = EXCLUDED.unit,
-            category = EXCLUDED.category,
-            updated_at = NOW()
-        `, [m.key, m.label, m.value, m.unit, m.category]);
-      }
-    }
-      } catch (dbInitErr) {
-        console.error('[DB] Database initialization error:', dbInitErr.message);
-        console.log('[STARTUP] Continuing with degraded functionality');
-      }
-    }
+          INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at)
+          VALUES ($1, $2, $3, NOW(), NOW())
+          ON CONFLICT (id) DO UPDATE SET
+            username = EXCLUDED.username,
+            usernode_pubkey = EXCLUDED.usernode_pubkey
+        `, [-2, 'Crypto Daily', 'ut1-crypto-daily-system']);
 
-    // Start hourly milestone post generator (runs every hour with 24-hour cooldown)
-    // Create initial milestone post on startup if cooldown allows
-    if (dbConnected) {
-      try {
-        if (await shouldCreateMilestonePost()) {
-          await createMilestonePost();
+        // Seed network milestones in production (hardcoded values for now)
+        if (!IS_STAGING) {
+          const milestones = [
+            { key: 'active_nodes', label: 'Active Nodes', value: '42', unit: 'nodes', category: 'network' },
+            { key: 'network_throughput', label: 'Network Throughput', value: '2.5', unit: 'Gbps', category: 'network' },
+            { key: 'transactions_24h', label: 'Transactions (24h)', value: '187,432', unit: 'tx', category: 'activity' },
+            { key: 'avg_latency', label: 'Avg Latency', value: '125', unit: 'ms', category: 'performance' }
+          ];
+
+          for (const m of milestones) {
+            await pool.query(`
+              INSERT INTO network_milestones (key, label, value, unit, category, last_refreshed_at)
+              VALUES ($1, $2, $3, $4, $5, NOW())
+              ON CONFLICT (key) DO UPDATE SET
+                label = EXCLUDED.label,
+                value = EXCLUDED.value,
+                unit = EXCLUDED.unit,
+                category = EXCLUDED.category,
+                updated_at = NOW()
+            `, [m.key, m.label, m.value, m.unit, m.category]);
+          }
         }
-      } catch (err) {
-        console.warn('[STARTUP] Failed to create initial milestone post:', err.message);
+      } catch (seedErr) {
+        console.warn('[SEED] Background seeding failed:', seedErr.message);
       }
-    }
 
-    // Set interval to check and create milestone post every hour (3600000 ms)
-    // Only creates if 24 hours have passed since the last post
-    if (dbConnected) {
-      setInterval(async () => {
+      // Start hourly milestone post generator (runs every hour with 24-hour cooldown)
+      // Create initial milestone post on startup if cooldown allows
+      if (dbConnected) {
         try {
+          console.log('[BOT] Starting milestone post generator...');
           if (await shouldCreateMilestonePost()) {
             await createMilestonePost();
           }
         } catch (err) {
-          console.warn('[BOT] Milestone post creation failed:', err.message);
+          console.warn('[BOT] Failed to create initial milestone post:', err.message);
         }
-      }, 3600000);
-    }
-
-    // Start Crypto Daily bot (runs every 2 hours)
-    // Create initial post on startup if cooldown check passes
-    if (dbConnected) {
-      try {
-        if (await shouldCreateCryptoDailyPost()) {
-          await createCryptoDailyPost();
-        }
-      } catch (err) {
-        console.warn('[STARTUP] Failed to create initial Crypto Daily post:', err.message);
       }
-    }
 
-    // Set interval to create a new Crypto Daily post every 2 hours (7200000 ms)
-    // Conditionally create posts only when cooldown criteria are met
-    if (dbConnected) {
-      setInterval(async () => {
+      // Set interval to check and create milestone post every hour (3600000 ms)
+      // Only creates if 24 hours have passed since the last post
+      if (dbConnected) {
+        setInterval(async () => {
+          try {
+            if (await shouldCreateMilestonePost()) {
+              await createMilestonePost();
+            }
+          } catch (err) {
+            console.warn('[BOT] Milestone post creation failed:', err.message);
+          }
+        }, 3600000);
+      }
+
+      // Start Crypto Daily bot (runs every 2 hours)
+      // Create initial post on startup if cooldown check passes
+      if (dbConnected) {
         try {
+          console.log('[BOT] Starting Crypto Daily bot...');
           if (await shouldCreateCryptoDailyPost()) {
             await createCryptoDailyPost();
           }
         } catch (err) {
-          console.warn('[BOT] Crypto Daily post creation failed:', err.message);
+          console.warn('[BOT] Failed to create initial Crypto Daily post:', err.message);
         }
-      }, 7200000);
-    }
-
-    // Start GuardiAI bot (runs every 12 hours)
-    // Create initial post on startup if cooldown check passes
-    if (dbConnected) {
-      try {
-        if (await shouldCreateGuardiAIPost()) {
-          await createGuardiAIPost();
-        }
-      } catch (err) {
-        console.warn('[STARTUP] Failed to create initial GuardiAI post:', err.message);
       }
-    }
 
-    // Set interval to create a new GuardiAI post every 12 hours (43200000 ms)
-    // Conditionally create posts only when cooldown criteria are met
-    if (dbConnected) {
-      setInterval(async () => {
+      // Set interval to create a new Crypto Daily post every 2 hours (7200000 ms)
+      // Conditionally create posts only when cooldown criteria are met
+      if (dbConnected) {
+        setInterval(async () => {
+          try {
+            if (await shouldCreateCryptoDailyPost()) {
+              await createCryptoDailyPost();
+            }
+          } catch (err) {
+            console.warn('[BOT] Crypto Daily post creation failed:', err.message);
+          }
+        }, 7200000);
+      }
+
+      // Start GuardiAI bot (runs every 12 hours)
+      // Create initial post on startup if cooldown check passes
+      if (dbConnected) {
         try {
+          console.log('[BOT] Starting GuardiAI bot...');
           if (await shouldCreateGuardiAIPost()) {
             await createGuardiAIPost();
           }
         } catch (err) {
-          console.warn('[BOT] GuardiAI post creation failed:', err.message);
+          console.warn('[BOT] Failed to create initial GuardiAI post:', err.message);
         }
-      }, 43200000);
-    }
-
-    // Initialize Usernode blockchain usernames cache for real-time search
-    try {
-      console.log('[UsernamesCache] Initializing on server startup...');
-      const usernamesCache = createUsernamesCache({
-        nodeRpcUrl: NODE_RPC_URL,
-        refreshIntervalMs: 300000, // 5 minutes
-        isStaging: IS_STAGING
-      });
-      await usernamesCache.initialize();
-      console.log('[UsernamesCache] ✅ Cache initialized:', usernamesCache.stats());
-
-      // Store cache in global scope for access by API endpoints
-      global.usernamesCache = usernamesCache;
-    } catch (cacheErr) {
-      console.warn('[UsernamesCache] Initialization failed:', cacheErr.message);
-      // Create a no-op cache that returns empty results
-      global.usernamesCache = {
-        searchUsernames: () => [],
-        getUsername: () => null,
-        getUsernameByPubkey: () => null,
-        ready: () => false,
-        stats: () => ({ initialized: false, usernameCount: 0 })
-      };
-    }
-
-    app.listen(port, () => {
-      console.log(`Listening on :${port}`);
-      console.log(`[CONFIG] USERNODE_ENV: ${process.env.USERNODE_ENV || 'not set'}`);
-      console.log(`[CONFIG] NETWORK_MODE: ${NETWORK_MODE}`);
-      console.log(`[CONFIG] IS_STAGING: ${IS_STAGING}`);
-      if (NETWORK_MODE === 'testnet') {
-        console.log(`[CONFIG] Real Testnet mode - RPC enabled: ${NODE_RPC_URL ? 'yes' : 'no'}`);
-        if (NODE_RPC_URL) {
-          console.log(`[CONFIG] NODE_RPC_URL: ${NODE_RPC_URL}`);
-        }
-      } else {
-        console.log(`[CONFIG] Demo mode - using bridge/fallback exclusively, RPC disabled`);
       }
+
+      // Set interval to create a new GuardiAI post every 12 hours (43200000 ms)
+      // Conditionally create posts only when cooldown criteria are met
+      if (dbConnected) {
+        setInterval(async () => {
+          try {
+            if (await shouldCreateGuardiAIPost()) {
+              await createGuardiAIPost();
+            }
+          } catch (err) {
+            console.warn('[BOT] GuardiAI post creation failed:', err.message);
+          }
+        }, 43200000);
+      }
+
+      // Initialize Usernode blockchain usernames cache for real-time search
+      try {
+        console.log('[UsernamesCache] Initializing on server startup...');
+        const usernamesCache = createUsernamesCache({
+          nodeRpcUrl: NODE_RPC_URL,
+          refreshIntervalMs: 300000, // 5 minutes
+          isStaging: IS_STAGING
+        });
+        await usernamesCache.initialize();
+        console.log('[UsernamesCache] ✅ Cache initialized:', usernamesCache.stats());
+
+        // Store cache in global scope for access by API endpoints
+        global.usernamesCache = usernamesCache;
+      } catch (cacheErr) {
+        console.warn('[UsernamesCache] Initialization failed:', cacheErr.message);
+        // Create a no-op cache that returns empty results
+        global.usernamesCache = {
+          searchUsernames: () => [],
+          getUsername: () => null,
+          getUsernameByPubkey: () => null,
+          ready: () => false,
+          stats: () => ({ initialized: false, usernameCount: 0 })
+        };
+      }
+
+      console.log('[STARTUP] ✅ Background initialization completed');
     });
   } catch (err) {
     console.error(err);
