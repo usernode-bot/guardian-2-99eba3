@@ -37,14 +37,15 @@ pool.on('error', (err) => {
 const JWT_SECRET = process.env.JWT_SECRET;
 const IS_STAGING = process.env.USERNODE_ENV === 'staging';
 
-// Initialize network mode with priority: NETWORK_MODE env var > ENABLE_DEMO_MODE env var > USERNODE_ENV==='staging' > default 'testnet'
-let NETWORK_MODE = process.env.NETWORK_MODE && ['demo', 'testnet', 'devnet'].includes(process.env.NETWORK_MODE)
-  ? process.env.NETWORK_MODE
+// Initialize network mode with priority: NETWORK_MODE env var > ENABLE_DEMO_MODE env var > USERNODE_ENV==='staging' > default 'real_testnet'
+// Note: 'testnet' from env is treated as an alias for 'real_testnet' for backward compatibility
+let NETWORK_MODE = process.env.NETWORK_MODE && ['demo', 'testnet', 'real_testnet', 'devnet'].includes(process.env.NETWORK_MODE)
+  ? (process.env.NETWORK_MODE === 'testnet' ? 'real_testnet' : process.env.NETWORK_MODE)
   : process.env.ENABLE_DEMO_MODE === 'true'
     ? 'demo'
     : IS_STAGING
       ? 'demo'
-      : 'testnet';
+      : 'real_testnet';
 
 // Derive ENABLE_DEMO_MODE for backward compatibility with existing transaction code
 const getEnableDemoMode = () => NETWORK_MODE === 'demo';
@@ -56,13 +57,13 @@ const APP_SECRET_KEY = process.env.APP_SECRET_KEY || 'guardian_sk_mqudwes5_ae613
 
 // RPC Configuration with validation (Real Testnet mode only)
 function validateAndConfigureRPC() {
-  // RPC configuration only applies when NETWORK_MODE === 'testnet'
+  // RPC configuration only applies when NETWORK_MODE === 'real_testnet'
   // In demo mode, bridge/fallback is used exclusively
 
   let configuredUrl = process.env.NODE_RPC_URL;
 
-  // If NODE_RPC_URL is set, validate it's a valid URL (only in testnet mode)
-  if (configuredUrl && NETWORK_MODE === 'testnet') {
+  // If NODE_RPC_URL is set, validate it's a valid URL (only in real_testnet mode)
+  if (configuredUrl && NETWORK_MODE === 'real_testnet') {
     try {
       new URL(configuredUrl);
     } catch (err) {
@@ -72,12 +73,12 @@ function validateAndConfigureRPC() {
   }
 
   // If not set or invalid, use intelligent defaults based on environment
-  if (!configuredUrl && NETWORK_MODE === 'testnet') {
+  if (!configuredUrl && NETWORK_MODE === 'real_testnet') {
     if (IS_STAGING) {
       configuredUrl = 'http://host.docker.internal:3001';
       console.log(`[CONFIG] NODE_RPC_URL not set in staging, using default: ${configuredUrl}`);
     } else {
-      console.warn(`[CONFIG] NODE_RPC_URL not configured in production testnet mode — token transfers and blockchain features may be unavailable`);
+      console.warn(`[CONFIG] NODE_RPC_URL not configured in production real_testnet mode — token transfers and blockchain features may be unavailable`);
       configuredUrl = null; // Will trigger fallback to bridge mode
     }
   }
@@ -98,9 +99,9 @@ let rpcHealthCacheTime = 0;
 const RPC_HEALTH_CACHE_MS = 30000; // 30 seconds
 
 async function checkRPCHealth() {
-  // RPC health checks only in testnet mode
-  if (NETWORK_MODE !== 'testnet') {
-    return { rpcUrl: null, reachable: false, error: 'Demo mode - RPC not used' };
+  // RPC health checks only in real_testnet mode
+  if (NETWORK_MODE !== 'real_testnet') {
+    return { rpcUrl: null, reachable: false, error: 'Demo or devnet mode - RPC not used' };
   }
 
   if (!NODE_RPC_URL) {
@@ -211,9 +212,9 @@ async function getRpcEndpointFromDatabase() {
   return null;
 }
 
-// Initialize RPC URL from database if available (testnet only)
+// Initialize RPC URL from database if available (real_testnet only)
 async function initializeRpcUrl() {
-  if (NETWORK_MODE !== 'testnet') return;
+  if (NETWORK_MODE !== 'real_testnet') return;
   const dbRpcUrl = await getRpcEndpointFromDatabase();
   if (dbRpcUrl) {
     NODE_RPC_URL = dbRpcUrl;
@@ -1435,8 +1436,8 @@ app.get('/api/config', async (req, res) => {
     // Check if user is authorized (first user OR has created a group)
     const canEdit = userId === 1 || (await userHasCreatedGroup(userId));
 
-    // Get RPC health status only in testnet mode
-    const rpcHealth = NETWORK_MODE === 'testnet' ? await checkRPCHealth() : null;
+    // Get RPC health status only in real_testnet mode
+    const rpcHealth = NETWORK_MODE === 'real_testnet' ? await checkRPCHealth() : null;
 
     const nodeRpcUrlSecret = {
       key: 'NODE_RPC_URL',
@@ -1445,8 +1446,8 @@ app.get('/api/config', async (req, res) => {
       private: false
     };
 
-    // Only include rpcStatus in testnet mode
-    if (NETWORK_MODE === 'testnet') {
+    // Only include rpcStatus in real_testnet mode
+    if (NETWORK_MODE === 'real_testnet') {
       nodeRpcUrlSecret.rpcStatus = rpcHealth;
     }
 
@@ -1541,7 +1542,7 @@ app.put('/api/config/demo-mode', async (req, res) => {
     }
 
     // Update in-memory state via network mode
-    NETWORK_MODE = enabled ? 'demo' : 'testnet';
+    NETWORK_MODE = enabled ? 'demo' : 'real_testnet';
     ENABLE_DEMO_MODE = getEnableDemoMode();
     console.log(`[CONFIG] Demo mode updated (legacy endpoint): ${enabled} (by user ${userId})`);
 
@@ -3423,9 +3424,9 @@ app.get('/api/search/users', async (req, res) => {
       mutualCount: 0,
     }));
 
-    // Query blockchain usernames cache (with timeout) - only in testnet mode
+    // Query blockchain usernames cache (with timeout) - only in real_testnet mode
     let blockchainUsers = [];
-    if (NETWORK_MODE === 'testnet' && global.usernamesCache && global.usernamesCache.ready() && q.length >= 2) {
+    if (NETWORK_MODE === 'real_testnet' && global.usernamesCache && global.usernamesCache.ready() && q.length >= 2) {
       try {
         const blockchainTimeout = new Promise((_, reject) =>
           setTimeout(() => reject(new Error('Blockchain timeout')), 2500)
@@ -7675,13 +7676,15 @@ async function start() {
       console.log(`[CONFIG] USERNODE_ENV: ${process.env.USERNODE_ENV || 'not set'}`);
       console.log(`[CONFIG] NETWORK_MODE: ${NETWORK_MODE}`);
       console.log(`[CONFIG] IS_STAGING: ${IS_STAGING}`);
-      if (NETWORK_MODE === 'testnet') {
+      if (NETWORK_MODE === 'real_testnet') {
         console.log(`[CONFIG] Real Testnet mode - RPC enabled: ${NODE_RPC_URL ? 'yes' : 'no'}`);
         if (NODE_RPC_URL) {
           console.log(`[CONFIG] NODE_RPC_URL: ${NODE_RPC_URL}`);
         }
+      } else if (NETWORK_MODE === 'devnet') {
+        console.log(`[CONFIG] Devnet mode - database-only transactions, RPC disabled`);
       } else {
-        console.log(`[CONFIG] Demo mode - using bridge/fallback exclusively, RPC disabled`);
+        console.log(`[CONFIG] Demo mode - simulated transactions, RPC disabled`);
       }
 
       // === BACKGROUND INITIALIZATION ===

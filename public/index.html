@@ -2091,7 +2091,7 @@
           dropdown.disabled = false;
 
           // Show/hide RPC endpoint config based on network mode and permission
-          if (currentMode === 'testnet' && config.canEditRpc) {
+          if (currentMode === 'real_testnet' && config.canEditRpc) {
             rpcEndpointConfig.classList.remove('hidden');
             rpcEndpointInput.value = config.rpcEndpoint || 'http://localhost:3001';
             rpcEndpointInput.disabled = !config.canEditRpc;
