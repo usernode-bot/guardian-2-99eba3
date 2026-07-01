@@ -950,10 +950,10 @@
                 <button id="channelFollowBtn" onclick="showChannelFollowToast()" class="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition active:scale-95">Follow</button>
               </div>
             </div>
-            <!-- Info row with description and followers -->
+            <!-- Info row with description (followers hidden) -->
             <div class="px-4 pb-3 border-t border-zinc-100 dark:border-zinc-800">
               <p id="channelDetailDescription" class="text-sm text-zinc-600 dark:text-zinc-400">Channel description</p>
-              <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-1" id="channelDetailFollowers">0 followers</div>
+              <div class="hidden text-xs text-zinc-500 dark:text-zinc-500 mt-1" id="channelDetailFollowers">0 followers</div>
             </div>
           </div>
           <!-- Content wrapper for scrollable channel/post content -->
@@ -6413,8 +6413,6 @@
       document.getElementById('channelDetailHeader').classList.remove('hidden');
       document.getElementById('channelDetailName').textContent = channel.name;
       document.getElementById('channelDetailDescription').textContent = channel.description || '';
-      const followerCount = channel.followerCount || 0;
-      document.getElementById('channelDetailFollowers').textContent = `${followerCount} ${followerCount === 1 ? 'follower' : 'followers'}`;
 
       // Set up action buttons based on ownership
       const isOwner = currentUser && channel.ownerId === currentUser.id;
