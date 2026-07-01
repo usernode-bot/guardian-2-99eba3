@@ -5445,7 +5445,8 @@
         if (!statusEl) break;
 
         if (auditData.status === 'confirmed') {
-          statusEl.innerHTML = `✓ Confirmed | <span class="font-mono text-xs" title="${auditData.txHash}">${auditData.txHash.substring(0, 10)}...</span>`;
+          const txHashDisplay = auditData.txHash ? auditData.txHash.substring(0, 10) : 'N/A';
+          statusEl.innerHTML = `✓ Confirmed | <span class="font-mono text-xs" title="${auditData.txHash || 'No hash'}">${txHashDisplay}...</span>`;
           statusEl.classList.remove('text-amber-600', 'dark:text-amber-400');
           statusEl.classList.add('text-green-600', 'dark:text-green-400');
           isComplete = true;
