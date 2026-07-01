@@ -6178,7 +6178,7 @@ async function fetchLinkPreview(url) {
   }
 }
 
-// GET /api/feed/posts - Fetch paginated feed posts with milestone posts
+// GET /api/feed/posts - Fetch paginated posts from followed channels
 // When no channel_id is provided, fetches posts from followed channels only
 app.get('/api/feed/posts', async (req, res) => {
   try {
@@ -6217,9 +6217,7 @@ app.get('/api/feed/posts', async (req, res) => {
         fp.channel_id,
         u.username,
         u.verified_at,
-        u.avatar_url,
-        (SELECT COUNT(*) FROM feed_likes WHERE post_id = fp.id)::INTEGER as like_count,
-        (SELECT COUNT(*) FROM feed_comments WHERE post_id = fp.id)::INTEGER as comment_count
+        u.avatar_url
       FROM feed_posts fp
       JOIN users u ON u.id = fp.user_id
       ${whereClause}
@@ -6239,8 +6237,6 @@ app.get('/api/feed/posts', async (req, res) => {
       updatedAt: post.updated_at,
       isEdited: post.updated_at && post.created_at && (new Date(post.updated_at) - new Date(post.created_at)) > 1000,
       onChain: post.on_chain,
-      likeCount: post.like_count || 0,
-      commentCount: post.comment_count || 0,
       isMilestone: post.user_id === -1
     }));
 
@@ -6282,93 +6278,6 @@ app.get('/api/feed/posts', async (req, res) => {
 
 
 // PUT /api/feed/posts/:postId - Edit a feed post's text (owner only)
-
-// Helper function to generate randomized milestone values
-
-// Helper function to check if 24 hours have passed since the last milestone post
-
-// Helper function to create a milestone post from randomized values
-
-// Helper function to fetch crypto data from CoinGecko API
-
-// Helper function to check if 24 hours have passed since the last Crypto Daily post
-
-// Helper function to create a Crypto Daily post
-
-// Helper function to generate GuardiAI friendly content
-function generateGuardiAIContent() {
-  const friendlyMessages = [
-    "Wassup bro?",
-    "Hey everyone!",
-    "What's up folks?",
-    "Yo, what's good?",
-    "What's happening out there?",
-    "How's it going?",
-    "Heyyy friends!",
-    "Good vibes only 🤙",
-    "Let's goooo!",
-    "Just checking in on y'all",
-    "What's good in the hood?",
-    "Keeping it real with y'all",
-    "Vibing with this community",
-    "Yo, let's make it happen",
-    "Stay blessed out there"
-  ];
-
-  const randomIndex = Math.floor(Math.random() * friendlyMessages.length);
-  return friendlyMessages[randomIndex];
-}
-
-// Helper function to check if 12 hours have passed since the last GuardiAI auto-post
-async function shouldCreateGuardiAIPost() {
-  try {
-    const { rows } = await pool.query(`
-      SELECT created_at FROM feed_posts
-      WHERE user_id = 100
-      ORDER BY created_at DESC
-      LIMIT 1
-    `);
-
-    if (rows.length === 0) {
-      // No previous GuardiAI post, allow creation
-      return true;
-    }
-
-    const lastPostTime = new Date(rows[0].created_at);
-    const now = new Date();
-    const hoursSinceLastPost = (now - lastPostTime) / (1000 * 60 * 60);
-
-    if (hoursSinceLastPost >= 12) {
-      console.log(`[GUARDIAI] 12+ hours since last post (${hoursSinceLastPost.toFixed(1)}h). Creating new post.`);
-      return true;
-    } else {
-      console.log(`[GUARDIAI] Skipping post creation. Only ${hoursSinceLastPost.toFixed(1)}h since last post (need 12h cooldown)`);
-      return false;
-    }
-  } catch (err) {
-    console.error('[GUARDIAI] Error checking cooldown:', err);
-    return false;
-  }
-}
-
-// Helper function to create a GuardiAI auto-post
-async function createGuardiAIPost() {
-  try {
-    const content = generateGuardiAIContent();
-
-    const { rows } = await pool.query(`
-      INSERT INTO feed_posts (user_id, content, created_at)
-      VALUES ($1, $2, NOW())
-      RETURNING id, created_at
-    `, [100, JSON.stringify({ type: 'text', text: content })]);
-
-    console.log(`[GUARDIAI] Created GuardiAI auto-post #${rows[0].id} at ${new Date().toISOString()}`);
-    return { created: true, postId: rows[0].id, createdAt: rows[0].created_at };
-  } catch (err) {
-    console.error('[GUARDIAI] Error creating GuardiAI post:', err);
-    return { created: false, reason: 'Error creating post' };
-  }
-}
 
 
 // Explorer API proxy for transaction status polling (modeled after Last One Wins)
@@ -7424,40 +7333,6 @@ async function start() {
         ON feed_posts(user_id)
     `);
 
-    // Create feed_comments table (public - comments on feed posts)
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS feed_comments (
-        id BIGSERIAL PRIMARY KEY,
-        post_id BIGINT NOT NULL REFERENCES feed_posts(id) ON DELETE CASCADE,
-        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        content TEXT NOT NULL,
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-      )
-    `);
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_feed_comments_post_id
-        ON feed_comments(post_id, created_at)
-    `);
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_feed_comments_user_id
-        ON feed_comments(user_id)
-    `);
-
-    // Create feed_likes table (public - likes on feed posts)
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS feed_likes (
-        id BIGSERIAL PRIMARY KEY,
-        post_id BIGINT NOT NULL REFERENCES feed_posts(id) ON DELETE CASCADE,
-        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        UNIQUE(post_id, user_id)
-      )
-    `);
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_feed_likes_post_id
-        ON feed_likes(post_id)
-    `);
 
     // Add channel_id column to feed_posts if it doesn't exist
     await pool.query(`
@@ -7530,25 +7405,6 @@ async function start() {
       }
     }
 
-    // Create bot_reply_log table for tracking bot replies
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS bot_reply_log (
-        id BIGSERIAL PRIMARY KEY,
-        trigger_comment_id BIGINT NOT NULL REFERENCES feed_comments(id) ON DELETE CASCADE,
-        bot_reply_comment_id BIGINT NOT NULL REFERENCES feed_comments(id) ON DELETE CASCADE,
-        trigger_username VARCHAR(255),
-        reply_content TEXT,
-        crypto_ticker VARCHAR(20),
-        crypto_price NUMERIC,
-        price_change_24h NUMERIC,
-        api_source VARCHAR(50),
-        created_at TIMESTAMPTZ DEFAULT NOW()
-      )
-    `);
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_bot_reply_log_trigger
-        ON bot_reply_log(trigger_comment_id)
-    `);
 
     // Create peers table (public - peer foreground hours data)
     await pool.query(`
@@ -8934,86 +8790,6 @@ async function start() {
         console.warn('[SEED] Background seeding failed:', seedErr.message);
       }
 
-      // Start hourly milestone post generator (runs every hour with 24-hour cooldown)
-      // Create initial milestone post on startup if cooldown allows
-      if (dbConnected) {
-        try {
-          console.log('[BOT] Starting milestone post generator...');
-          if (await shouldCreateMilestonePost()) {
-            await createMilestonePost();
-          }
-        } catch (err) {
-          console.warn('[BOT] Failed to create initial milestone post:', err.message);
-        }
-      }
-
-      // Set interval to check and create milestone post every hour (3600000 ms)
-      // Only creates if 24 hours have passed since the last post
-      if (dbConnected) {
-        setInterval(async () => {
-          try {
-            if (await shouldCreateMilestonePost()) {
-              await createMilestonePost();
-            }
-          } catch (err) {
-            console.warn('[BOT] Milestone post creation failed:', err.message);
-          }
-        }, 3600000);
-      }
-
-      // Start Crypto Daily bot (runs every 2 hours)
-      // Create initial post on startup if cooldown check passes
-      if (dbConnected) {
-        try {
-          console.log('[BOT] Starting Crypto Daily bot...');
-          if (await shouldCreateCryptoDailyPost()) {
-            await createCryptoDailyPost();
-          }
-        } catch (err) {
-          console.warn('[BOT] Failed to create initial Crypto Daily post:', err.message);
-        }
-      }
-
-      // Set interval to create a new Crypto Daily post every 2 hours (7200000 ms)
-      // Conditionally create posts only when cooldown criteria are met
-      if (dbConnected) {
-        setInterval(async () => {
-          try {
-            if (await shouldCreateCryptoDailyPost()) {
-              await createCryptoDailyPost();
-            }
-          } catch (err) {
-            console.warn('[BOT] Crypto Daily post creation failed:', err.message);
-          }
-        }, 7200000);
-      }
-
-      // Start GuardiAI bot (runs every 12 hours)
-      // Create initial post on startup if cooldown check passes
-      if (dbConnected) {
-        try {
-          console.log('[BOT] Starting GuardiAI bot...');
-          if (await shouldCreateGuardiAIPost()) {
-            await createGuardiAIPost();
-          }
-        } catch (err) {
-          console.warn('[BOT] Failed to create initial GuardiAI post:', err.message);
-        }
-      }
-
-      // Set interval to create a new GuardiAI post every 12 hours (43200000 ms)
-      // Conditionally create posts only when cooldown criteria are met
-      if (dbConnected) {
-        setInterval(async () => {
-          try {
-            if (await shouldCreateGuardiAIPost()) {
-              await createGuardiAIPost();
-            }
-          } catch (err) {
-            console.warn('[BOT] GuardiAI post creation failed:', err.message);
-          }
-        }, 43200000);
-      }
 
       // Initialize Usernode blockchain usernames cache for real-time search
       try {

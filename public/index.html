@@ -478,7 +478,7 @@
         <button id="backBtn" class="text-lg text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition">←</button>
         <div class="absolute -bottom-6 left-0 px-2 py-1 bg-zinc-900 dark:bg-zinc-700 text-white dark:text-zinc-100 text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">Back</div>
       </div>
-      <!-- Guardian branding + page label system (used for Feed, Messages, Contacts, Settings, Groups) -->
+      <!-- Guardian branding + page label system (used for Channels, Messages, Contacts, Settings, Groups) -->
       <div id="headerContent" class="flex flex-col items-start flex-1 gap-0">
         <div class="flex items-center gap-2">
           <span id="headerTitle" class="hidden"></span>
@@ -804,11 +804,11 @@
         <div id="messageList" class="flex-1 overflow-y-auto space-y-1 p-4 pb-28 pt-20"></div>
       </div>
 
-      <!-- Feed View -->
+      <!-- Channels View -->
       <div id="feedView" class="hidden flex flex-col flex-1 overflow-hidden relative">
         <!-- Channel List or Posts Container (now contains sticky headers) -->
         <div id="feedMainContent" class="flex-1 overflow-y-auto flex flex-col">
-          <!-- Sticky Feed Header with Tabs -->
+          <!-- Sticky Channels Header with Tabs -->
           <div id="feedHeader" class="sticky top-0 z-30 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0">
             <div class="p-4">
               <div class="flex items-center justify-between mb-3">
@@ -1442,7 +1442,7 @@
   </div>
 
 
-  <!-- Feed Compose Modal -->
+  <!-- Channel Compose Modal -->
   <!-- Toast Notification Container -->
   <div id="toastContainer" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
@@ -6228,7 +6228,7 @@
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('footer-in-view');
       document.getElementById('header').classList.remove('header-chat-fixed');
-      document.getElementById('headerTitle').textContent = 'Feed';
+      document.getElementById('headerTitle').textContent = 'Channels';
       document.getElementById('backBtnContainer').classList.add('hidden');
       document.getElementById('headerContent').classList.remove('hidden');
       document.getElementById('headerBranding').textContent = 'Guardian';
@@ -6966,7 +6966,7 @@
         }
       } catch (err) {
         console.error('Error loading home feed:', err);
-        showToast('Error loading feed', 'error');
+        showToast('Error loading posts', 'error');
       }
     }
 
