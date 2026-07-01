@@ -493,7 +493,7 @@
         <div id="headerPageLabel" class="text-sm text-zinc-600 dark:text-zinc-500 leading-tight truncate">Messages</div>
       </div>
       <div id="headerRight" class="text-sm text-zinc-600 dark:text-zinc-500 relative flex flex-1 justify-end items-center gap-2">
-        <button id="postBtn" class="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition font-medium" title="Create a post" onclick="openPostModal()">✎ Post</button>
+        <button id="postBtn" class="hidden text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition font-medium" title="Create a post" onclick="openPostModal()">✎ Post</button>
         <button id="messageHistoryBtn" class="hidden text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare mr-3" title="Message history" onclick="openMessageHistory()">📜</button>
         <button id="conversationMenuBtn" class="hidden text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare" title="Conversation options" onclick="toggleConversationMenu(event)">⋯</button>
         <div id="conversationMenuDropdown" class="hidden absolute right-0 mt-2 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg shadow-lg z-50 min-w-40">
@@ -2675,6 +2675,7 @@
       document.getElementById('backBtnContainer').classList.remove('hidden');
       document.getElementById('menuBtn').classList.add('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
+      document.getElementById('postBtn').classList.add('hidden');
       sidebarOpen = false;
     }
 
@@ -4944,6 +4945,7 @@
       messageHistoryOldestTimestamp = null;
       messageHistoryHasMore = true;
 
+      document.getElementById('postBtn').classList.add('hidden');
       const modal = document.getElementById('messageHistoryModal');
       modal.classList.remove('hidden');
 
@@ -5742,6 +5744,7 @@
       document.getElementById('backBtnContainer').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
+      document.getElementById('postBtn').classList.add('hidden');
 
       // Clear all polling intervals when returning to messages view
       if (pollInterval) clearInterval(pollInterval);
@@ -6426,6 +6429,7 @@
       document.getElementById('backBtnContainer').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
+      document.getElementById('postBtn').classList.add('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
       if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
       document.getElementById('contactsSearchInput').value = '';
@@ -6452,6 +6456,7 @@
       document.getElementById('backBtnContainer').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
+      document.getElementById('postBtn').classList.remove('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
       if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
 
@@ -7424,6 +7429,7 @@
       document.getElementById('headerPageLabel').textContent = 'Profile';
       document.getElementById('menuBtn').classList.add('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
+      document.getElementById('postBtn').classList.add('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
 
       // Load profile data and switch to identity tab by default
