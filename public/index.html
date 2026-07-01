@@ -6378,6 +6378,8 @@
 
       if (!channel) return;
 
+      currentChannel = channel;
+
       document.getElementById('feedHeader').style.display = 'none';
       document.getElementById('channelDetailHeader').classList.remove('hidden');
       document.getElementById('channelDetailName').textContent = channel.name;
@@ -6410,13 +6412,39 @@
         if (data && data.posts) {
           channelPostsHasMore = data.hasMore || false;
           let html = '';
+
+          // Add compose box for owner
+          if (isOwner) {
+            html += `
+              <div class="p-4 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
+                <textarea
+                  id="channelPostInput"
+                  placeholder="Write a post in #${escapeHtml(channel.name)}..."
+                  maxlength="2000"
+                  rows="3"
+                  class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"
+                  oninput="updateChannelPostCharCount()"
+                ></textarea>
+                <div class="flex items-center justify-between mt-2">
+                  <span id="channelPostCharCount" class="text-xs text-zinc-500 dark:text-zinc-500">0/2000</span>
+                  <button
+                    id="channelPostBtn"
+                    onclick="submitChannelPost()"
+                    class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled
+                  >Post</button>
+                </div>
+              </div>
+            `;
+          }
+
           if (data.posts.length === 0) {
-            html = `<div class="text-center py-12 text-zinc-600 dark:text-zinc-500">
+            html += `<div class="text-center py-12 text-zinc-600 dark:text-zinc-500">
               <p class="text-lg font-medium mb-2">No posts yet in #${escapeHtml(channel.name)}</p>
               <p class="text-sm">Be the first to post in this channel!</p>
             </div>`;
           } else {
-            html = '<div class="space-y-3 p-4" id="channelPostsContainer">';
+            html += '<div class="space-y-3 p-4" id="channelPostsContainer">';
             data.posts.forEach(post => {
               html += renderChannelPost(post);
             });
@@ -6484,24 +6512,323 @@
       const timestamp = new Date(post.createdAt);
       const formattedTime = formatRelativeTime(post.createdAt);
       const contentText = post.content?.text || '[No text]';
+      const isOwner = currentUser && (post.userId === currentUser.id || (currentChannel && currentChannel.ownerId === currentUser.id));
+      const editedTime = post.isEdited ? formatRelativeTime(post.updatedAt) : null;
+
+      let actionMenu = '';
+      if (isOwner) {
+        actionMenu = `<div class="relative group">
+          <button onclick="togglePostMenu(${post.id}, event)" class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 text-lg transition">⋮</button>
+          <div id="menu-${post.id}" class="hidden absolute right-0 mt-1 bg-white dark:bg-zinc-800 rounded-lg shadow-lg border border-zinc-200 dark:border-zinc-700 z-50 min-w-[120px]">
+            <button onclick="openEditPostModal(${currentChannelId}, ${post.id})" class="block w-full text-left px-4 py-2 text-sm text-zinc-900 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-700">Edit</button>
+            <button onclick="openDeletePostConfirm(${currentChannelId}, ${post.id})" class="block w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-zinc-100 dark:hover:bg-zinc-700 border-t border-zinc-200 dark:border-zinc-700">Delete</button>
+          </div>
+        </div>`;
+      }
 
       return `
-        <div class="pb-3 border-b border-zinc-100 dark:border-zinc-800 last:border-b-0">
+        <div class="pb-3 border-b border-zinc-100 dark:border-zinc-800 last:border-b-0 relative group" data-post-id="${post.id}">
           <div class="flex items-start gap-3">
             <div class="flex-shrink-0 w-10 h-10 bg-zinc-300 dark:bg-zinc-700 rounded-full flex items-center justify-center text-xs font-bold text-zinc-600 dark:text-zinc-400">
               ${post.username ? post.username.substring(0, 2).toUpperCase() : 'U'}
             </div>
             <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-2">
-                <span class="font-semibold text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username || 'System')}</span>
-                ${post.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs">✓</span>' : ''}
+              <div class="flex items-center gap-2 justify-between">
+                <div class="flex items-center gap-2">
+                  <span class="font-semibold text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username || 'System')}</span>
+                  ${post.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs">✓</span>' : ''}
+                </div>
+                ${actionMenu}
               </div>
               <p class="text-zinc-900 dark:text-zinc-100 text-sm mt-1 mb-2 whitespace-pre-wrap break-words">${escapeHtml(contentText)}</p>
-              <div class="text-xs text-zinc-500 dark:text-zinc-500">${formattedTime}</div>
+              <div class="text-xs text-zinc-500 dark:text-zinc-500">
+                ${formattedTime}${editedTime ? ` • edited ${editedTime}` : ''}
+              </div>
             </div>
           </div>
         </div>
       `;
+    }
+
+    function updateChannelPostCharCount() {
+      const textarea = document.getElementById('channelPostInput');
+      const charCount = document.getElementById('channelPostCharCount');
+      const postBtn = document.getElementById('channelPostBtn');
+
+      if (!textarea || !charCount) return;
+
+      const count = textarea.value.length;
+      charCount.textContent = `${count}/2000`;
+
+      // Enable button only if content is not empty and under limit
+      if (postBtn) {
+        postBtn.disabled = count === 0 || count > 2000;
+      }
+    }
+
+    async function submitChannelPost() {
+      const textarea = document.getElementById('channelPostInput');
+      const postBtn = document.getElementById('channelPostBtn');
+
+      if (!textarea || !postBtn) return;
+
+      let content = textarea.value.trim();
+
+      // Validate content
+      if (!content) {
+        showToast('Post content cannot be empty', 'error');
+        return;
+      }
+
+      if (content.length > 2000) {
+        showToast('Post is too long (exceeds 2000 characters)', 'error');
+        return;
+      }
+
+      // Disable button and show loading state
+      postBtn.disabled = true;
+
+      try {
+        const response = await apiCall(`/api/channels/${currentChannelId}/posts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: content })
+        });
+
+        if (response && !response.error) {
+          showToast('Post created', 'success');
+          textarea.value = '';
+          updateChannelPostCharCount();
+          // Reload posts to show the new post
+          await loadChannelPostsAfterSubmit(currentChannelId);
+        } else {
+          const errorMsg = response?.error || 'Unable to create post';
+          showToast(errorMsg, 'error');
+        }
+      } catch (err) {
+        console.error('Error creating channel post:', err);
+        showToast('Unable to create post', 'error');
+      } finally {
+        postBtn.disabled = false;
+      }
+    }
+
+    async function loadChannelPostsAfterSubmit(channelId) {
+      try {
+        isLoadingChannelPosts = true;
+        channelPostsOffset = 0;
+        channelPostsHasMore = false;
+
+        const data = await apiCall(`/api/channels/${channelId}/posts?limit=50&offset=0`);
+        if (data && data.posts) {
+          channelPostsHasMore = data.hasMore || false;
+          let html = '';
+
+          // Re-add compose box for owner
+          const channel = channelsList.find(ch => ch.id === channelId);
+          const isOwner = currentUser && channel && channel.ownerId === currentUser.id;
+
+          if (isOwner) {
+            html += `
+              <div class="p-4 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
+                <textarea
+                  id="channelPostInput"
+                  placeholder="Write a post in #${escapeHtml(channel.name)}..."
+                  maxlength="2000"
+                  rows="3"
+                  class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"
+                  oninput="updateChannelPostCharCount()"
+                ></textarea>
+                <div class="flex items-center justify-between mt-2">
+                  <span id="channelPostCharCount" class="text-xs text-zinc-500 dark:text-zinc-500">0/2000</span>
+                  <button
+                    id="channelPostBtn"
+                    onclick="submitChannelPost()"
+                    class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled
+                  >Post</button>
+                </div>
+              </div>
+            `;
+          }
+
+          if (data.posts.length === 0) {
+            html += `<div class="text-center py-12 text-zinc-600 dark:text-zinc-500">
+              <p class="text-lg font-medium mb-2">No posts yet in #${escapeHtml(channel.name)}</p>
+              <p class="text-sm">Be the first to post in this channel!</p>
+            </div>`;
+          } else {
+            html += '<div class="space-y-3 p-4" id="channelPostsContainer">';
+            data.posts.forEach(post => {
+              html += renderChannelPost(post);
+            });
+            html += '</div>';
+
+            if (channelPostsHasMore) {
+              html += '<div class="p-4 flex justify-center"><button onclick="loadMoreChannelPosts(' + channelId + ')" class="py-2 px-6 text-sm font-medium text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition border border-cyan-600 dark:border-cyan-500 rounded">Load more posts</button></div>';
+            } else if (data.posts.length > 0) {
+              html += '<div class="p-4 text-center text-xs text-zinc-500 dark:text-zinc-500">No more posts</div>';
+            }
+          }
+
+          document.getElementById('feedMainContent').innerHTML = html;
+          channelPostsOffset = 50;
+        } else if (data && data.error) {
+          console.error('Error reloading posts:', data.error);
+        }
+      } catch (err) {
+        console.error('Error reloading channel posts:', err);
+      } finally {
+        isLoadingChannelPosts = false;
+      }
+    }
+
+    function togglePostMenu(postId, event) {
+      event.stopPropagation();
+      const menu = document.getElementById(`menu-${postId}`);
+      if (menu) {
+        menu.classList.toggle('hidden');
+        // Close menu when clicking outside
+        const closeMenu = () => {
+          menu.classList.add('hidden');
+          document.removeEventListener('click', closeMenu);
+        };
+        setTimeout(() => {
+          document.addEventListener('click', closeMenu);
+        }, 0);
+      }
+    }
+
+    function openEditPostModal(channelId, postId) {
+      // Close any open menu
+      document.querySelectorAll('[id^="menu-"]').forEach(m => m.classList.add('hidden'));
+
+      const modal = document.createElement('div');
+      modal.id = `edit-modal-${postId}`;
+      modal.className = 'fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4';
+      modal.innerHTML = `
+        <div class="bg-white dark:bg-zinc-900 rounded-lg shadow-xl max-w-md w-full max-h-[80vh] overflow-y-auto">
+          <div class="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
+            <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Edit Post</h2>
+            <button onclick="document.getElementById('edit-modal-${postId}').remove()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition text-xl">✕</button>
+          </div>
+          <div class="p-6 space-y-3">
+            <textarea
+              id="editPostInput-${postId}"
+              placeholder="Edit your post..."
+              maxlength="2000"
+              rows="5"
+              class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"
+              oninput="updateEditCharCount(${postId})"
+            ></textarea>
+            <div class="flex items-center justify-between">
+              <span id="editCharCount-${postId}" class="text-xs text-zinc-500 dark:text-zinc-500">0/2000</span>
+              <div class="space-x-2">
+                <button onclick="document.getElementById('edit-modal-${postId}').remove()" class="px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100 text-sm font-medium">Cancel</button>
+                <button onclick="submitEditPost(${channelId}, ${postId})" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition text-sm font-medium">Save</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+
+      // Pre-fill with current post content
+      const textarea = document.getElementById(`editPostInput-${postId}`);
+      const post = document.querySelector(`[data-post-id="${postId}"]`);
+      if (post) {
+        const contentEl = post.querySelector('p');
+        if (contentEl) {
+          textarea.value = contentEl.textContent;
+          updateEditCharCount(postId);
+        }
+      }
+      textarea.focus();
+    }
+
+    function updateEditCharCount(postId) {
+      const textarea = document.getElementById(`editPostInput-${postId}`);
+      const charCount = document.getElementById(`editCharCount-${postId}`);
+      if (textarea && charCount) {
+        charCount.textContent = `${textarea.value.length}/2000`;
+      }
+    }
+
+    async function submitEditPost(channelId, postId) {
+      const textarea = document.getElementById(`editPostInput-${postId}`);
+      const content = textarea.value.trim();
+
+      if (!content) {
+        showToast('Post content cannot be empty', 'error');
+        return;
+      }
+
+      if (content.length > 2000) {
+        showToast('Post is too long (exceeds 2000 characters)', 'error');
+        return;
+      }
+
+      try {
+        const response = await apiCall(`/api/channels/${channelId}/posts/${postId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: content })
+        });
+
+        if (response && !response.error) {
+          showToast('Post updated', 'success');
+          document.getElementById(`edit-modal-${postId}`).remove();
+          await loadChannelPostsAfterSubmit(channelId);
+        } else {
+          showToast(response?.error || 'Unable to update post', 'error');
+        }
+      } catch (err) {
+        console.error('Error editing post:', err);
+        showToast('Unable to update post', 'error');
+      }
+    }
+
+    function openDeletePostConfirm(channelId, postId) {
+      // Close any open menu
+      document.querySelectorAll('[id^="menu-"]').forEach(m => m.classList.add('hidden'));
+
+      const confirmDialog = document.createElement('div');
+      confirmDialog.id = `delete-confirm-${postId}`;
+      confirmDialog.className = 'fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4';
+      confirmDialog.innerHTML = `
+        <div class="bg-white dark:bg-zinc-900 rounded-lg shadow-xl max-w-md w-full">
+          <div class="px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
+            <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Delete Post</h2>
+          </div>
+          <div class="px-6 py-4">
+            <p class="text-zinc-700 dark:text-zinc-300">Delete this post? This action cannot be undone.</p>
+          </div>
+          <div class="px-6 py-4 border-t border-zinc-200 dark:border-zinc-800 flex gap-3">
+            <button onclick="document.getElementById('delete-confirm-${postId}').remove()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100 text-sm font-medium">Cancel</button>
+            <button onclick="submitDeletePost(${channelId}, ${postId})" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition text-sm font-medium">Delete</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(confirmDialog);
+    }
+
+    async function submitDeletePost(channelId, postId) {
+      try {
+        const response = await apiCall(`/api/channels/${channelId}/posts/${postId}`, {
+          method: 'DELETE'
+        });
+
+        if (response && !response.error) {
+          showToast('Post deleted', 'success');
+          document.getElementById(`delete-confirm-${postId}`).remove();
+          await loadChannelPostsAfterSubmit(channelId);
+        } else {
+          showToast(response?.error || 'Unable to delete post', 'error');
+        }
+      } catch (err) {
+        console.error('Error deleting post:', err);
+        showToast('Unable to delete post', 'error');
+      }
     }
 
     function backToChannelList() {
@@ -7897,6 +8224,7 @@
 
     // Channel-based Feed variables
     let currentChannelId = null;
+    let currentChannel = null;
     let channelsList = [];
     let filteredChannelsList = [];
     let currentSearchQuery = '';
