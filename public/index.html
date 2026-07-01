@@ -268,136 +268,6 @@
       to { opacity: 1; }
     }
 
-    @keyframes feedPostEnter {
-      from {
-        opacity: 0;
-      }
-      to {
-        opacity: 1;
-      }
-    }
-
-    .feed-post-enter {
-      animation: feedPostEnter 0.4s ease-out;
-    }
-
-    #feedView {
-      /* Removed contain property to allow sticky positioning to work correctly */
-    }
-
-    /* Compose Modal Styles */
-    #feedComposeModal {
-      backdrop-filter: blur(4px);
-      opacity: 0;
-      transition: opacity 0.3s ease-out;
-      pointer-events: none;
-    }
-
-    #feedComposeModal.hidden {
-      display: none;
-    }
-
-    #feedComposeModal:not(.hidden) {
-      display: flex;
-      pointer-events: auto;
-    }
-
-    #feedComposeContainer {
-      animation: slideUpModal 0.3s ease-out forwards;
-    }
-
-    @keyframes slideUpModal {
-      from {
-        opacity: 0;
-        transform: scale(0.95) translateY(16px);
-      }
-      to {
-        opacity: 1;
-        transform: scale(1) translateY(0);
-      }
-    }
-
-    /* FAB entrance animation */
-    #feedFAB {
-      animation: fabFadeIn 0.4s ease-out 0.1s backwards;
-    }
-
-    @keyframes fabFadeIn {
-      from {
-        opacity: 0;
-        transform: scale(0.8);
-      }
-      to {
-        opacity: 1;
-        transform: scale(1);
-      }
-    }
-
-    /* FAB hover and active states */
-    #feedFAB {
-      transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
-                  box-shadow 0.2s ease-out,
-                  background-color 0.2s ease-out;
-    }
-
-    #feedFAB:hover {
-      transform: scale(1.1);
-      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15);
-    }
-
-    #feedFAB:active {
-      transform: scale(0.95);
-    }
-
-    /* Modal close button animation */
-    #feedComposeModal button {
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-
-    #feedComposeModal .text-lg:hover {
-      transform: rotate(90deg);
-    }
-
-
-    /* Textarea smooth focus animation */
-    #feedComposeInput {
-      transition: border-color 0.2s ease-out,
-                  box-shadow 0.2s ease-out,
-                  background-color 0.2s ease-out;
-    }
-
-    #feedComposeInput:focus {
-      background-color: transparent;
-      border-color: rgba(6, 182, 212, 0.5);
-    }
-
-    /* Button color smooth transitions */
-    button.transition {
-      transition: background-color 0.2s ease-out,
-                  color 0.2s ease-out,
-                  transform 0.2s ease-out;
-    }
-
-    #feedComposeContainer {
-      width: 92vw;
-      max-width: calc(100vw - 32px);
-      height: 55vh;
-      max-height: 60vh;
-    }
-
-    @media (max-width: 639px) {
-      #feedComposeContainer {
-        width: 95vw;
-        max-width: calc(100vw - 16px);
-        height: 57vh;
-      }
-    }
-
-    @media (min-width: 640px) {
-      #feedComposeContainer {
-        width: 92vw;
-        max-width: calc(100vw - 32px);
-        height: 55vh;
       }
     }
 
@@ -661,12 +531,6 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
           Contacts
-        </button>
-        <button id="navFeedBtn" onclick="showFeedView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
-          <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v.756a3.5 3.5 0 015.618 1.401M12 8v8m-4-4h8" />
-          </svg>
-          Feed
         </button>
         <button id="navProfileBtn" onclick="showProfileView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
           <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -935,58 +799,6 @@
       </div>
 
       <!-- Feed View -->
-      <div id="feedView" class="hidden flex flex-col flex-1 overflow-hidden relative">
-        <!-- Channel List or Posts Container (now contains sticky headers) -->
-        <div id="feedMainContent" class="flex-1 overflow-y-auto flex flex-col">
-          <!-- Sticky Feed Header with Tabs -->
-          <div id="feedHeader" class="sticky top-0 z-30 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0">
-            <div class="p-4">
-              <div class="flex items-center justify-between mb-3">
-                <h2 class="text-lg font-bold text-zinc-900 dark:text-zinc-100">Feed</h2>
-              </div>
-              <!-- Tab Buttons -->
-              <div class="flex gap-2 mb-3 border-b border-zinc-200 dark:border-zinc-800">
-                <button id="feedTabFollowing" onclick="switchFeedTab('following')" class="pb-2 px-1 font-medium text-sm text-zinc-600 dark:text-zinc-400 border-b-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100 transition active-tab">Following</button>
-                <button id="feedTabDiscover" onclick="switchFeedTab('discover')" class="pb-2 px-1 font-medium text-sm text-zinc-600 dark:text-zinc-400 border-b-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100 transition">Discover</button>
-              </div>
-              <!-- Search and Create for Following Tab -->
-              <div id="feedHeaderFollowing" class="space-y-2">
-                <button onclick="openCreateChannelModal()" class="w-full px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition duration-200 ease-out active:scale-95" title="Create a new channel">Create Channel</button>
-              </div>
-              <!-- Search for Discover Tab (hidden initially) -->
-              <div id="feedHeaderDiscover" class="space-y-2 hidden">
-                <input id="searchChannelsInput" type="text" placeholder="Search channels..." class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition text-sm" oninput="handleChannelSearch(this.value)">
-              </div>
-            </div>
-          </div>
-          <!-- Channel Detail Header (hidden until a channel is selected) -->
-          <div id="channelDetailHeader" class="fixed inset-x-0 top-14 z-40 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0 hidden">
-            <!-- Main header row with back button, title, and action buttons -->
-            <div class="flex items-center justify-between p-4">
-              <div class="flex items-center gap-3 flex-1 min-w-0">
-                <button id="channelBackBtn" onclick="backToChannelList()" class="flex-shrink-0 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition text-xl">←</button>
-                <div class="min-w-0 flex-1">
-                  <h3 id="channelDetailName" class="text-lg font-bold text-zinc-900 dark:text-zinc-100 truncate">Channel Name</h3>
-                </div>
-              </div>
-              <div id="channelActionButtons" class="flex items-center gap-2 flex-shrink-0 ml-4">
-                <button id="channelFollowBtn" onclick="showChannelFollowToast()" class="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition active:scale-95">Follow</button>
-              </div>
-            </div>
-            <!-- Info row with description (followers hidden) -->
-            <div class="px-4 pb-3 border-t border-zinc-100 dark:border-zinc-800">
-              <p id="channelDetailDescription" class="text-sm text-zinc-600 dark:text-zinc-400">Channel description</p>
-              <div class="hidden text-xs text-zinc-500 dark:text-zinc-500 mt-1" id="channelDetailFollowers">0 followers</div>
-            </div>
-          </div>
-          <!-- Content wrapper for scrollable channel/post content -->
-          <div id="feedContentWrapper" class="flex-1">
-            <!-- Channel list or posts will be inserted here -->
-            <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading channels...</div>
-          </div>
-        </div>
-      </div>
-
       <!-- Contacts View (Saved Contacts only) -->
       <div id="contactsView" class="hidden flex flex-col flex-1 overflow-hidden">
         <!-- Scrollable Container for Boxes and Results -->
@@ -2426,9 +2238,6 @@
             if (document.getElementById('conversationsView') && !document.getElementById('conversationsView').classList.contains('hidden')) {
               await loadConversations();
             }
-            if (document.getElementById('feedView') && !document.getElementById('feedView').classList.contains('hidden')) {
-              await loadFeed();
-            }
           } catch (e) {
             console.log('Could not refresh data after network mode change:', e.message);
           }
@@ -2633,7 +2442,6 @@
       currentActiveView = viewName;
       const buttons = {
         'messages': document.getElementById('navMessagesBtn'),
-        'feed': document.getElementById('navFeedBtn'),
         'contacts': document.getElementById('navContactsBtn'),
         'settings': document.getElementById('navSettingsBtn'),
         'profile': document.getElementById('navProfileBtn')
@@ -3511,7 +3319,6 @@
         if (e.key === 'Escape') {
           closeAttachmentSheet();
           hideDeleteContactModal();
-          closeFeedComposeModal();
         }
       });
 
@@ -4121,14 +3928,10 @@
             });
           }
           closeCreateChannelModal();
-          await loadChannels();
-          // Show the newly created channel detail view
+          // Channel created but Feed view has been removed
+          // Show the newly created channel detail view if possible
           if (data && data.id) {
             await showChannelPosts(data.id);
-          } else if (!document.getElementById('feedView').classList.contains('hidden')) {
-            // Fallback: refresh the feed if user is on the feed view
-            const currentTab = document.getElementById('feedTabFollowing').classList.contains('border-cyan-600') ? 'following' : 'discover';
-            await switchFeedTab(currentTab);
           }
         } else if (data && data.error) {
           showToast(`Failed to create channel: ${data.error}`, 'error');
@@ -5645,7 +5448,6 @@
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.add('hidden');
       document.getElementById('chatView').classList.remove('active-chat');
-      document.getElementById('feedView').classList.add('hidden');
       document.getElementById('profileView').classList.add('hidden');
       document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
@@ -6316,7 +6118,6 @@
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.remove('hidden');
       document.getElementById('chatView').classList.add('active-chat');
-      document.getElementById('feedView').classList.add('hidden');
       document.getElementById('profileView').classList.add('hidden');
       document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('hidden');
@@ -6331,7 +6132,6 @@
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.add('hidden');
       document.getElementById('chatView').classList.remove('active-chat');
-      document.getElementById('feedView').classList.add('hidden');
       document.getElementById('profileView').classList.add('hidden');
       document.getElementById('contactsView').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
@@ -6349,94 +6149,6 @@
       if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
       document.getElementById('contactsSearchInput').value = '';
       loadContactsList();
-    }
-
-    async function showFeedView() {
-      updateMenuHighlight('feed');
-      document.getElementById('messagesView').classList.add('hidden');
-      document.getElementById('conversationsView').classList.add('hidden');
-      document.getElementById('chatView').classList.add('hidden');
-      document.getElementById('chatView').classList.remove('active-chat');
-      document.getElementById('contactsView').classList.add('hidden');
-      document.getElementById('profileView').classList.add('hidden');
-      document.getElementById('feedView').classList.remove('hidden');
-      document.getElementById('inputFooter').classList.add('hidden');
-      document.getElementById('inputFooter').classList.remove('footer-in-view');
-      document.getElementById('header').classList.remove('header-chat-fixed');
-      document.getElementById('headerTitle').textContent = 'Feed';
-      document.getElementById('backBtnContainer').classList.add('hidden');
-      document.getElementById('headerContent').classList.remove('hidden');
-      document.getElementById('headerBranding').textContent = 'Guardian';
-      document.getElementById('headerPageLabel').textContent = 'Feed';
-      document.getElementById('backBtnContainer').classList.add('hidden');
-      document.getElementById('menuBtn').classList.remove('hidden');
-      document.getElementById('conversationMenuBtn').classList.add('hidden');
-      if (conversationsPollInterval) clearInterval(conversationsPollInterval);
-      if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
-
-      // Reset search state
-      currentSearchQuery = '';
-      document.getElementById('searchChannelsInput').value = '';
-
-      // Load channels list for Discover
-      await loadChannels();
-      // Load Following tab by default
-      await switchFeedTab('following');
-    }
-
-    async function loadChannels() {
-      try {
-        const data = await apiCall('/api/channels');
-        if (data && data.channels) {
-          channelsList = data.channels;
-          filteredChannelsList = channelsList;
-        } else if (data && data.error) {
-          console.error('Error loading channels:', data.error);
-          showToast('Failed to load channels', 'error');
-        }
-      } catch (err) {
-        console.error('Error loading channels:', err);
-        showToast('Error loading channels', 'error');
-      }
-    }
-
-    function handleChannelSearch(query) {
-      currentSearchQuery = query.trim().toLowerCase();
-      if (currentSearchQuery === '') {
-        filteredChannelsList = channelsList;
-      } else {
-        filteredChannelsList = channelsList.filter(ch =>
-          ch.name.toLowerCase().includes(currentSearchQuery) ||
-          (ch.description && ch.description.toLowerCase().includes(currentSearchQuery))
-        );
-      }
-      // Refresh the channel list display
-      if (currentChannelId === null) {
-        showChannelList();
-      }
-    }
-
-    function showChannelList() {
-      currentChannelId = null;
-      document.getElementById('feedHeader').style.display = 'block';
-      document.getElementById('channelDetailHeader').classList.add('hidden');
-
-      let html = '';
-      if (filteredChannelsList.length === 0) {
-        html = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">No channels found</div>';
-      } else {
-        html = '<div class="divide-y divide-zinc-200 dark:divide-zinc-800">';
-        filteredChannelsList.forEach(channel => {
-          html += `
-            <div class="p-4 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 cursor-pointer transition" onclick="showChannelPosts(${channel.id})">
-              <h3 class="font-semibold text-zinc-900 dark:text-zinc-100">${escapeHtml(channel.name)}</h3>
-              ${channel.description ? `<p class="text-sm text-zinc-600 dark:text-zinc-400 mt-1">${escapeHtml(channel.description)}</p>` : ''}
-            </div>
-          `;
-        });
-        html += '</div>';
-      }
-      document.getElementById('feedContentWrapper').innerHTML = html;
     }
 
     async function showChannelPosts(channelId) {
@@ -6465,7 +6177,6 @@
         channelPostCharCount.textContent = '0/2000';
       }
 
-      document.getElementById('feedHeader').style.display = 'none';
       document.getElementById('channelDetailHeader').classList.remove('hidden');
       document.getElementById('channelDetailName').textContent = channel.name;
       document.getElementById('channelDetailDescription').textContent = channel.description || '';
@@ -6536,7 +6247,6 @@
               html += '<div class="p-4 text-center text-xs text-zinc-500 dark:text-zinc-500">No more posts</div>';
             }
           }
-          document.getElementById('feedContentWrapper').innerHTML = html;
           channelPostsOffset = 50;
         } else if (data && data.error) {
           throw new Error(data.error);
@@ -6544,7 +6254,6 @@
       } catch (err) {
         console.error('Error loading channel posts:', err);
         showToast('Error loading channel posts', 'error');
-        document.getElementById('feedContentWrapper').innerHTML = '<div class="text-center py-8 text-red-600 dark:text-red-400">Error loading posts</div>';
       } finally {
         isLoadingChannelPosts = false;
       }
@@ -6751,7 +6460,6 @@
             }
           }
 
-          document.getElementById('feedContentWrapper').innerHTML = html;
           channelPostsOffset = 50;
         } else if (data && data.error) {
           console.error('Error reloading posts:', data.error);
@@ -6983,157 +6691,10 @@
       }
     }
 
-    async function switchFeedTab(tabName) {
-      const followingTab = document.getElementById('feedTabFollowing');
-      const discoverTab = document.getElementById('feedTabDiscover');
-      const feedHeaderFollowing = document.getElementById('feedHeaderFollowing');
-      const feedHeaderDiscover = document.getElementById('feedHeaderDiscover');
 
-      // Reset channel view state when switching tabs
-      currentChannelId = null;
-      document.getElementById('feedHeader').style.display = 'block';
-      document.getElementById('channelDetailHeader').classList.add('hidden');
 
-      if (tabName === 'following') {
-        followingTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
-        followingTab.classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
-        discoverTab.classList.remove('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
-        discoverTab.classList.add('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
-        feedHeaderFollowing.classList.remove('hidden');
-        feedHeaderDiscover.classList.add('hidden');
-        await loadFollowingChannels();
-      } else {
-        discoverTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
-        discoverTab.classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
-        followingTab.classList.remove('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
-        followingTab.classList.add('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
-        feedHeaderFollowing.classList.add('hidden');
-        feedHeaderDiscover.classList.remove('hidden');
-        await loadDiscoverChannels();
-      }
-    }
 
-    async function loadFollowingChannels() {
-      try {
-        const data = await apiCall('/api/user/followed-channels');
-        if (data) {
-          const channels = data.channels || [];
-          channelsList = channels;
-          filteredChannelsList = channels;
-          let html = '';
-          if (channels.length === 0) {
-            html = `<div class="text-center py-12 text-zinc-600 dark:text-zinc-500">
-              <p class="text-lg font-medium mb-2">You don't follow any channels yet</p>
-              <p class="text-sm mb-4">Discover channels to follow and build your feed.</p>
-              <button onclick="switchFeedTab('discover')" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition">Discover Channels</button>
-            </div>`;
-          } else {
-            html = '<div class="space-y-3 p-4">';
-            channels.forEach(channel => {
-              html += renderChannelCard(channel, true);
-            });
-            html += '</div>';
-          }
-          document.getElementById('feedContentWrapper').innerHTML = html;
-        }
-      } catch (err) {
-        console.error('Error loading following channels:', err);
-        showToast('Error loading following channels', 'error');
-      }
-    }
 
-    async function loadDiscoverChannels() {
-      try {
-        const data = await apiCall('/api/channels');
-        if (data && data.channels) {
-          // Store all channels so showChannelPosts() can find them
-          channelsList = data.channels;
-          const discoverChannels = data.channels.filter(ch =>
-            ch.ownerId !== currentUser.id && !ch.isFollowing
-          );
-          let html = '';
-          if (discoverChannels.length === 0) {
-            html = `<div class="text-center py-12 text-zinc-600 dark:text-zinc-500">
-              <p class="text-lg font-medium mb-2">No channels to discover</p>
-              <p class="text-sm">You follow or own all available channels!</p>
-            </div>`;
-          } else {
-            html = '<div class="space-y-3 p-4">';
-            discoverChannels.forEach(channel => {
-              html += renderChannelCard(channel, false);
-            });
-            html += '</div>';
-          }
-          document.getElementById('feedContentWrapper').innerHTML = html;
-        }
-      } catch (err) {
-        console.error('Error loading discover channels:', err);
-        showToast('Error loading discover channels', 'error');
-      }
-    }
-
-    function renderFollowingUsersSection(users) {
-      const heading = users.length > 0 ? '<h3 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-3 px-0">Following Users</h3>' : '';
-      const userCards = users.map(user => {
-        const verifiedBadge = user.verified ? '<span class="text-xs bg-cyan-100 dark:bg-cyan-900 text-cyan-700 dark:text-cyan-300 px-2 py-1 rounded">✓ Verified</span>' : '';
-        return `
-          <div class="p-4 bg-white dark:bg-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-lg border border-zinc-200 dark:border-zinc-700 transition space-y-2">
-            <div class="flex items-start justify-between gap-3">
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2 mb-1">
-                  <h3 class="font-semibold text-zinc-900 dark:text-zinc-100 truncate">${escapeHtml(user.username)}</h3>
-                  ${verifiedBadge}
-                </div>
-                <p class="text-xs text-zinc-600 dark:text-zinc-400 truncate">${escapeHtml(user.usernode_pubkey || 'No wallet linked')}</p>
-                ${user.nickname ? `<p class="text-sm text-zinc-700 dark:text-zinc-300 mt-1">${escapeHtml(user.nickname)}</p>` : ''}
-              </div>
-            </div>
-          </div>
-        `;
-      }).join('');
-      return heading + '<div class="space-y-2">' + userCards + '</div>';
-    }
-
-    function renderChannelCard(channel, isFollowing) {
-      const ownerBadge = currentUser && channel.ownerId === currentUser.id ? '<span class="ml-2 text-xs bg-cyan-100 dark:bg-cyan-900 text-cyan-700 dark:text-cyan-300 px-2 py-1 rounded">Owner</span>' : '';
-      const latestPostSection = channel.latestPost ? `
-        <div class="mt-3 p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded text-sm">
-          <div class="text-xs text-zinc-500 dark:text-zinc-500 mb-1">Latest from ${escapeHtml(channel.latestPost.authorUsername)}</div>
-          <p class="text-zinc-700 dark:text-zinc-300 line-clamp-2">${escapeHtml(channel.latestPost.contentSnippet)}</p>
-          <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-1">${formatRelativeTime(channel.latestPost.createdAt)}</div>
-        </div>
-      ` : '';
-
-      const actionButton = currentUser && channel.ownerId === currentUser.id
-        ? ''
-        : `<button class="channel-follow-btn px-3 py-1 text-sm font-medium rounded transition ${
-            channel.isFollowing
-              ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-300 dark:hover:bg-zinc-600'
-              : 'bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white'
-          }" data-channel-id="${channel.id}" data-following="${channel.isFollowing ? 'true' : 'false'}">
-            ${channel.isFollowing ? 'Following' : 'Follow'}
-          </button>`;
-
-      return `
-        <div class="p-4 bg-white dark:bg-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-lg border border-zinc-200 dark:border-zinc-700 transition cursor-pointer" onclick="showChannelPosts(${channel.id})">
-          <div class="flex items-start justify-between gap-3">
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-2 mb-1">
-                <h3 class="font-semibold text-zinc-900 dark:text-zinc-100 truncate">${escapeHtml(channel.name)}</h3>
-                ${ownerBadge}
-              </div>
-              <p class="text-sm text-zinc-600 dark:text-zinc-400">by ${escapeHtml(channel.ownerUsername || 'Unknown')}</p>
-              ${channel.description ? `<p class="text-sm text-zinc-700 dark:text-zinc-300 mt-1 line-clamp-2">${escapeHtml(channel.description)}</p>` : ''}
-              <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-2">${channel.followerCount} ${channel.followerCount === 1 ? 'follower' : 'followers'}</div>
-              ${latestPostSection}
-            </div>
-            <div class="flex-shrink-0">
-              ${actionButton}
-            </div>
-          </div>
-        </div>
-      `;
-    }
 
     async function toggleFollowChannel(channelId, shouldFollow) {
       try {
@@ -7183,7 +6744,6 @@
       document.getElementById('chatView').classList.add('hidden');
       document.getElementById('chatView').classList.remove('active-chat');
       document.getElementById('contactsView').classList.add('hidden');
-      document.getElementById('feedView').classList.add('hidden');
       document.getElementById('profileView').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('footer-in-view');
@@ -8331,130 +7891,21 @@
     }
 
 
-    // ===== FEED FUNCTIONS =====
 
-    let feedOffset = 0;
-    let feedHasMore = true;
     let userLikedPostIds = new Set();
 
-    // Channel-based Feed variables
+    // Channel-based variables
     let currentChannelId = null;
     let currentChannel = null;
     let channelsList = [];
     let filteredChannelsList = [];
-    let currentSearchQuery = '';
     let channelPostsOffset = 0;
     let channelPostsHasMore = false;
     let isLoadingChannelPosts = false;
 
-    async function loadUserLikes() {
-      try {
-        const data = await apiCall('/api/feed/posts/likes');
-        if (data && data.likedPostIds) {
-          userLikedPostIds = new Set(data.likedPostIds);
-          updateLikeButtons();
-        }
-      } catch (err) {
-        console.error('Error loading user likes:', err);
-      }
-    }
 
-    function updateLikeButtons() {
-      userLikedPostIds.forEach(postId => {
-        const btn = document.getElementById(`likeBtn-${postId}`);
-        if (btn) {
-          btn.classList.add('text-red-600', 'dark:text-red-400');
-          btn.classList.remove('text-zinc-600', 'dark:text-zinc-400');
-        }
-      });
-    }
 
-    async function toggleLike(postId, event) {
-      event.preventDefault();
-      event.stopPropagation();
 
-      const isLiked = userLikedPostIds.has(postId);
-      const endpoint = `/api/feed/posts/${postId}/like`;
-      const method = isLiked ? 'DELETE' : 'POST';
-
-      try {
-        const data = await apiCall(endpoint, { method });
-        if (data && data.ok) {
-          if (data.liked) {
-            userLikedPostIds.add(postId);
-          } else {
-            userLikedPostIds.delete(postId);
-          }
-
-          const countEl = document.getElementById(`likeCount-${postId}`);
-          const btnEl = document.getElementById(`likeBtn-${postId}`);
-
-          if (countEl) {
-            countEl.textContent = data.likeCount || 0;
-          }
-
-          if (btnEl) {
-            if (data.liked) {
-              btnEl.classList.add('text-red-600', 'dark:text-red-400');
-              btnEl.classList.remove('text-zinc-600', 'dark:text-zinc-400');
-            } else {
-              btnEl.classList.remove('text-red-600', 'dark:text-red-400');
-              btnEl.classList.add('text-zinc-600', 'dark:text-zinc-400');
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Error toggling like:', err);
-        showToast('Failed to update like', 'error');
-      }
-    }
-
-    async function loadFeedPosts(offset) {
-      try {
-        const data = await apiCall(`/api/feed/posts?limit=50&offset=${offset}`);
-        if (!data || data.error) {
-          document.getElementById('feedList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Failed to load feed</div>';
-          return;
-        }
-
-        if (offset === 0) {
-          document.getElementById('feedList').innerHTML = '';
-          feedOffset = 0;
-        }
-
-        const posts = data.posts || [];
-        feedHasMore = data.hasMore || false;
-
-        if (posts.length === 0 && offset === 0) {
-          document.getElementById('feedList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">No posts yet. Be the first to share!</div>';
-          return;
-        }
-
-        const feedList = document.getElementById('feedList');
-        posts.forEach(post => {
-          const postEl = renderFeedPost(post);
-          feedList.appendChild(postEl);
-        });
-
-        feedOffset += posts.length;
-
-        // Setup infinite scroll
-        if (feedHasMore) {
-          const feedListEl = document.getElementById('feedList');
-          feedListEl.onscroll = () => {
-            if (feedListEl.scrollTop + feedListEl.clientHeight >= feedListEl.scrollHeight - 100) {
-              if (feedHasMore) {
-                feedHasMore = false;
-                loadFeedPosts(feedOffset);
-              }
-            }
-          };
-        }
-      } catch (err) {
-        console.error('Error loading feed:', err);
-        document.getElementById('feedList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Error loading feed</div>';
-      }
-    }
 
     function formatRelativeTime(isoDateString) {
       const date = new Date(isoDateString);
@@ -8472,96 +7923,6 @@
       return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     }
 
-    function renderFeedPost(post) {
-      const postEl = document.createElement('div');
-      postEl.className = 'p-3 bg-white dark:bg-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-lg transition feed-post-enter group';
-      postEl.id = `post-${post.id}`;
-      postEl.dataset.postText = post.content.text || '';
-
-      const isOwner = currentUser && currentUser.id === post.userId;
-      const isEdited = post.isEdited || false;
-      const timestamp = formatRelativeTime(post.createdAt);
-
-      let content = '';
-      if (post.content.text) {
-        if (post.username === 'Usernode Network Updates' || post.username === 'Crypto Daily') {
-          // Milestone and Crypto Daily posts: render metrics in monospace for proper alignment
-          const bgColor = post.username === 'Crypto Daily' ? 'bg-amber-900 dark:bg-amber-950' : 'bg-purple-900 dark:bg-purple-950';
-          content += `<pre class="${bgColor} text-zinc-100 dark:text-zinc-200 p-3 rounded font-mono text-xs overflow-x-auto mb-2"><code>${renderMentions(post.content.text)}</code></pre>`;
-        } else {
-          // Regular posts: render with proportional font
-          content += `<p class="text-zinc-900 dark:text-zinc-100 mb-2 text-sm" style="white-space: pre-wrap;">${renderMentions(post.content.text)}</p>`;
-        }
-      }
-
-      if (post.content.link) {
-        content += `
-          <a href="${escapeHtml(post.content.link)}" target="_blank" rel="noopener noreferrer" class="block p-2 bg-zinc-50 dark:bg-zinc-700/30 rounded hover:bg-zinc-100 dark:hover:bg-zinc-700/50 transition mb-2">
-            <div class="flex gap-2 items-start">
-              ${post.content.linkImage ? `<img src="${escapeHtml(post.content.linkImage)}" alt="preview" class="w-10 h-10 object-cover rounded flex-shrink-0" onerror="this.style.display='none'">` : ''}
-              <div class="flex-1 min-w-0">
-                ${post.content.linkTitle ? `<div class="font-medium text-cyan-600 dark:text-cyan-400 truncate text-xs">${escapeHtml(post.content.linkTitle)}</div>` : ''}
-              </div>
-            </div>
-          </a>
-        `;
-      }
-
-      const avatarInitial = post.username ? post.username.charAt(0).toUpperCase() : '?';
-      const avatarHtml = post.avatarUrl
-        ? `<img src="${escapeHtml(post.avatarUrl)}" alt="${escapeHtml(post.username)}" class="w-8 h-8 rounded-full object-cover flex-shrink-0 cursor-pointer hover:opacity-80 transition" onclick="event.stopPropagation(); showUserProfileModal(${post.userId})" onerror="this.style.display='none'">`
-        : `<div class="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0 cursor-pointer hover:opacity-80 transition" onclick="event.stopPropagation(); showUserProfileModal(${post.userId})">${avatarInitial}</div>`;
-
-      const onChainBadge = post.onChain ? '<span class="inline-block ml-1 px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-xs rounded font-medium">✓ On-Chain</span>' : '';
-
-      // Format username with bold and icon for system bot posts
-      let usernameDisplay;
-      if (post.username === 'Usernode Network Updates') {
-        usernameDisplay = `<span class="font-bold text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username)} 🌐</span>`;
-      } else if (post.username === 'Crypto Daily') {
-        usernameDisplay = `<span class="font-bold text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username)} 🪙</span>`;
-      } else {
-        usernameDisplay = `<span class="font-medium text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username)}</span>`;
-      }
-
-      const ownerMenu = isOwner ? `
-        <div class="relative ml-auto flex-shrink-0">
-          <button onclick="openPostMenu(${post.id}, event)" class="post-menu-btn opacity-0 group-hover:opacity-100 transition p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 rounded leading-none" title="Post options">⋯</button>
-          <div id="postMenu-${post.id}" class="hidden absolute right-0 top-7 z-10 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg py-1 min-w-[110px]">
-            <button onclick="startEditPost(${post.id})" class="w-full text-left px-3 py-1.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300">✏️ Edit</button>
-            <button onclick="deletePost(${post.id})" class="w-full text-left px-3 py-1.5 text-sm hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400">🗑️ Delete</button>
-          </div>
-        </div>
-      ` : '';
-
-      postEl.innerHTML = `
-        <div class="flex gap-2">
-          ${avatarHtml}
-          <div class="flex-1 min-w-0">
-            <div class="flex items-start gap-1 mb-1">
-              <div class="flex items-center gap-1 flex-wrap flex-1">
-                ${usernameDisplay}
-                ${post.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs">✓</span>' : ''}
-                <span class="text-xs text-zinc-500 dark:text-zinc-400">${timestamp}</span>
-                <span id="postEditedLabel-${post.id}" class="text-xs text-zinc-400 dark:text-zinc-500 italic ${isEdited ? '' : 'hidden'}">(edited)</span>
-                ${onChainBadge}
-              </div>
-              ${ownerMenu}
-            </div>
-            <div id="postContent-${post.id}">
-              ${content}
-            </div>
-            <div class="flex gap-3 mt-2 text-xs text-zinc-600 dark:text-zinc-400">
-              <button onclick="toggleLike(${post.id}, event)" class="hover:text-red-600 dark:hover:text-red-400 transition cursor-pointer" id="likeBtn-${post.id}">❤️ <span id="likeCount-${post.id}">${post.likeCount || 0}</span></button>
-              <button onclick="toggleComments(${post.id})" class="hover:text-cyan-600 dark:hover:text-cyan-400 transition">💬 <span id="commentCount-${post.id}">${post.commentCount || 0}</span></button>
-            </div>
-            <div id="commentsSection-${post.id}" class="hidden mt-2 space-y-2 max-h-48 overflow-y-auto"></div>
-          </div>
-        </div>
-      `;
-
-      return postEl;
-    }
 
     function openAttachmentMenu() {
       showToast('Image attachments coming soon (Phase 2)', 'info');
@@ -8579,7 +7940,6 @@
     }
 
     function insertMention(username) {
-      const input = document.getElementById('feedComposeInput');
       if (!input) return;
       const cursor = input.selectionStart;
       const before = input.value.slice(0, cursor);
@@ -8619,7 +7979,6 @@
     }
 
     async function handleMentionInput() {
-      const input = document.getElementById('feedComposeInput');
       if (!input) return;
       const cursor = input.selectionStart;
       const before = input.value.slice(0, cursor);
@@ -8646,52 +8005,6 @@
     }
 
 
-    async function submitFeedPost() {
-      const textInput = document.getElementById('feedTextInput');
-      const minimalInput = document.getElementById('feedMinimalInput');
-      const activeInput = minimalInput && minimalInput.offsetParent !== null ? minimalInput : textInput;
-      let text = activeInput.value.trim();
-      let link = null;
-
-      // Extract URL from text
-      const urlMatch = text.match(/(https?:\/\/[^\s]+)/);
-      if (urlMatch) {
-        link = urlMatch[1];
-        text = text.replace(urlMatch[0], '').trim();
-      }
-
-      if (!text && !link) {
-        showToast('Please enter some text or a link', 'error');
-        return;
-      }
-
-      try {
-        const payload = { text };
-        if (link) {
-          payload.link = link;
-        }
-
-        const data = await apiCall('/api/feed/posts', {
-          method: 'POST',
-          body: JSON.stringify(payload)
-        });
-
-        if (!data || data.error) {
-          showToast('Failed to post: ' + (data?.error || 'Unknown error'), 'error');
-          return;
-        }
-
-        if (textInput) textInput.value = '';
-        if (minimalInput) minimalInput.value = '';
-        feedOffset = 0;
-        feedHasMore = true;
-        loadFeedPosts(0);
-        showToast('Post published', 'success');
-      } catch (err) {
-        console.error('Error posting:', err);
-        showToast('Failed to post', 'error');
-      }
-    }
 
     function escapeHtml(text) {
       const div = document.createElement('div');
@@ -8728,183 +8041,13 @@
       return result.replace(/<bold>([\s\S]*?)<\/bold>/g, '<strong class="font-bold">$1</strong>');
     }
 
-    // ===== FEED COMMENTS FUNCTIONS =====
 
     const commentsCache = {};
 
-    async function toggleComments(postId) {
-      const section = document.getElementById(`commentsSection-${postId}`);
-      const isHidden = section.classList.contains('hidden');
 
-      if (isHidden) {
-        // Load comments if not cached
-        if (!commentsCache[postId]) {
-          await loadComments(postId);
-        }
-        section.classList.remove('hidden');
-      } else {
-        section.classList.add('hidden');
-      }
-    }
 
-    async function loadComments(postId) {
-      try {
-        const data = await apiCall(`/api/feed/posts/${postId}/comments?limit=50&offset=0`);
-        if (!data || data.error) {
-          console.error('Failed to load comments:', data?.error);
-          return;
-        }
 
-        const section = document.getElementById(`commentsSection-${postId}`);
-        section.innerHTML = '';
 
-        const comments = data.comments || [];
-
-        // Display existing comments
-        comments.forEach(comment => {
-          const commentEl = renderComment(comment, postId);
-          section.appendChild(commentEl);
-        });
-
-        // Update comment count
-        document.getElementById(`commentCount-${postId}`).textContent = data.total || comments.length;
-
-        // Add comment input if user is authenticated
-        if (currentUser) {
-          const inputEl = document.createElement('div');
-          inputEl.className = 'mt-3 pt-3 border-t border-zinc-200 dark:border-zinc-700 space-y-2';
-          inputEl.innerHTML = `
-            <textarea id="commentInput-${postId}" placeholder="Add a comment..." class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-sm resize-none" rows="2"></textarea>
-            <button onclick="submitComment(${postId})" class="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 text-white rounded text-sm">Comment</button>
-          `;
-          section.appendChild(inputEl);
-        }
-
-        commentsCache[postId] = { comments, total: data.total };
-      } catch (err) {
-        console.error('Error loading comments:', err);
-      }
-    }
-
-    function renderComment(comment, postId) {
-      const commentEl = document.createElement('div');
-      commentEl.className = 'p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg group';
-      commentEl.id = `comment-${comment.id}`;
-
-      const timestamp = formatRelativeTime(comment.createdAt);
-      const isOwner = currentUser && currentUser.id === comment.userId;
-      const avatarInitial = comment.username ? comment.username.charAt(0).toUpperCase() : '?';
-      const avatarHtml = comment.avatarUrl
-        ? `<img src="${escapeHtml(comment.avatarUrl)}" alt="${escapeHtml(comment.username)}" class="w-6 h-6 rounded-full object-cover flex-shrink-0 cursor-pointer hover:opacity-80 transition" onclick="event.stopPropagation(); showUserProfileModal(${comment.userId})" onerror="this.style.display='none'">`
-        : `<div class="w-6 h-6 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0 cursor-pointer hover:opacity-80 transition" onclick="event.stopPropagation(); showUserProfileModal(${comment.userId})">${avatarInitial}</div>`;
-
-      commentEl.innerHTML = `
-        <div class="flex gap-2 justify-between items-start">
-          <div class="flex gap-2 flex-1">
-            ${avatarHtml}
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-2 mb-1">
-                <span class="text-sm font-medium text-zinc-900 dark:text-zinc-100">${escapeHtml(comment.username)}</span>
-                ${comment.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs">✓</span>' : ''}
-                <span class="text-xs text-zinc-500 dark:text-zinc-400">${timestamp}</span>
-              </div>
-              <p class="text-sm text-zinc-700 dark:text-zinc-300">${renderMentions(comment.content)}</p>
-            </div>
-          </div>
-          ${isOwner ? `
-            <button onclick="deleteComment(${postId}, ${comment.id})" class="text-zinc-400 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition text-xs flex-shrink-0" title="Delete">
-              🗑️
-            </button>
-          ` : ''}
-        </div>
-      `;
-
-      return commentEl;
-    }
-
-    async function submitComment(postId) {
-      const input = document.getElementById(`commentInput-${postId}`);
-      const content = input.value.trim();
-
-      if (!content) {
-        alert('Comment cannot be empty');
-        return;
-      }
-
-      try {
-        const data = await apiCall(`/api/feed/posts/${postId}/comments`, {
-          method: 'POST',
-          body: JSON.stringify({ content })
-        });
-
-        if (!data || data.error) {
-          alert('Failed to post comment: ' + (data?.error || 'Unknown error'));
-          return;
-        }
-
-        // Add new comment to DOM
-        const section = document.getElementById(`commentsSection-${postId}`);
-        const commentEl = renderComment(data, postId);
-
-        // Insert before the input area
-        const inputArea = section.querySelector('[id^="commentInput-"]')?.parentElement;
-        if (inputArea) {
-          section.insertBefore(commentEl, inputArea);
-        } else {
-          section.appendChild(commentEl);
-        }
-
-        // Clear input
-        input.value = '';
-
-        // Update count
-        const countEl = document.getElementById(`commentCount-${postId}`);
-        const currentCount = parseInt(countEl.textContent);
-        countEl.textContent = currentCount + 1;
-
-        // Update cache
-        if (commentsCache[postId]) {
-          commentsCache[postId].total += 1;
-        }
-      } catch (err) {
-        console.error('Error posting comment:', err);
-        alert('Failed to post comment');
-      }
-    }
-
-    async function deleteComment(postId, commentId) {
-      if (!confirm('Delete this comment?')) return;
-
-      try {
-        const data = await apiCall(`/api/feed/posts/${postId}/comments/${commentId}`, {
-          method: 'DELETE'
-        });
-
-        if (!data || data.error) {
-          alert('Failed to delete comment');
-          return;
-        }
-
-        // Remove from DOM
-        const commentEl = document.getElementById(`comment-${commentId}`);
-        if (commentEl) {
-          commentEl.remove();
-        }
-
-        // Update count
-        const countEl = document.getElementById(`commentCount-${postId}`);
-        const currentCount = parseInt(countEl.textContent);
-        countEl.textContent = Math.max(0, currentCount - 1);
-
-        // Update cache
-        if (commentsCache[postId]) {
-          commentsCache[postId].total = Math.max(0, commentsCache[postId].total - 1);
-        }
-      } catch (err) {
-        console.error('Error deleting comment:', err);
-        alert('Failed to delete comment');
-      }
-    }
 
     // ===== DELETE POST MODAL FUNCTIONS =====
 
@@ -8915,147 +8058,11 @@
       document.getElementById('deletePostModal').classList.remove('hidden');
     }
 
-    function closeDeletePostModal() {
-      document.getElementById('deletePostModal').classList.add('hidden');
-      pendingDeletePostId = null;
-    }
 
-    async function confirmDeletePost() {
-      if (!pendingDeletePostId) return;
 
-      try {
-        const postId = pendingDeletePostId;
-        const data = await apiCall(`/api/feed/posts/${postId}`, { method: 'DELETE' });
 
-        if (!data || data.error) {
-          showToast('Failed to delete post', 'error');
-          closeDeletePostModal();
-          return;
-        }
 
-        const postEl = document.getElementById(`post-${postId}`);
-        if (postEl) {
-          postEl.style.opacity = '0';
-          postEl.style.transition = 'opacity 0.2s ease-out';
-          setTimeout(() => {
-            postEl.remove();
-          }, 200);
-        }
 
-        showToast('Post deleted', 'success');
-      } catch (err) {
-        console.error('Error deleting post:', err);
-        showToast('Failed to delete post', 'error');
-      } finally {
-        closeDeletePostModal();
-      }
-    }
-
-    // ===== FEED POST EDIT / DELETE FUNCTIONS =====
-
-    function openPostMenu(postId, event) {
-      event.stopPropagation();
-      const menu = document.getElementById(`postMenu-${postId}`);
-      if (!menu) return;
-      const isHidden = menu.classList.contains('hidden');
-      // Close all other open post menus
-      document.querySelectorAll('[id^="postMenu-"]').forEach(m => m.classList.add('hidden'));
-      if (isHidden) menu.classList.remove('hidden');
-    }
-
-    function deletePost(postId) {
-      openDeletePostModal(postId);
-    }
-
-    function startEditPost(postId) {
-      const menu = document.getElementById(`postMenu-${postId}`);
-      if (menu) menu.classList.add('hidden');
-
-      const postEl = document.getElementById(`post-${postId}`);
-      if (!postEl) return;
-
-      const contentDiv = document.getElementById(`postContent-${postId}`);
-      if (!contentDiv) return;
-
-      // Save original HTML for cancel
-      postEl.dataset.originalContent = contentDiv.innerHTML;
-
-      const currentText = postEl.dataset.postText || '';
-      const editHtml = `
-        <textarea id="postEditTextarea-${postId}" class="w-full p-2 text-sm bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded resize-none text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500" rows="3">${escapeHtml(currentText)}</textarea>
-        <div class="flex gap-2 mt-1">
-          <button onclick="saveEditPost(${postId})" class="px-3 py-1 text-xs bg-cyan-600 hover:bg-cyan-700 text-white rounded transition">Save</button>
-          <button onclick="cancelEditPost(${postId})" class="px-3 py-1 text-xs bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-300 rounded transition">Cancel</button>
-        </div>
-      `;
-
-      // Replace just the text paragraph; keep any link preview
-      const textPara = contentDiv.querySelector('p');
-      if (textPara) {
-        textPara.outerHTML = editHtml;
-      } else {
-        contentDiv.insertAdjacentHTML('afterbegin', editHtml);
-      }
-
-      const textarea = document.getElementById(`postEditTextarea-${postId}`);
-      if (textarea) {
-        textarea.focus();
-        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-      }
-    }
-
-    async function saveEditPost(postId) {
-      const textarea = document.getElementById(`postEditTextarea-${postId}`);
-      if (!textarea) return;
-
-      const text = textarea.value.trim();
-      if (!text) {
-        alert('Post text cannot be empty');
-        return;
-      }
-
-      try {
-        const data = await apiCall(`/api/feed/posts/${postId}`, {
-          method: 'PUT',
-          body: JSON.stringify({ text })
-        });
-
-        if (!data || data.error) {
-          alert('Failed to save changes');
-          return;
-        }
-
-        const postEl = document.getElementById(`post-${postId}`);
-        const contentDiv = document.getElementById(`postContent-${postId}`);
-
-        if (postEl) postEl.dataset.postText = text;
-
-        if (contentDiv && postEl && postEl.dataset.originalContent) {
-          // Restore original HTML with updated text
-          const temp = document.createElement('div');
-          temp.innerHTML = postEl.dataset.originalContent;
-          const para = temp.querySelector('p');
-          if (para) {
-            para.textContent = text;
-          } else {
-            const newPara = document.createElement('p');
-            newPara.className = 'text-zinc-900 dark:text-zinc-100 mb-2 text-sm';
-            newPara.textContent = text;
-            temp.insertBefore(newPara, temp.firstChild);
-          }
-          contentDiv.innerHTML = temp.innerHTML;
-          delete postEl.dataset.originalContent;
-        }
-
-        // Show (edited) label
-        const editedLabel = document.getElementById(`postEditedLabel-${postId}`);
-        if (editedLabel) editedLabel.classList.remove('hidden');
-
-      } catch (err) {
-        console.error('Error saving post:', err);
-        alert('Failed to save changes');
-      }
-    }
 
     function cancelEditPost(postId) {
       const postEl = document.getElementById(`post-${postId}`);
