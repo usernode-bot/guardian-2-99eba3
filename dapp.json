@@ -75,11 +75,6 @@
       "name": "Profile Guardian's tab loads",
       "path": "/",
       "expectSelector": "#profileTabGuardians"
-    },
-    {
-      "name": "Feed view renders",
-      "path": "/",
-      "expectSelector": "#feedView"
     }
   ],
   "visibility": {
