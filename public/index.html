@@ -6408,6 +6408,7 @@
               html += '<div class="p-4 text-center text-xs text-zinc-500 dark:text-zinc-500">No more posts</div>';
             }
           }
+          document.getElementById('feedContentWrapper').innerHTML = html;
           channelPostsOffset = 50;
         } else if (data && data.error) {
           throw new Error(data.error);
