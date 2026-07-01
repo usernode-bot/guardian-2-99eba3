@@ -6062,6 +6062,7 @@
             <div class="p-4 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 cursor-pointer transition" onclick="showChannelPosts(${channel.id})">
               <h3 class="font-semibold text-zinc-900 dark:text-zinc-100">${escapeHtml(channel.name)}</h3>
               ${channel.description ? `<p class="text-sm text-zinc-600 dark:text-zinc-400 mt-1">${escapeHtml(channel.description)}</p>` : ''}
+              ${channel.ownerUsername ? `<p class="text-xs text-zinc-500 dark:text-zinc-500 mt-1">by ${escapeHtml(channel.ownerUsername)}</p>` : (channel.ownerId ? `<p class="text-xs text-zinc-500 dark:text-zinc-500 mt-1">by user-${channel.ownerId}</p>` : '')}
             </div>
           `;
         });
