@@ -478,7 +478,7 @@
         <button id="backBtn" class="text-lg text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition">←</button>
         <div class="absolute -bottom-6 left-0 px-2 py-1 bg-zinc-900 dark:bg-zinc-700 text-white dark:text-zinc-100 text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">Back</div>
       </div>
-      <!-- Guardian branding + page label system (used for Feed, Messages, Contacts, Settings, Groups) -->
+      <!-- Guardian branding + page label system (used for Channels, Messages, Contacts, Settings, Groups) -->
       <div id="headerContent" class="flex flex-col items-start flex-1 gap-0">
         <div class="flex items-center gap-2">
           <span id="headerTitle" class="hidden"></span>
@@ -804,11 +804,11 @@
         <div id="messageList" class="flex-1 overflow-y-auto space-y-1 p-4 pb-28 pt-20"></div>
       </div>
 
-      <!-- Feed View -->
+      <!-- Channels View -->
       <div id="feedView" class="hidden flex flex-col flex-1 overflow-hidden relative">
         <!-- Channel List or Posts Container (now contains sticky headers) -->
         <div id="feedMainContent" class="flex-1 overflow-y-auto flex flex-col">
-          <!-- Sticky Feed Header with Tabs -->
+          <!-- Sticky Channels Header with Tabs -->
           <div id="feedHeader" class="sticky top-0 z-30 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0">
             <div class="p-4">
               <div class="flex items-center justify-between mb-3">
@@ -1442,7 +1442,7 @@
   </div>
 
 
-  <!-- Feed Compose Modal -->
+  <!-- Channel Compose Modal -->
   <!-- Toast Notification Container -->
   <div id="toastContainer" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
@@ -6228,7 +6228,7 @@
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('footer-in-view');
       document.getElementById('header').classList.remove('header-chat-fixed');
-      document.getElementById('headerTitle').textContent = 'Feed';
+      document.getElementById('headerTitle').textContent = 'Channels';
       document.getElementById('backBtnContainer').classList.add('hidden');
       document.getElementById('headerContent').classList.remove('hidden');
       document.getElementById('headerBranding').textContent = 'Guardian';
@@ -6335,7 +6335,17 @@
       document.getElementById('channelDetailDescription').textContent = channel.description || '';
 
       // Set up action buttons based on ownership
-      const isOwner = currentUser && channel.ownerId === currentUser.id;
+      // Debug logging
+      console.log('showChannelPosts debug:', {
+        currentUserId: currentUser?.id,
+        currentUserIdType: typeof currentUser?.id,
+        channelOwnerId: channel.ownerId,
+        channelOwnerIdType: typeof channel.ownerId,
+        currentUser: currentUser,
+        channel: channel
+      });
+      const isOwner = currentUser && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
+      console.log('isOwner:', isOwner);
       const actionButtonsContainer = document.getElementById('channelActionButtons');
       if (isOwner) {
         actionButtonsContainer.innerHTML = '';
@@ -6463,7 +6473,7 @@
       const timestamp = new Date(post.createdAt);
       const formattedTime = formatRelativeTime(post.createdAt);
       const contentText = post.content?.text || '';
-      const isOwner = currentUser && (post.userId === currentUser.id || (currentChannel && currentChannel.ownerId === currentUser.id));
+      const isOwner = currentUser && (parseInt(post.userId, 10) === parseInt(currentUser.id, 10) || (currentChannel && parseInt(currentChannel.ownerId, 10) === parseInt(currentUser.id, 10)));
       const editedTime = post.isEdited ? formatRelativeTime(post.updatedAt) : null;
       const images = post.imageUrls || [];
 
@@ -6488,14 +6498,10 @@
       return `
         <div class="pb-3 border-b border-zinc-100 dark:border-zinc-800 last:border-b-0 relative group" data-post-id="${post.id}">
           <div class="flex items-start gap-3">
-            <div class="flex-shrink-0 w-10 h-10 bg-zinc-300 dark:bg-zinc-700 rounded-full flex items-center justify-center text-xs font-bold text-zinc-600 dark:text-zinc-400">
-              ${post.username ? post.username.substring(0, 2).toUpperCase() : 'U'}
-            </div>
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2 justify-between">
-                <div class="flex items-center gap-2">
-                  <span class="font-semibold text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username || 'System')}</span>
-                  ${post.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs">✓</span>' : ''}
+                <div class="flex items-center gap-2 flex-1">
+                  <span class="text-xs text-zinc-500 dark:text-zinc-500">Posted in ${escapeHtml(post.channelName || 'Unknown')}</span>
                 </div>
                 ${actionMenu}
               </div>
@@ -6520,9 +6526,10 @@
       const count = textarea.value.length;
       charCount.textContent = `${count}/2000`;
 
-      // Enable button only if content is not empty and under limit
+      // Enable button if content or images exist, and content is under limit
       if (postBtn) {
-        postBtn.disabled = count === 0 || count > 2000;
+        const hasContent = count > 0 || channelPostImages.length > 0;
+        postBtn.disabled = !hasContent || count > 2000;
       }
     }
 
@@ -6591,7 +6598,7 @@
 
           // Re-add compose box for owner
           const channel = channelsList.find(ch => ch.id === channelId);
-          const isOwner = currentUser && channel && channel.ownerId === currentUser.id;
+          const isOwner = currentUser && channel && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
 
           if (isOwner) {
             html += `
@@ -6966,7 +6973,7 @@
         }
       } catch (err) {
         console.error('Error loading home feed:', err);
-        showToast('Error loading feed', 'error');
+        showToast('Error loading posts', 'error');
       }
     }
 
@@ -7015,13 +7022,9 @@
       return `
         <div class="pb-3 border-b border-zinc-100 dark:border-zinc-800 last:border-b-0">
           <div class="flex items-start gap-3">
-            <div class="flex-shrink-0 w-10 h-10 bg-zinc-300 dark:bg-zinc-700 rounded-full flex items-center justify-center text-xs font-bold text-zinc-600 dark:text-zinc-400">
-              ${post.username ? post.username.substring(0, 2).toUpperCase() : 'U'}
-            </div>
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2">
-                <span class="font-semibold text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username || 'System')}</span>
-                ${post.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs">✓</span>' : ''}
+                <span class="text-xs text-zinc-500 dark:text-zinc-500">Posted in ${escapeHtml(post.channelName || 'Unknown')}</span>
               </div>
               ${contentText ? `<p class="text-zinc-900 dark:text-zinc-100 text-sm mt-1 mb-2 whitespace-pre-wrap break-words">${escapeHtml(contentText)}</p>` : ''}
               ${imageGallery}
@@ -7079,6 +7082,7 @@
     function removeChannelPostImage(idx) {
       channelPostImages.splice(idx, 1);
       updateChannelImagePreview();
+      updateChannelPostCharCount();
     }
 
     function renderFollowingUsersSection(users) {
@@ -7104,7 +7108,8 @@
     }
 
     function renderChannelCard(channel, isFollowing) {
-      const ownerBadge = currentUser && channel.ownerId === currentUser.id ? '<span class="ml-2 text-xs bg-cyan-100 dark:bg-cyan-900 text-cyan-700 dark:text-cyan-300 px-2 py-1 rounded">Owner</span>' : '';
+      const isOwner = currentUser && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
+      const ownerBadge = isOwner ? '<span class="ml-2 text-xs bg-cyan-100 dark:bg-cyan-900 text-cyan-700 dark:text-cyan-300 px-2 py-1 rounded">Owner</span>' : '';
       const latestPostSection = channel.latestPost ? `
         <div class="mt-3 p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded text-sm">
           <div class="text-xs text-zinc-500 dark:text-zinc-500 mb-1">Latest from ${escapeHtml(channel.latestPost.authorUsername)}</div>
@@ -7113,7 +7118,7 @@
         </div>
       ` : '';
 
-      const actionButton = currentUser && channel.ownerId === currentUser.id
+      const actionButton = isOwner
         ? ''
         : `<button class="channel-follow-btn px-3 py-1 text-sm font-medium rounded transition ${
             channel.isFollowing
