@@ -5333,6 +5333,113 @@ app.get('/api/channels/:channelId/posts', async (req, res) => {
   }
 });
 
+// POST /api/channels/:channelId/posts - Create a new post in a channel (owner only)
+app.post('/api/channels/:channelId/posts', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const channelId = parseInt(req.params.channelId);
+    const userId = parseInt(req.user.id, 10);
+    const { content } = req.body;
+
+    if (isNaN(channelId) || isNaN(userId)) {
+      return res.status(400).json({ error: 'Invalid channel or user ID' });
+    }
+
+    // Validate content
+    if (!content || typeof content !== 'string') {
+      return res.status(400).json({ error: 'Post content is required' });
+    }
+
+    const trimmedContent = content.trim();
+    if (trimmedContent.length === 0) {
+      return res.status(400).json({ error: 'Post content cannot be empty' });
+    }
+
+    if (trimmedContent.length > 2000) {
+      return res.status(400).json({ error: 'Post is too long (exceeds 2000 characters)' });
+    }
+
+    // Demo mode: validate against mock data
+    if (ENABLE_DEMO_MODE) {
+      const mockChannels = mockData.MOCK_CHANNELS || [];
+      const mockChannel = mockChannels.find(ch => ch.id === channelId);
+
+      if (!mockChannel) {
+        return res.status(404).json({ error: 'Channel not found' });
+      }
+
+      if (mockChannel.owner_id !== userId) {
+        return res.status(403).json({ error: 'You are not the owner of this channel' });
+      }
+
+      // Return mock success response
+      const mockPostId = 9001 + Math.floor(Math.random() * 1000);
+      const mockUsername = req.user.username || 'user' + userId;
+      return res.status(201).json({
+        id: mockPostId,
+        userId: userId,
+        username: mockUsername,
+        content: { text: trimmedContent },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        onChain: false
+      });
+    }
+
+    // Production: check channel exists and user is owner
+    const { rows: channelCheck } = await pool.query(`
+      SELECT id, owner_id FROM channels WHERE id = $1
+    `, [channelId]);
+
+    if (channelCheck.length === 0) {
+      return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    if (channelCheck[0].owner_id !== userId) {
+      return res.status(403).json({ error: 'You are not the owner of this channel' });
+    }
+
+    // Insert the post
+    const { rows: postRows } = await pool.query(`
+      INSERT INTO feed_posts (user_id, content, channel_id, on_chain, created_at, updated_at)
+      VALUES ($1, $2, $3, FALSE, NOW(), NOW())
+      RETURNING id, user_id, content, created_at, updated_at, on_chain
+    `, [userId, JSON.stringify({ text: trimmedContent }), channelId]);
+
+    if (postRows.length === 0) {
+      return res.status(500).json({ error: 'Failed to create post' });
+    }
+
+    const post = postRows[0];
+    const { rows: userRows } = await pool.query(`
+      SELECT username, verified_at, avatar_url FROM users WHERE id = $1
+    `, [userId]);
+
+    const username = userRows.length > 0 ? userRows[0].username : 'user' + userId;
+    const verified = userRows.length > 0 && !!userRows[0].verified_at;
+    const avatarUrl = userRows.length > 0 ? userRows[0].avatar_url : null;
+
+    res.status(201).json({
+      id: post.id,
+      userId: post.user_id,
+      username: username,
+      verified: verified,
+      avatarUrl: avatarUrl,
+      content: post.content,
+      createdAt: post.created_at,
+      updatedAt: post.updated_at,
+      isEdited: false,
+      onChain: post.on_chain || false
+    });
+  } catch (err) {
+    console.error('Error creating channel post:', err);
+    res.status(500).json({ error: 'Failed to create post' });
+  }
+});
+
 // GET /api/channels/categories - List all available categories
 app.get('/api/channels/categories', async (req, res) => {
   try {
@@ -9143,6 +9250,7 @@ async function start() {
       // Seed demo channels
       const channels = [
         { name: 'Staging Demo Channel', description: 'A staging demo channel for testing the feed-like UI', owner_id: 1, category: 'General' },
+        { name: '[Staging] Owner\'s Channel', description: 'Test channel for owner composition - owned by user 1', owner_id: 1, category: 'General' },
         { name: 'Updates & News', description: 'Latest updates and news from the team', owner_id: 2, category: 'Announcements' },
         { name: 'Product Feedback', description: 'Share your feedback and suggestions', owner_id: 3, category: 'General' }
       ];
@@ -9160,12 +9268,22 @@ async function start() {
           console.log(`[Channel Seed] Created channel: ${channel.name} (id: ${channelId})`);
 
           // Seed demo posts in the channel
-          const posts = [
-            { user_id: 1, content: 'Welcome to the Staging Demo Channel! This is a great place to test the new feed-like layout.', offset: 180 },
-            { user_id: 2, content: 'The channel detail view now has a sticky header with owner-specific controls. Try editing or deleting this channel if you are the owner!', offset: 120 },
-            { user_id: 3, content: 'Posts are displayed in a clean chronological feed. You can see the most recent posts first.', offset: 60 },
-            { user_id: 1, content: 'Load more posts at the bottom to see older messages. Try scrolling down to test pagination!', offset: 30 }
-          ];
+          let posts = [];
+
+          // Different posts for owner's channel vs other channels
+          if (channel.owner_id === 1 && channel.name === '[Staging] Owner\'s Channel') {
+            posts = [
+              { user_id: 1, content: 'This is my test channel! I can post here since I\'m the owner.', offset: 120 },
+              { user_id: 1, content: 'The compose box at the top lets me create new posts quickly. Try clicking and typing!', offset: 60 }
+            ];
+          } else {
+            posts = [
+              { user_id: 1, content: 'Welcome to the Staging Demo Channel! This is a great place to test the new feed-like layout.', offset: 180 },
+              { user_id: 2, content: 'The channel detail view now has a sticky header with owner-specific controls. Try editing or deleting this channel if you are the owner!', offset: 120 },
+              { user_id: 3, content: 'Posts are displayed in a clean chronological feed. You can see the most recent posts first.', offset: 60 },
+              { user_id: 1, content: 'Load more posts at the bottom to see older messages. Try scrolling down to test pagination!', offset: 30 }
+            ];
+          }
 
           for (const post of posts) {
             await pool.query(`
