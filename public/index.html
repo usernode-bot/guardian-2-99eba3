@@ -1368,14 +1368,30 @@
 
   <!-- Create Channel Modal -->
   <div id="createChannelModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
-      <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Create Channel</h2>
-      <input id="channelNameInput" type="text" placeholder="Channel name" maxlength="255" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
-      <textarea id="channelDescInput" placeholder="Description (optional)" maxlength="1000" rows="3" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"></textarea>
-      <select id="channelCategoryInput" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
-        <option value="">Select a category...</option>
-      </select>
-      <div class="flex gap-2">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-sm">
+      <!-- Header section -->
+      <div class="p-6 border-b border-zinc-300 dark:border-zinc-700">
+        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Create Channel</h2>
+      </div>
+      <!-- Content section -->
+      <div class="p-6 space-y-3">
+        <div>
+          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300 block mb-1">Channel Name</label>
+          <input id="channelNameInput" type="text" placeholder="Channel name" maxlength="255" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+        </div>
+        <div>
+          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300 block mb-1">Description (Optional)</label>
+          <textarea id="channelDescInput" placeholder="Description (optional)" maxlength="1000" rows="3" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"></textarea>
+        </div>
+        <div>
+          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300 block mb-1">Category</label>
+          <select id="channelCategoryInput" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+            <option value="">Select a category...</option>
+          </select>
+        </div>
+      </div>
+      <!-- Footer section -->
+      <div class="p-6 border-t border-zinc-300 dark:border-zinc-700 flex gap-2">
         <button onclick="closeCreateChannelModal()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
         <button onclick="createChannel()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Create</button>
       </div>
