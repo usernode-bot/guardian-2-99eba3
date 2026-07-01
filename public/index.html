@@ -2024,7 +2024,9 @@
           // Set dropdown to current network mode, defaulting to networkMode if available, else isDemoMode for backward compat
           const currentMode = config.networkMode || (config.isDemoMode ? 'demo' : 'devnet');
           dropdown.value = currentMode;
-          dropdown.disabled = !config.canEdit;
+          // Network mode dropdown is always enabled for authenticated users (personal preference)
+          // It calls /api/user/network-mode which is available to all authenticated users
+          dropdown.disabled = false;
 
           // Show/hide RPC endpoint config based on network mode and permission
           if (currentMode === 'testnet' && config.canEditRpc) {
