@@ -824,6 +824,19 @@
                   <p class="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed"><strong>Real Testnet:</strong> Live blockchain transactions; wallet confirmation required; transactions remain pending until blockchain confirms. <strong>Devnet:</strong> Database-only transactions; immediate confirmation; useful for testing. <strong>Demo:</strong> Transactions are simulated with fake hashes; audit logs immediately mark as confirmed.</p>
                 </div>
 
+                <!-- Transaction Preferences -->
+                <div class="space-y-2 border-t border-zinc-300 dark:border-zinc-600 pt-3">
+                  <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400 flex items-center gap-2">
+                    <span>Transaction Preferences</span>
+                  </label>
+                  <div class="flex items-center gap-3">
+                    <input type="checkbox" id="skipSignatureDevnetToggle" onchange="updateSkipSignatureDevnet(this.checked)" class="w-4 h-4 rounded cursor-pointer">
+                    <label for="skipSignatureDevnetToggle" class="text-xs font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer">Skip signature confirmation in devnet mode</label>
+                  </div>
+                  <p class="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed ml-7">When enabled and devnet is the active network mode, transactions will broadcast immediately without wallet confirmation.</p>
+                  <p class="text-xs text-zinc-500 dark:text-zinc-500 leading-relaxed ml-7"><em>Only applies when devnet mode is active above.</em></p>
+                </div>
+
                 <!-- RPC Endpoint Configuration (only shown in testnet mode) -->
                 <div id="rpcEndpointConfig" class="hidden space-y-2">
                   <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400 flex items-center gap-2">
@@ -2009,6 +2022,7 @@
         network: stored.network || 'real_testnet',
         view_mode: stored.view_mode || 'web',
         networkMode: stored.networkMode || 'real_testnet',
+        skipSignatureInDevnet: stored.skipSignatureInDevnet || false,
       };
     }
 
@@ -2029,6 +2043,12 @@
       document.getElementById('themeSelect').value = settings.theme;
       updateLayoutButtons(settings.layout);
       updateViewModeButtons(settings.view_mode);
+
+      // Load skip signature in devnet preference from API
+      if (currentUser && currentUser.skipSignatureInDevnet !== undefined) {
+        settings.skipSignatureInDevnet = currentUser.skipSignatureInDevnet;
+        document.getElementById('skipSignatureDevnetToggle').checked = currentUser.skipSignatureInDevnet;
+      }
 
       // Start transaction history polling
       pollTransactionHistory();
@@ -2325,6 +2345,38 @@
       } finally {
         loading.classList.add('hidden');
         dropdown.disabled = false;
+      }
+    }
+
+    async function updateSkipSignatureDevnet(checked) {
+      const toggle = document.getElementById('skipSignatureDevnetToggle');
+      const previousState = !checked;
+
+      try {
+        const result = await apiCall('/api/user/skip-signature-devnet', {
+          method: 'PUT',
+          body: JSON.stringify({ skipSignature: checked })
+        });
+
+        if (result && !result.error) {
+          // Update in-memory settings
+          const settings = loadSettings();
+          settings.skipSignatureInDevnet = checked;
+          saveSettings(settings);
+
+          if (currentUser) {
+            currentUser.skipSignatureInDevnet = checked;
+          }
+
+          showToast('Preference saved', 'success');
+        } else if (result && result.error) {
+          toggle.checked = previousState;
+          showToast('Failed to save preference: ' + result.error, 'error');
+        }
+      } catch (err) {
+        console.error('Error updating skip signature preference:', err);
+        toggle.checked = previousState;
+        showToast('Failed to save preference', 'error');
       }
     }
 
@@ -4113,6 +4165,15 @@
         console.log('Demo mode: Skipping wallet signature for action:', action);
         showToast('Demo mode: Skipping wallet confirmation', 'info');
         return 'demo-tx-hash-' + Date.now();
+      }
+
+      // In devnet mode with skip signature enabled, skip wallet confirmation
+      const networkModeDropdown = document.getElementById('networkModeSelect');
+      const currentNetworkMode = networkModeDropdown ? networkModeDropdown.value : 'real_testnet';
+      if (currentNetworkMode === 'devnet' && currentUser && currentUser.skipSignatureInDevnet) {
+        console.log('Devnet + skip-signature enabled: skipping wallet confirmation for action:', action);
+        showToast('Signature skipped (devnet mode)', 'info');
+        return 'devnet-skipped-' + Date.now();
       }
 
       // Validate wallet connection
