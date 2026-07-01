@@ -6958,15 +6958,18 @@
       try {
         const data = await apiCall('/api/channels');
         if (data && data.channels) {
+          const discoverChannels = data.channels.filter(ch =>
+            ch.ownerId !== currentUser.id && !ch.isFollowing
+          );
           let html = '';
-          if (data.channels.length === 0) {
+          if (discoverChannels.length === 0) {
             html = `<div class="text-center py-12 text-zinc-600 dark:text-zinc-500">
-              <p class="text-lg font-medium mb-2">No public channels available</p>
-              <p class="text-sm">Try creating one!</p>
+              <p class="text-lg font-medium mb-2">No channels to discover</p>
+              <p class="text-sm">You follow or own all available channels!</p>
             </div>`;
           } else {
             html = '<div class="space-y-3 p-4">';
-            data.channels.forEach(channel => {
+            discoverChannels.forEach(channel => {
               html += renderChannelCard(channel, false);
             });
             html += '</div>';
