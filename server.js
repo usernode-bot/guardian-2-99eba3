@@ -5260,9 +5260,11 @@ app.get('/api/channels/:channelId/posts', async (req, res) => {
         fp.on_chain,
         u.username,
         u.verified_at,
-        u.avatar_url
+        u.avatar_url,
+        c.name as channel_name
       FROM feed_posts fp
       JOIN users u ON u.id = fp.user_id
+      LEFT JOIN channels c ON fp.channel_id = c.id
       WHERE fp.channel_id = $1 AND fp.deleted_at IS NULL
       ORDER BY fp.created_at DESC
       LIMIT $2 OFFSET $3
@@ -5279,7 +5281,8 @@ app.get('/api/channels/:channelId/posts', async (req, res) => {
       createdAt: post.created_at,
       updatedAt: post.updated_at,
       isEdited: post.updated_at && post.created_at && (new Date(post.updated_at) - new Date(post.created_at)) > 1000,
-      onChain: post.on_chain || false
+      onChain: post.on_chain || false,
+      channelName: post.channel_name
     }));
 
     const { rows: countResult } = await pool.query(`
@@ -6217,9 +6220,11 @@ app.get('/api/feed/posts', async (req, res) => {
         fp.channel_id,
         u.username,
         u.verified_at,
-        u.avatar_url
+        u.avatar_url,
+        c.name as channel_name
       FROM feed_posts fp
       JOIN users u ON u.id = fp.user_id
+      LEFT JOIN channels c ON fp.channel_id = c.id
       ${whereClause}
       ORDER BY fp.created_at DESC
       LIMIT $2 OFFSET $3
@@ -6237,7 +6242,8 @@ app.get('/api/feed/posts', async (req, res) => {
       updatedAt: post.updated_at,
       isEdited: post.updated_at && post.created_at && (new Date(post.updated_at) - new Date(post.created_at)) > 1000,
       onChain: post.on_chain,
-      isMilestone: post.user_id === -1
+      isMilestone: post.user_id === -1,
+      channelName: post.channel_name
     }));
 
     // Build count query based on whether channel_id is provided

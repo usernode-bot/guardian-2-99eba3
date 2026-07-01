@@ -6488,14 +6488,10 @@
       return `
         <div class="pb-3 border-b border-zinc-100 dark:border-zinc-800 last:border-b-0 relative group" data-post-id="${post.id}">
           <div class="flex items-start gap-3">
-            <div class="flex-shrink-0 w-10 h-10 bg-zinc-300 dark:bg-zinc-700 rounded-full flex items-center justify-center text-xs font-bold text-zinc-600 dark:text-zinc-400">
-              ${post.username ? post.username.substring(0, 2).toUpperCase() : 'U'}
-            </div>
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2 justify-between">
-                <div class="flex items-center gap-2">
-                  <span class="font-semibold text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username || 'System')}</span>
-                  ${post.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs">✓</span>' : ''}
+                <div class="flex items-center gap-2 flex-1">
+                  <span class="text-xs text-zinc-500 dark:text-zinc-500">Posted in ${escapeHtml(post.channelName || 'Unknown')}</span>
                 </div>
                 ${actionMenu}
               </div>
@@ -7015,13 +7011,9 @@
       return `
         <div class="pb-3 border-b border-zinc-100 dark:border-zinc-800 last:border-b-0">
           <div class="flex items-start gap-3">
-            <div class="flex-shrink-0 w-10 h-10 bg-zinc-300 dark:bg-zinc-700 rounded-full flex items-center justify-center text-xs font-bold text-zinc-600 dark:text-zinc-400">
-              ${post.username ? post.username.substring(0, 2).toUpperCase() : 'U'}
-            </div>
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2">
-                <span class="font-semibold text-zinc-900 dark:text-zinc-100 text-sm">${escapeHtml(post.username || 'System')}</span>
-                ${post.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-xs">✓</span>' : ''}
+                <span class="text-xs text-zinc-500 dark:text-zinc-500">Posted in ${escapeHtml(post.channelName || 'Unknown')}</span>
               </div>
               ${contentText ? `<p class="text-zinc-900 dark:text-zinc-100 text-sm mt-1 mb-2 whitespace-pre-wrap break-words">${escapeHtml(contentText)}</p>` : ''}
               ${imageGallery}
