@@ -6931,21 +6931,36 @@
     async function loadFollowingChannels() {
       try {
         const data = await apiCall('/api/user/followed-channels');
-        if (data && data.channels) {
-          channelsList = data.channels;
-          filteredChannelsList = channelsList;
+        if (data) {
+          const channels = data.channels || [];
+          const users = data.users || [];
+          channelsList = channels;
+          filteredChannelsList = channels;
           let html = '';
-          if (data.channels.length === 0) {
+          if (channels.length === 0 && users.length === 0) {
             html = `<div class="text-center py-12 text-zinc-600 dark:text-zinc-500">
-              <p class="text-lg font-medium mb-2">You don't follow any channels yet</p>
-              <p class="text-sm mb-4">Discover channels to follow and build your feed.</p>
+              <p class="text-lg font-medium mb-2">You don't follow any channels or contacts yet</p>
+              <p class="text-sm mb-4">Discover channels to follow and add contacts to build your feed.</p>
               <button onclick="switchFeedTab('discover')" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition">Discover Channels</button>
             </div>`;
           } else {
             html = '<div class="space-y-3 p-4">';
-            data.channels.forEach(channel => {
-              html += renderChannelCard(channel, true);
-            });
+            if (users.length > 0) {
+              html += renderFollowingUsersSection(users);
+              if (channels.length > 0) {
+                html += '<div class="border-t border-zinc-200 dark:border-zinc-700 pt-4 mt-4"></div>';
+              }
+            }
+            if (channels.length > 0) {
+              html += '<div>';
+              if (users.length > 0) {
+                html += '<h3 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-3 px-0">Following Channels</h3>';
+              }
+              channels.forEach(channel => {
+                html += renderChannelCard(channel, true);
+              });
+              html += '</div>';
+            }
             html += '</div>';
           }
           document.getElementById('feedContentWrapper').innerHTML = html;
@@ -6982,6 +6997,28 @@
         console.error('Error loading discover channels:', err);
         showToast('Error loading discover channels', 'error');
       }
+    }
+
+    function renderFollowingUsersSection(users) {
+      const heading = users.length > 0 ? '<h3 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-3 px-0">Following Users</h3>' : '';
+      const userCards = users.map(user => {
+        const verifiedBadge = user.verified ? '<span class="text-xs bg-cyan-100 dark:bg-cyan-900 text-cyan-700 dark:text-cyan-300 px-2 py-1 rounded">✓ Verified</span>' : '';
+        return `
+          <div class="p-4 bg-white dark:bg-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-lg border border-zinc-200 dark:border-zinc-700 transition space-y-2">
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1">
+                  <h3 class="font-semibold text-zinc-900 dark:text-zinc-100 truncate">${escapeHtml(user.username)}</h3>
+                  ${verifiedBadge}
+                </div>
+                <p class="text-xs text-zinc-600 dark:text-zinc-400 truncate">${escapeHtml(user.usernode_pubkey || 'No wallet linked')}</p>
+                ${user.nickname ? `<p class="text-sm text-zinc-700 dark:text-zinc-300 mt-1">${escapeHtml(user.nickname)}</p>` : ''}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+      return heading + '<div class="space-y-2">' + userCards + '</div>';
     }
 
     function renderChannelCard(channel, isFollowing) {
