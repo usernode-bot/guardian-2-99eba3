@@ -6982,7 +6982,7 @@
         const data = await apiCall('/api/channels');
         if (data && data.channels) {
           const myChannels = data.channels.filter(ch =>
-            currentUser && ch.ownerId === currentUser.id
+            currentUser && parseInt(ch.ownerId, 10) === parseInt(currentUser.id, 10)
           );
           channelsList = myChannels;
           let html = '';
