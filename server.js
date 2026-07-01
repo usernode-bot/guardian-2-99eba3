@@ -5343,8 +5343,12 @@ app.post('/api/channels/:channelId/posts', async (req, res) => {
         return res.status(404).json({ error: 'Channel not found' });
       }
 
-      if (mockChannel.owner_id !== userId) {
-        return res.status(403).json({ error: 'You are not the owner of this channel' });
+      const isOwner = mockChannel.owner_id === userId;
+      const mockFollowers = mockData.MOCK_CHANNEL_FOLLOWERS || [];
+      const isFollower = mockFollowers.some(f => f.user_id === userId && f.channel_id === channelId);
+
+      if (!isOwner && !isFollower) {
+        return res.status(403).json({ error: 'You must follow this channel to post in it' });
       }
 
       // Return mock success response
@@ -5362,7 +5366,7 @@ app.post('/api/channels/:channelId/posts', async (req, res) => {
       });
     }
 
-    // Production: check channel exists and user is owner
+    // Production: check channel exists and user is owner or follower
     const { rows: channelCheck } = await pool.query(`
       SELECT id, owner_id FROM channels WHERE id = $1
     `, [channelId]);
@@ -5371,8 +5375,17 @@ app.post('/api/channels/:channelId/posts', async (req, res) => {
       return res.status(404).json({ error: 'Channel not found' });
     }
 
-    if (channelCheck[0].owner_id !== userId) {
-      return res.status(403).json({ error: 'You are not the owner of this channel' });
+    const isOwner = channelCheck[0].owner_id === userId;
+
+    if (!isOwner) {
+      // Check if user is a follower
+      const { rows: followerCheck } = await pool.query(`
+        SELECT 1 FROM channel_followers WHERE user_id = $1 AND channel_id = $2
+      `, [userId, channelId]);
+
+      if (followerCheck.length === 0) {
+        return res.status(403).json({ error: 'You must follow this channel to post in it' });
+      }
     }
 
     // Insert the post

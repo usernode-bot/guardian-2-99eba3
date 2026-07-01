@@ -6345,12 +6345,12 @@
         channel: channel
       });
       const isOwner = currentUser && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
+      const isFollowing = currentUser && channel.isFollowing;
       console.log('isOwner:', isOwner);
       const actionButtonsContainer = document.getElementById('channelActionButtons');
       if (isOwner) {
         actionButtonsContainer.innerHTML = '';
       } else {
-        const isFollowing = currentUser && channel.isFollowing;
         const followBtnText = isFollowing ? 'Following' : 'Follow';
         const followBtnClass = isFollowing
           ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-300 dark:hover:bg-zinc-600'
@@ -6367,8 +6367,8 @@
           channelPostsHasMore = data.hasMore || false;
           let html = '';
 
-          // Add compose box for owner
-          if (isOwner) {
+          // Add compose box for owner or followers
+          if (isOwner || isFollowing) {
             html += `
               <div class="sticky top-0 z-[99] p-4 border-b-2 border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 mb-2">
                 <textarea
