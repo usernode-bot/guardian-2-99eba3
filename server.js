@@ -37,7 +37,7 @@ pool.on('error', (err) => {
 const JWT_SECRET = process.env.JWT_SECRET;
 const IS_STAGING = process.env.USERNODE_ENV === 'staging';
 
-// Initialize network mode with priority: NETWORK_MODE env var > ENABLE_DEMO_MODE env var > USERNODE_ENV==='staging' > default 'real_testnet'
+// Initialize network mode with priority: NETWORK_MODE env var > ENABLE_DEMO_MODE env var > USERNODE_ENV==='staging' > default 'devnet'
 // Note: 'testnet' from env is treated as an alias for 'real_testnet' for backward compatibility
 let NETWORK_MODE = process.env.NETWORK_MODE && ['demo', 'testnet', 'real_testnet', 'devnet'].includes(process.env.NETWORK_MODE)
   ? (process.env.NETWORK_MODE === 'testnet' ? 'real_testnet' : process.env.NETWORK_MODE)
@@ -45,7 +45,7 @@ let NETWORK_MODE = process.env.NETWORK_MODE && ['demo', 'testnet', 'real_testnet
     ? 'demo'
     : IS_STAGING
       ? 'demo'
-      : 'real_testnet';
+      : 'devnet';
 
 // Derive ENABLE_DEMO_MODE for backward compatibility with existing transaction code
 const getEnableDemoMode = () => NETWORK_MODE === 'demo';
