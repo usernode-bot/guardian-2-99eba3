@@ -591,7 +591,7 @@
     <div class="splash-tagline">Built on UserNode</div>
   </div>
 
-  <div id="app" class="flex flex-col flex-1 relative h-screen overflow-hidden">
+  <div id="app" class="flex flex-col flex-1 h-screen overflow-hidden">
     <!-- Header -->
     <div id="header" class="bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-300 dark:border-zinc-800 px-4 py-3 flex items-start gap-3 fixed top-0 left-0 right-0 z-40 w-full header-in-view">
       <button id="menuBtn" class="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition" title="Toggle sidebar">
@@ -934,7 +934,7 @@
         <!-- Channel List or Posts Container (now contains sticky headers) -->
         <div id="feedMainContent" class="flex-1 overflow-y-auto flex flex-col">
           <!-- Sticky Feed Header with Tabs -->
-          <div id="feedHeader" class="sticky top-0 z-[100] bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0">
+          <div id="feedHeader" class="sticky top-0 z-30 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0">
             <div class="p-4">
               <div class="flex items-center justify-between mb-3">
                 <h2 class="text-lg font-bold text-zinc-900 dark:text-zinc-100">Feed</h2>
@@ -955,7 +955,7 @@
             </div>
           </div>
           <!-- Channel Detail Header (hidden until a channel is selected) -->
-          <div id="channelDetailHeader" class="sticky top-0 z-[100] bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0 hidden">
+          <div id="channelDetailHeader" class="fixed inset-x-0 top-14 z-40 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0 hidden">
             <!-- Main header row with back button, title, and action buttons -->
             <div class="flex items-center justify-between p-4">
               <div class="flex items-center gap-3 flex-1 min-w-0">
@@ -968,10 +968,10 @@
                 <button id="channelFollowBtn" onclick="showChannelFollowToast()" class="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition active:scale-95">Follow</button>
               </div>
             </div>
-            <!-- Info row with description and followers -->
+            <!-- Info row with description (followers hidden) -->
             <div class="px-4 pb-3 border-t border-zinc-100 dark:border-zinc-800">
               <p id="channelDetailDescription" class="text-sm text-zinc-600 dark:text-zinc-400">Channel description</p>
-              <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-1" id="channelDetailFollowers">0 followers</div>
+              <div class="hidden text-xs text-zinc-500 dark:text-zinc-500 mt-1" id="channelDetailFollowers">0 followers</div>
             </div>
           </div>
           <!-- Content wrapper for scrollable channel/post content -->
@@ -6441,12 +6441,20 @@
 
       currentChannel = channel;
 
+      // Clear composition state from previous channel
+      const channelPostInput = document.getElementById('channelPostInput');
+      if (channelPostInput) {
+        channelPostInput.value = '';
+      }
+      const channelPostCharCount = document.getElementById('channelPostCharCount');
+      if (channelPostCharCount) {
+        channelPostCharCount.textContent = '0/2000';
+      }
+
       document.getElementById('feedHeader').style.display = 'none';
       document.getElementById('channelDetailHeader').classList.remove('hidden');
       document.getElementById('channelDetailName').textContent = channel.name;
       document.getElementById('channelDetailDescription').textContent = channel.description || '';
-      const followerCount = channel.followerCount || 0;
-      document.getElementById('channelDetailFollowers').textContent = `${followerCount} ${followerCount === 1 ? 'follower' : 'followers'}`;
 
       // Set up action buttons based on ownership
       const isOwner = currentUser && channel.ownerId === currentUser.id;
@@ -6474,7 +6482,7 @@
           // Add compose box for owner
           if (isOwner) {
             html += `
-              <div class="p-4 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
+              <div class="p-4 border-b-2 border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 mb-2">
                 <textarea
                   id="channelPostInput"
                   placeholder="Write a post in #${escapeHtml(channel.name)}..."
@@ -6688,7 +6696,7 @@
 
           if (isOwner) {
             html += `
-              <div class="p-4 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
+              <div class="p-4 border-b-2 border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 mb-2">
                 <textarea
                   id="channelPostInput"
                   placeholder="Write a post in #${escapeHtml(channel.name)}..."
@@ -6765,7 +6773,7 @@
       modal.id = `edit-modal-${postId}`;
       modal.className = 'fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4';
       modal.innerHTML = `
-        <div class="bg-white dark:bg-zinc-900 rounded-lg shadow-xl max-w-md w-full max-h-[80vh] overflow-y-auto">
+        <div class="bg-white dark:bg-zinc-900 rounded-lg shadow-xl max-w-md w-full max-h-[70vh] overflow-y-auto">
           <div class="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
             <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Edit Post</h2>
             <button onclick="document.getElementById('edit-modal-${postId}').remove()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition text-xl">✕</button>
@@ -6775,7 +6783,7 @@
               id="editPostInput-${postId}"
               placeholder="Edit your post..."
               maxlength="2000"
-              rows="5"
+              rows="4"
               class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"
               oninput="updateEditCharCount(${postId})"
             ></textarea>
@@ -6967,6 +6975,11 @@
       const feedHeaderFollowing = document.getElementById('feedHeaderFollowing');
       const feedHeaderDiscover = document.getElementById('feedHeaderDiscover');
 
+      // Reset channel view state when switching tabs
+      currentChannelId = null;
+      document.getElementById('feedHeader').style.display = 'block';
+      document.getElementById('channelDetailHeader').classList.add('hidden');
+
       if (tabName === 'following') {
         followingTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
         followingTab.classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
@@ -6991,34 +7004,20 @@
         const data = await apiCall('/api/user/followed-channels');
         if (data) {
           const channels = data.channels || [];
-          const users = data.users || [];
           channelsList = channels;
           filteredChannelsList = channels;
           let html = '';
-          if (channels.length === 0 && users.length === 0) {
+          if (channels.length === 0) {
             html = `<div class="text-center py-12 text-zinc-600 dark:text-zinc-500">
-              <p class="text-lg font-medium mb-2">You don't follow any channels or contacts yet</p>
-              <p class="text-sm mb-4">Discover channels to follow and add contacts to build your feed.</p>
+              <p class="text-lg font-medium mb-2">You don't follow any channels yet</p>
+              <p class="text-sm mb-4">Discover channels to follow and build your feed.</p>
               <button onclick="switchFeedTab('discover')" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition">Discover Channels</button>
             </div>`;
           } else {
             html = '<div class="space-y-3 p-4">';
-            if (users.length > 0) {
-              html += renderFollowingUsersSection(users);
-              if (channels.length > 0) {
-                html += '<div class="border-t border-zinc-200 dark:border-zinc-700 pt-4 mt-4"></div>';
-              }
-            }
-            if (channels.length > 0) {
-              html += '<div>';
-              if (users.length > 0) {
-                html += '<h3 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-3 px-0">Following Channels</h3>';
-              }
-              channels.forEach(channel => {
-                html += renderChannelCard(channel, true);
-              });
-              html += '</div>';
-            }
+            channels.forEach(channel => {
+              html += renderChannelCard(channel, true);
+            });
             html += '</div>';
           }
           document.getElementById('feedContentWrapper').innerHTML = html;
@@ -7033,6 +7032,8 @@
       try {
         const data = await apiCall('/api/channels');
         if (data && data.channels) {
+          // Store all channels so showChannelPosts() can find them
+          channelsList = data.channels;
           const discoverChannels = data.channels.filter(ch =>
             ch.ownerId !== currentUser.id && !ch.isFollowing
           );
