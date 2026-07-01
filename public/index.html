@@ -7229,7 +7229,9 @@
           const myChannels = data.channels.filter(ch =>
             currentUser && parseInt(ch.ownerId, 10) === parseInt(currentUser.id, 10)
           );
-          channelsList = myChannels;
+          // Store the full channel list so showChannelPosts() can find any channel by ID.
+          // Filtering happens only for display; global state must contain all channels.
+          channelsList = data.channels;
           let html = '';
           if (myChannels.length === 0) {
             html = `<div class="text-center py-12 text-zinc-600 dark:text-zinc-500">
