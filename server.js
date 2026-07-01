@@ -5229,6 +5229,7 @@ app.get('/api/channels/:channelId/posts', async (req, res) => {
           verified: false,
           avatarUrl: p.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.authorUsername}`,
           content: p.content,
+          imageUrls: p.imageUrls || [],
           createdAt: p.createdAt,
           updatedAt: p.createdAt,
           isEdited: false,
@@ -5253,6 +5254,7 @@ app.get('/api/channels/:channelId/posts', async (req, res) => {
         fp.id,
         fp.user_id,
         fp.content,
+        fp.image_urls,
         fp.created_at,
         fp.updated_at,
         fp.on_chain,
@@ -5273,6 +5275,7 @@ app.get('/api/channels/:channelId/posts', async (req, res) => {
       verified: !!post.verified_at,
       avatarUrl: post.avatar_url,
       content: post.content,
+      imageUrls: post.image_urls || [],
       createdAt: post.created_at,
       updatedAt: post.updated_at,
       isEdited: post.updated_at && post.created_at && (new Date(post.updated_at) - new Date(post.created_at)) > 1000,
@@ -5305,24 +5308,27 @@ app.post('/api/channels/:channelId/posts', async (req, res) => {
 
     const channelId = parseInt(req.params.channelId);
     const userId = parseInt(req.user.id, 10);
-    const { content } = req.body;
+    const { content, imageUrls } = req.body;
 
     if (isNaN(channelId) || isNaN(userId)) {
       return res.status(400).json({ error: 'Invalid channel or user ID' });
     }
 
-    // Validate content
-    if (!content || typeof content !== 'string') {
-      return res.status(400).json({ error: 'Post content is required' });
-    }
+    // Validate content and images
+    const trimmedContent = content ? content.trim() : '';
+    const images = Array.isArray(imageUrls) ? imageUrls : [];
 
-    const trimmedContent = content.trim();
-    if (trimmedContent.length === 0) {
-      return res.status(400).json({ error: 'Post content cannot be empty' });
+    // At least one of content or images must be provided
+    if (trimmedContent.length === 0 && images.length === 0) {
+      return res.status(400).json({ error: 'Post must contain either text or images' });
     }
 
     if (trimmedContent.length > 2000) {
       return res.status(400).json({ error: 'Post is too long (exceeds 2000 characters)' });
+    }
+
+    if (images.length > 4) {
+      return res.status(400).json({ error: 'Maximum 4 images per post' });
     }
 
     // Demo mode: validate against mock data
@@ -5346,6 +5352,7 @@ app.post('/api/channels/:channelId/posts', async (req, res) => {
         userId: userId,
         username: mockUsername,
         content: { text: trimmedContent },
+        imageUrls: images,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         onChain: false
@@ -5367,10 +5374,10 @@ app.post('/api/channels/:channelId/posts', async (req, res) => {
 
     // Insert the post
     const { rows: postRows } = await pool.query(`
-      INSERT INTO feed_posts (user_id, content, channel_id, on_chain, created_at, updated_at)
-      VALUES ($1, $2, $3, FALSE, NOW(), NOW())
-      RETURNING id, user_id, content, created_at, updated_at, on_chain
-    `, [userId, JSON.stringify({ text: trimmedContent }), channelId]);
+      INSERT INTO feed_posts (user_id, content, channel_id, on_chain, image_urls, created_at, updated_at)
+      VALUES ($1, $2, $3, FALSE, $4, NOW(), NOW())
+      RETURNING id, user_id, content, image_urls, created_at, updated_at, on_chain
+    `, [userId, JSON.stringify({ text: trimmedContent }), channelId, JSON.stringify(images)]);
 
     if (postRows.length === 0) {
       return res.status(500).json({ error: 'Failed to create post' });
@@ -5392,6 +5399,7 @@ app.post('/api/channels/:channelId/posts', async (req, res) => {
       verified: verified,
       avatarUrl: avatarUrl,
       content: post.content,
+      imageUrls: post.image_urls || [],
       createdAt: post.created_at,
       updatedAt: post.updated_at,
       isEdited: false,
@@ -6170,6 +6178,99 @@ async function fetchLinkPreview(url) {
   }
 }
 
+// GET /api/feed/posts - Fetch paginated feed posts with milestone posts
+// When no channel_id is provided, fetches posts from followed channels only
+app.get('/api/feed/posts', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const limit = Math.min(parseInt(req.query.limit || 50), 100);
+    const offset = parseInt(req.query.offset || 0);
+    const channelId = req.query.channel_id ? parseInt(req.query.channel_id) : null;
+
+    // Build query based on whether channel_id is provided
+    let whereClause = '';
+    let params = [req.user.id, limit, offset];
+
+    if (channelId) {
+      whereClause = 'WHERE fp.channel_id = $3';
+      params = [req.user.id, limit, offset, channelId];
+    } else {
+      // When no channel_id provided, fetch posts from followed channels only
+      whereClause = `WHERE fp.channel_id IN (
+        SELECT channel_id FROM channel_followers WHERE user_id = $1
+      )`;
+    }
+
+    // Fetch posts (optionally filtered by channel, or by followed channels)
+    const { rows: posts } = await pool.query(`
+      SELECT
+        fp.id,
+        fp.user_id,
+        fp.content,
+        fp.image_urls,
+        fp.created_at,
+        fp.updated_at,
+        fp.on_chain,
+        fp.channel_id,
+        u.username,
+        u.verified_at,
+        u.avatar_url,
+        (SELECT COUNT(*) FROM feed_likes WHERE post_id = fp.id)::INTEGER as like_count,
+        (SELECT COUNT(*) FROM feed_comments WHERE post_id = fp.id)::INTEGER as comment_count
+      FROM feed_posts fp
+      JOIN users u ON u.id = fp.user_id
+      ${whereClause}
+      ORDER BY fp.created_at DESC
+      LIMIT $2 OFFSET $3
+    `, channelId ? [req.user.id, limit, offset, channelId] : params);
+
+    const resultPosts = posts.map(post => ({
+      id: post.id,
+      userId: post.user_id,
+      username: post.username,
+      verified: !!post.verified_at,
+      avatarUrl: post.avatar_url,
+      content: post.content,
+      imageUrls: post.image_urls || [],
+      createdAt: post.created_at,
+      updatedAt: post.updated_at,
+      isEdited: post.updated_at && post.created_at && (new Date(post.updated_at) - new Date(post.created_at)) > 1000,
+      onChain: post.on_chain,
+      likeCount: post.like_count || 0,
+      commentCount: post.comment_count || 0,
+      isMilestone: post.user_id === -1
+    }));
+
+    // Build count query based on whether channel_id is provided
+    let countQuery = '';
+    let countParams = [];
+
+    if (channelId) {
+      countQuery = 'SELECT COUNT(*) as count FROM feed_posts WHERE channel_id = $1';
+      countParams = [channelId];
+    } else {
+      countQuery = `SELECT COUNT(*) as count FROM feed_posts WHERE channel_id IN (
+        SELECT channel_id FROM channel_followers WHERE user_id = $1
+      )`;
+      countParams = [req.user.id];
+    }
+
+    const { rows: countResult } = await pool.query(countQuery, countParams);
+    const total = parseInt(countResult[0].count);
+    const hasMore = offset + limit < total;
+
+    res.json({
+      posts: resultPosts,
+      hasMore
+    });
+  } catch (err) {
+    console.error('Error fetching feed posts:', err);
+    res.status(500).json({ error: 'Failed to fetch feed' });
+  }
+});
 
 // ===== FEED COMMENTS ENDPOINTS =====
 
@@ -7303,6 +7404,151 @@ async function start() {
         ON CONFLICT (name) DO NOTHING
       `);
     }
+
+    // Create feed_posts table (public - feed posts are shared with all users)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS feed_posts (
+        id BIGSERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        content JSONB NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_feed_posts_created
+        ON feed_posts(created_at DESC)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_feed_posts_user_id
+        ON feed_posts(user_id)
+    `);
+
+    // Create feed_comments table (public - comments on feed posts)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS feed_comments (
+        id BIGSERIAL PRIMARY KEY,
+        post_id BIGINT NOT NULL REFERENCES feed_posts(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        content TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_feed_comments_post_id
+        ON feed_comments(post_id, created_at)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_feed_comments_user_id
+        ON feed_comments(user_id)
+    `);
+
+    // Create feed_likes table (public - likes on feed posts)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS feed_likes (
+        id BIGSERIAL PRIMARY KEY,
+        post_id BIGINT NOT NULL REFERENCES feed_posts(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(post_id, user_id)
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_feed_likes_post_id
+        ON feed_likes(post_id)
+    `);
+
+    // Add channel_id column to feed_posts if it doesn't exist
+    await pool.query(`
+      ALTER TABLE feed_posts
+      ADD COLUMN IF NOT EXISTS channel_id BIGINT REFERENCES channels(id) ON DELETE CASCADE
+    `);
+
+    // Create index on channel_id and created_at for efficient post queries
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_feed_posts_channel_created
+        ON feed_posts(channel_id, created_at DESC)
+    `);
+
+    // Backfill existing posts to Guardian Updates channel if they don't have a channel
+    await pool.query(`
+      UPDATE feed_posts
+      SET channel_id = $1
+      WHERE channel_id IS NULL
+    `, [guardianChannelId]);
+
+    // Add on_chain column to feed_posts if it doesn't exist
+    await pool.query(`
+      ALTER TABLE feed_posts
+      ADD COLUMN IF NOT EXISTS on_chain BOOLEAN DEFAULT FALSE
+    `);
+
+    // Add deleted_at column to feed_posts for soft deletes
+    await pool.query(`
+      ALTER TABLE feed_posts
+      ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ
+    `);
+
+    // Add image_urls column to feed_posts for image attachments
+    await pool.query(`
+      ALTER TABLE feed_posts
+      ADD COLUMN IF NOT EXISTS image_urls JSONB DEFAULT '[]'
+    `);
+
+    // Staging: seed example posts if in staging mode
+    if (process.env.USERNODE_ENV === 'staging') {
+      // Seed a system post
+      await pool.query(`
+        INSERT INTO feed_posts (user_id, content, channel_id, image_urls, created_at)
+        VALUES (-1, $1, $2, $3, NOW())
+        ON CONFLICT DO NOTHING
+      `, [JSON.stringify({ type: 'text', text: '[Staging] Guardian Updates - Initial System Message' }), guardianChannelId, JSON.stringify([])]);
+
+      // Find a staging channel to seed with sample posts
+      const { rows: stagingChannels } = await pool.query(`
+        SELECT id FROM channels WHERE name = '[Staging] General Discussion' LIMIT 1
+      `);
+
+      if (stagingChannels.length > 0) {
+        const stagingChannelId = stagingChannels[0].id;
+
+        // Seed a sample post with text only
+        await pool.query(`
+          INSERT INTO feed_posts (user_id, content, channel_id, image_urls, created_at)
+          VALUES (1, $1, $2, $3, NOW() - INTERVAL '1 hour')
+          ON CONFLICT DO NOTHING
+        `, [JSON.stringify({ text: '[Staging] Welcome to the demo channel! This is a test post.' }), stagingChannelId, JSON.stringify([])]);
+
+        // Seed a sample post with an image
+        const sampleImage = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mP8z8DwHwMxxGAIwAAADkkBkMTjF4UAAAAASUVORK5CYII=';
+        await pool.query(`
+          INSERT INTO feed_posts (user_id, content, channel_id, image_urls, created_at)
+          VALUES (1, $1, $2, $3, NOW() - INTERVAL '30 minutes')
+          ON CONFLICT DO NOTHING
+        `, [JSON.stringify({ text: '[Staging] Check out this sample image in a channel post!' }), stagingChannelId, JSON.stringify([sampleImage])]);
+      }
+    }
+
+    // Create bot_reply_log table for tracking bot replies
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS bot_reply_log (
+        id BIGSERIAL PRIMARY KEY,
+        trigger_comment_id BIGINT NOT NULL REFERENCES feed_comments(id) ON DELETE CASCADE,
+        bot_reply_comment_id BIGINT NOT NULL REFERENCES feed_comments(id) ON DELETE CASCADE,
+        trigger_username VARCHAR(255),
+        reply_content TEXT,
+        crypto_ticker VARCHAR(20),
+        crypto_price NUMERIC,
+        price_change_24h NUMERIC,
+        api_source VARCHAR(50),
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_bot_reply_log_trigger
+        ON bot_reply_log(trigger_comment_id)
+    `);
 
     // Create peers table (public - peer foreground hours data)
     await pool.query(`
