@@ -1307,7 +1307,13 @@
       <!-- Content section -->
       <div class="p-6 space-y-3">
         <div>
-          <textarea id="postInput" placeholder="Share your thoughts..." maxlength="2000" rows="4" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition" oninput="updatePostCharCount()"></textarea>
+          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300 block mb-1">Channel</label>
+          <select id="postChannelSelect" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition" onchange="updatePostSubmitState()">
+            <option value="">Select a channel...</option>
+          </select>
+        </div>
+        <div>
+          <textarea id="postInput" placeholder="Share your thoughts..." maxlength="2000" rows="4" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition" oninput="updatePostCharCount(); updatePostSubmitState();"></textarea>
         </div>
         <div id="postImagePreview" class="flex flex-wrap gap-2"></div>
         <div class="flex items-center justify-between">
@@ -5007,13 +5013,44 @@
     // Post modal functions
     let postImages = [];
 
-    function openPostModal() {
+    async function openPostModal() {
       document.getElementById('postModal').classList.remove('hidden');
       document.getElementById('postInput').value = '';
+      document.getElementById('postChannelSelect').value = '';
       postImages = [];
       updatePostImagePreview();
       updatePostCharCount();
       document.getElementById('submitPostBtn').disabled = true;
+
+      // Fetch and populate channels
+      try {
+        const channelsData = await apiCall('/api/channels');
+        if (channelsData && channelsData.channels) {
+          const ownedChannels = channelsData.channels.filter(ch =>
+            currentUser && parseInt(ch.ownerId, 10) === parseInt(currentUser.id, 10)
+          );
+
+          const select = document.getElementById('postChannelSelect');
+          select.innerHTML = '<option value="">Select a channel...</option>';
+
+          if (ownedChannels.length === 0) {
+            const option = document.createElement('option');
+            option.disabled = true;
+            option.textContent = 'No channels created. Create a channel first.';
+            select.appendChild(option);
+          } else {
+            ownedChannels.forEach(channel => {
+              const option = document.createElement('option');
+              option.value = channel.id;
+              option.textContent = channel.name;
+              select.appendChild(option);
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching channels:', err);
+        showToast('Error loading channels', 'error');
+      }
     }
 
     function closePostModal() {
@@ -5032,12 +5069,21 @@
     function updatePostCharCount() {
       const textarea = document.getElementById('postInput');
       const counter = document.getElementById('postCharCount');
-      const btn = document.getElementById('submitPostBtn');
       if (textarea && counter) {
         const count = textarea.value.length;
         counter.textContent = count + '/2000';
-        btn.disabled = count === 0 && postImages.length === 0;
       }
+    }
+
+    function updatePostSubmitState() {
+      const select = document.getElementById('postChannelSelect');
+      const textarea = document.getElementById('postInput');
+      const btn = document.getElementById('submitPostBtn');
+
+      const channelSelected = select && select.value !== '';
+      const hasContent = textarea && (textarea.value.trim().length > 0 || postImages.length > 0);
+
+      btn.disabled = !channelSelected || !hasContent;
     }
 
     function attachImageToPost() {
@@ -5059,7 +5105,7 @@
             if (postImages.length < 4) {
               postImages.push(dataUri);
               updatePostImagePreview();
-              updatePostCharCount();
+              updatePostSubmitState();
             } else {
               showToast('Maximum 4 images per post', 'error');
             }
@@ -5073,7 +5119,7 @@
     function removePostImage(index) {
       postImages.splice(index, 1);
       updatePostImagePreview();
-      updatePostCharCount();
+      updatePostSubmitState();
     }
 
     function updatePostImagePreview() {
@@ -5090,11 +5136,18 @@
 
     async function submitPost() {
       const textarea = document.getElementById('postInput');
+      const select = document.getElementById('postChannelSelect');
       const btn = document.getElementById('submitPostBtn');
 
-      if (!textarea || !btn) return;
+      if (!textarea || !btn || !select) return;
 
       let content = textarea.value.trim();
+      const channelId = select.value;
+
+      if (!channelId) {
+        showToast('Please select a channel', 'error');
+        return;
+      }
 
       if (!content && postImages.length === 0) {
         showToast('Post must contain either text or images', 'error');
@@ -5109,23 +5162,7 @@
       btn.disabled = true;
 
       try {
-        // Fetch user's owned channel
-        const channelsData = await apiCall('/api/channels');
-        if (!channelsData || !channelsData.channels) {
-          showToast('Unable to fetch channels', 'error');
-          return;
-        }
-
-        const ownedChannel = channelsData.channels.find(ch =>
-          currentUser && parseInt(ch.ownerId, 10) === parseInt(currentUser.id, 10)
-        );
-
-        if (!ownedChannel) {
-          showToast('You must create a channel first', 'error');
-          return;
-        }
-
-        const response = await apiCall(`/api/channels/${ownedChannel.id}/posts`, {
+        const response = await apiCall(`/api/channels/${channelId}/posts`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
