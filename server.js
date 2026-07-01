@@ -1026,6 +1026,7 @@ app.use(async (req, res, next) => {
   // Upsert user on first request: ensure user exists in DB with wallet identity
   if (req.user && dbConnected) {
     try {
+      const username = req.user.username || `user-${req.user.id}`;
       await pool.query(`
         INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at)
         VALUES ($1, $2, $3, $4, NOW())
@@ -1036,7 +1037,7 @@ app.use(async (req, res, next) => {
             WHEN EXCLUDED.verified_at IS NOT NULL THEN EXCLUDED.verified_at
             ELSE users.verified_at
           END
-      `, [req.user.id, req.user.username, req.user.usernode_pubkey || null, req.user.verified_at || null]);
+      `, [req.user.id, username, req.user.usernode_pubkey || null, req.user.verified_at || null]);
     } catch (err) {
       console.error('Error upserting user:', err);
     }
@@ -5197,7 +5198,7 @@ app.get('/api/channels', async (req, res) => {
         name: c.name,
         description: c.description,
         ownerId: c.owner_id,
-        ownerUsername: c.ownerUsername,
+        ownerUsername: c.ownerUsername || (c.owner_id && c.owner_id !== -1 ? `user-${c.owner_id}` : null),
         category: c.category,
         isVerified: c.is_verified,
         verifiedAt: c.verified_at,
@@ -5708,7 +5709,7 @@ app.post('/api/channels', async (req, res) => {
       SELECT username FROM users WHERE id = $1
     `, [userId]);
 
-    const ownerUsername = userRows.length > 0 ? userRows[0].username : null;
+    const ownerUsername = userRows.length > 0 && userRows[0].username ? userRows[0].username : `user-${userId}`;
 
     // Auto-follow: creator automatically follows their own channel
     await pool.query(`
