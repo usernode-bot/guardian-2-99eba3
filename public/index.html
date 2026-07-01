@@ -6399,6 +6399,16 @@
 
       currentChannel = channel;
 
+      // Clear composition state from previous channel
+      const channelPostInput = document.getElementById('channelPostInput');
+      if (channelPostInput) {
+        channelPostInput.value = '';
+      }
+      const channelPostCharCount = document.getElementById('channelPostCharCount');
+      if (channelPostCharCount) {
+        channelPostCharCount.textContent = '0/2000';
+      }
+
       document.getElementById('feedHeader').style.display = 'none';
       document.getElementById('channelDetailHeader').classList.remove('hidden');
       document.getElementById('channelDetailName').textContent = channel.name;
@@ -6925,6 +6935,11 @@
       const feedHeaderFollowing = document.getElementById('feedHeaderFollowing');
       const feedHeaderDiscover = document.getElementById('feedHeaderDiscover');
 
+      // Reset channel view state when switching tabs
+      currentChannelId = null;
+      document.getElementById('feedHeader').style.display = 'block';
+      document.getElementById('channelDetailHeader').classList.add('hidden');
+
       if (tabName === 'following') {
         followingTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
         followingTab.classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
@@ -6991,6 +7006,8 @@
       try {
         const data = await apiCall('/api/channels');
         if (data && data.channels) {
+          // Store all channels so showChannelPosts() can find them
+          channelsList = data.channels;
           const discoverChannels = data.channels.filter(ch =>
             ch.ownerId !== currentUser.id && !ch.isFollowing
           );
