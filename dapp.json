@@ -75,6 +75,16 @@
       "name": "Profile Guardian's tab loads",
       "path": "/",
       "expectSelector": "#profileTabGuardians"
+    },
+    {
+      "name": "Channel posts render",
+      "path": "/",
+      "expectSelector": "#feedContentWrapper"
+    },
+    {
+      "name": "Post menu button visible (if user is post author/owner)",
+      "path": "/",
+      "expectSelector": "button:has-text('⋮')"
     }
   ],
   "visibility": {
