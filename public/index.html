@@ -6335,7 +6335,17 @@
       document.getElementById('channelDetailDescription').textContent = channel.description || '';
 
       // Set up action buttons based on ownership
-      const isOwner = currentUser && channel.ownerId === currentUser.id;
+      // Debug logging
+      console.log('showChannelPosts debug:', {
+        currentUserId: currentUser?.id,
+        currentUserIdType: typeof currentUser?.id,
+        channelOwnerId: channel.ownerId,
+        channelOwnerIdType: typeof channel.ownerId,
+        currentUser: currentUser,
+        channel: channel
+      });
+      const isOwner = currentUser && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
+      console.log('isOwner:', isOwner);
       const actionButtonsContainer = document.getElementById('channelActionButtons');
       if (isOwner) {
         actionButtonsContainer.innerHTML = '';
@@ -6516,9 +6526,10 @@
       const count = textarea.value.length;
       charCount.textContent = `${count}/2000`;
 
-      // Enable button only if content is not empty and under limit
+      // Enable button if content or images exist, and content is under limit
       if (postBtn) {
-        postBtn.disabled = count === 0 || count > 2000;
+        const hasContent = count > 0 || channelPostImages.length > 0;
+        postBtn.disabled = !hasContent || count > 2000;
       }
     }
 
@@ -6587,7 +6598,7 @@
 
           // Re-add compose box for owner
           const channel = channelsList.find(ch => ch.id === channelId);
-          const isOwner = currentUser && channel && channel.ownerId === currentUser.id;
+          const isOwner = currentUser && channel && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
 
           if (isOwner) {
             html += `
@@ -7071,6 +7082,7 @@
     function removeChannelPostImage(idx) {
       channelPostImages.splice(idx, 1);
       updateChannelImagePreview();
+      updateChannelPostCharCount();
     }
 
     function renderFollowingUsersSection(users) {
