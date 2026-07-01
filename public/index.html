@@ -2019,9 +2019,9 @@
       return {
         theme: theme,
         layout: stored.layout || 'comfortable',
-        network: stored.network || 'real_testnet',
+        network: stored.network || 'devnet',
         view_mode: stored.view_mode || 'web',
-        networkMode: stored.networkMode || 'real_testnet',
+        networkMode: stored.networkMode || 'devnet',
         skipSignatureInDevnet: stored.skipSignatureInDevnet || false,
       };
     }
@@ -2138,7 +2138,7 @@
           const rpcEndpointInput = document.getElementById('rpcEndpointInput');
 
           // Set dropdown to current network mode, defaulting to networkMode if available, else isDemoMode for backward compat
-          const currentMode = config.networkMode || (config.isDemoMode ? 'demo' : 'real_testnet');
+          const currentMode = config.networkMode || (config.isDemoMode ? 'demo' : 'devnet');
           dropdown.value = currentMode;
           dropdown.disabled = !config.canEdit;
 
@@ -4169,7 +4169,7 @@
 
       // In devnet mode with skip signature enabled, skip wallet confirmation
       const networkModeDropdown = document.getElementById('networkModeSelect');
-      const currentNetworkMode = networkModeDropdown ? networkModeDropdown.value : 'real_testnet';
+      const currentNetworkMode = networkModeDropdown ? networkModeDropdown.value : 'devnet';
       if (currentNetworkMode === 'devnet' && currentUser && currentUser.skipSignatureInDevnet) {
         console.log('Devnet + skip-signature enabled: skipping wallet confirmation for action:', action);
         showToast('Signature skipped (devnet mode)', 'info');
