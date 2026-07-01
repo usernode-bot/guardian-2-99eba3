@@ -6474,7 +6474,7 @@
           // Add compose box for owner
           if (isOwner) {
             html += `
-              <div class="p-4 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
+              <div class="sticky top-0 z-[99] p-4 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
                 <textarea
                   id="channelPostInput"
                   placeholder="Write a post in #${escapeHtml(channel.name)}..."
@@ -6688,7 +6688,7 @@
 
           if (isOwner) {
             html += `
-              <div class="p-4 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
+              <div class="sticky top-0 z-[99] p-4 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
                 <textarea
                   id="channelPostInput"
                   placeholder="Write a post in #${escapeHtml(channel.name)}..."
