@@ -12,9 +12,10 @@ const mockData = require('./server-mock-data');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Store API base URL for chain poller (hostname detection)
-let API_BASE_URL = process.env.API_BASE_URL || null;
-let detectedApiBaseUrl = false;
+// Optional explicit override for the chain poller's self-proxy call.
+// The poller talks to this same process, so loopback is always correct;
+// API_BASE_URL exists only for unusual topologies where loopback is wrong.
+const API_BASE_URL = process.env.API_BASE_URL || null;
 
 // DATABASE_URL with graceful fallback for staging environments
 const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://localhost/guardian_staging';
@@ -219,6 +220,30 @@ async function getRpcEndpointFromDatabase() {
   return null;
 }
 
+// Restore persisted network mode from config_state so a runtime switch
+// (PUT /api/config/network-mode) survives container restarts. An explicit
+// NETWORK_MODE env var still wins over the persisted value.
+async function initializeNetworkMode() {
+  const envMode = process.env.NETWORK_MODE;
+  if (envMode && ['demo', 'testnet', 'real_testnet', 'devnet'].includes(envMode)) {
+    console.log(`[CONFIG] NETWORK_MODE set via environment (${envMode}), ignoring persisted value`);
+    return;
+  }
+  try {
+    const result = await pool.query(`
+      SELECT value FROM config_state WHERE key = 'NETWORK_MODE' LIMIT 1
+    `);
+    const dbMode = result.rows[0]?.value;
+    if (dbMode && ['demo', 'real_testnet', 'devnet'].includes(dbMode)) {
+      NETWORK_MODE = dbMode;
+      ENABLE_DEMO_MODE = getEnableDemoMode();
+      console.log(`[CONFIG] Network mode restored from database: ${NETWORK_MODE}`);
+    }
+  } catch (err) {
+    console.error('[CONFIG] Error restoring network mode from database:', err.message);
+  }
+}
+
 // Initialize RPC URL from database if available (real_testnet only)
 async function initializeRpcUrl() {
   if (NETWORK_MODE !== 'real_testnet') return;
@@ -336,12 +361,10 @@ const CHAIN_IDS = {
 
 async function pollTransactionStatus(chainId, txHash, auditLogId) {
   try {
-    // Determine API base URL for polling (fix for localhost hardcoding)
-    let apiBaseUrl = API_BASE_URL;
-    if (!apiBaseUrl) {
-      apiBaseUrl = `http://127.0.0.1:${port || 3000}`;
-      console.warn(`[Chain Poller] API_BASE_URL not set, using fallback: ${apiBaseUrl}`);
-    }
+    // This is a self-proxy call into this same process, so loopback is the
+    // reliable default (a container can't always reach its own public hostname).
+    // API_BASE_URL is an explicit env override for unusual topologies only.
+    const apiBaseUrl = API_BASE_URL || `http://127.0.0.1:${port || 3000}`;
 
     // Call our explorer API proxy endpoint
     const explorerPath = `/explorer-api/${chainId}/transactions/${txHash}`;
@@ -423,46 +446,45 @@ async function startChainPoller(chainId, txHash, auditLogId) {
     return;
   }
 
-  // Poll up to 20 times with exponential backoff (starting at 5s, capping at 60s)
-  let pollCount = 0;
+  // Poll up to 20 times with exponential backoff (starting at 5s, capping at 60s).
+  // Single setTimeout chain: pollCount and backoffMs carry forward across ticks,
+  // so the max-polls failed state is actually reachable.
   const maxPolls = 20;
-  let backoffMs = 5000;
 
-  const pollInterval = setInterval(async () => {
-    try {
-      pollCount++;
-      const isConfirmed = await pollTransactionStatus(chainId, txHash, auditLogId);
+  const scheduleNextPoll = (pollCount, backoffMs) => {
+    const timer = setTimeout(async () => {
+      try {
+        const isConfirmed = await pollTransactionStatus(chainId, txHash, auditLogId);
 
-      if (isConfirmed) {
-        clearInterval(pollInterval);
+        if (isConfirmed) {
+          chainPollers.delete(pollerId);
+          return;
+        }
+
+        if (pollCount >= maxPolls) {
+          chainPollers.delete(pollerId);
+          console.warn(`[Chain Poller] Max polls (${maxPolls}) reached for ${txHash}, marking as failed`);
+          await pool.query(`
+            UPDATE blockchain_audit_logs
+            SET status = 'failed', error_message = $1, updated_at = NOW()
+            WHERE id = $2 AND status = 'pending'
+          `, [`Transaction not confirmed after ${maxPolls} polls`, auditLogId]);
+          return;
+        }
+
+        console.log(`[Chain Poller] Poll ${pollCount}/${maxPolls} for ${txHash}: not confirmed yet, retrying in ${Math.round(backoffMs / 1000)}s`);
+        scheduleNextPoll(pollCount + 1, Math.min(backoffMs * 1.5, 60000));
+      } catch (err) {
+        console.error(`[Chain Poller] Unexpected error:`, err);
         chainPollers.delete(pollerId);
-        return;
       }
+    }, backoffMs);
 
-      if (pollCount >= maxPolls) {
-        clearInterval(pollInterval);
-        chainPollers.delete(pollerId);
-        console.warn(`[Chain Poller] Max polls (${maxPolls}) reached for ${txHash}, marking as failed`);
-        await pool.query(`
-          UPDATE blockchain_audit_logs
-          SET status = 'failed', error_message = $1, updated_at = NOW()
-          WHERE id = $2
-        `, ['Transaction not confirmed after 20 polls', auditLogId]);
-        return;
-      }
+    // Keep the map entry pointing at the live timer so the dedup guard holds
+    chainPollers.set(pollerId, { timer, startTime: chainPollers.get(pollerId)?.startTime || Date.now() });
+  };
 
-      // Not confirmed and haven't reached max polls, reschedule with backoff
-      backoffMs = Math.min(backoffMs * 1.5, 60000);
-      clearInterval(pollInterval);
-      setTimeout(() => startChainPoller(chainId, txHash, auditLogId), backoffMs);
-    } catch (err) {
-      console.error(`[Chain Poller] Unexpected error:`, err);
-      clearInterval(pollInterval);
-      chainPollers.delete(pollerId);
-    }
-  }, backoffMs);
-
-  chainPollers.set(pollerId, { interval: pollInterval, startTime: Date.now() });
+  scheduleNextPoll(1, 5000);
 }
 
 // Sign transaction memo following Last One Wins pattern
@@ -1573,10 +1595,19 @@ app.put('/api/config/network-mode', async (req, res) => {
       return res.status(403).json({ error: 'Not authorized to modify configuration' });
     }
 
+    // Persist so the mode survives container restarts
+    await pool.query(`
+      INSERT INTO config_state (key, value, created_at, updated_at)
+      VALUES ($1, $2, NOW(), NOW())
+      ON CONFLICT (key) DO UPDATE SET
+        value = EXCLUDED.value,
+        updated_at = NOW()
+    `, ['NETWORK_MODE', networkMode]);
+
     // Update in-memory state
     NETWORK_MODE = networkMode;
     ENABLE_DEMO_MODE = getEnableDemoMode();
-    console.log(`[CONFIG] Network mode updated: ${networkMode} (by user ${userId})`);
+    console.log(`[CONFIG] Network mode updated and persisted: ${networkMode} (by user ${userId})`);
 
     res.json({
       networkMode: NETWORK_MODE,
@@ -1612,9 +1643,16 @@ app.put('/api/config/demo-mode', async (req, res) => {
       return res.status(403).json({ error: 'Not authorized to modify configuration' });
     }
 
-    // Update in-memory state via network mode
+    // Update in-memory state via network mode, and persist across restarts
     NETWORK_MODE = enabled ? 'demo' : 'real_testnet';
     ENABLE_DEMO_MODE = getEnableDemoMode();
+    await pool.query(`
+      INSERT INTO config_state (key, value, created_at, updated_at)
+      VALUES ($1, $2, NOW(), NOW())
+      ON CONFLICT (key) DO UPDATE SET
+        value = EXCLUDED.value,
+        updated_at = NOW()
+    `, ['NETWORK_MODE', NETWORK_MODE]);
     console.log(`[CONFIG] Demo mode updated (legacy endpoint): ${enabled} (by user ${userId})`);
 
     res.json({
@@ -2528,9 +2566,13 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
     }
 
     const { rows } = await pool.query(`
-      SELECT id, user_id, message_id, group_id, message_type, tx_hash, status, error_message, confirmed_at, on_chain_group_id, on_chain_message_id, content_hash, user_pubkey, action_timestamp
-      FROM blockchain_audit_logs
-      WHERE id = $1 AND user_id = $2
+      SELECT bal.id, bal.user_id, bal.message_id, bal.group_id, bal.message_type, bal.tx_hash, bal.status,
+             bal.error_message, bal.confirmed_at, bal.on_chain_group_id, bal.on_chain_message_id,
+             bal.content_hash, bal.user_pubkey, bal.action_timestamp, bal.network_origin,
+             bal.created_at, bal.transaction_payload, g.name AS group_name
+      FROM blockchain_audit_logs bal
+      LEFT JOIN groups g ON g.id = bal.group_id
+      WHERE bal.id = $1 AND bal.user_id = $2
     `, [auditLogId, userId]);
 
     if (rows.length === 0) {
@@ -2542,6 +2584,7 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
       id: row.id,
       messageId: row.message_id,
       groupId: row.group_id || null,
+      groupName: row.group_name || null,
       messageType: row.message_type,
       txHash: row.tx_hash,
       status: row.status,
@@ -2552,6 +2595,9 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
       contentHash: row.content_hash || null,
       userPubkey: row.user_pubkey || null,
       actionTimestamp: row.action_timestamp || null,
+      network_origin: row.network_origin || null,
+      createdAt: row.created_at || null,
+      transactionPayload: row.transaction_payload || null,
     });
   } catch (err) {
     console.error(err);
@@ -6402,7 +6448,6 @@ app.get('/explorer-api/:chainId/transactions/:txHash', async (req, res) => {
     }
 
     // Call Usernode explorer to check transaction status
-    // Pattern: GET /explorer/tx/{txHash}
     const explorerUrl = `${config.explorerUrl}/api/tx/${txHash}`;
 
     return new Promise((resolve) => {
@@ -6410,7 +6455,20 @@ app.get('/explorer-api/:chainId/transactions/:txHash', async (req, res) => {
         let data = '';
         response.on('data', chunk => { data += chunk; });
         response.on('end', () => {
+          // Always log upstream status + truncated body so a wrong endpoint
+          // format (404s, HTML error pages) is visible instead of silently
+          // reading as an eternal "pending"
+          console.log(`[Explorer] GET ${explorerUrl} → HTTP ${response.statusCode}, body: ${data.substring(0, 200).replace(/\s+/g, ' ')}`);
           try {
+            if (response.statusCode < 200 || response.statusCode >= 300) {
+              console.warn(`[Explorer] Non-2xx status ${response.statusCode} for ${txHash} — check that the explorer endpoint format is correct`);
+              return resolve(res.json({
+                txHash: txHash,
+                status: 'pending',
+                blockNumber: null,
+                timestamp: new Date().toISOString()
+              }));
+            }
             const txData = JSON.parse(data);
             // Usernode explorer returns { hash, status, blockNumber, timestamp, ... }
             resolve(res.json({
@@ -6421,6 +6479,7 @@ app.get('/explorer-api/:chainId/transactions/:txHash', async (req, res) => {
             }));
           } catch (err) {
             // If explorer response invalid, return pending (retry will happen)
+            console.warn(`[Explorer] Failed to parse explorer response for ${txHash}: ${err.message}`);
             resolve(res.json({
               txHash: txHash,
               status: 'pending',
@@ -6431,7 +6490,7 @@ app.get('/explorer-api/:chainId/transactions/:txHash', async (req, res) => {
         });
       }).on('error', (err) => {
         // Explorer unreachable, return pending
-        console.warn(`[Explorer] Error fetching ${txHash}:`, err.message);
+        console.warn(`[Explorer] Error fetching ${explorerUrl}:`, err.message);
         resolve(res.json({
           txHash: txHash,
           status: 'pending',
@@ -6441,6 +6500,7 @@ app.get('/explorer-api/:chainId/transactions/:txHash', async (req, res) => {
       });
       request.on('timeout', () => {
         request.destroy();
+        console.warn(`[Explorer] Timeout fetching ${explorerUrl}`);
         resolve(res.json({
           txHash: txHash,
           status: 'pending',
@@ -6577,7 +6637,7 @@ app.get('/api/diagnostics/status', async (req, res) => {
         nodeRpcUrl: NODE_RPC_URL || null,
         nodeRpcUrlConfigured: !!NODE_RPC_URL,
         rpcHealth: rpcHealth,
-        apiBaseUrl: API_BASE_URL || 'not configured (will use localhost fallback)'
+        apiBaseUrl: API_BASE_URL || `http://127.0.0.1:${port || 3000} (loopback default)`
       },
       database: {
         connected: dbConnected,
@@ -6870,18 +6930,6 @@ app.get('/api/test/production-simulation', async (req, res) => {
     results.stack = process.env.NODE_ENV === 'development' ? err.stack : undefined;
     res.status(500).json(results);
   }
-});
-
-// ===== API BASE URL DETECTION =====
-// Detect server hostname from first incoming request for chain poller (fixes localhost hardcoding issue #1)
-app.use((req, res, next) => {
-  if (!detectedApiBaseUrl && !API_BASE_URL && req.headers.host) {
-    const protocol = req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
-    API_BASE_URL = `${protocol}://${req.headers.host}`;
-    detectedApiBaseUrl = true;
-    console.log(`[CONFIG] API_BASE_URL detected from request: ${API_BASE_URL}`);
-  }
-  next();
 });
 
 // ===== STATIC & FALLBACK =====
@@ -7697,7 +7745,13 @@ async function start() {
       // The following operations run after the server is listening.
       // They will not block healthchecks or prevent the app from serving requests.
 
-      // Initialize RPC endpoint from database or environment
+      // Restore persisted network mode (runtime switches survive restarts),
+      // then initialize the RPC endpoint for the restored mode
+      try {
+        await initializeNetworkMode();
+      } catch (modeErr) {
+        console.warn('[CONFIG] Failed to restore network mode:', modeErr.message);
+      }
       try {
         await initializeRpcUrl();
       } catch (rpcErr) {

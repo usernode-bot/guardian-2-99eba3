@@ -3365,14 +3365,14 @@
     // Send diagnostics to server for analysis
     async function uploadBridgeDiagnostics(diagnostic, context = {}) {
       try {
-        // First, fetch server status to include in diagnostics (fix for issue #7)
+        // First, fetch server status to include in diagnostics (fix for issue #7).
+        // Auth uses the same `headers` global (built from the iframe ?token= param)
+        // that every other apiCall in the app uses.
         let serverStatus = null;
         try {
           const statusResponse = await fetch('/api/diagnostics/status', {
             method: 'GET',
-            headers: {
-              'x-usernode-token': localStorage.getItem('authToken') || ''
-            }
+            headers: { ...headers }
           });
           if (statusResponse.ok) {
             serverStatus = await statusResponse.json();
@@ -3392,7 +3392,7 @@
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-usernode-token': localStorage.getItem('authToken') || ''
+            ...headers
           },
           body: JSON.stringify(payload)
         });
