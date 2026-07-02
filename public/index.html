@@ -1546,8 +1546,8 @@
       let statusBadgeText = '⏳ Confirming...';
 
       if (isStaging) {
-        statusBadgeText = '✓ Simulated';
-        statusBadgeClass = 'text-xs px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300';
+        statusBadgeText = '🎭 Demo Mode';
+        statusBadgeClass = 'text-xs px-2 py-1 rounded bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300';
       }
 
       notification.id = notificationId;
@@ -1634,6 +1634,29 @@
         const txHashShort = data.txHash ? data.txHash.substring(0, 12) : 'N/A';
         const txHashFull = data.txHash || '';
 
+        // Determine network origin label with icon
+        let networkOriginLabel = 'Unknown';
+        let networkOriginIcon = '❓';
+        let networkOriginClass = 'text-yellow-600 dark:text-yellow-400';
+
+        if (data.network_origin === 'blockchain') {
+          networkOriginLabel = 'Real Blockchain';
+          networkOriginIcon = '⛓️';
+          networkOriginClass = 'text-green-600 dark:text-green-400';
+        } else if (data.network_origin === 'demo') {
+          networkOriginLabel = 'Demo Mode (Simulated)';
+          networkOriginIcon = '🎭';
+          networkOriginClass = 'text-amber-600 dark:text-amber-400';
+        } else if (data.network_origin === 'database') {
+          networkOriginLabel = 'Database Only (Devnet)';
+          networkOriginIcon = '💾';
+          networkOriginClass = 'text-blue-600 dark:text-blue-400';
+        } else if (data.network_origin === 'bridge') {
+          networkOriginLabel = 'Bridge Fallback';
+          networkOriginIcon = '🌉';
+          networkOriginClass = 'text-purple-600 dark:text-purple-400';
+        }
+
         let txHashHtml = '';
         if (data.txHash && !data.txHash.includes('staging')) {
           txHashHtml = `<div class="text-sm"><span class="text-zinc-600 dark:text-zinc-400">Hash:</span> <span class="font-mono text-xs text-cyan-600 dark:text-cyan-400 break-all">${escapeHtml(data.txHash)}</span></div>`;
@@ -1656,6 +1679,13 @@
                 <span class="flex items-center gap-1 ${statusClass}">
                   <span class="text-lg">${statusIcon}</span>
                   <span class="capitalize font-medium">${data.status}</span>
+                </span>
+              </div>
+              <div class="text-sm flex items-center justify-between">
+                <span class="text-zinc-600 dark:text-zinc-400">Mode:</span>
+                <span class="flex items-center gap-1 ${networkOriginClass}">
+                  <span class="text-lg">${networkOriginIcon}</span>
+                  <span class="font-medium">${networkOriginLabel}</span>
                 </span>
               </div>
               ${txHashHtml}
@@ -3239,10 +3269,28 @@
     // Send diagnostics to server for analysis
     async function uploadBridgeDiagnostics(diagnostic, context = {}) {
       try {
+        // First, fetch server status to include in diagnostics (fix for issue #7)
+        let serverStatus = null;
+        try {
+          const statusResponse = await fetch('/api/diagnostics/status', {
+            method: 'GET',
+            headers: {
+              'x-usernode-token': localStorage.getItem('authToken') || ''
+            }
+          });
+          if (statusResponse.ok) {
+            serverStatus = await statusResponse.json();
+            console.log('[Diagnostics] Fetched server status:', serverStatus);
+          }
+        } catch (statusErr) {
+          console.warn('[Diagnostics] Failed to fetch server status:', statusErr.message);
+        }
+
         const payload = {
           diagnostic: diagnostic,
           context: context,
-          userId: currentUser?.id || null
+          userId: currentUser?.id || null,
+          serverStatus: serverStatus
         };
         const response = await fetch('/api/diagnostics/bridge', {
           method: 'POST',
@@ -3253,7 +3301,7 @@
           body: JSON.stringify(payload)
         });
         if (response.ok) {
-          console.log('[Diagnostics] Successfully uploaded bridge diagnostic to server');
+          console.log('[Diagnostics] Successfully uploaded bridge diagnostic with server status to server');
         } else {
           console.warn('[Diagnostics] Server returned', response.status, 'when uploading diagnostics');
         }

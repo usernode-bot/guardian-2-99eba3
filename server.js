@@ -12,6 +12,10 @@ const mockData = require('./server-mock-data');
 const app = express();
 const port = process.env.PORT || 3000;
 
+// Store API base URL for chain poller (hostname detection)
+let API_BASE_URL = process.env.API_BASE_URL || null;
+let detectedApiBaseUrl = false;
+
 // DATABASE_URL with graceful fallback for staging environments
 const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://localhost/guardian_staging';
 console.log(`[CONFIG] DATABASE_URL: ${DATABASE_URL ? 'configured' : 'using fallback'}`);
@@ -78,7 +82,10 @@ function validateAndConfigureRPC() {
       configuredUrl = 'http://host.docker.internal:3001';
       console.log(`[CONFIG] NODE_RPC_URL not set in staging, using default: ${configuredUrl}`);
     } else {
-      console.warn(`[CONFIG] NODE_RPC_URL not configured in production real_testnet mode — token transfers and blockchain features may be unavailable`);
+      console.error(`\n⚠️  [CONFIG] CRITICAL: NODE_RPC_URL not configured in production real_testnet mode\n`);
+      console.error(`    Real blockchain transactions will NOT be submitted. Transactions will fall back to demo/mock mode.\n`);
+      console.error(`    Set NODE_RPC_URL environment variable to enable real testnet transactions.\n`);
+      console.error(`    Example: NODE_RPC_URL=http://usernode-node:3000 or NODE_RPC_URL=https://testnet-rpc.usernodelabs.org\n`);
       configuredUrl = null; // Will trigger fallback to bridge mode
     }
   }
@@ -329,29 +336,41 @@ const CHAIN_IDS = {
 
 async function pollTransactionStatus(chainId, txHash, auditLogId) {
   try {
-    // In demo/staging mode, immediately confirm via our mock explorer endpoint
-    // In production, this would call the real blockchain explorer via /explorer-api proxy
+    // Determine API base URL for polling (fix for localhost hardcoding)
+    let apiBaseUrl = API_BASE_URL;
+    if (!apiBaseUrl) {
+      apiBaseUrl = `http://127.0.0.1:${port || 3000}`;
+      console.warn(`[Chain Poller] API_BASE_URL not set, using fallback: ${apiBaseUrl}`);
+    }
 
-    // Call our local explorer API proxy endpoint
+    // Call our explorer API proxy endpoint
     const explorerPath = `/explorer-api/${chainId}/transactions/${txHash}`;
+    const fullUrl = `${apiBaseUrl}${explorerPath}`;
 
-    // Use a simple HTTP request locally
+    console.log(`[Chain Poller] Polling explorer for txHash=${txHash}, url=${fullUrl}`);
+
     return new Promise((resolve, reject) => {
+      const url = new URL(fullUrl);
+      const isHttps = url.protocol === 'https:';
+      const client = isHttps ? https : http;
+
       const options = {
-        hostname: 'localhost',
-        port: port || 3000,
-        path: explorerPath,
+        hostname: url.hostname,
+        port: url.port,
+        path: url.pathname + (url.search || ''),
         method: 'GET',
         timeout: 5000
       };
 
-      const req = http.request(options, (res) => {
+      const req = client.request(options, (res) => {
         let data = '';
         res.on('data', chunk => { data += chunk; });
         res.on('end', async () => {
           try {
             const txData = JSON.parse(data);
             const isConfirmed = txData.status === 'confirmed' || txData.status === 'success' || txData.blockNumber;
+
+            console.log(`[Chain Poller] Explorer response for ${txHash}: status=${txData.status}, isConfirmed=${isConfirmed}`);
 
             if (isConfirmed) {
               // Update audit log to confirmed
@@ -367,19 +386,21 @@ async function pollTransactionStatus(chainId, txHash, auditLogId) {
               resolve(false);
             }
           } catch (err) {
-            console.error(`[Chain Poller] Error parsing explorer response:`, err);
+            console.error(`[Chain Poller] Error parsing explorer response for ${txHash}:`, err.message);
+            console.error(`[Chain Poller] Raw response data:`, data.substring(0, 200));
             resolve(null);
           }
         });
       });
 
       req.on('error', (err) => {
-        console.warn(`[Chain Poller] Explorer unreachable for tx ${txHash}:`, err.message);
+        console.warn(`[Chain Poller] Explorer unreachable for tx ${txHash} at ${fullUrl}: ${err.message}`);
         resolve(null);
       });
 
       req.on('timeout', () => {
         req.destroy();
+        console.warn(`[Chain Poller] Explorer request timeout for tx ${txHash}`);
         resolve(null);
       });
 
@@ -412,23 +433,28 @@ async function startChainPoller(chainId, txHash, auditLogId) {
       pollCount++;
       const isConfirmed = await pollTransactionStatus(chainId, txHash, auditLogId);
 
-      if (isConfirmed || pollCount >= maxPolls) {
+      if (isConfirmed) {
         clearInterval(pollInterval);
         chainPollers.delete(pollerId);
-        if (!isConfirmed && pollCount >= maxPolls) {
-          console.warn(`[Chain Poller] Max polls reached for ${txHash}, marking as failed`);
-          await pool.query(`
-            UPDATE blockchain_audit_logs
-            SET status = 'failed', error_message = $1, updated_at = NOW()
-            WHERE id = $2
-          `, ['Transaction not confirmed after 20 polls', auditLogId]);
-        }
-      } else {
-        backoffMs = Math.min(backoffMs * 1.5, 60000);
-        // Reschedule with new backoff
-        clearInterval(pollInterval);
-        setTimeout(() => startChainPoller(chainId, txHash, auditLogId), backoffMs);
+        return;
       }
+
+      if (pollCount >= maxPolls) {
+        clearInterval(pollInterval);
+        chainPollers.delete(pollerId);
+        console.warn(`[Chain Poller] Max polls (${maxPolls}) reached for ${txHash}, marking as failed`);
+        await pool.query(`
+          UPDATE blockchain_audit_logs
+          SET status = 'failed', error_message = $1, updated_at = NOW()
+          WHERE id = $2
+        `, ['Transaction not confirmed after 20 polls', auditLogId]);
+        return;
+      }
+
+      // Not confirmed and haven't reached max polls, reschedule with backoff
+      backoffMs = Math.min(backoffMs * 1.5, 60000);
+      clearInterval(pollInterval);
+      setTimeout(() => startChainPoller(chainId, txHash, auditLogId), backoffMs);
     } catch (err) {
       console.error(`[Chain Poller] Unexpected error:`, err);
       clearInterval(pollInterval);
@@ -545,7 +571,15 @@ async function sendOutgoingPayment(recipient, amount, memo) {
           try {
             const response = JSON.parse(data);
             if (res.statusCode >= 200 && res.statusCode < 300) {
-              const txHash = response.txHash || response.hash || 'ut1-tx-' + Math.random().toString(36).substr(2, 9);
+              // Validate RPC response contains a txHash (fix for issue #8)
+              const txHash = response.txHash || response.hash;
+
+              if (!txHash) {
+                console.error(`[BLOCKCHAIN-RPC] RPC returned 200 but missing txHash in response:`, JSON.stringify(response));
+                reject(new Error(`RPC returned success but missing transaction hash`));
+                return;
+              }
+
               console.log(`[BLOCKCHAIN-SUBMIT] Payment submitted successfully: statusCode=${res.statusCode}, txHash=${txHash}`);
               resolve({
                 success: true,
@@ -560,6 +594,7 @@ async function sendOutgoingPayment(recipient, amount, memo) {
             }
           } catch (err) {
             console.error(`[BLOCKCHAIN-RPC] Failed to parse RPC response: ${err.message}`);
+            console.error(`[BLOCKCHAIN-RPC] Raw response data:`, data.substring(0, 200));
             reject(new Error(`Failed to parse RPC response: ${err.message}`));
           }
         });
@@ -651,7 +686,15 @@ async function sendMessageToBlockchain(messagePayload, memo, network = 'testnet'
           try {
             const response = JSON.parse(data);
             if (res.statusCode >= 200 && res.statusCode < 300) {
-              const txHash = response.txHash || response.hash || response.transactionHash || 'ut1-' + network + '-tx-msg-' + Math.random().toString(36).substr(2, 9);
+              // Validate RPC response contains a txHash (fix for issue #8)
+              const txHash = response.txHash || response.hash || response.transactionHash;
+
+              if (!txHash) {
+                console.error(`[BLOCKCHAIN-RPC] RPC returned 200 but missing txHash in response:`, JSON.stringify(response));
+                reject(new Error(`RPC returned success but missing transaction hash`));
+                return;
+              }
+
               console.log(`[BLOCKCHAIN-SUBMIT] Message submitted: statusCode=${res.statusCode}, txHash=${txHash}`);
               resolve({
                 transactionHash: txHash
@@ -665,6 +708,7 @@ async function sendMessageToBlockchain(messagePayload, memo, network = 'testnet'
             }
           } catch (err) {
             console.error(`[BLOCKCHAIN-RPC] Failed to parse RPC response: ${err.message}`);
+            console.error(`[BLOCKCHAIN-RPC] Raw response data:`, data.substring(0, 200));
             reject(new Error(`Failed to parse RPC response: ${err.message}`));
           }
         });
@@ -744,7 +788,15 @@ async function sendGroupToBlockchain(groupPayload, memo, memberPubkeys, network 
           try {
             const response = JSON.parse(data);
             if (res.statusCode >= 200 && res.statusCode < 300) {
-              const txHash = response.txHash || response.hash || response.transactionHash || 'ut1-' + network + '-tx-group-' + Math.random().toString(36).substr(2, 9);
+              // Validate RPC response contains a txHash (fix for issue #8)
+              const txHash = response.txHash || response.hash || response.transactionHash;
+
+              if (!txHash) {
+                console.error(`[BLOCKCHAIN-RPC] RPC returned 200 but missing txHash in response:`, JSON.stringify(response));
+                reject(new Error(`RPC returned success but missing transaction hash`));
+                return;
+              }
+
               console.log(`[BLOCKCHAIN-SUBMIT] Group created: statusCode=${res.statusCode}, txHash=${txHash}`);
               resolve({
                 transactionHash: txHash
@@ -758,6 +810,7 @@ async function sendGroupToBlockchain(groupPayload, memo, memberPubkeys, network 
             }
           } catch (err) {
             console.error(`[BLOCKCHAIN-RPC] Failed to parse RPC response: ${err.message}`);
+            console.error(`[BLOCKCHAIN-RPC] Raw response data:`, data.substring(0, 200));
             reject(new Error(`Failed to parse RPC response: ${err.message}`));
           }
         });
@@ -6482,6 +6535,45 @@ app.post('/api/diagnostics/bridge-logs', async (req, res) => {
   }
 });
 
+// ===== SERVER STATUS & DIAGNOSTICS ENDPOINT =====
+// Expose server configuration and blockchain state for client diagnostics
+app.get('/api/diagnostics/status', async (req, res) => {
+  try {
+    const rpcHealth = await checkRPCHealth();
+    const status = {
+      server: {
+        networkMode: NETWORK_MODE,
+        demoMode: ENABLE_DEMO_MODE,
+        timestamp: new Date().toISOString()
+      },
+      blockchain: {
+        nodeRpcUrl: NODE_RPC_URL || null,
+        nodeRpcUrlConfigured: !!NODE_RPC_URL,
+        rpcHealth: rpcHealth,
+        apiBaseUrl: API_BASE_URL || 'not configured (will use localhost fallback)'
+      },
+      database: {
+        connected: dbConnected,
+        lastChecked: new Date().toISOString()
+      },
+      diagnostics: {
+        // Include raw values for debugging
+        isStaging: IS_STAGING,
+        appPubkey: APP_PUBKEY,
+        activeChainsPollers: chainPollers.size,
+        pollerIds: Array.from(chainPollers.keys())
+      }
+    };
+
+    console.log(`[DIAGNOSTICS] Server status queried: networkMode=${NETWORK_MODE}, rpcReachable=${rpcHealth.reachable}`);
+
+    res.json(status);
+  } catch (err) {
+    console.error('[DIAGNOSTICS] Error getting server status:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Debug endpoint to manually retrieve current telemetry data (for testing/manual inspection)
 app.get('/api/debug/bridge-telemetry-check', async (req, res) => {
   res.json({
@@ -6751,6 +6843,18 @@ app.get('/api/test/production-simulation', async (req, res) => {
     results.stack = process.env.NODE_ENV === 'development' ? err.stack : undefined;
     res.status(500).json(results);
   }
+});
+
+// ===== API BASE URL DETECTION =====
+// Detect server hostname from first incoming request for chain poller (fixes localhost hardcoding issue #1)
+app.use((req, res, next) => {
+  if (!detectedApiBaseUrl && !API_BASE_URL && req.headers.host) {
+    const protocol = req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+    API_BASE_URL = `${protocol}://${req.headers.host}`;
+    detectedApiBaseUrl = true;
+    console.log(`[CONFIG] API_BASE_URL detected from request: ${API_BASE_URL}`);
+  }
+  next();
 });
 
 // ===== STATIC & FALLBACK =====
