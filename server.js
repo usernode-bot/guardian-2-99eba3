@@ -1079,6 +1079,7 @@ app.use(async (req, res, next) => {
   // Upsert user on first request: ensure user exists in DB with wallet identity
   if (req.user && dbConnected) {
     try {
+      const username = req.user.username || `user-${req.user.id}`;
       await pool.query(`
         INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at)
         VALUES ($1, $2, $3, $4, NOW())
@@ -1089,7 +1090,7 @@ app.use(async (req, res, next) => {
             WHEN EXCLUDED.verified_at IS NOT NULL THEN EXCLUDED.verified_at
             ELSE users.verified_at
           END
-      `, [req.user.id, req.user.username, req.user.usernode_pubkey || null, req.user.verified_at || null]);
+      `, [req.user.id, username, req.user.usernode_pubkey || null, req.user.verified_at || null]);
     } catch (err) {
       console.error('Error upserting user:', err);
     }
@@ -1261,7 +1262,15 @@ app.put('/api/user/view-mode', async (req, res) => {
       return res.status(400).json({ error: 'Invalid view mode. Must be "web" or "mobile"' });
     }
 
-    await pool.query(`UPDATE users SET view_mode = $1 WHERE id = $2`, [viewMode, req.user.id]);
+    if (dbConnected) {
+      try {
+        await pool.query(`UPDATE users SET view_mode = $1 WHERE id = $2`, [viewMode, req.user.id]);
+      } catch (dbErr) {
+        console.error('Database error updating view mode:', dbErr);
+        // Continue anyway - the view mode preference can be stored in session/local storage as fallback
+      }
+    }
+
     res.json({ viewMode: viewMode, status: 'updated' });
   } catch (err) {
     console.error('Error updating view mode:', err);
@@ -1447,17 +1456,26 @@ app.get('/api/usernode/status', async (req, res) => {
       latency = null;
     }
 
-    const now = new Date().toISOString();
-    await pool.query(
-      `UPDATE users SET last_usernode_ping_at = $1 WHERE id = $2`,
-      [now, userId]
-    );
+    let lastSyncAt = null;
 
-    const lastPingRes = await pool.query(
-      `SELECT last_usernode_ping_at FROM users WHERE id = $1`,
-      [userId]
-    );
-    const lastSyncAt = lastPingRes.rows[0]?.last_usernode_ping_at || null;
+    if (dbConnected) {
+      try {
+        const now = new Date().toISOString();
+        await pool.query(
+          `UPDATE users SET last_usernode_ping_at = $1 WHERE id = $2`,
+          [now, userId]
+        );
+
+        const lastPingRes = await pool.query(
+          `SELECT last_usernode_ping_at FROM users WHERE id = $1`,
+          [userId]
+        );
+        lastSyncAt = lastPingRes.rows && lastPingRes.rows.length > 0 ? lastPingRes.rows[0].last_usernode_ping_at : null;
+      } catch (dbErr) {
+        console.error('Database error in usernode status:', dbErr);
+        // Continue without lastSyncAt if database fails
+      }
+    }
 
     res.json({
       status,
@@ -2763,32 +2781,41 @@ app.get('/api/transactions-by-user', async (req, res) => {
       SELECT COUNT(*) as total FROM blockchain_audit_logs WHERE ${countWhereClause}
     `, countParams);
 
-    const transactions = rows.map(r => {
-      let recipientUsername = null;
-      let groupName = r.group_name || null;
+    const transactions = rows
+      .filter(r => {
+        // Filter out pending_signature entries without a tx_hash (incomplete transactions)
+        if (r.message_type === 'pending_signature' && !r.tx_hash) {
+          console.log(`[TransactionAPI] Filtering out incomplete pending_signature: id=${r.id}`);
+          return false;
+        }
+        return true;
+      })
+      .map(r => {
+        let recipientUsername = null;
+        let groupName = r.group_name || null;
 
-      if (r.message_id && r.message_type === 'message') {
-        const payload = typeof r.transaction_payload === 'string'
-          ? JSON.parse(r.transaction_payload)
-          : r.transaction_payload;
-        recipientUsername = payload?.recipientUsername || null;
-      }
+        if (r.message_id && r.message_type === 'message') {
+          const payload = typeof r.transaction_payload === 'string'
+            ? JSON.parse(r.transaction_payload)
+            : r.transaction_payload;
+          recipientUsername = payload?.recipientUsername || null;
+        }
 
-      return {
-        id: r.id,
-        messageId: r.message_id,
-        groupId: r.group_id,
-        messageType: r.message_type,
-        txHash: r.tx_hash,
-        status: r.status,
-        errorMessage: r.error_message || null,
-        confirmedAt: r.confirmed_at || null,
-        createdAt: r.created_at,
-        groupName: groupName,
-        recipientUsername: recipientUsername,
-        transactionPayload: r.transaction_payload
-      };
-    });
+        return {
+          id: r.id,
+          messageId: r.message_id,
+          groupId: r.group_id,
+          messageType: r.message_type,
+          txHash: r.tx_hash,
+          status: r.status,
+          errorMessage: r.error_message || null,
+          confirmedAt: r.confirmed_at || null,
+          createdAt: r.created_at,
+          groupName: groupName,
+          recipientUsername: recipientUsername,
+          transactionPayload: r.transaction_payload
+        };
+      });
 
     res.json({
       transactions,
@@ -5241,7 +5268,7 @@ app.get('/api/channels', async (req, res) => {
         name: c.name,
         description: c.description,
         ownerId: c.owner_id,
-        ownerUsername: c.ownerUsername,
+        ownerUsername: c.ownerUsername || (c.owner_id && c.owner_id !== -1 ? `user-${c.owner_id}` : null),
         category: c.category,
         isVerified: c.is_verified,
         verifiedAt: c.verified_at,
@@ -5752,7 +5779,7 @@ app.post('/api/channels', async (req, res) => {
       SELECT username FROM users WHERE id = $1
     `, [userId]);
 
-    const ownerUsername = userRows.length > 0 ? userRows[0].username : null;
+    const ownerUsername = (userRows.length > 0 && userRows[0].username) ? userRows[0].username : `user-${userId}`;
 
     // Auto-follow: creator automatically follows their own channel
     await pool.query(`
