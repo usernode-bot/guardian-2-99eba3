@@ -12,6 +12,11 @@ const mockData = require('./server-mock-data');
 const app = express();
 const port = process.env.PORT || 3000;
 
+// Optional explicit override for the chain poller's self-proxy call.
+// The poller talks to this same process, so loopback is always correct;
+// API_BASE_URL exists only for unusual topologies where loopback is wrong.
+const API_BASE_URL = process.env.API_BASE_URL || null;
+
 // DATABASE_URL with graceful fallback for staging environments
 const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://localhost/guardian_staging';
 console.log(`[CONFIG] DATABASE_URL: ${DATABASE_URL ? 'configured' : 'using fallback'}`);
@@ -78,8 +83,15 @@ function validateAndConfigureRPC() {
       configuredUrl = 'http://host.docker.internal:3001';
       console.log(`[CONFIG] NODE_RPC_URL not set in staging, using default: ${configuredUrl}`);
     } else {
-      console.warn(`[CONFIG] NODE_RPC_URL not configured in production real_testnet mode — token transfers and blockchain features may be unavailable`);
-      configuredUrl = null; // Will trigger fallback to bridge mode
+      // In production real_testnet: NODE_RPC_URL is REQUIRED
+      console.error(`\n⚠️  [CONFIG] CRITICAL: NODE_RPC_URL not configured in production real_testnet mode\n`);
+      console.error(`    Real blockchain transactions will NOT be submitted without RPC access.\n`);
+      console.error(`    Set NODE_RPC_URL in platform Secrets with a value like:\n`);
+      console.error(`    NODE_RPC_URL=http://usernode-node:3000\n`);
+      console.error(`    or\n`);
+      console.error(`    NODE_RPC_URL=https://testnet-rpc.usernodelabs.org\n`);
+      console.error(`\n    Refusing to start in production real_testnet mode without RPC.\n`);
+      process.exit(1);
     }
   }
 
@@ -212,6 +224,142 @@ async function getRpcEndpointFromDatabase() {
   return null;
 }
 
+// Explorer API configuration and validation
+let EXPLORER_URL = process.env.EXPLORER_URL || 'https://testnet-explorer.usernodelabs.org';
+let EXPLORER_FORMAT = null; // Will be set to 'api/tx' or 'api/transaction' after boot validation
+let EXPLORER_HEALTHY = false; // True if boot validation succeeded
+
+async function validateAndConfigureExplorer() {
+  // Test explorer connectivity with both known formats
+  console.log(`[EXPLORER] Validating explorer at ${EXPLORER_URL}...`);
+
+  // Use a known test txHash that should fail gracefully (won't exist on testnet)
+  const testTxHash = 'explorer-health-check-' + Date.now();
+
+  // Try both common endpoint formats
+  const formats = [
+    { name: 'api/tx', path: `/api/tx/${testTxHash}` },
+    { name: 'api/transaction', path: `/api/transaction/${testTxHash}` }
+  ];
+
+  for (const format of formats) {
+    try {
+      const url = new URL(EXPLORER_URL + format.path);
+      const isHttps = url.protocol === 'https:';
+      const client = isHttps ? https : http;
+
+      return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          console.warn(`[EXPLORER] Endpoint check timeout for format ${format.name}`);
+          resolve(false);
+        }, 5000);
+
+        const req = client.get(url, { timeout: 5000 }, (res) => {
+          clearTimeout(timeout);
+          let data = '';
+          res.on('data', chunk => { data += chunk; });
+          res.on('end', () => {
+            console.log(`[EXPLORER] Format ${format.name}: HTTP ${res.statusCode}`);
+
+            // For 404: validate response contains JSON with transaction-like fields
+            // For 200: also validate JSON contains status/blockNumber/timestamp
+            if (res.statusCode === 404) {
+              try {
+                const parsed = JSON.parse(data);
+                // 404 with JSON body is valid (transaction not found, but endpoint works)
+                if (parsed && typeof parsed === 'object') {
+                  EXPLORER_FORMAT = format.name;
+                  EXPLORER_HEALTHY = true;
+                  console.log(`[EXPLORER] ✓ Using format: ${format.name} (endpoint accessible, returns JSON)`);
+                  resolve(true);
+                  return;
+                }
+              } catch (e) {
+                // 404 without JSON body (HTML error page) means endpoint doesn't exist
+                console.warn(`[EXPLORER] Format ${format.name}: 404 without valid JSON (endpoint not found)`);
+                resolve(false);
+                return;
+              }
+            } else if (res.statusCode === 200) {
+              try {
+                const parsed = JSON.parse(data);
+                // 200 with transaction fields is valid
+                if (parsed && (parsed.status || parsed.blockNumber || parsed.timestamp)) {
+                  EXPLORER_FORMAT = format.name;
+                  EXPLORER_HEALTHY = true;
+                  console.log(`[EXPLORER] ✓ Using format: ${format.name} (endpoint accessible, returns transaction JSON)`);
+                  resolve(true);
+                  return;
+                } else {
+                  console.warn(`[EXPLORER] Format ${format.name}: 200 but missing transaction fields`);
+                  resolve(false);
+                  return;
+                }
+              } catch (e) {
+                console.warn(`[EXPLORER] Format ${format.name}: 200 but response is not valid JSON`);
+                resolve(false);
+                return;
+              }
+            } else {
+              console.warn(`[EXPLORER] Format ${format.name}: HTTP ${res.statusCode} (unexpected status)`);
+              resolve(false);
+            }
+          });
+        });
+
+        req.on('error', (err) => {
+          clearTimeout(timeout);
+          console.warn(`[EXPLORER] Format ${format.name} request failed: ${err.message}`);
+          resolve(false);
+        });
+
+        req.on('timeout', () => {
+          clearTimeout(timeout);
+          req.destroy();
+        });
+      });
+    } catch (err) {
+      console.warn(`[EXPLORER] Validation error for format ${format.name}: ${err.message}`);
+    }
+  }
+
+  // If we get here, none of the formats worked
+  console.warn(`\n⚠️  [EXPLORER] Could not reach explorer at ${EXPLORER_URL}\n`);
+  console.warn(`    Chain polling will fail. Verify explorer URL and network connectivity.\n`);
+  console.warn(`    Explorer transactions will show as 'pending' indefinitely.\n`);
+
+  if (IS_STAGING) {
+    console.log(`[EXPLORER] Staging mode: continuing with degraded explorer (mocked in responses)\n`);
+    EXPLORER_HEALTHY = false;
+  }
+
+  return false;
+}
+
+// Restore persisted network mode from config_state so a runtime switch
+// (PUT /api/config/network-mode) survives container restarts. An explicit
+// NETWORK_MODE env var still wins over the persisted value.
+async function initializeNetworkMode() {
+  const envMode = process.env.NETWORK_MODE;
+  if (envMode && ['demo', 'testnet', 'real_testnet', 'devnet'].includes(envMode)) {
+    console.log(`[CONFIG] NETWORK_MODE set via environment (${envMode}), ignoring persisted value`);
+    return;
+  }
+  try {
+    const result = await pool.query(`
+      SELECT value FROM config_state WHERE key = 'NETWORK_MODE' LIMIT 1
+    `);
+    const dbMode = result.rows[0]?.value;
+    if (dbMode && ['demo', 'real_testnet', 'devnet'].includes(dbMode)) {
+      NETWORK_MODE = dbMode;
+      ENABLE_DEMO_MODE = getEnableDemoMode();
+      console.log(`[CONFIG] Network mode restored from database: ${NETWORK_MODE}`);
+    }
+  } catch (err) {
+    console.error('[CONFIG] Error restoring network mode from database:', err.message);
+  }
+}
+
 // Initialize RPC URL from database if available (real_testnet only)
 async function initializeRpcUrl() {
   if (NETWORK_MODE !== 'real_testnet') return;
@@ -252,7 +400,7 @@ function checkRateLimit(key, limit, windowMs) {
   return true;
 }
 
-const PUBLIC_API_PATHS = new Set(['/health', '/favicon.ico', '/api/test/production-simulation', '/api/diagnostics/bridge']);
+const PUBLIC_API_PATHS = new Set(['/health', '/favicon.ico', '/api/test/production-simulation', '/api/diagnostics/bridge', '/api/diagnostics/status']);
 const PUBLIC_PREFIXES = ['/explorer-api/'];
 
 // Helper function to compute SHA-256 hash of content
@@ -262,7 +410,7 @@ function computeContentHash(content) {
 }
 
 // Helper function to execute a database query with a timeout
-async function queryWithTimeout(pool, query, params, timeoutMs = 2000) {
+async function queryWithTimeout(pool, query, params, timeoutMs = 5000) {
   return Promise.race([
     pool.query(query, params),
     new Promise((_, reject) =>
@@ -321,6 +469,8 @@ async function getForegroundHours(userId) {
 }
 
 // Chain poller for transaction status (models Last One Wins pattern)
+// Structure: Map<pollerId, { auditLogIds: Set<string>, timer, startTime }>
+// Allows multiple startChainPoller calls for the same txHash if auditLogIds differ
 const chainPollers = new Map();
 const CHAIN_IDS = {
   'testnet': 'testnet',
@@ -329,29 +479,39 @@ const CHAIN_IDS = {
 
 async function pollTransactionStatus(chainId, txHash, auditLogId) {
   try {
-    // In demo/staging mode, immediately confirm via our mock explorer endpoint
-    // In production, this would call the real blockchain explorer via /explorer-api proxy
+    // This is a self-proxy call into this same process, so loopback is the
+    // reliable default (a container can't always reach its own public hostname).
+    // API_BASE_URL is an explicit env override for unusual topologies only.
+    const apiBaseUrl = API_BASE_URL || `http://127.0.0.1:${port || 3000}`;
 
-    // Call our local explorer API proxy endpoint
+    // Call our explorer API proxy endpoint
     const explorerPath = `/explorer-api/${chainId}/transactions/${txHash}`;
+    const fullUrl = `${apiBaseUrl}${explorerPath}`;
 
-    // Use a simple HTTP request locally
+    console.log(`[Chain Poller] Polling explorer for txHash=${txHash}, url=${fullUrl}`);
+
     return new Promise((resolve, reject) => {
+      const url = new URL(fullUrl);
+      const isHttps = url.protocol === 'https:';
+      const client = isHttps ? https : http;
+
       const options = {
-        hostname: 'localhost',
-        port: port || 3000,
-        path: explorerPath,
+        hostname: url.hostname,
+        port: url.port,
+        path: url.pathname + (url.search || ''),
         method: 'GET',
         timeout: 5000
       };
 
-      const req = http.request(options, (res) => {
+      const req = client.request(options, (res) => {
         let data = '';
         res.on('data', chunk => { data += chunk; });
         res.on('end', async () => {
           try {
             const txData = JSON.parse(data);
             const isConfirmed = txData.status === 'confirmed' || txData.status === 'success' || txData.blockNumber;
+
+            console.log(`[Chain Poller] Explorer response for ${txHash}: status=${txData.status}, isConfirmed=${isConfirmed}`);
 
             if (isConfirmed) {
               // Update audit log to confirmed
@@ -367,19 +527,36 @@ async function pollTransactionStatus(chainId, txHash, auditLogId) {
               resolve(false);
             }
           } catch (err) {
-            console.error(`[Chain Poller] Error parsing explorer response:`, err);
+            console.error(`[Chain Poller] Error parsing explorer response for ${txHash}:`, err.message);
+            console.error(`[Chain Poller] Raw response data:`, data.substring(0, 200));
+            // Parse error is transient, retry
             resolve(null);
           }
         });
       });
 
       req.on('error', (err) => {
-        console.warn(`[Chain Poller] Explorer unreachable for tx ${txHash}:`, err.message);
-        resolve(null);
+        // Distinguish between transient and permanent errors
+        const errorCode = err.code;
+        const isTransient = errorCode === 'ETIMEDOUT' || errorCode === 'ECONNREFUSED' ||
+                           errorCode === 'ENOTFOUND' || errorCode === 'ENETUNREACH';
+
+        if (isTransient) {
+          console.warn(`[Chain Poller] Explorer transient error (${errorCode}) for tx ${txHash}: ${err.message}`);
+          // Transient error, retry
+          resolve(null);
+        } else {
+          // Permanent error (DNS failure, etc)
+          console.error(`[Chain Poller] Explorer permanent error (${errorCode}) for tx ${txHash}: ${err.message}`);
+          // For now treat as transient and let it retry (user can inspect audit log for details)
+          resolve(null);
+        }
       });
 
       req.on('timeout', () => {
         req.destroy();
+        console.warn(`[Chain Poller] Explorer request timeout for tx ${txHash} at ${fullUrl}`);
+        // Timeout is transient, retry
         resolve(null);
       });
 
@@ -396,47 +573,88 @@ async function startChainPoller(chainId, txHash, auditLogId) {
 
   console.log(`[Chain Poller] Starting poller for txHash=${txHash}, chainId=${chainId}, auditLogId=${auditLogId}`);
 
-  // Skip if already polling this transaction
-  if (chainPollers.has(pollerId)) {
-    console.log(`[Chain Poller] Already polling this transaction, skipping: ${pollerId}`);
+  // Check if we're already polling this txHash
+  const existingPoller = chainPollers.get(pollerId);
+  if (existingPoller) {
+    // Same txHash, different auditLogId: add to the set of audit logs for this poller
+    if (!existingPoller.auditLogIds.has(auditLogId)) {
+      console.log(`[Chain Poller] Already polling txHash=${txHash}, registering additional auditLogId=${auditLogId}`);
+      existingPoller.auditLogIds.add(auditLogId);
+    } else {
+      // Exact duplicate: same txHash + same auditLogId
+      console.log(`[Chain Poller] Already polling this exact transaction, skipping: ${pollerId} with auditLogId=${auditLogId}`);
+    }
     return;
   }
 
-  // Poll up to 20 times with exponential backoff (starting at 5s, capping at 60s)
-  let pollCount = 0;
+  // Poll up to 20 times with exponential backoff (starting at 5s, capping at 60s).
+  // Single setTimeout chain: pollCount and backoffMs carry forward across ticks,
+  // so the max-polls failed state is actually reachable.
   const maxPolls = 20;
-  let backoffMs = 5000;
 
-  const pollInterval = setInterval(async () => {
-    try {
-      pollCount++;
-      const isConfirmed = await pollTransactionStatus(chainId, txHash, auditLogId);
+  const scheduleNextPoll = (pollCount, backoffMs) => {
+    const timer = setTimeout(async () => {
+      try {
+        const poller = chainPollers.get(pollerId);
+        if (!poller) return; // Poller was cancelled
 
-      if (isConfirmed || pollCount >= maxPolls) {
-        clearInterval(pollInterval);
-        chainPollers.delete(pollerId);
-        if (!isConfirmed && pollCount >= maxPolls) {
-          console.warn(`[Chain Poller] Max polls reached for ${txHash}, marking as failed`);
-          await pool.query(`
-            UPDATE blockchain_audit_logs
-            SET status = 'failed', error_message = $1, updated_at = NOW()
-            WHERE id = $2
-          `, ['Transaction not confirmed after 20 polls', auditLogId]);
+        // Poll for ALL audit logs associated with this txHash
+        const auditLogIds = Array.from(poller.auditLogIds);
+        let anyConfirmed = false;
+
+        for (const logId of auditLogIds) {
+          try {
+            const isConfirmed = await pollTransactionStatus(chainId, txHash, logId);
+            if (isConfirmed) {
+              anyConfirmed = true;
+              poller.auditLogIds.delete(logId);
+            }
+          } catch (err) {
+            console.error(`[Chain Poller] Error polling auditLogId=${logId}:`, err.message);
+          }
         }
-      } else {
-        backoffMs = Math.min(backoffMs * 1.5, 60000);
-        // Reschedule with new backoff
-        clearInterval(pollInterval);
-        setTimeout(() => startChainPoller(chainId, txHash, auditLogId), backoffMs);
-      }
-    } catch (err) {
-      console.error(`[Chain Poller] Unexpected error:`, err);
-      clearInterval(pollInterval);
-      chainPollers.delete(pollerId);
-    }
-  }, backoffMs);
 
-  chainPollers.set(pollerId, { interval: pollInterval, startTime: Date.now() });
+        // If all audit logs are confirmed, clean up the poller
+        if (poller.auditLogIds.size === 0) {
+          chainPollers.delete(pollerId);
+          return;
+        }
+
+        if (pollCount >= maxPolls) {
+          // Mark remaining audit logs as failed
+          for (const logId of poller.auditLogIds) {
+            try {
+              await pool.query(`
+                UPDATE blockchain_audit_logs
+                SET status = 'failed', error_message = $1, updated_at = NOW()
+                WHERE id = $2 AND status = 'pending'
+              `, [`Transaction not confirmed after ${maxPolls} polls`, logId]);
+              console.warn(`[Chain Poller] Max polls (${maxPolls}) reached for ${txHash}, auditLogId=${logId} marked as failed`);
+            } catch (err) {
+              console.error(`[Chain Poller] Failed to mark auditLogId=${logId} as failed:`, err.message);
+            }
+          }
+          chainPollers.delete(pollerId);
+          return;
+        }
+
+        console.log(`[Chain Poller] Poll ${pollCount}/${maxPolls} for ${txHash}: not confirmed yet (${poller.auditLogIds.size} logs), retrying in ${Math.round(backoffMs / 1000)}s`);
+        scheduleNextPoll(pollCount + 1, Math.min(backoffMs * 1.5, 60000));
+      } catch (err) {
+        console.error(`[Chain Poller] Unexpected error:`, err);
+        chainPollers.delete(pollerId);
+      }
+    }, backoffMs);
+
+    // Create or update the poller entry with the new timer
+    if (!chainPollers.has(pollerId)) {
+      chainPollers.set(pollerId, { auditLogIds: new Set([auditLogId]), timer, startTime: Date.now() });
+    } else {
+      chainPollers.get(pollerId).timer = timer;
+    }
+  };
+
+  scheduleNextPoll(1, 5000);
 }
 
 // Sign transaction memo following Last One Wins pattern
@@ -545,7 +763,15 @@ async function sendOutgoingPayment(recipient, amount, memo) {
           try {
             const response = JSON.parse(data);
             if (res.statusCode >= 200 && res.statusCode < 300) {
-              const txHash = response.txHash || response.hash || 'ut1-tx-' + Math.random().toString(36).substr(2, 9);
+              // Validate RPC response contains a txHash (fix for issue #8)
+              const txHash = response.txHash || response.hash;
+
+              if (!txHash) {
+                console.error(`[BLOCKCHAIN-RPC] RPC returned 200 but missing txHash in response:`, JSON.stringify(response));
+                reject(new Error(`RPC returned success but missing transaction hash`));
+                return;
+              }
+
               console.log(`[BLOCKCHAIN-SUBMIT] Payment submitted successfully: statusCode=${res.statusCode}, txHash=${txHash}`);
               resolve({
                 success: true,
@@ -560,6 +786,7 @@ async function sendOutgoingPayment(recipient, amount, memo) {
             }
           } catch (err) {
             console.error(`[BLOCKCHAIN-RPC] Failed to parse RPC response: ${err.message}`);
+            console.error(`[BLOCKCHAIN-RPC] Raw response data:`, data.substring(0, 200));
             reject(new Error(`Failed to parse RPC response: ${err.message}`));
           }
         });
@@ -651,7 +878,15 @@ async function sendMessageToBlockchain(messagePayload, memo, network = 'testnet'
           try {
             const response = JSON.parse(data);
             if (res.statusCode >= 200 && res.statusCode < 300) {
-              const txHash = response.txHash || response.hash || response.transactionHash || 'ut1-' + network + '-tx-msg-' + Math.random().toString(36).substr(2, 9);
+              // Validate RPC response contains a txHash (fix for issue #8)
+              const txHash = response.txHash || response.hash || response.transactionHash;
+
+              if (!txHash) {
+                console.error(`[BLOCKCHAIN-RPC] RPC returned 200 but missing txHash in response:`, JSON.stringify(response));
+                reject(new Error(`RPC returned success but missing transaction hash`));
+                return;
+              }
+
               console.log(`[BLOCKCHAIN-SUBMIT] Message submitted: statusCode=${res.statusCode}, txHash=${txHash}`);
               resolve({
                 transactionHash: txHash
@@ -665,6 +900,7 @@ async function sendMessageToBlockchain(messagePayload, memo, network = 'testnet'
             }
           } catch (err) {
             console.error(`[BLOCKCHAIN-RPC] Failed to parse RPC response: ${err.message}`);
+            console.error(`[BLOCKCHAIN-RPC] Raw response data:`, data.substring(0, 200));
             reject(new Error(`Failed to parse RPC response: ${err.message}`));
           }
         });
@@ -744,7 +980,15 @@ async function sendGroupToBlockchain(groupPayload, memo, memberPubkeys, network 
           try {
             const response = JSON.parse(data);
             if (res.statusCode >= 200 && res.statusCode < 300) {
-              const txHash = response.txHash || response.hash || response.transactionHash || 'ut1-' + network + '-tx-group-' + Math.random().toString(36).substr(2, 9);
+              // Validate RPC response contains a txHash (fix for issue #8)
+              const txHash = response.txHash || response.hash || response.transactionHash;
+
+              if (!txHash) {
+                console.error(`[BLOCKCHAIN-RPC] RPC returned 200 but missing txHash in response:`, JSON.stringify(response));
+                reject(new Error(`RPC returned success but missing transaction hash`));
+                return;
+              }
+
               console.log(`[BLOCKCHAIN-SUBMIT] Group created: statusCode=${res.statusCode}, txHash=${txHash}`);
               resolve({
                 transactionHash: txHash
@@ -758,6 +1002,7 @@ async function sendGroupToBlockchain(groupPayload, memo, memberPubkeys, network 
             }
           } catch (err) {
             console.error(`[BLOCKCHAIN-RPC] Failed to parse RPC response: ${err.message}`);
+            console.error(`[BLOCKCHAIN-RPC] Raw response data:`, data.substring(0, 200));
             reject(new Error(`Failed to parse RPC response: ${err.message}`));
           }
         });
@@ -1520,10 +1765,19 @@ app.put('/api/config/network-mode', async (req, res) => {
       return res.status(403).json({ error: 'Not authorized to modify configuration' });
     }
 
+    // Persist so the mode survives container restarts
+    await pool.query(`
+      INSERT INTO config_state (key, value, created_at, updated_at)
+      VALUES ($1, $2, NOW(), NOW())
+      ON CONFLICT (key) DO UPDATE SET
+        value = EXCLUDED.value,
+        updated_at = NOW()
+    `, ['NETWORK_MODE', networkMode]);
+
     // Update in-memory state
     NETWORK_MODE = networkMode;
     ENABLE_DEMO_MODE = getEnableDemoMode();
-    console.log(`[CONFIG] Network mode updated: ${networkMode} (by user ${userId})`);
+    console.log(`[CONFIG] Network mode updated and persisted: ${networkMode} (by user ${userId})`);
 
     res.json({
       networkMode: NETWORK_MODE,
@@ -1559,9 +1813,16 @@ app.put('/api/config/demo-mode', async (req, res) => {
       return res.status(403).json({ error: 'Not authorized to modify configuration' });
     }
 
-    // Update in-memory state via network mode
+    // Update in-memory state via network mode, and persist across restarts
     NETWORK_MODE = enabled ? 'demo' : 'real_testnet';
     ENABLE_DEMO_MODE = getEnableDemoMode();
+    await pool.query(`
+      INSERT INTO config_state (key, value, created_at, updated_at)
+      VALUES ($1, $2, NOW(), NOW())
+      ON CONFLICT (key) DO UPDATE SET
+        value = EXCLUDED.value,
+        updated_at = NOW()
+    `, ['NETWORK_MODE', NETWORK_MODE]);
     console.log(`[CONFIG] Demo mode updated (legacy endpoint): ${enabled} (by user ${userId})`);
 
     res.json({
@@ -1941,27 +2202,6 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
 
     // Use frontend-provided content hash or compute it
     const contentHash = frontendContentHash || computeContentHash(content);
-    const msgRes = await pool.query(`
-      INSERT INTO messages (conversation_id, sender_id, type, content, blockchain_recorded, blockchain_audit_log_id, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      RETURNING id, created_at
-    `, [convId, userId, type, JSON.stringify(content), true, null, now]);
-    const messageId = msgRes.rows[0].id;
-
-    // Prepare transaction payload (Usernode chain format)
-    const transactionPayload = {
-      type: 'message',
-      messageId: messageId,
-      senderId: userId,
-      userPubkey: userPubkey,
-      contentHash: contentHash,
-      timestamp: now.toISOString(),
-      network: network,
-      rpcEndpoint: NODE_RPC_URL
-    };
-
-    // Sign memo following Last One Wins pattern
-    const memo = signTransactionMemo(transactionPayload);
 
     // Check for duplicate transactions (race condition detection)
     // Same user + content_hash + message_type within 2 minutes = likely duplicate from retry
@@ -1979,155 +2219,205 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       const existingLog = duplicateCheck.rows[0];
       const timeSincePrevious = Date.now() - new Date(existingLog.created_at).getTime();
       console.log(`[MESSAGE] Duplicate transaction detected! Existing auditLogId=${existingLog.id}, txHash=${existingLog.tx_hash}, time since: ${timeSincePrevious}ms`);
-      console.log(`[MESSAGE] This indicates a race condition: wallet signed (${txHash}) but timeout fired before callback on previous attempt`);
       // Return the existing audit log instead of creating a duplicate
-      const blockchainRecordingId = existingLog.id;
-      console.log(`[MESSAGE] Returning existing audit log to prevent duplicate submission`);
       res.json({
-        id: messageId,
+        id: 0, // Dummy, not used
         createdAt: new Date(now),
-        blockchainRecordingId: blockchainRecordingId,
+        blockchainRecordingId: existingLog.id,
         isDuplicate: true,
         note: 'Transaction already recorded - previous attempt succeeded despite timeout error'
       });
       return;
     }
 
-    // Use real tx hash from frontend if provided, otherwise generate placeholder
-    let actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-message-' + messageId + '-' + Date.now() : 'ut1-' + network + '-tx-msg-' + Math.random().toString(36).substr(2, 9));
+    // Start a database transaction for atomic INSERT + UPDATE
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    // Defensive fallback: ensure tx_hash is never null before INSERT
-    if (!actualTxHash) {
-      actualTxHash = `guardian-pending-msg-${messageId}-${Date.now()}-${crypto.randomUUID()}`;
-      console.warn(`[MESSAGE] Fallback tx_hash generated: ${actualTxHash}`);
-    }
+      // Insert message first
+      const msgRes = await client.query(`
+        INSERT INTO messages (conversation_id, sender_id, type, content, blockchain_recorded, blockchain_audit_log_id, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id, created_at
+      `, [convId, userId, type, JSON.stringify(content), true, null, now]);
+      const messageId = msgRes.rows[0].id;
 
-    // Determine audit status and network origin based on mode
-    let auditStatus = 'pending';
-    let networkOriginValue = null;
+      // Prepare transaction payload (Usernode chain format)
+      const transactionPayload = {
+        type: 'message',
+        messageId: messageId,
+        senderId: userId,
+        userPubkey: userPubkey,
+        contentHash: contentHash,
+        timestamp: now.toISOString(),
+        network: network,
+        rpcEndpoint: NODE_RPC_URL
+      };
 
-    if (txHash) {
-      auditStatus = 'pending';
-      networkOriginValue = 'blockchain';
-    } else if (NETWORK_MODE === 'devnet') {
-      auditStatus = 'confirmed';
-      networkOriginValue = 'database';
-    } else if (ENABLE_DEMO_MODE) {
-      auditStatus = 'confirmed';
-      networkOriginValue = 'demo';
-    } else {
-      auditStatus = 'pending';
-      networkOriginValue = 'bridge';
-    }
+      // Sign memo following Last One Wins pattern
+      const memo = signTransactionMemo(transactionPayload);
 
-    // Log audit creation with all critical fields
-    console.log(`[AUDIT LOG] MESSAGE: txHash=${actualTxHash}, messageId=${messageId}, status=${auditStatus}, contentHash=${contentHash}`);
-    console.log(`[MESSAGE] Recording blockchain audit log: messageId=${messageId}, txHash=${actualTxHash}, status=${auditStatus}, contentHash=${contentHash}`);
-
-    let blockchainRecordingId;
-    if (auditLogId) {
-      // Two-phase flow: audit log already exists from wallet signature, just update it
-      console.log(`[MESSAGE] Using existing audit log: id=${auditLogId}`);
-      await pool.query(`
-        UPDATE blockchain_audit_logs
-        SET message_id = $1, message_type = $2, tx_hash = $3, transaction_payload = $4, status = $5, confirmed_at = $6, content_hash = $7, user_pubkey = $8, action_timestamp = $9, network_origin = $10, updated_at = NOW()
-        WHERE id = $11 AND user_id = $12
-      `, [messageId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, networkOriginValue, auditLogId, userId]);
-      blockchainRecordingId = auditLogId;
-      console.log(`[MESSAGE] Updated existing audit log: id=${blockchainRecordingId}`);
-    } else {
-      // Single-phase flow: create new audit log
-      // Defensive validation: ensure tx_hash is present before INSERT
-      if (!actualTxHash) {
-        throw new Error('Missing tx_hash before audit log creation');
+      // Validate transaction_payload is not null
+      if (!transactionPayload || Object.keys(transactionPayload).length === 0) {
+        throw new Error('Failed to create valid transaction payload');
       }
 
-      const auditRes = await pool.query(`
-        INSERT INTO blockchain_audit_logs (user_id, message_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, network_origin, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
-        RETURNING id
-      `, [userId, messageId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, networkOriginValue, now]);
-      blockchainRecordingId = auditRes.rows[0].id;
+      // Use real tx hash from frontend if provided, otherwise generate placeholder
+      let actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-message-' + messageId + '-' + Date.now() : 'ut1-' + network + '-tx-msg-' + Math.random().toString(36).substr(2, 9));
 
-      console.log(`[MESSAGE] Blockchain audit log created: auditLogId=${blockchainRecordingId}`);
-    }
+      // Defensive fallback: ensure tx_hash is never null before INSERT
+      if (!actualTxHash) {
+        actualTxHash = `guardian-pending-msg-${messageId}-${Date.now()}-${crypto.randomUUID()}`;
+        console.warn(`[MESSAGE] Fallback tx_hash generated: ${actualTxHash}`);
+      }
 
-    // Update message with audit log reference
-    await pool.query(`
-      UPDATE messages SET blockchain_audit_log_id = $1 WHERE id = $2
-    `, [blockchainRecordingId, messageId]);
+      // Determine audit status and network origin based on mode
+      let auditStatus = 'pending';
+      let networkOriginValue = null;
 
-    // Update conversation updated_at to reflect new message activity
-    await pool.query(`
-      UPDATE conversations SET updated_at = NOW() WHERE id = $1
-    `, [convId]);
+      if (txHash) {
+        auditStatus = 'pending';
+        networkOriginValue = 'blockchain';
+      } else if (NETWORK_MODE === 'devnet') {
+        auditStatus = 'confirmed';
+        networkOriginValue = 'database';
+      } else if (ENABLE_DEMO_MODE) {
+        auditStatus = 'confirmed';
+        networkOriginValue = 'demo';
+      } else {
+        auditStatus = 'pending';
+        networkOriginValue = 'bridge';
+      }
 
-    // Auto-unarchive for the recipient when a new message arrives
-    await pool.query(`
-      UPDATE conversations SET archived_by = array_remove(archived_by, $1) WHERE id = $2 AND archived_by @> ARRAY[$1]::integer[]
-    `, [otherId, convId]);
+      // Log audit creation with all critical fields
+      console.log(`[AUDIT LOG] MESSAGE: txHash=${actualTxHash}, messageId=${messageId}, status=${auditStatus}, contentHash=${contentHash}`);
+      console.log(`[MESSAGE] Recording blockchain audit log: messageId=${messageId}, txHash=${actualTxHash}, status=${auditStatus}, contentHash=${contentHash}`);
 
-    // If real tx hash provided from frontend, start polling immediately (skip for devnet)
-    if (txHash && NETWORK_MODE !== 'devnet') {
-      console.log(`[MESSAGE] Real txHash from frontend - starting chain poller for txHash=${txHash}, auditLogId=${blockchainRecordingId}`);
-      startChainPoller(network, txHash, blockchainRecordingId).catch(err => {
-        console.error('Error starting chain poller:', err);
+      let blockchainRecordingId;
+      if (auditLogId) {
+        // Two-phase flow: audit log already exists from wallet signature, just update it
+        console.log(`[MESSAGE] Using existing audit log: id=${auditLogId}`);
+        await client.query(`
+          UPDATE blockchain_audit_logs
+          SET message_id = $1, message_type = $2, tx_hash = $3, transaction_payload = $4, status = $5, confirmed_at = $6, content_hash = $7, user_pubkey = $8, action_timestamp = $9, network_origin = $10, updated_at = NOW()
+          WHERE id = $11 AND user_id = $12
+        `, [messageId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, networkOriginValue, auditLogId, userId]);
+        blockchainRecordingId = auditLogId;
+        console.log(`[MESSAGE] Updated existing audit log: id=${blockchainRecordingId}`);
+      } else {
+        // Single-phase flow: create new audit log
+        // Defensive validation: ensure tx_hash is present before INSERT
+        if (!actualTxHash) {
+          throw new Error('Missing tx_hash before audit log creation');
+        }
+
+        const auditRes = await client.query(`
+          INSERT INTO blockchain_audit_logs (user_id, message_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, network_origin, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
+          RETURNING id
+        `, [userId, messageId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, networkOriginValue, now]);
+        blockchainRecordingId = auditRes.rows[0].id;
+
+        console.log(`[MESSAGE] Blockchain audit log created: auditLogId=${blockchainRecordingId}`);
+      }
+
+      // Update message with audit log reference (ATOMIC with INSERT)
+      await client.query(`
+        UPDATE messages SET blockchain_audit_log_id = $1 WHERE id = $2
+      `, [blockchainRecordingId, messageId]);
+
+      // Update conversation updated_at to reflect new message activity
+      await client.query(`
+        UPDATE conversations SET updated_at = NOW() WHERE id = $1
+      `, [convId]);
+
+      // Auto-unarchive for the recipient when a new message arrives
+      await client.query(`
+        UPDATE conversations SET archived_by = array_remove(archived_by, $1) WHERE id = $2 AND archived_by @> ARRAY[$1]::integer[]
+      `, [otherId, convId]);
+
+      // Commit the transaction - all INSERTs/UPDATEs are now atomic
+      await client.query('COMMIT');
+
+      console.log(`[MESSAGE] Transaction committed: messageId=${messageId}, auditLogId=${blockchainRecordingId}`);
+
+      // Return success BEFORE starting async polling (fixes race condition)
+      res.json({
+        id: messageId,
+        createdAt: new Date(now),
+        blockchainRecordingId: blockchainRecordingId
       });
-    } else if (!ENABLE_DEMO_MODE && NETWORK_MODE !== 'devnet') {
-      // Async: submit to blockchain in the background (production only, no frontend tx hash)
-      (async () => {
-        try {
-          // Validate memo before calling RPC (signTransactionMemo can return null)
-          if (!memo) {
-            throw new Error('Failed to sign transaction memo');
-          }
-          const result = await sendMessageToBlockchain(transactionPayload, memo, network);
 
-          // Update audit log with real txHash from RPC
-          await pool.query(`
-            UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
-          `, [result.transactionHash, blockchainRecordingId]);
-
-          // Start polling with real txHash against blockchain explorer
-          startChainPoller(network, result.transactionHash, blockchainRecordingId).catch(err => {
-            console.error('Error starting chain poller:', err);
-          });
-        } catch (err) {
-          const errorClass = classifyRPCError(err);
-          console.error(`[BLOCKCHAIN-FALLBACK] RPC failed (${errorClass.type}), using bridge fallback for messageId=${messageId}: ${err.message}`);
-
-          // Fallback: try bridge approach (generates placeholder hash)
+      // Async polling starts AFTER response is sent
+      // This ensures frontend gets auditLogId immediately
+      if (txHash && NETWORK_MODE !== 'devnet') {
+        console.log(`[MESSAGE] Real txHash from frontend - starting chain poller for txHash=${txHash}, auditLogId=${blockchainRecordingId}`);
+        startChainPoller(network, txHash, blockchainRecordingId).catch(err => {
+          console.error('Error starting chain poller:', err);
+        });
+      } else if (!ENABLE_DEMO_MODE && NETWORK_MODE !== 'devnet') {
+        // Async: submit to blockchain in the background (production only, no frontend tx hash)
+        (async () => {
           try {
-            const bridgeResult = await sendTransactionToBridge(transactionPayload, null, network);
+            // Validate memo before calling RPC (signTransactionMemo can return null)
+            if (!memo) {
+              throw new Error('Failed to sign transaction memo');
+            }
+            const result = await sendMessageToBlockchain(transactionPayload, memo, network);
 
-            // Update audit log with placeholder hash from bridge
+            // Update audit log with real txHash from RPC
             await pool.query(`
               UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
-            `, [bridgeResult.txHash, blockchainRecordingId]);
+            `, [result.transactionHash, blockchainRecordingId]);
 
-            console.log(`[BLOCKCHAIN-FALLBACK] Updated audit log with bridge tx hash: txHash=${bridgeResult.txHash}, auditLogId=${blockchainRecordingId}`);
-
-            // Start polling with placeholder (will timeout after 20 attempts)
-            // This allows audit log to be marked as 'failed' after max polls
-            startChainPoller(network, bridgeResult.txHash, blockchainRecordingId).catch(pollerErr => {
-              console.error('Error starting fallback chain poller:', pollerErr);
+            // Start polling with real txHash against blockchain explorer
+            startChainPoller(network, result.transactionHash, blockchainRecordingId).catch(err => {
+              console.error('Error starting chain poller:', err);
             });
-          } catch (bridgeErr) {
-            // Both RPC and fallback failed — mark as failed immediately
-            console.error(`[BLOCKCHAIN-FALLBACK] Bridge fallback also failed: ${bridgeErr.message}`);
-            await pool.query(`
-              UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
-            `, [bridgeErr.message, blockchainRecordingId]);
-          }
-        }
-      })();
-    }
+          } catch (err) {
+            const errorClass = classifyRPCError(err);
+            console.error(`[BLOCKCHAIN-FALLBACK] RPC failed (${errorClass.type}), using bridge fallback for messageId=${messageId}: ${err.message}`);
 
-    res.json({
-      id: messageId,
-      createdAt: new Date(now),
-      blockchainRecordingId: blockchainRecordingId
-    });
+            // Fallback: try bridge approach (generates placeholder hash)
+            try {
+              const bridgeResult = await sendTransactionToBridge(transactionPayload, null, network);
+
+              // Update audit log with placeholder hash from bridge
+              await pool.query(`
+                UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
+              `, [bridgeResult.txHash, blockchainRecordingId]);
+
+              console.log(`[BLOCKCHAIN-FALLBACK] Updated audit log with bridge tx hash: txHash=${bridgeResult.txHash}, auditLogId=${blockchainRecordingId}`);
+
+              // Start polling with placeholder (will timeout after 20 attempts)
+              // This allows audit log to be marked as 'failed' after max polls
+              startChainPoller(network, bridgeResult.txHash, blockchainRecordingId).catch(pollerErr => {
+                console.error('Error starting fallback chain poller:', pollerErr);
+              });
+            } catch (bridgeErr) {
+              // Both RPC and fallback failed — mark as failed immediately
+              console.error(`[BLOCKCHAIN-FALLBACK] Bridge fallback also failed: ${bridgeErr.message}`);
+              await pool.query(`
+                UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
+              `, [bridgeErr.message, blockchainRecordingId]);
+            }
+          }
+        })();
+      }
+    } catch (err) {
+      // Rollback on error
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackErr) {
+        console.error('Rollback error:', rollbackErr.message);
+      }
+      console.error(err);
+      res.status(500).json({ error: err.message });
+    } finally {
+      // Always release the client
+      client.release();
+    }
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -2475,9 +2765,13 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
     }
 
     const { rows } = await pool.query(`
-      SELECT id, user_id, message_id, group_id, message_type, tx_hash, status, error_message, confirmed_at, on_chain_group_id, on_chain_message_id, content_hash, user_pubkey, action_timestamp
-      FROM blockchain_audit_logs
-      WHERE id = $1 AND user_id = $2
+      SELECT bal.id, bal.user_id, bal.message_id, bal.group_id, bal.message_type, bal.tx_hash, bal.status,
+             bal.error_message, bal.confirmed_at, bal.on_chain_group_id, bal.on_chain_message_id,
+             bal.content_hash, bal.user_pubkey, bal.action_timestamp, bal.network_origin,
+             bal.created_at, bal.transaction_payload, g.name AS group_name
+      FROM blockchain_audit_logs bal
+      LEFT JOIN groups g ON g.id = bal.group_id
+      WHERE bal.id = $1 AND bal.user_id = $2
     `, [auditLogId, userId]);
 
     if (rows.length === 0) {
@@ -2489,6 +2783,7 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
       id: row.id,
       messageId: row.message_id,
       groupId: row.group_id || null,
+      groupName: row.group_name || null,
       messageType: row.message_type,
       txHash: row.tx_hash,
       status: row.status,
@@ -2499,6 +2794,9 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
       contentHash: row.content_hash || null,
       userPubkey: row.user_pubkey || null,
       actionTimestamp: row.action_timestamp || null,
+      network_origin: row.network_origin || null,
+      createdAt: row.created_at || null,
+      transactionPayload: row.transaction_payload || null,
     });
   } catch (err) {
     console.error(err);
@@ -6349,7 +6647,6 @@ app.get('/explorer-api/:chainId/transactions/:txHash', async (req, res) => {
     }
 
     // Call Usernode explorer to check transaction status
-    // Pattern: GET /explorer/tx/{txHash}
     const explorerUrl = `${config.explorerUrl}/api/tx/${txHash}`;
 
     return new Promise((resolve) => {
@@ -6357,7 +6654,20 @@ app.get('/explorer-api/:chainId/transactions/:txHash', async (req, res) => {
         let data = '';
         response.on('data', chunk => { data += chunk; });
         response.on('end', () => {
+          // Always log upstream status + truncated body so a wrong endpoint
+          // format (404s, HTML error pages) is visible instead of silently
+          // reading as an eternal "pending"
+          console.log(`[Explorer] GET ${explorerUrl} → HTTP ${response.statusCode}, body: ${data.substring(0, 200).replace(/\s+/g, ' ')}`);
           try {
+            if (response.statusCode < 200 || response.statusCode >= 300) {
+              console.warn(`[Explorer] Non-2xx status ${response.statusCode} for ${txHash} — check that the explorer endpoint format is correct`);
+              return resolve(res.json({
+                txHash: txHash,
+                status: 'pending',
+                blockNumber: null,
+                timestamp: new Date().toISOString()
+              }));
+            }
             const txData = JSON.parse(data);
             // Usernode explorer returns { hash, status, blockNumber, timestamp, ... }
             resolve(res.json({
@@ -6368,6 +6678,7 @@ app.get('/explorer-api/:chainId/transactions/:txHash', async (req, res) => {
             }));
           } catch (err) {
             // If explorer response invalid, return pending (retry will happen)
+            console.warn(`[Explorer] Failed to parse explorer response for ${txHash}: ${err.message}`);
             resolve(res.json({
               txHash: txHash,
               status: 'pending',
@@ -6378,7 +6689,7 @@ app.get('/explorer-api/:chainId/transactions/:txHash', async (req, res) => {
         });
       }).on('error', (err) => {
         // Explorer unreachable, return pending
-        console.warn(`[Explorer] Error fetching ${txHash}:`, err.message);
+        console.warn(`[Explorer] Error fetching ${explorerUrl}:`, err.message);
         resolve(res.json({
           txHash: txHash,
           status: 'pending',
@@ -6388,6 +6699,7 @@ app.get('/explorer-api/:chainId/transactions/:txHash', async (req, res) => {
       });
       request.on('timeout', () => {
         request.destroy();
+        console.warn(`[Explorer] Timeout fetching ${explorerUrl}`);
         resolve(res.json({
           txHash: txHash,
           status: 'pending',
@@ -6505,6 +6817,70 @@ app.post('/api/diagnostics/bridge-logs', async (req, res) => {
     });
   } catch (err) {
     console.error('Error processing bridge logs:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ===== SERVER STATUS & DIAGNOSTICS ENDPOINT =====
+// Expose server configuration and blockchain state for client diagnostics
+app.get('/api/diagnostics/status', async (req, res) => {
+  try {
+    const rpcHealth = await checkRPCHealth();
+
+    // Determine readiness: real_testnet requires both explorer AND RPC to be healthy
+    let readyForTestnet = false;
+    let readyReason = '';
+    if (NETWORK_MODE === 'demo' || NETWORK_MODE === 'devnet') {
+      readyForTestnet = true;
+      readyReason = `${NETWORK_MODE} mode doesn't require external services`;
+    } else if (NETWORK_MODE === 'real_testnet') {
+      if (EXPLORER_HEALTHY && rpcHealth.reachable) {
+        readyForTestnet = true;
+        readyReason = 'Explorer and RPC both healthy';
+      } else if (!EXPLORER_HEALTHY) {
+        readyReason = 'Explorer not responding or endpoint format incorrect';
+      } else if (!rpcHealth.reachable) {
+        readyReason = 'RPC not configured or unreachable';
+      } else {
+        readyReason = 'Unknown issue with external services';
+      }
+    }
+
+    const status = {
+      server: {
+        networkMode: NETWORK_MODE,
+        demoMode: ENABLE_DEMO_MODE,
+        timestamp: new Date().toISOString()
+      },
+      blockchain: {
+        nodeRpcUrl: NODE_RPC_URL || null,
+        nodeRpcUrlConfigured: !!NODE_RPC_URL,
+        nodeRpcHealth: rpcHealth,
+        apiBaseUrl: API_BASE_URL || `http://127.0.0.1:${port || 3000} (loopback default)`,
+        explorerUrl: EXPLORER_URL,
+        explorerFormat: EXPLORER_FORMAT || 'not detected',
+        explorerHealth: EXPLORER_HEALTHY,
+        readyForTestnet: readyForTestnet,
+        readyReason: readyReason
+      },
+      database: {
+        connected: dbConnected,
+        lastChecked: new Date().toISOString()
+      },
+      diagnostics: {
+        // Include raw values for debugging
+        isStaging: IS_STAGING,
+        appPubkey: APP_PUBKEY,
+        activeChainsPollers: chainPollers.size,
+        pollerIds: Array.from(chainPollers.keys())
+      }
+    };
+
+    console.log(`[DIAGNOSTICS] Server status queried: networkMode=${NETWORK_MODE}, rpcReachable=${rpcHealth.reachable}, explorerHealthy=${EXPLORER_HEALTHY}, readyForTestnet=${readyForTestnet}`);
+
+    res.json(status);
+  } catch (err) {
+    console.error('[DIAGNOSTICS] Error getting server status:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -7593,11 +7969,23 @@ async function start() {
       // The following operations run after the server is listening.
       // They will not block healthchecks or prevent the app from serving requests.
 
-      // Initialize RPC endpoint from database or environment
+      // Restore persisted network mode (runtime switches survive restarts),
+      // then initialize the RPC endpoint for the restored mode,
+      // then validate explorer connectivity
+      try {
+        await initializeNetworkMode();
+      } catch (modeErr) {
+        console.warn('[CONFIG] Failed to restore network mode:', modeErr.message);
+      }
       try {
         await initializeRpcUrl();
       } catch (rpcErr) {
         console.warn('[RPC] Failed to initialize RPC URL:', rpcErr.message);
+      }
+      try {
+        await validateAndConfigureExplorer();
+      } catch (explorerErr) {
+        console.warn('[EXPLORER] Failed to validate explorer:', explorerErr.message);
       }
 
       // Seed staging data
