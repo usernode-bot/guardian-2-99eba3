@@ -83,11 +83,15 @@ function validateAndConfigureRPC() {
       configuredUrl = 'http://host.docker.internal:3001';
       console.log(`[CONFIG] NODE_RPC_URL not set in staging, using default: ${configuredUrl}`);
     } else {
+      // In production real_testnet: NODE_RPC_URL is REQUIRED
       console.error(`\n⚠️  [CONFIG] CRITICAL: NODE_RPC_URL not configured in production real_testnet mode\n`);
-      console.error(`    Real blockchain transactions will NOT be submitted. Transactions will fall back to demo/mock mode.\n`);
-      console.error(`    Set NODE_RPC_URL environment variable to enable real testnet transactions.\n`);
-      console.error(`    Example: NODE_RPC_URL=http://usernode-node:3000 or NODE_RPC_URL=https://testnet-rpc.usernodelabs.org\n`);
-      configuredUrl = null; // Will trigger fallback to bridge mode
+      console.error(`    Real blockchain transactions will NOT be submitted without RPC access.\n`);
+      console.error(`    Set NODE_RPC_URL in platform Secrets with a value like:\n`);
+      console.error(`    NODE_RPC_URL=http://usernode-node:3000\n`);
+      console.error(`    or\n`);
+      console.error(`    NODE_RPC_URL=https://testnet-rpc.usernodelabs.org\n`);
+      console.error(`\n    Refusing to start in production real_testnet mode without RPC.\n`);
+      process.exit(1);
     }
   }
 
@@ -220,6 +224,86 @@ async function getRpcEndpointFromDatabase() {
   return null;
 }
 
+// Explorer API configuration and validation
+let EXPLORER_URL = process.env.EXPLORER_URL || 'https://testnet-explorer.usernodelabs.org';
+let EXPLORER_FORMAT = null; // Will be set to 'api/tx' or 'api/transaction' after boot validation
+let EXPLORER_HEALTHY = false; // True if boot validation succeeded
+
+async function validateAndConfigureExplorer() {
+  // Test explorer connectivity with both known formats
+  console.log(`[EXPLORER] Validating explorer at ${EXPLORER_URL}...`);
+
+  // Use a known test txHash that should fail gracefully (won't exist on testnet)
+  const testTxHash = 'explorer-health-check-' + Date.now();
+
+  // Try both common endpoint formats
+  const formats = [
+    { name: 'api/tx', path: `/api/tx/${testTxHash}` },
+    { name: 'api/transaction', path: `/api/transaction/${testTxHash}` }
+  ];
+
+  for (const format of formats) {
+    try {
+      const url = new URL(EXPLORER_URL + format.path);
+      const isHttps = url.protocol === 'https:';
+      const client = isHttps ? https : http;
+
+      return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          console.warn(`[EXPLORER] Endpoint check timeout for format ${format.name}`);
+          resolve(false);
+        }, 5000);
+
+        const req = client.get(url, { timeout: 5000 }, (res) => {
+          clearTimeout(timeout);
+
+          // Any response (404, 200, etc.) means the endpoint format is valid
+          // We're just checking that the endpoint exists and responds, not that the tx is there
+          console.log(`[EXPLORER] Format ${format.name}: HTTP ${res.statusCode} (endpoint accessible)`);
+
+          if (res.statusCode === 404 || res.statusCode === 200) {
+            // Both 404 and 200 are good — means the endpoint path is correct
+            EXPLORER_FORMAT = format.name;
+            EXPLORER_HEALTHY = true;
+            console.log(`[EXPLORER] ✓ Using format: ${format.name}`);
+            res.resume(); // Consume response
+            resolve(true);
+          } else if (res.statusCode >= 300) {
+            console.warn(`[EXPLORER] Format ${format.name}: HTTP ${res.statusCode} (unexpected status)`);
+            res.resume();
+            resolve(false);
+          }
+        });
+
+        req.on('error', (err) => {
+          clearTimeout(timeout);
+          console.warn(`[EXPLORER] Format ${format.name} request failed: ${err.message}`);
+          resolve(false);
+        });
+
+        req.on('timeout', () => {
+          clearTimeout(timeout);
+          req.destroy();
+        });
+      });
+    } catch (err) {
+      console.warn(`[EXPLORER] Validation error for format ${format.name}: ${err.message}`);
+    }
+  }
+
+  // If we get here, none of the formats worked
+  console.warn(`\n⚠️  [EXPLORER] Could not reach explorer at ${EXPLORER_URL}\n`);
+  console.warn(`    Chain polling will fail. Verify explorer URL and network connectivity.\n`);
+  console.warn(`    Explorer transactions will show as 'pending' indefinitely.\n`);
+
+  if (IS_STAGING) {
+    console.log(`[EXPLORER] Staging mode: continuing with degraded explorer (mocked in responses)\n`);
+    EXPLORER_HEALTHY = false;
+  }
+
+  return false;
+}
+
 // Restore persisted network mode from config_state so a runtime switch
 // (PUT /api/config/network-mode) survives container restarts. An explicit
 // NETWORK_MODE env var still wins over the persisted value.
@@ -284,7 +368,7 @@ function checkRateLimit(key, limit, windowMs) {
   return true;
 }
 
-const PUBLIC_API_PATHS = new Set(['/health', '/favicon.ico', '/api/test/production-simulation', '/api/diagnostics/bridge']);
+const PUBLIC_API_PATHS = new Set(['/health', '/favicon.ico', '/api/test/production-simulation', '/api/diagnostics/bridge', '/api/diagnostics/status']);
 const PUBLIC_PREFIXES = ['/explorer-api/'];
 
 // Helper function to compute SHA-256 hash of content
@@ -6627,6 +6711,26 @@ app.post('/api/diagnostics/bridge-logs', async (req, res) => {
 app.get('/api/diagnostics/status', async (req, res) => {
   try {
     const rpcHealth = await checkRPCHealth();
+
+    // Determine readiness: real_testnet requires both explorer AND RPC to be healthy
+    let readyForTestnet = false;
+    let readyReason = '';
+    if (NETWORK_MODE === 'demo' || NETWORK_MODE === 'devnet') {
+      readyForTestnet = true;
+      readyReason = `${NETWORK_MODE} mode doesn't require external services`;
+    } else if (NETWORK_MODE === 'real_testnet') {
+      if (EXPLORER_HEALTHY && rpcHealth.reachable) {
+        readyForTestnet = true;
+        readyReason = 'Explorer and RPC both healthy';
+      } else if (!EXPLORER_HEALTHY) {
+        readyReason = 'Explorer not responding or endpoint format incorrect';
+      } else if (!rpcHealth.reachable) {
+        readyReason = 'RPC not configured or unreachable';
+      } else {
+        readyReason = 'Unknown issue with external services';
+      }
+    }
+
     const status = {
       server: {
         networkMode: NETWORK_MODE,
@@ -6636,8 +6740,13 @@ app.get('/api/diagnostics/status', async (req, res) => {
       blockchain: {
         nodeRpcUrl: NODE_RPC_URL || null,
         nodeRpcUrlConfigured: !!NODE_RPC_URL,
-        rpcHealth: rpcHealth,
-        apiBaseUrl: API_BASE_URL || `http://127.0.0.1:${port || 3000} (loopback default)`
+        nodeRpcHealth: rpcHealth,
+        apiBaseUrl: API_BASE_URL || `http://127.0.0.1:${port || 3000} (loopback default)`,
+        explorerUrl: EXPLORER_URL,
+        explorerFormat: EXPLORER_FORMAT || 'not detected',
+        explorerHealth: EXPLORER_HEALTHY,
+        readyForTestnet: readyForTestnet,
+        readyReason: readyReason
       },
       database: {
         connected: dbConnected,
@@ -6652,7 +6761,7 @@ app.get('/api/diagnostics/status', async (req, res) => {
       }
     };
 
-    console.log(`[DIAGNOSTICS] Server status queried: networkMode=${NETWORK_MODE}, rpcReachable=${rpcHealth.reachable}`);
+    console.log(`[DIAGNOSTICS] Server status queried: networkMode=${NETWORK_MODE}, rpcReachable=${rpcHealth.reachable}, explorerHealthy=${EXPLORER_HEALTHY}, readyForTestnet=${readyForTestnet}`);
 
     res.json(status);
   } catch (err) {
@@ -7746,7 +7855,8 @@ async function start() {
       // They will not block healthchecks or prevent the app from serving requests.
 
       // Restore persisted network mode (runtime switches survive restarts),
-      // then initialize the RPC endpoint for the restored mode
+      // then initialize the RPC endpoint for the restored mode,
+      // then validate explorer connectivity
       try {
         await initializeNetworkMode();
       } catch (modeErr) {
@@ -7756,6 +7866,11 @@ async function start() {
         await initializeRpcUrl();
       } catch (rpcErr) {
         console.warn('[RPC] Failed to initialize RPC URL:', rpcErr.message);
+      }
+      try {
+        await validateAndConfigureExplorer();
+      } catch (explorerErr) {
+        console.warn('[EXPLORER] Failed to validate explorer:', explorerErr.message);
       }
 
       // Seed staging data
