@@ -1226,6 +1226,13 @@
     <button onclick="event.stopPropagation(); deleteContactFromMenu()" class="menu-item w-full text-left px-4 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">Delete Contact</button>
   </div>
 
+  <!-- Channel Context Menu -->
+  <div id="channelContextMenu" class="hidden fixed z-50 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg shadow-lg min-w-40">
+    <button onclick="event.stopPropagation(); viewChannelFromMenu()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">View Channel</button>
+    <button id="channelSettingsMenuBtn" onclick="event.stopPropagation(); openChannelSettingsFromMenu()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 hidden">Channel Settings</button>
+    <button id="deleteChannelMenuBtn" onclick="event.stopPropagation(); deleteChannelFromMenu()" class="menu-item w-full text-left px-4 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 hidden">Delete Channel</button>
+  </div>
+
   <!-- Message Options Menu -->
   <!-- Delete Message Modal -->
   <div id="deleteMessageModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4" onclick="closeDeleteMessageModal()">
@@ -3011,6 +3018,9 @@
     let currentContactContextMenuId = null;
     let currentContactContextMenuUserId = null;
     let currentContactContextMenuName = null;
+
+    // Channel context menu variable
+    let currentChannelContextMenuId = null;
     let currentContactContextData = null;
 
     function openContactOptionsMenu(event, contactId, contactUserId, contactName) {
@@ -3949,6 +3959,67 @@
           menu.style.top = (y - rect.height) + 'px';
         }
       }, 0);
+    }
+
+    async function openChannelContextMenu(event, channelId) {
+      event.preventDefault();
+      currentChannelContextMenuId = channelId;
+
+      // Fetch channel to check if user is owner
+      const channelData = await apiCall(`/api/channels/${channelId}`);
+      if (!channelData || channelData.error) {
+        console.error('Failed to fetch channel data:', channelData?.error);
+        return;
+      }
+
+      const menu = document.getElementById('channelContextMenu');
+      const settingsBtn = document.getElementById('channelSettingsMenuBtn');
+      const deleteBtn = document.getElementById('deleteChannelMenuBtn');
+      const isOwner = currentUser && parseInt(channelData.ownerId, 10) === parseInt(currentUser.id, 10);
+
+      // Configure button visibility before showing menu
+      settingsBtn.style.display = isOwner ? 'block' : 'none';
+      deleteBtn.style.display = isOwner ? 'block' : 'none';
+
+      // Position menu, accounting for viewport
+      let x = event.clientX;
+      let y = event.clientY;
+
+      menu.classList.remove('hidden');
+      menu.style.left = x + 'px';
+      menu.style.top = y + 'px';
+
+      // Check if menu goes off-screen and adjust
+      setTimeout(() => {
+        const rect = menu.getBoundingClientRect();
+        if (rect.right > window.innerWidth) {
+          menu.style.left = (x - rect.width) + 'px';
+        }
+        if (rect.bottom > window.innerHeight) {
+          menu.style.top = (y - rect.height) + 'px';
+        }
+      }, 0);
+    }
+
+    function closeChannelContextMenu() {
+      document.getElementById('channelContextMenu').classList.add('hidden');
+      currentChannelContextMenuId = null;
+    }
+
+    function viewChannelFromMenu() {
+      showChannelPosts(currentChannelContextMenuId);
+      closeChannelContextMenu();
+    }
+
+    function openChannelSettingsFromMenu() {
+      openChannelSettingsModal(currentChannelContextMenuId);
+      closeChannelContextMenu();
+    }
+
+    function deleteChannelFromMenu() {
+      currentChannelId = currentChannelContextMenuId;
+      openDeleteChannelConfirm();
+      closeChannelContextMenu();
     }
 
     // Helper: Create a pending audit log (Phase 1)
@@ -5024,6 +5095,13 @@
     document.addEventListener('click', (e) => {
       const menu = document.getElementById('groupContextMenu');
       if (menu && !e.target.closest('#groupContextMenu') && e.target.id !== 'groupContextMenu') {
+        menu.classList.add('hidden');
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      const menu = document.getElementById('channelContextMenu');
+      if (menu && !e.target.closest('#channelContextMenu') && !e.target.closest('[onclick*="openChannelContextMenu"]')) {
         menu.classList.add('hidden');
       }
     });
@@ -7632,7 +7710,8 @@
               <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-2">${channel.followerCount} ${channel.followerCount === 1 ? 'follower' : 'followers'}</div>
               ${latestPostSection}
             </div>
-            <div class="flex-shrink-0">
+            <div class="flex-shrink-0 flex items-center gap-2">
+              <button onclick="event.stopPropagation(); openChannelContextMenu(event, ${channel.id})" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare" title="Channel options">⋯</button>
               ${actionButton}
             </div>
           </div>
