@@ -1704,8 +1704,8 @@ app.get('/api/config', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
-    // Check if user is authorized (first user OR has created a group)
-    const canEdit = userId === 1 || (await userHasCreatedGroup(userId));
+    // All authenticated users can change network mode
+    const canEdit = true;
 
     // Get RPC health status only in real_testnet mode
     const rpcHealth = NETWORK_MODE === 'real_testnet' ? await checkRPCHealth() : null;
@@ -2234,13 +2234,21 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
     if (duplicateCheck.rows.length > 0) {
       const existingLog = duplicateCheck.rows[0];
       const timeSincePrevious = Date.now() - new Date(existingLog.created_at).getTime();
-      console.log(`[MESSAGE] Duplicate transaction detected! Existing auditLogId=${existingLog.id}, txHash=${existingLog.tx_hash}, time since: ${timeSincePrevious}ms`);
+      console.log(`\n🔄 [DUPLICATE DETECTED] ========================================`);
+      console.log(`   User: ${username} (${userId})`);
+      console.log(`   Content Hash: ${contentHash}`);
+      console.log(`   Existing Audit ID: ${existingLog.id}`);
+      console.log(`   Existing TX Hash: ${existingLog.tx_hash}`);
+      console.log(`   Time Since First Attempt: ${timeSincePrevious}ms`);
+      console.log(`   Action: Reusing existing transaction instead of creating duplicate`);
+      console.log(`============================================================\n`);
       // Return the existing audit log instead of creating a duplicate
       res.json({
         id: 0, // Dummy, not used
         createdAt: new Date(now),
         blockchainRecordingId: existingLog.id,
         isDuplicate: true,
+        existingTxHash: existingLog.tx_hash,
         note: 'Transaction already recorded - previous attempt succeeded despite timeout error'
       });
       return;
@@ -2923,7 +2931,7 @@ app.post('/api/blockchain-audit/:auditLogId/register-tx', async (req, res) => {
     }
 
     const { auditLogId } = req.params;
-    const { txHash, chainId } = req.body;
+    const { txHash, chainId, connectedWalletAddress } = req.body;
     const userId = parseInt(req.user.id, 10);
 
     if (!txHash) {
@@ -2932,6 +2940,12 @@ app.post('/api/blockchain-audit/:auditLogId/register-tx', async (req, res) => {
 
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    // FIX #7: Validate txHash format before storing
+    if (typeof txHash !== 'string' || !txHash.startsWith('ut1')) {
+      console.warn(`[AUDIT] Invalid txHash format: ${txHash}`);
+      return res.status(400).json({ error: 'Invalid txHash format - must start with ut1' });
     }
 
     // Fetch and verify ownership of audit log
@@ -2953,15 +2967,11 @@ app.post('/api/blockchain-audit/:auditLogId/register-tx', async (req, res) => {
       WHERE id = $2
     `, [txHash, auditLogId]);
 
-    console.log(`[AUDIT] Registered txHash: auditLogId=${auditLogId}, txHash=${txHash}, chainId=${chainId || 'testnet'}`);
+    console.log(`[AUDIT] Registered txHash: auditLogId=${auditLogId}, txHash=${txHash}, chainId=${chainId || 'testnet'}, connectedWallet=${connectedWalletAddress || 'none'}`);
 
-    // Start chain polling to monitor confirmation if chainId provided
-    if (chainId) {
-      startChainPoller(chainId, txHash, auditLogId);
-    } else {
-      // Default to testnet if chainId not provided
-      startChainPoller('testnet', txHash, auditLogId);
-    }
+    // Start chain polling to monitor confirmation
+    const resolvedChainId = chainId || 'testnet';
+    startChainPoller(resolvedChainId, txHash, auditLogId);
 
     res.json({ ok: true, auditLogId, txHash, status: 'pending' });
   } catch (err) {
@@ -9219,6 +9229,69 @@ async function start() {
       console.log(`[Channel Seed] ✅ Added user contacts (demo user has ${contacts.length} contacts)`);
 
       console.log('[Channel Seed] ✅ Channel seed data completed');
+
+      // FIX #8: Seed staging mock data for testing transaction polling without real blockchain
+      console.log('[Staging Mock Data] Seeding transaction test data for polling tests...');
+      try {
+        const userId = 1; // Staging demo user (Alice)
+
+        // Seed test transactions with various statuses to simulate polling scenarios
+        const testTransactions = [
+          {
+            status: 'confirmed',
+            offset: 120,
+            message: 'Staging test message - confirmed transaction',
+            txHashSuffix: 'test-confirmed-001'
+          },
+          {
+            status: 'pending',
+            offset: 60,
+            message: 'Staging test message - still pending (testing polling)',
+            txHashSuffix: 'test-pending-001'
+          },
+          {
+            status: 'failed',
+            offset: 30,
+            message: 'Staging test message - failed transaction',
+            txHashSuffix: 'test-failed-001',
+            error: 'RPC connection timeout'
+          }
+        ];
+
+        for (const tx of testTransactions) {
+          const msgTime = new Date(Date.now() - tx.offset * 60000);
+          const contentHash = computeContentHash(tx.message);
+          const txHash = `ut1staging-${tx.txHashSuffix}`;
+
+          // Create audit log for testing polling flow
+          const auditRes = await pool.query(`
+            INSERT INTO blockchain_audit_logs (
+              user_id, message_type, tx_hash, status, content_hash, user_pubkey,
+              action_timestamp, error_message, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
+            ON CONFLICT (user_id, tx_hash) DO NOTHING
+            RETURNING id
+          `, [
+            userId,
+            'message',
+            txHash,
+            tx.status,
+            contentHash,
+            'ut1staging-alice-001',
+            msgTime,
+            tx.error || null,
+            msgTime
+          ]);
+
+          if (auditRes.rows.length > 0) {
+            console.log(`[Staging Mock Data] Created test transaction: ${tx.txHashSuffix} (status: ${tx.status})`);
+          }
+        }
+
+        console.log('[Staging Mock Data] ✅ Transaction test data seeded');
+      } catch (seedErr) {
+        console.warn('[Staging Mock Data] Warning: Could not seed transaction test data:', seedErr.message);
+      }
     }
 
         // Create reserved system user for Crypto Daily bot (all environments)

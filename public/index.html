@@ -3836,9 +3836,11 @@
 
     // Open a group
     async function openGroup(groupId) {
-      currentGroupId = groupId;
+      // Clear cross-context state (direct messages and channels)
       currentConvId = null;
       currentOtherId = null;
+      currentChannelId = null;
+      currentGroupId = groupId;
 
       // Fetch group name for header (groups use two-line layout with "Group" label)
       document.getElementById('headerContent').classList.remove('hidden');
@@ -4007,11 +4009,15 @@
     }
 
     // Helper: Register txHash with backend after wallet approval (Phase 2)
-    async function registerTxHashWithBackend(auditLogId, txHash, chainId = 'testnet') {
+    async function registerTxHashWithBackend(auditLogId, txHash, chainId = 'testnet', connectedWalletAddress = null) {
       try {
+        const body = { txHash, chainId };
+        if (connectedWalletAddress) {
+          body.connectedWalletAddress = connectedWalletAddress;
+        }
         const response = await apiCall(`/api/blockchain-audit/${auditLogId}/register-tx`, {
           method: 'POST',
-          body: JSON.stringify({ txHash, chainId })
+          body: JSON.stringify(body)
         });
         console.log('[Audit] Registered txHash with backend:', response.txHash);
         return response;
@@ -4323,10 +4329,24 @@
     }
 
     // Resume polling on page load for any active sessions
-    function resumePollingFromSessionStorage() {
+    async function resumePollingFromSessionStorage() {
       try {
         const sessions = JSON.parse(sessionStorage.getItem('activePollingSessions') || '{}');
         for (const [auditLogId, session] of Object.entries(sessions)) {
+          try {
+            // FIX #3 & #5: Check transaction status before resuming
+            const currentStatus = await apiCall(`/api/blockchain-audit/${auditLogId}`);
+            if (currentStatus && (currentStatus.status === 'confirmed' || currentStatus.status === 'failed')) {
+              // Transaction already finished, remove from session storage
+              console.log(`[POLL] Transaction ${auditLogId} already ${currentStatus.status}, skipping resume`);
+              delete sessions[auditLogId];
+              sessionStorage.setItem('activePollingSessions', JSON.stringify(sessions));
+              continue;
+            }
+          } catch (statusErr) {
+            console.warn(`[POLL] Could not check status for ${auditLogId}:`, statusErr.message);
+          }
+
           const notification = document.getElementById(session.notificationId);
           if (notification) {
             console.log(`[POLL] Resuming polling for auditLogId=${auditLogId}`);
@@ -4383,14 +4403,33 @@
         throw new Error('You must be connected to Usernode wallet to perform this action. Please refresh your browser.');
       }
 
+      // FIX #2: Fetch wallet address from bridge before signing
+      let connectedWalletAddress = null;
+      try {
+        if (typeof window.usernode?.getNodeAddress === 'function') {
+          connectedWalletAddress = await window.usernode.getNodeAddress();
+          console.log('[WALLET] Connected address from bridge:', connectedWalletAddress);
+        }
+      } catch (err) {
+        console.warn('[WALLET] Could not fetch connected address from bridge:', err.message);
+      }
+
+      // Validate wallet address format
+      if (!connectedWalletAddress) {
+        throw new Error('Wallet address not available. Please reconnect your wallet.');
+      }
+      if (typeof connectedWalletAddress !== 'string' || !connectedWalletAddress.startsWith('ut1')) {
+        throw new Error('Invalid wallet address format: ' + JSON.stringify(connectedWalletAddress));
+      }
+
       // Show loading toast
       showToast('Requesting wallet signature...', 'info');
 
-      // Call wallet signature directly
-      return await executeWalletSignature(action, details, auditLogId);
+      // Call wallet signature directly with connected address
+      return await executeWalletSignature(action, details, auditLogId, connectedWalletAddress);
     }
 
-    async function executeWalletSignature(action, details, auditLogId = null) {
+    async function executeWalletSignature(action, details, auditLogId = null, connectedWalletAddress = null) {
       try {
         // Validate bridge availability
         if (typeof window.sendTransaction !== 'function') {
@@ -4410,6 +4449,9 @@
         }
 
         console.log('Requesting wallet signature for action:', action);
+        if (connectedWalletAddress) {
+          console.log('[WALLET] Using connected wallet address:', connectedWalletAddress);
+        }
         console.log('Memo:', memo);
 
         // Reset signature state
@@ -4455,9 +4497,10 @@
               signatureAttempt: signatureAttempt
             });
 
-            // Call wallet with timeout
+            // Call wallet with timeout using connected address
+            const walletAddressToUse = connectedWalletAddress || appPubkey;
             const bridgePromise = window.sendTransaction(
-              appPubkey,
+              walletAddressToUse,
               1,
               memo,
               { confirmTitle: confirmTitle }
@@ -4470,7 +4513,7 @@
             });
 
             const instrumentedPromise = instrumentPromise(bridgePromise, `Wallet signature attempt ${signatureAttempt}`, {
-              appPubkey,
+              walletAddress: walletAddressToUse,
               memoLength: memo.length,
               action: action
             });
@@ -4481,17 +4524,28 @@
               'Wallet signature'
             );
 
+            // FIX #1: Robust response format parsing with multiple field name variants
+            if (!txResult || typeof txResult !== 'object') {
+              throw new Error('Bridge returned invalid response type: ' + typeof txResult);
+            }
+
+            // Try multiple field name variants (txHash, hash, transactionHash, result.txHash)
+            const extractedTxHash = txResult.txHash || txResult.hash || txResult.transactionHash || txResult.result?.txHash;
+            if (!extractedTxHash) {
+              throw new Error('Bridge response missing transaction hash. Response: ' + JSON.stringify(txResult));
+            }
+
             telemetryLog('BRIDGE-SUCCESS', `Wallet signature obtained`, {
-              txHash: txResult?.txHash,
+              txHash: extractedTxHash,
               resultType: typeof txResult,
               resultKeys: typeof txResult === 'object' && txResult ? Object.keys(txResult) : null
             });
 
-            console.log('✓ Wallet signature obtained:', txResult.txHash);
+            console.log('✓ Wallet signature obtained:', extractedTxHash);
 
             // Lock to first successful txHash: ignore any later attempts
             if (!firstSuccessfulTxHash) {
-              firstSuccessfulTxHash = txResult.txHash;
+              firstSuccessfulTxHash = extractedTxHash;
               console.log(`[SIGNATURE] Locking to first successful txHash: ${firstSuccessfulTxHash}`);
             }
             break; // Success, exit retry loop
@@ -4625,7 +4679,7 @@
         if (auditLogId) {
           console.log(`[Phase3] Registering txHash with backend: auditLogId=${auditLogId}, txHash=${firstSuccessfulTxHash}`);
           try {
-            await registerTxHashWithBackend(auditLogId, firstSuccessfulTxHash, 'testnet');
+            await registerTxHashWithBackend(auditLogId, firstSuccessfulTxHash, 'testnet', connectedWalletAddress);
             console.log('[Phase3] txHash registered successfully');
           } catch (regErr) {
             console.error('[Phase3] Failed to register txHash, but continuing:', regErr);
@@ -5413,6 +5467,9 @@
     }
 
     async function openConversation(convId, otherId, username) {
+      // Clear cross-context state (groups and channels)
+      currentGroupId = null;
+      currentChannelId = null;
       currentConvId = convId;
       currentOtherId = otherId;
       currentContactName = username;
@@ -5658,12 +5715,23 @@
       return '';
     }
 
+    // FIX #4: Function-level guard to prevent duplicate message submission
+    let sendingMessageForConversation = new Set();
+
     async function sendMessage() {
       const input = document.getElementById('msgInput');
       const text = input.value.trim();
       if (!text) return;
 
       if (!currentConvId && !currentGroupId) return;
+
+      // Prevent duplicate submission while message is being sent
+      const convKey = currentGroupId ? `group-${currentGroupId}` : `conv-${currentConvId}`;
+      if (sendingMessageForConversation.has(convKey)) {
+        console.warn('[MESSAGE] Message already being sent for this conversation, skipping duplicate');
+        return;
+      }
+      sendingMessageForConversation.add(convKey);
 
       input.value = '';
 
@@ -5687,12 +5755,19 @@
         });
 
         if (data && !data.error) {
-          const statusMsg = isStaging ? 'Message sent—simulated signature confirmed' : 'Message sent—confirming on-chain';
-          showToast(`✓ ${statusMsg}`, 'success');
+          // Log duplicate detection
+          if (data.isDuplicate) {
+            console.log('[MESSAGE] Duplicate detected! Reusing existing auditLogId:', data.blockchainRecordingId, 'isDuplicate:', data.isDuplicate);
+            showToast(`✓ Message already sent—reusing existing transaction`, 'info');
+          } else {
+            const statusMsg = isStaging ? 'Message sent—simulated signature confirmed' : 'Message sent—confirming on-chain';
+            showToast(`✓ ${statusMsg}`, 'success');
+          }
           if (data.blockchainRecordingId) {
             showPersistentNotification('message', {
               blockchainRecordingId: data.blockchainRecordingId,
-              recipient: currentGroupId ? 'group' : currentContactName
+              recipient: currentGroupId ? 'group' : currentContactName,
+              isDuplicate: data.isDuplicate
             });
           }
           if (currentGroupId) {
@@ -5709,6 +5784,10 @@
           showToast(`Error: ${err.message}`, 'error');
           document.getElementById('msgInput').value = text; // Restore input on error
         }
+      } finally {
+        // Remove lock after send attempt (success or failure)
+        const convKey = currentGroupId ? `group-${currentGroupId}` : `conv-${currentConvId}`;
+        sendingMessageForConversation.delete(convKey);
       }
     }
 
@@ -6690,6 +6769,9 @@
       document.getElementById('postBtn').classList.remove('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
       if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
+      // Clear channel polling when switching away from channel view
+      if (pollInterval) clearInterval(pollInterval);
+      currentChannelId = null;
 
       // Reset search state
       currentSearchQuery = '';
@@ -6758,6 +6840,10 @@
     }
 
     async function showChannelPosts(channelId) {
+      // Clear cross-context state to match DM/Group pattern
+      currentConvId = null;
+      currentOtherId = null;
+      currentGroupId = null;
       currentChannelId = channelId;
       channelPostsOffset = 0;
       channelPostsHasMore = false;
@@ -6773,6 +6859,17 @@
 
       currentChannel = channel;
 
+      // Set up standard header (matching openConversation and openGroup pattern)
+      document.getElementById('headerContent').classList.remove('hidden');
+      document.getElementById('headerBranding').textContent = 'Channel';
+      document.getElementById('headerPageLabel').textContent = channel.name + (channel.description ? ` — ${channel.description}` : '');
+      document.getElementById('backBtnContainer').classList.remove('hidden');
+      document.getElementById('menuBtn').classList.add('hidden');
+      document.getElementById('conversationMenuBtn').classList.add('hidden');
+
+      // Hide the old custom header
+      document.getElementById('channelDetailHeader').classList.add('hidden');
+
       // Clear composition state from previous channel
       const channelPostInput = document.getElementById('channelPostInput');
       if (channelPostInput) {
@@ -6783,23 +6880,9 @@
         channelPostCharCount.textContent = '0/2000';
       }
 
-      document.getElementById('channelDetailHeader').classList.remove('hidden');
-      document.getElementById('channelDetailName').textContent = channel.name;
-      document.getElementById('channelDetailDescription').textContent = channel.description || '';
-
-      // Set up action buttons based on ownership
-      // Debug logging
-      console.log('showChannelPosts debug:', {
-        currentUserId: currentUser?.id,
-        currentUserIdType: typeof currentUser?.id,
-        channelOwnerId: channel.ownerId,
-        channelOwnerIdType: typeof channel.ownerId,
-        currentUser: currentUser,
-        channel: channel
-      });
+      // Set up action buttons based on ownership (use channelActionButtons from hidden detail header)
       const isOwner = currentUser && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
       const isFollowing = currentUser && channel.isFollowing;
-      console.log('isOwner:', isOwner);
       const actionButtonsContainer = document.getElementById('channelActionButtons');
       if (isOwner) {
         actionButtonsContainer.innerHTML = `
@@ -6815,12 +6898,33 @@
         `;
       }
 
+      // Call showChatView() to properly switch views (matching DM/Group pattern)
+      showChatView();
+
+      // Load and render channel posts
+      await loadChannelPosts(channelId);
+
+      // Set up polling (matching DM/Group 2-second poll pattern)
+      if (pollInterval) clearInterval(pollInterval);
+      pollInterval = setInterval(() => loadChannelPosts(channelId), 2000);
+    }
+
+    // New function: loadChannelPosts for consistency with loadMessages and loadGroupMessages
+    async function loadChannelPosts(channelId) {
+      if (!currentChannelId || currentChannelId !== channelId) return;
+
       try {
         isLoadingChannelPosts = true;
         const data = await apiCall(`/api/channels/${channelId}/posts?limit=50&offset=0`);
         if (data && data.posts) {
           channelPostsHasMore = data.hasMore || false;
           let html = '';
+
+          const channel = channelsList.find(ch => ch.id === channelId);
+          if (!channel) return;
+
+          const isOwner = currentUser && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
+          const isFollowing = currentUser && channel.isFollowing;
 
           // Add compose box for owner or followers
           if (isOwner || isFollowing) {
@@ -7266,6 +7370,19 @@
     }
 
     function backToChannelList() {
+      // Clear polling for channels (matching DM/Group cleanup pattern)
+      if (pollInterval) clearInterval(pollInterval);
+      currentChannelId = null;
+
+      // Hide header content and show channels view
+      document.getElementById('headerContent').classList.add('hidden');
+      document.getElementById('backBtnContainer').classList.add('hidden');
+      document.getElementById('menuBtn').classList.remove('hidden');
+      document.getElementById('conversationMenuBtn').classList.add('hidden');
+
+      // Clear message content
+      document.getElementById('feedContentWrapper').innerHTML = '';
+
       showChannelList();
     }
 
