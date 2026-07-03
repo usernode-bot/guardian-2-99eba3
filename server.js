@@ -1723,13 +1723,13 @@ app.get('/api/config', async (req, res) => {
     }
 
     // Map network mode to frontend value
-    let responsNetworkMode = NETWORK_MODE;
+    let responseNetworkMode = NETWORK_MODE;
     if (NETWORK_MODE === 'real_testnet') {
-      responsNetworkMode = 'testnet';
+      responseNetworkMode = 'testnet';
     }
 
     res.json({
-      networkMode: responsNetworkMode,
+      networkMode: responseNetworkMode,
       isDemoMode: ENABLE_DEMO_MODE,
       rpcEndpoint: NODE_RPC_URL,
       canEdit: canEdit,
