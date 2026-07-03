@@ -1696,8 +1696,8 @@ app.get('/api/config', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
-    // Check if user is authorized (first user OR has created a group)
-    const canEdit = userId === 1 || (await userHasCreatedGroup(userId));
+    // All authenticated users can change network mode
+    const canEdit = true;
 
     // Get RPC health status only in real_testnet mode
     const rpcHealth = NETWORK_MODE === 'real_testnet' ? await checkRPCHealth() : null;
