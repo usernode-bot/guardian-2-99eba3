@@ -76,14 +76,14 @@
       "expectSelector": "#settingsPanel"
     },
     {
-      "name": "Network dropdown in settings",
+      "name": "Network Mode selector in settings",
       "path": "/",
-      "expectSelector": "#networkSelect"
+      "expectSelector": "#networkModeSelect"
     },
     {
-      "name": "Network Status section in settings",
+      "name": "Transaction Preferences section appears in Devnet mode",
       "path": "/",
-      "expectSelector": "#networkAccordion"
+      "expectSelector": "#transactionPreferencesSection"
     },
     {
       "name": "Profile Guardian's tab loads",
