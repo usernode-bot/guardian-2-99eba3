@@ -5761,12 +5761,19 @@
         });
 
         if (data && !data.error) {
-          const statusMsg = isStaging ? 'Message sent—simulated signature confirmed' : 'Message sent—confirming on-chain';
-          showToast(`✓ ${statusMsg}`, 'success');
+          // Log duplicate detection
+          if (data.isDuplicate) {
+            console.log('[MESSAGE] Duplicate detected! Reusing existing auditLogId:', data.blockchainRecordingId, 'isDuplicate:', data.isDuplicate);
+            showToast(`✓ Message already sent—reusing existing transaction`, 'info');
+          } else {
+            const statusMsg = isStaging ? 'Message sent—simulated signature confirmed' : 'Message sent—confirming on-chain';
+            showToast(`✓ ${statusMsg}`, 'success');
+          }
           if (data.blockchainRecordingId) {
             showPersistentNotification('message', {
               blockchainRecordingId: data.blockchainRecordingId,
-              recipient: currentGroupId ? 'group' : currentContactName
+              recipient: currentGroupId ? 'group' : currentContactName,
+              isDuplicate: data.isDuplicate
             });
           }
           if (currentGroupId) {

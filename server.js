@@ -2218,13 +2218,21 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
     if (duplicateCheck.rows.length > 0) {
       const existingLog = duplicateCheck.rows[0];
       const timeSincePrevious = Date.now() - new Date(existingLog.created_at).getTime();
-      console.log(`[MESSAGE] Duplicate transaction detected! Existing auditLogId=${existingLog.id}, txHash=${existingLog.tx_hash}, time since: ${timeSincePrevious}ms`);
+      console.log(`\n🔄 [DUPLICATE DETECTED] ========================================`);
+      console.log(`   User: ${username} (${userId})`);
+      console.log(`   Content Hash: ${contentHash}`);
+      console.log(`   Existing Audit ID: ${existingLog.id}`);
+      console.log(`   Existing TX Hash: ${existingLog.tx_hash}`);
+      console.log(`   Time Since First Attempt: ${timeSincePrevious}ms`);
+      console.log(`   Action: Reusing existing transaction instead of creating duplicate`);
+      console.log(`============================================================\n`);
       // Return the existing audit log instead of creating a duplicate
       res.json({
         id: 0, // Dummy, not used
         createdAt: new Date(now),
         blockchainRecordingId: existingLog.id,
         isDuplicate: true,
+        existingTxHash: existingLog.tx_hash,
         note: 'Transaction already recorded - previous attempt succeeded despite timeout error'
       });
       return;
