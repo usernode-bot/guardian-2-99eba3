@@ -625,22 +625,33 @@
           </button>
           <div id="systemContent" class="hidden pt-2 space-y-2">
             <!-- Network (Sub-Accordion) -->
-            <div id="networkAccordion" class="space-y-1">
-              <button id="networkToggle" onclick="toggleNetworkAccordion()" class="w-full flex items-center justify-between px-0 py-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
-                <div class="flex items-center gap-2">
-                  <span>Network</span>
-                  <span id="networkHeaderDot" class="inline-block w-2.5 h-2.5 rounded-full bg-gray-400 transition-colors"></span>
+            <!-- Network Mode Selection (Direct, not nested) -->
+            <div class="space-y-2 mb-4">
+              <label class="text-xs sm:text-sm font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-2">
+                <span>Network Mode</span>
+                <span id="networkModeLoading" class="hidden inline-block w-3 h-3 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></span>
+              </label>
+              <select id="networkModeSelect" onchange="updateNetworkMode(this.value)" class="w-full px-3 py-2.5 sm:py-2 bg-zinc-50 dark:bg-zinc-700 border border-zinc-400 dark:border-zinc-600 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-400 text-sm">
+                <option value="mainnet" disabled>Mainnet (Coming Soon)</option>
+                <option value="testnet">Testnet</option>
+                <option value="devnet">Devnet</option>
+              </select>
+              <p class="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed break-words">
+                <strong class="block mb-1">Testnet:</strong> Live blockchain transactions; wallet confirmation required; transactions remain pending until blockchain confirms.
+                <strong class="block mb-1 mt-2">Devnet:</strong> Database-only transactions; immediate confirmation; useful for testing.
+              </p>
+            </div>
+
+            <!-- Transaction Preferences (Shown only when Devnet is active) -->
+            <div id="transactionPreferencesSection" class="hidden space-y-3 mb-4 border-b border-zinc-300 dark:border-zinc-600 pb-4">
+              <label class="text-xs sm:text-sm font-medium text-zinc-700 dark:text-zinc-300 block">Transaction Preferences</label>
+              <div class="flex items-start gap-3 p-3 bg-zinc-100 dark:bg-zinc-800 rounded">
+                <input type="checkbox" id="skipSignatureDevnetToggle" onchange="updateSkipSignatureDevnet(this.checked)" class="w-5 h-5 rounded cursor-pointer mt-0.5 flex-shrink-0">
+                <div class="flex-1 min-w-0">
+                  <label for="skipSignatureDevnetToggle" class="text-xs sm:text-sm font-medium text-zinc-900 dark:text-zinc-100 cursor-pointer block mb-1">Skip signature confirmation in devnet mode</label>
+                  <p class="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">When enabled and devnet is the active network mode, transactions will broadcast immediately without wallet confirmation.</p>
+                  <p class="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed mt-1"><em>Only applies when devnet mode is active above.</em></p>
                 </div>
-                <svg id="networkArrow" class="w-5 h-5 transition-transform duration-200 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                </svg>
-              </button>
-              <div id="networkContent" class="hidden pt-2 space-y-2">
-                <!-- Network Selector (Disabled) -->
-                <select id="networkSelect" disabled class="w-full px-2 py-2 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed">
-                  <option value="testnet" selected>Testnet</option>
-                  <option value="mainnet">Mainnet</option>
-                </select>
               </div>
             </div>
 
@@ -686,37 +697,6 @@
                   </div>
                 </div>
 
-                <!-- Network Mode Selection -->
-                <div class="space-y-2">
-                  <label class="text-xs sm:text-sm font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-2">
-                    <span>Network Mode</span>
-                    <span id="networkModeLoading" class="hidden inline-block w-3 h-3 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></span>
-                  </label>
-                  <select id="networkModeSelect" onchange="updateNetworkMode(this.value)" class="w-full px-3 py-2.5 sm:py-2 bg-zinc-50 dark:bg-zinc-700 border border-zinc-400 dark:border-zinc-600 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-400 text-sm">
-                    <option value="real_testnet">Real Testnet (Live Transactions)</option>
-                    <option value="devnet">Devnet (Database Only)</option>
-                    <option value="demo">Demo (Simulated)</option>
-                  </select>
-                  <p class="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed break-words">
-                    <strong class="block mb-1">Real Testnet:</strong> Live blockchain transactions; wallet confirmation required; transactions remain pending until blockchain confirms.
-                    <strong class="block mb-1 mt-2">Devnet:</strong> Database-only transactions; immediate confirmation; useful for testing.
-                    <strong class="block mb-1 mt-2">Demo:</strong> Transactions are simulated with fake hashes; audit logs immediately mark as confirmed.
-                  </p>
-                </div>
-
-                <!-- Transaction Preferences -->
-                <div class="space-y-3 border-t border-zinc-300 dark:border-zinc-600 pt-3 mt-3">
-                  <label class="text-xs sm:text-sm font-medium text-zinc-700 dark:text-zinc-300 block">Transaction Preferences</label>
-                  <div class="flex items-start gap-3 p-3 bg-zinc-100 dark:bg-zinc-800 rounded">
-                    <input type="checkbox" id="skipSignatureDevnetToggle" onchange="updateSkipSignatureDevnet(this.checked)" class="w-5 h-5 rounded cursor-pointer mt-0.5 flex-shrink-0">
-                    <div class="flex-1 min-w-0">
-                      <label for="skipSignatureDevnetToggle" class="text-xs sm:text-sm font-medium text-zinc-900 dark:text-zinc-100 cursor-pointer block mb-1">Skip signature confirmation in devnet mode</label>
-                      <p class="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">When enabled and devnet is the active network mode, transactions will broadcast immediately without wallet confirmation.</p>
-                      <p class="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed mt-1"><em>Only applies when devnet mode is active above.</em></p>
-                    </div>
-                  </div>
-                </div>
-
                 <!-- RPC Endpoint Configuration (only shown in testnet mode) -->
                 <div id="rpcEndpointConfig" class="hidden space-y-2">
                   <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400 flex items-center gap-2">
@@ -759,7 +739,7 @@
         <div class="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
           <span class="text-blue-700 dark:text-blue-300 flex-shrink-0 mt-0.5">ℹ️</span>
           <p class="text-xs sm:text-sm text-blue-900 dark:text-blue-100 leading-snug break-words font-medium">
-            <strong>Note:</strong> Testnet mode is still in development. Expect changes and improvements. You can change network mode in Settings (gear icon) → Preferences → Network Mode.
+            <strong>Note:</strong> Testnet mode is still in development. Expect changes and improvements. You can change network mode in Settings (gear icon) → Preferences → System → Network Mode.
           </p>
         </div>
         <button onclick="dismissDevStatusBanner()" class="text-blue-700 dark:text-blue-300 hover:text-blue-900 dark:hover:text-blue-100 transition flex-shrink-0 mt-1 sm:mt-0 self-end sm:self-center p-1" title="Dismiss">
@@ -2198,20 +2178,6 @@
       }
     }
 
-    function toggleNetworkAccordion() {
-      const content = document.getElementById('networkContent');
-      const arrow = document.getElementById('networkArrow');
-      const isHidden = content.classList.contains('hidden');
-
-      if (isHidden) {
-        content.classList.remove('hidden');
-        arrow.style.transform = 'rotate(180deg)';
-      } else {
-        content.classList.add('hidden');
-        arrow.style.transform = 'rotate(0deg)';
-      }
-    }
-
     function toggleConfigAccordion() {
       const content = document.getElementById('configContent');
       const arrow = document.getElementById('configArrow');
@@ -2235,21 +2201,33 @@
           const accordion = document.getElementById('configAccordion');
           const rpcEndpointConfig = document.getElementById('rpcEndpointConfig');
           const rpcEndpointInput = document.getElementById('rpcEndpointInput');
+          const transactionPreferencesSection = document.getElementById('transactionPreferencesSection');
 
-          // Set dropdown to current network mode, defaulting to networkMode if available, else isDemoMode for backward compat
-          const currentMode = config.networkMode || (config.isDemoMode ? 'demo' : 'devnet');
+          // Map real_testnet to testnet for frontend, and handle demo for backward compat
+          let currentMode = config.networkMode || (config.isDemoMode ? 'demo' : 'devnet');
+          if (currentMode === 'real_testnet') {
+            currentMode = 'testnet';
+          }
+
           dropdown.value = currentMode;
           // Network mode dropdown is always enabled for authenticated users (personal preference)
           // It calls /api/user/network-mode which is available to all authenticated users
           dropdown.disabled = false;
 
           // Show/hide RPC endpoint config based on network mode and permission
-          if (currentMode === 'real_testnet' && config.canEditRpc) {
+          if (currentMode === 'testnet' && config.canEditRpc) {
             rpcEndpointConfig.classList.remove('hidden');
             rpcEndpointInput.value = config.rpcEndpoint || 'http://localhost:3001';
             rpcEndpointInput.disabled = !config.canEditRpc;
           } else {
             rpcEndpointConfig.classList.add('hidden');
+          }
+
+          // Show/hide Transaction Preferences based on network mode
+          if (currentMode === 'devnet') {
+            transactionPreferencesSection.classList.remove('hidden');
+          } else {
+            transactionPreferencesSection.classList.add('hidden');
           }
 
           // Save to localStorage
@@ -2414,15 +2392,19 @@
       const dropdown = document.getElementById('networkModeSelect');
       const loading = document.getElementById('networkModeLoading');
       const rpcEndpointConfig = document.getElementById('rpcEndpointConfig');
+      const transactionPreferencesSection = document.getElementById('transactionPreferencesSection');
       const previousMode = dropdown.value;
 
       try {
         loading.classList.remove('hidden');
         dropdown.disabled = true;
 
+        // Map testnet to real_testnet for API call
+        const apiMode = mode === 'testnet' ? 'real_testnet' : mode;
+
         const result = await apiCall('/api/user/network-mode', {
           method: 'PUT',
-          body: JSON.stringify({ networkMode: mode })
+          body: JSON.stringify({ networkMode: apiMode })
         });
 
         if (result && !result.error) {
@@ -2437,14 +2419,21 @@
           }
 
           updateConfigDotColor(mode === 'demo' || mode === 'devnet');
-          const modeName = mode === 'demo' ? 'Demo' : (mode === 'devnet' ? 'Devnet' : 'Testnet');
+          const modeName = mode === 'devnet' ? 'Devnet' : 'Testnet';
           showToast('Switched to ' + modeName + ' mode', 'success');
 
           // Show/hide RPC endpoint config based on mode
-          if (mode === 'real_testnet') {
+          if (mode === 'testnet') {
             rpcEndpointConfig.classList.remove('hidden');
           } else {
             rpcEndpointConfig.classList.add('hidden');
+          }
+
+          // Show/hide Transaction Preferences based on mode
+          if (mode === 'devnet') {
+            transactionPreferencesSection.classList.remove('hidden');
+          } else {
+            transactionPreferencesSection.classList.add('hidden');
           }
 
           // Reload config state to refresh all UI elements

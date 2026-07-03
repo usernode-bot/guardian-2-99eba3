@@ -1421,7 +1421,13 @@ app.get('/api/user', async (req, res) => {
     const created_at = userRes.rows[0]?.created_at || null;
     const bio = userRes.rows[0]?.bio || null;
     const skip_signature_in_devnet = userRes.rows[0]?.skip_signature_in_devnet || false;
-    const network_mode = userRes.rows[0]?.network_mode || 'devnet';
+    let network_mode = userRes.rows[0]?.network_mode || 'devnet';
+    // Map internal values to frontend values: real_testnet -> testnet, demo -> devnet
+    if (network_mode === 'real_testnet') {
+      network_mode = 'testnet';
+    } else if (network_mode === 'demo') {
+      network_mode = 'devnet';
+    }
     res.json({
       id: req.user.id,
       username: req.user.username,
@@ -1496,12 +1502,14 @@ app.put('/api/user/network-mode', async (req, res) => {
     }
 
     const { networkMode } = req.body;
-    if (!['devnet', 'real_testnet', 'demo'].includes(networkMode)) {
-      return res.status(400).json({ error: 'Invalid input: networkMode must be "devnet", "real_testnet", or "demo"' });
+    if (!['devnet', 'real_testnet'].includes(networkMode)) {
+      return res.status(400).json({ error: 'Invalid input: networkMode must be "devnet" or "real_testnet"' });
     }
 
     await pool.query(`UPDATE users SET network_mode = $1 WHERE id = $2`, [networkMode, req.user.id]);
-    res.json({ networkMode: networkMode, status: 'updated' });
+    // Map back to frontend value for response
+    const responseMode = networkMode === 'real_testnet' ? 'testnet' : networkMode;
+    res.json({ networkMode: responseMode, status: 'updated' });
   } catch (err) {
     console.error('Error updating network-mode:', err);
     res.status(500).json({ error: 'Failed to update network-mode' });
@@ -1714,13 +1722,19 @@ app.get('/api/config', async (req, res) => {
       nodeRpcUrlSecret.rpcStatus = rpcHealth;
     }
 
+    // Map network mode to frontend value
+    let responsNetworkMode = NETWORK_MODE;
+    if (NETWORK_MODE === 'real_testnet') {
+      responsNetworkMode = 'testnet';
+    }
+
     res.json({
-      networkMode: NETWORK_MODE,
+      networkMode: responsNetworkMode,
       isDemoMode: ENABLE_DEMO_MODE,
       rpcEndpoint: NODE_RPC_URL,
       canEdit: canEdit,
       canEditRpc: canEdit,
-      description: 'Devnet: database-only transactions with immediate confirmation; no blockchain or RPC required. Demo: simulated transactions with fake hashes. Real Testnet: live blockchain transactions requiring wallet confirmation.',
+      description: 'Devnet: database-only transactions with immediate confirmation; no blockchain or RPC required. Real Testnet: live blockchain transactions requiring wallet confirmation.',
       secrets: [
         {
           key: 'APP_PUBKEY',
@@ -1755,11 +1769,11 @@ app.put('/api/config/network-mode', async (req, res) => {
     }
 
     const { networkMode } = req.body;
-    if (!['demo', 'real_testnet', 'devnet'].includes(networkMode)) {
-      return res.status(400).json({ error: 'Invalid input: networkMode must be "demo", "real_testnet", or "devnet"' });
+    if (!['real_testnet', 'devnet'].includes(networkMode)) {
+      return res.status(400).json({ error: 'Invalid input: networkMode must be "real_testnet" or "devnet"' });
     }
 
-    // Check authorization: devnet is available to all authenticated users; demo/real_testnet require first user OR group creator
+    // Check authorization: devnet is available to all authenticated users; real_testnet requires first user OR group creator
     const canEdit = networkMode === 'devnet' || userId === 1 || (await userHasCreatedGroup(userId));
     if (!canEdit) {
       return res.status(403).json({ error: 'Not authorized to modify configuration' });
@@ -1779,8 +1793,10 @@ app.put('/api/config/network-mode', async (req, res) => {
     ENABLE_DEMO_MODE = getEnableDemoMode();
     console.log(`[CONFIG] Network mode updated and persisted: ${networkMode} (by user ${userId})`);
 
+    // Map to frontend value for response
+    const responseMode = networkMode === 'real_testnet' ? 'testnet' : networkMode;
     res.json({
-      networkMode: NETWORK_MODE,
+      networkMode: responseMode,
       isDemoMode: ENABLE_DEMO_MODE,
       status: 'updated'
     });
@@ -7297,6 +7313,22 @@ async function start() {
       console.log('[Migration] ✅ skip_signature_in_devnet default migration completed');
     } catch (err) {
       console.error('[Migration] ❌ ERROR updating skip_signature_in_devnet default:', err.message);
+      throw err;
+    }
+
+    // Migrate demo mode users to devnet (demo mode is deprecated)
+    try {
+      console.log('[Migration] Migrating demo mode users to devnet...');
+      const result = await pool.query(`
+        UPDATE users SET network_mode = 'devnet' WHERE network_mode = 'demo'
+      `);
+      if (result.rowCount > 0) {
+        console.log(`[Migration] ✅ Migrated ${result.rowCount} demo mode users to devnet`);
+      } else {
+        console.log('[Migration] ✅ No demo mode users to migrate');
+      }
+    } catch (err) {
+      console.error('[Migration] ❌ ERROR migrating demo mode users:', err.message);
       throw err;
     }
 
