@@ -7746,12 +7746,12 @@
       ` : '';
 
       const actionButton = isOwner
-        ? ''
+        ? `<button onclick="event.stopPropagation(); openChannelSettingsModal(${channel.id})" class="px-3 py-1 bg-zinc-200 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-300 dark:hover:bg-zinc-600 rounded text-sm font-medium transition active:scale-95">Settings</button>`
         : `<button class="channel-follow-btn px-3 py-1 text-sm font-medium rounded transition ${
             channel.isFollowing
               ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-300 dark:hover:bg-zinc-600'
               : 'bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white'
-          }" data-channel-id="${channel.id}" data-following="${channel.isFollowing ? 'true' : 'false'}">
+          }" data-channel-id="${channel.id}" data-following="${channel.isFollowing ? 'true' : 'false'}" onclick="event.stopPropagation()">
             ${channel.isFollowing ? 'Following' : 'Follow'}
           </button>`;
 
