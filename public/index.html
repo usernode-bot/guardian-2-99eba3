@@ -6872,6 +6872,7 @@
         channelPostCharCount.textContent = '0/2000';
       }
 
+      document.getElementById('feedView').classList.remove('hidden');
       document.getElementById('channelDetailHeader').classList.remove('hidden');
       document.getElementById('channelDetailName').textContent = channel.name;
       document.getElementById('channelDetailDescription').textContent = channel.description || '';
