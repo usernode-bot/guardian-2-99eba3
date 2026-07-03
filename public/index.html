@@ -1629,8 +1629,8 @@
       let statusBadgeText = '⏳ Confirming...';
 
       if (isStaging) {
-        statusBadgeText = '✓ Simulated';
-        statusBadgeClass = 'text-xs px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300';
+        statusBadgeText = '🎭 Demo Mode';
+        statusBadgeClass = 'text-xs px-2 py-1 rounded bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300';
       }
 
       notification.id = notificationId;
@@ -1717,6 +1717,29 @@
         const txHashShort = data.txHash ? data.txHash.substring(0, 12) : 'N/A';
         const txHashFull = data.txHash || '';
 
+        // Determine network origin label with icon
+        let networkOriginLabel = 'Unknown';
+        let networkOriginIcon = '❓';
+        let networkOriginClass = 'text-yellow-600 dark:text-yellow-400';
+
+        if (data.network_origin === 'blockchain') {
+          networkOriginLabel = 'Real Blockchain';
+          networkOriginIcon = '⛓️';
+          networkOriginClass = 'text-green-600 dark:text-green-400';
+        } else if (data.network_origin === 'demo') {
+          networkOriginLabel = 'Demo Mode (Simulated)';
+          networkOriginIcon = '🎭';
+          networkOriginClass = 'text-amber-600 dark:text-amber-400';
+        } else if (data.network_origin === 'database') {
+          networkOriginLabel = 'Database Only (Devnet)';
+          networkOriginIcon = '💾';
+          networkOriginClass = 'text-blue-600 dark:text-blue-400';
+        } else if (data.network_origin === 'bridge') {
+          networkOriginLabel = 'Bridge Fallback';
+          networkOriginIcon = '🌉';
+          networkOriginClass = 'text-purple-600 dark:text-purple-400';
+        }
+
         let txHashHtml = '';
         if (data.txHash && !data.txHash.includes('staging')) {
           txHashHtml = `<div class="text-sm"><span class="text-zinc-600 dark:text-zinc-400">Hash:</span> <span class="font-mono text-xs text-cyan-600 dark:text-cyan-400 break-all">${escapeHtml(data.txHash)}</span></div>`;
@@ -1739,6 +1762,13 @@
                 <span class="flex items-center gap-1 ${statusClass}">
                   <span class="text-lg">${statusIcon}</span>
                   <span class="capitalize font-medium">${data.status}</span>
+                </span>
+              </div>
+              <div class="text-sm flex items-center justify-between">
+                <span class="text-zinc-600 dark:text-zinc-400">Mode:</span>
+                <span class="flex items-center gap-1 ${networkOriginClass}">
+                  <span class="text-lg">${networkOriginIcon}</span>
+                  <span class="font-medium">${networkOriginLabel}</span>
                 </span>
               </div>
               ${txHashHtml}
@@ -3335,21 +3365,39 @@
     // Send diagnostics to server for analysis
     async function uploadBridgeDiagnostics(diagnostic, context = {}) {
       try {
+        // First, fetch server status to include in diagnostics (fix for issue #7).
+        // Auth uses the same `headers` global (built from the iframe ?token= param)
+        // that every other apiCall in the app uses.
+        let serverStatus = null;
+        try {
+          const statusResponse = await fetch('/api/diagnostics/status', {
+            method: 'GET',
+            headers: { ...headers }
+          });
+          if (statusResponse.ok) {
+            serverStatus = await statusResponse.json();
+            console.log('[Diagnostics] Fetched server status:', serverStatus);
+          }
+        } catch (statusErr) {
+          console.warn('[Diagnostics] Failed to fetch server status:', statusErr.message);
+        }
+
         const payload = {
           diagnostic: diagnostic,
           context: context,
-          userId: currentUser?.id || null
+          userId: currentUser?.id || null,
+          serverStatus: serverStatus
         };
         const response = await fetch('/api/diagnostics/bridge', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-usernode-token': localStorage.getItem('authToken') || ''
+            ...headers
           },
           body: JSON.stringify(payload)
         });
         if (response.ok) {
-          console.log('[Diagnostics] Successfully uploaded bridge diagnostic to server');
+          console.log('[Diagnostics] Successfully uploaded bridge diagnostic with server status to server');
         } else {
           console.warn('[Diagnostics] Server returned', response.status, 'when uploading diagnostics');
         }
@@ -3420,6 +3468,9 @@
 
       // Initialize environment state and polling infrastructure
       await initializeAppState();
+
+      // Resume any polling sessions from before page refresh
+      resumePollingFromSessionStorage();
 
       // Log demo mode detection prominently
       console.log('\n╔════════════════════════════════════════════════════════════════╗');
@@ -4157,20 +4208,35 @@
       }
     }
 
-    // Poll transaction confirmation status on blockchain
-    async function pollTransactionConfirmation(notificationId, auditLogId, maxPollAttempts = 30) {
+    // Poll transaction confirmation status on blockchain with exponential backoff matching server
+    async function pollTransactionConfirmation(notificationId, auditLogId, maxPollAttempts = 600) {
       let pollAttempt = 0;
-      const pollIntervalMs = 2000; // Poll every 2 seconds
+      let backoffMs = 2000; // Start at 2 seconds, exponential backoff to match server (5s starting)
+      const minIntervalMs = 2000;
+      const maxIntervalMs = 60000;
+
+      // Store in sessionStorage so page refresh can resume polling
+      if (!window.activePollingSessions) {
+        window.activePollingSessions = {};
+      }
+      window.activePollingSessions[auditLogId] = { notificationId, auditLogId, startTime: Date.now() };
+      sessionStorage.setItem('activePollingSessions', JSON.stringify(window.activePollingSessions));
 
       const pollLoop = async () => {
         if (pollAttempt >= maxPollAttempts) {
-          console.log(`[POLL] Reached max attempts (${maxPollAttempts}) for auditLogId=${auditLogId}, stopping`);
+          console.log(`[POLL] Reached max attempts (${maxPollAttempts}) for auditLogId=${auditLogId}, showing timeout with check button`);
+
+          // Clean up session storage
+          delete window.activePollingSessions[auditLogId];
+          sessionStorage.setItem('activePollingSessions', JSON.stringify(window.activePollingSessions));
+
           const notification = document.getElementById(notificationId);
           if (notification) {
             const badge = notification.querySelector('[data-status-badge]');
             if (badge) {
-              badge.innerHTML = '⏱ Confirmation timeout';
+              badge.innerHTML = '⏱ Confirmation timeout - <a href="#" onclick="checkTransactionStatus(this)" style="text-decoration: underline; cursor: pointer;">Check Now</a>';
               badge.className = 'text-xs px-2 py-1 rounded bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200';
+              badge.dataset.auditLogId = auditLogId;
             }
           }
           return;
@@ -4181,43 +4247,106 @@
           const response = await apiCall(`/api/blockchain-audit/${auditLogId}`);
           if (!response) {
             console.log(`[POLL] No response for auditLogId=${auditLogId}, retrying...`);
-            setTimeout(pollLoop, pollIntervalMs);
+            // Apply backoff with slight randomization
+            const delayMs = Math.min(backoffMs + Math.random() * 1000, maxIntervalMs);
+            setTimeout(pollLoop, delayMs);
+            backoffMs = Math.min(backoffMs * 1.5, maxIntervalMs);
             return;
           }
 
           console.log(`[POLL] Attempt ${pollAttempt}/${maxPollAttempts}: status=${response.status} for auditLogId=${auditLogId}`);
 
           const notification = document.getElementById(notificationId);
-          if (!notification) return; // Notification was closed
+          if (!notification) {
+            // Notification was closed, but keep polling in background
+            setTimeout(pollLoop, Math.min(backoffMs, maxIntervalMs));
+            backoffMs = Math.min(backoffMs * 1.5, maxIntervalMs);
+            return;
+          }
 
           const badge = notification.querySelector('[data-status-badge]');
-          if (!badge) return;
+          if (!badge) {
+            // Badge missing, but keep polling
+            setTimeout(pollLoop, Math.min(backoffMs, maxIntervalMs));
+            backoffMs = Math.min(backoffMs * 1.5, maxIntervalMs);
+            return;
+          }
 
           if (response.status === 'confirmed') {
             console.log(`[POLL] ✓ Transaction confirmed: auditLogId=${auditLogId}, txHash=${response.txHash}`);
             badge.innerHTML = '✓ Confirmed';
             badge.className = 'text-xs px-2 py-1 rounded bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200';
             signatureState.confirmationStatus = 'confirmed';
+            // Clean up session storage
+            delete window.activePollingSessions[auditLogId];
+            sessionStorage.setItem('activePollingSessions', JSON.stringify(window.activePollingSessions));
             return;
           } else if (response.status === 'failed') {
             console.log(`[POLL] ✗ Transaction failed: auditLogId=${auditLogId}, error=${response.errorMessage}`);
             badge.innerHTML = `✗ Failed`;
             badge.className = 'text-xs px-2 py-1 rounded bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200';
             signatureState.confirmationStatus = 'failed';
+            // Clean up session storage
+            delete window.activePollingSessions[auditLogId];
+            sessionStorage.setItem('activePollingSessions', JSON.stringify(window.activePollingSessions));
             return;
           } else if (response.status === 'pending') {
-            // Still pending, continue polling
-            setTimeout(pollLoop, pollIntervalMs);
+            // Still pending, continue polling with exponential backoff
+            const delayMs = Math.min(backoffMs + Math.random() * 1000, maxIntervalMs);
+            setTimeout(pollLoop, delayMs);
+            backoffMs = Math.min(backoffMs * 1.5, maxIntervalMs);
             return;
           }
         } catch (err) {
           console.error(`[POLL] Error polling transaction (attempt ${pollAttempt}/${maxPollAttempts}):`, err.message);
-          // Continue polling on error
-          setTimeout(pollLoop, pollIntervalMs);
+          // Continue polling on error with exponential backoff
+          const delayMs = Math.min(backoffMs + Math.random() * 1000, maxIntervalMs);
+          setTimeout(pollLoop, delayMs);
+          backoffMs = Math.min(backoffMs * 1.5, maxIntervalMs);
         }
       };
 
       pollLoop();
+    }
+
+    // Check transaction status once more (called by "Check Now" button on timeout)
+    function checkTransactionStatus(element) {
+      event.preventDefault();
+      const auditLogId = element.parentElement.dataset.auditLogId;
+      if (auditLogId) {
+        apiCall(`/api/blockchain-audit/${auditLogId}`).then(response => {
+          if (response) {
+            const badge = element.parentElement;
+            if (response.status === 'confirmed') {
+              badge.innerHTML = '✓ Confirmed';
+              badge.className = 'text-xs px-2 py-1 rounded bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200';
+            } else if (response.status === 'failed') {
+              badge.innerHTML = '✗ Failed';
+              badge.className = 'text-xs px-2 py-1 rounded bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200';
+            } else {
+              badge.innerHTML = '⏱ Still pending - check again in a few minutes';
+            }
+          }
+        }).catch(err => {
+          console.error('Error checking transaction status:', err);
+        });
+      }
+    }
+
+    // Resume polling on page load for any active sessions
+    function resumePollingFromSessionStorage() {
+      try {
+        const sessions = JSON.parse(sessionStorage.getItem('activePollingSessions') || '{}');
+        for (const [auditLogId, session] of Object.entries(sessions)) {
+          const notification = document.getElementById(session.notificationId);
+          if (notification) {
+            console.log(`[POLL] Resuming polling for auditLogId=${auditLogId}`);
+            pollTransactionConfirmation(session.notificationId, auditLogId, 600);
+          }
+        }
+      } catch (err) {
+        console.error('Error resuming polling sessions:', err);
+      }
     }
 
     // Initialize app state from /health endpoint
@@ -4312,6 +4441,7 @@
         let txResult;
         let signatureAttempt = 0;
         const maxSignatureAttempts = 2;
+        let firstSuccessfulTxHash = null; // Lock to first successful txHash
 
         while (signatureAttempt < maxSignatureAttempts) {
           signatureAttempt++;
@@ -4369,6 +4499,12 @@
             });
 
             console.log('✓ Wallet signature obtained:', txResult.txHash);
+
+            // Lock to first successful txHash: ignore any later attempts
+            if (!firstSuccessfulTxHash) {
+              firstSuccessfulTxHash = txResult.txHash;
+              console.log(`[SIGNATURE] Locking to first successful txHash: ${firstSuccessfulTxHash}`);
+            }
             break; // Success, exit retry loop
           } catch (signErr) {
             const isTimeout = signErr.isTimeout || (signErr.message && signErr.message.includes('timed out'));
@@ -4486,28 +4622,28 @@
           }
         }
 
-        if (!txResult || !txResult.txHash) {
+        if (!firstSuccessfulTxHash) {
           throw new Error('Wallet did not return transaction hash');
         }
 
         signatureState.callbackReceived = true;
         signatureState.callbackTime = Date.now();
-        signatureState.txHash = txResult.txHash;
+        signatureState.txHash = firstSuccessfulTxHash;
 
-        console.log('✓ Wallet signature completed:', txResult.txHash);
+        console.log('✓ Wallet signature completed:', firstSuccessfulTxHash);
 
         // Phase 3: Register txHash with backend immediately (if audit log exists)
         if (auditLogId) {
-          console.log(`[Phase3] Registering txHash with backend: auditLogId=${auditLogId}, txHash=${txResult.txHash}`);
+          console.log(`[Phase3] Registering txHash with backend: auditLogId=${auditLogId}, txHash=${firstSuccessfulTxHash}`);
           try {
-            await registerTxHashWithBackend(auditLogId, txResult.txHash, 'testnet');
+            await registerTxHashWithBackend(auditLogId, firstSuccessfulTxHash, 'testnet');
             console.log('[Phase3] txHash registered successfully');
           } catch (regErr) {
             console.error('[Phase3] Failed to register txHash, but continuing:', regErr);
           }
         }
 
-        return txResult.txHash;
+        return firstSuccessfulTxHash;
       } catch (err) {
         console.error('Wallet signature failed:', err.message);
         throw err;

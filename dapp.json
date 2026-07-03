@@ -28,6 +28,20 @@
       "required": false,
       "private": false,
       "default": "http://usernode-node:3000"
+    },
+    {
+      "key": "NETWORK_MODE",
+      "description": "Operating mode for blockchain transactions: demo (simulated with instant confirmation), devnet (database-only, no blockchain), or real_testnet (true blockchain with RPC/explorer polling). Defaults to devnet. Can be set via Secrets or toggled at runtime in Settings (changes persist across restarts).",
+      "required": false,
+      "private": false,
+      "default": "devnet"
+    },
+    {
+      "key": "EXPLORER_URL",
+      "description": "Block explorer base URL for polling transaction confirmation status. Defaults to Usernode's testnet explorer. Override for custom testnet deployments or alternate explorer endpoints.",
+      "required": false,
+      "private": false,
+      "default": "https://testnet-explorer.usernodelabs.org"
     }
   ],
   "tests": [
