@@ -3847,9 +3847,11 @@
 
     // Open a group
     async function openGroup(groupId) {
-      currentGroupId = groupId;
+      // Clear cross-context state (direct messages and channels)
       currentConvId = null;
       currentOtherId = null;
+      currentChannelId = null;
+      currentGroupId = groupId;
 
       // Fetch group name for header (groups use two-line layout with "Group" label)
       document.getElementById('headerContent').classList.remove('hidden');
@@ -5424,6 +5426,9 @@
     }
 
     async function openConversation(convId, otherId, username) {
+      // Clear cross-context state (groups and channels)
+      currentGroupId = null;
+      currentChannelId = null;
       currentConvId = convId;
       currentOtherId = otherId;
       currentContactName = username;
@@ -6701,6 +6706,9 @@
       document.getElementById('postBtn').classList.remove('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
       if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
+      // Clear channel polling when switching away from channel view
+      if (pollInterval) clearInterval(pollInterval);
+      currentChannelId = null;
 
       // Reset search state
       currentSearchQuery = '';
@@ -6769,6 +6777,10 @@
     }
 
     async function showChannelPosts(channelId) {
+      // Clear cross-context state to match DM/Group pattern
+      currentConvId = null;
+      currentOtherId = null;
+      currentGroupId = null;
       currentChannelId = channelId;
       channelPostsOffset = 0;
       channelPostsHasMore = false;
@@ -6784,6 +6796,17 @@
 
       currentChannel = channel;
 
+      // Set up standard header (matching openConversation and openGroup pattern)
+      document.getElementById('headerContent').classList.remove('hidden');
+      document.getElementById('headerBranding').textContent = 'Channel';
+      document.getElementById('headerPageLabel').textContent = channel.name + (channel.description ? ` — ${channel.description}` : '');
+      document.getElementById('backBtnContainer').classList.remove('hidden');
+      document.getElementById('menuBtn').classList.add('hidden');
+      document.getElementById('conversationMenuBtn').classList.add('hidden');
+
+      // Hide the old custom header
+      document.getElementById('channelDetailHeader').classList.add('hidden');
+
       // Clear composition state from previous channel
       const channelPostInput = document.getElementById('channelPostInput');
       if (channelPostInput) {
@@ -6794,23 +6817,9 @@
         channelPostCharCount.textContent = '0/2000';
       }
 
-      document.getElementById('channelDetailHeader').classList.remove('hidden');
-      document.getElementById('channelDetailName').textContent = channel.name;
-      document.getElementById('channelDetailDescription').textContent = channel.description || '';
-
-      // Set up action buttons based on ownership
-      // Debug logging
-      console.log('showChannelPosts debug:', {
-        currentUserId: currentUser?.id,
-        currentUserIdType: typeof currentUser?.id,
-        channelOwnerId: channel.ownerId,
-        channelOwnerIdType: typeof channel.ownerId,
-        currentUser: currentUser,
-        channel: channel
-      });
+      // Set up action buttons based on ownership (use channelActionButtons from hidden detail header)
       const isOwner = currentUser && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
       const isFollowing = currentUser && channel.isFollowing;
-      console.log('isOwner:', isOwner);
       const actionButtonsContainer = document.getElementById('channelActionButtons');
       if (isOwner) {
         actionButtonsContainer.innerHTML = `
@@ -6826,12 +6835,33 @@
         `;
       }
 
+      // Call showChatView() to properly switch views (matching DM/Group pattern)
+      showChatView();
+
+      // Load and render channel posts
+      await loadChannelPosts(channelId);
+
+      // Set up polling (matching DM/Group 2-second poll pattern)
+      if (pollInterval) clearInterval(pollInterval);
+      pollInterval = setInterval(() => loadChannelPosts(channelId), 2000);
+    }
+
+    // New function: loadChannelPosts for consistency with loadMessages and loadGroupMessages
+    async function loadChannelPosts(channelId) {
+      if (!currentChannelId || currentChannelId !== channelId) return;
+
       try {
         isLoadingChannelPosts = true;
         const data = await apiCall(`/api/channels/${channelId}/posts?limit=50&offset=0`);
         if (data && data.posts) {
           channelPostsHasMore = data.hasMore || false;
           let html = '';
+
+          const channel = channelsList.find(ch => ch.id === channelId);
+          if (!channel) return;
+
+          const isOwner = currentUser && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
+          const isFollowing = currentUser && channel.isFollowing;
 
           // Add compose box for owner or followers
           if (isOwner || isFollowing) {
@@ -7277,6 +7307,19 @@
     }
 
     function backToChannelList() {
+      // Clear polling for channels (matching DM/Group cleanup pattern)
+      if (pollInterval) clearInterval(pollInterval);
+      currentChannelId = null;
+
+      // Hide header content and show channels view
+      document.getElementById('headerContent').classList.add('hidden');
+      document.getElementById('backBtnContainer').classList.add('hidden');
+      document.getElementById('menuBtn').classList.remove('hidden');
+      document.getElementById('conversationMenuBtn').classList.add('hidden');
+
+      // Clear message content
+      document.getElementById('feedContentWrapper').innerHTML = '';
+
       showChannelList();
     }
 
