@@ -2113,7 +2113,10 @@
       // Load skip signature in devnet preference from API
       if (currentUser && currentUser.skipSignatureInDevnet !== undefined) {
         settings.skipSignatureInDevnet = currentUser.skipSignatureInDevnet;
-        document.getElementById('skipSignatureDevnetToggle').checked = currentUser.skipSignatureInDevnet;
+        const skipSignatureToggle = document.getElementById('skipSignatureDevnetToggle');
+        if (skipSignatureToggle) {
+          skipSignatureToggle.checked = currentUser.skipSignatureInDevnet;
+        }
       }
 
       // Load network mode preference from API
@@ -2205,25 +2208,32 @@
             currentMode = 'testnet';
           }
 
-          dropdown.value = currentMode;
-          // Network mode dropdown is always enabled for authenticated users (personal preference)
-          // It calls /api/user/network-mode which is available to all authenticated users
-          dropdown.disabled = false;
+          // Safely update dropdown if it exists
+          if (dropdown) {
+            dropdown.value = currentMode;
+            // Network mode dropdown is always enabled for authenticated users (personal preference)
+            // It calls /api/user/network-mode which is available to all authenticated users
+            dropdown.disabled = false;
+          }
 
           // Show/hide RPC endpoint config based on network mode and permission
-          if (currentMode === 'testnet' && config.canEditRpc) {
-            rpcEndpointConfig.classList.remove('hidden');
-            rpcEndpointInput.value = config.rpcEndpoint || 'http://localhost:3001';
-            rpcEndpointInput.disabled = !config.canEditRpc;
-          } else {
-            rpcEndpointConfig.classList.add('hidden');
+          if (rpcEndpointConfig && rpcEndpointInput) {
+            if (currentMode === 'testnet' && config.canEditRpc) {
+              rpcEndpointConfig.classList.remove('hidden');
+              rpcEndpointInput.value = config.rpcEndpoint || 'http://localhost:3001';
+              rpcEndpointInput.disabled = !config.canEditRpc;
+            } else {
+              rpcEndpointConfig.classList.add('hidden');
+            }
           }
 
           // Show/hide Transaction Preferences based on network mode
-          if (currentMode === 'devnet') {
-            transactionPreferencesSection.classList.remove('hidden');
-          } else {
-            transactionPreferencesSection.classList.add('hidden');
+          if (transactionPreferencesSection) {
+            if (currentMode === 'devnet') {
+              transactionPreferencesSection.classList.remove('hidden');
+            } else {
+              transactionPreferencesSection.classList.add('hidden');
+            }
           }
 
           // Save to localStorage
@@ -2231,12 +2241,14 @@
           settings.networkMode = currentMode;
           saveSettings(settings);
 
-          if (!config.canEdit) {
-            noPermission.classList.remove('hidden');
-            accordion.classList.add('opacity-60');
-          } else {
-            noPermission.classList.add('hidden');
-            accordion.classList.remove('opacity-60');
+          if (noPermission && accordion) {
+            if (!config.canEdit) {
+              noPermission.classList.remove('hidden');
+              accordion.classList.add('opacity-60');
+            } else {
+              noPermission.classList.add('hidden');
+              accordion.classList.remove('opacity-60');
+            }
           }
 
           // Update dot color based on network mode (demo = amber, testnet = gray)
@@ -2354,6 +2366,12 @@
 
     async function updateSkipSignatureDevnet(checked) {
       const toggle = document.getElementById('skipSignatureDevnetToggle');
+
+      if (!toggle) {
+        console.error('Skip signature toggle not found');
+        return;
+      }
+
       const previousState = !checked;
 
       try {
@@ -2363,10 +2381,14 @@
         });
 
         if (result && !result.error) {
-          // Update in-memory settings
-          const settings = loadSettings();
-          settings.skipSignatureInDevnet = checked;
-          saveSettings(settings);
+          // Update in-memory settings with error handling
+          try {
+            const settings = loadSettings();
+            settings.skipSignatureInDevnet = checked;
+            saveSettings(settings);
+          } catch (storageErr) {
+            console.error('Failed to save skip signature preference to localStorage:', storageErr);
+          }
 
           if (currentUser) {
             currentUser.skipSignatureInDevnet = checked;
@@ -2389,10 +2411,18 @@
       const loading = document.getElementById('networkModeLoading');
       const rpcEndpointConfig = document.getElementById('rpcEndpointConfig');
       const transactionPreferencesSection = document.getElementById('transactionPreferencesSection');
+
+      if (!dropdown) {
+        console.error('Network mode dropdown not found');
+        return;
+      }
+
       const previousMode = dropdown.value;
 
       try {
-        loading.classList.remove('hidden');
+        if (loading) {
+          loading.classList.remove('hidden');
+        }
         dropdown.disabled = true;
 
         // Map testnet to real_testnet for API call
@@ -2404,10 +2434,14 @@
         });
 
         if (result && !result.error) {
-          // Save to localStorage
-          const settings = loadSettings();
-          settings.networkMode = mode;
-          saveSettings(settings);
+          // Save to localStorage with error handling
+          try {
+            const settings = loadSettings();
+            settings.networkMode = mode;
+            saveSettings(settings);
+          } catch (storageErr) {
+            console.error('Failed to save network mode to localStorage:', storageErr);
+          }
 
           // Update currentUser
           if (currentUser) {
@@ -2419,17 +2453,21 @@
           showToast('Switched to ' + modeName + ' mode', 'success');
 
           // Show/hide RPC endpoint config based on mode
-          if (mode === 'testnet') {
-            rpcEndpointConfig.classList.remove('hidden');
-          } else {
-            rpcEndpointConfig.classList.add('hidden');
+          if (rpcEndpointConfig) {
+            if (mode === 'testnet') {
+              rpcEndpointConfig.classList.remove('hidden');
+            } else {
+              rpcEndpointConfig.classList.add('hidden');
+            }
           }
 
           // Show/hide Transaction Preferences based on mode
-          if (mode === 'devnet') {
-            transactionPreferencesSection.classList.remove('hidden');
-          } else {
-            transactionPreferencesSection.classList.add('hidden');
+          if (transactionPreferencesSection) {
+            if (mode === 'devnet') {
+              transactionPreferencesSection.classList.remove('hidden');
+            } else {
+              transactionPreferencesSection.classList.add('hidden');
+            }
           }
 
           // Reload config state to refresh all UI elements
@@ -2437,7 +2475,8 @@
 
           // Refresh all data after mode change
           try {
-            if (document.getElementById('conversationsView') && !document.getElementById('conversationsView').classList.contains('hidden')) {
+            const conversationsView = document.getElementById('conversationsView');
+            if (conversationsView && !conversationsView.classList.contains('hidden')) {
               await loadConversations();
             }
           } catch (e) {
@@ -2452,7 +2491,9 @@
         dropdown.value = previousMode;
         showToast('Failed to update network mode', 'error');
       } finally {
-        loading.classList.add('hidden');
+        if (loading) {
+          loading.classList.add('hidden');
+        }
         dropdown.disabled = false;
       }
     }
@@ -2461,6 +2502,12 @@
       const input = document.getElementById('rpcEndpointInput');
       const loading = document.getElementById('rpcEndpointLoading');
       const saveBtn = document.getElementById('rpcEndpointSave');
+
+      if (!input || !loading || !saveBtn) {
+        console.error('RPC endpoint UI elements not found');
+        return;
+      }
+
       const rpcUrl = input.value.trim();
 
       if (!rpcUrl) {
