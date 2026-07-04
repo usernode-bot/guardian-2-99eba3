@@ -6948,87 +6948,6 @@
       pollInterval = setInterval(() => loadChannelPosts(channelId), 2000);
     }
 
-    // New function: loadChannelPosts for consistency with loadMessages and loadGroupMessages
-    async function loadChannelPosts(channelId) {
-      if (!currentChannelId || currentChannelId !== channelId) return;
-
-      try {
-        isLoadingChannelPosts = true;
-        const data = await apiCall(`/api/channels/${channelId}/posts?limit=50&offset=0`);
-        if (data && data.posts) {
-          channelPostsHasMore = data.hasMore || false;
-          let html = '';
-
-          const channel = channelsList.find(ch => ch.id === channelId);
-          if (!channel) return;
-
-          const isOwner = currentUser && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
-          const isFollowing = currentUser && channel.isFollowing;
-
-          // Add compose box for owner or followers
-          if (isOwner || isFollowing) {
-            html += `
-              <div class="sticky top-0 z-[99] p-4 border-b-2 border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 mb-2">
-                <textarea
-                  id="channelPostInput"
-                  placeholder="Write a post in #${escapeHtml(channel.name)}..."
-                  maxlength="2000"
-                  rows="3"
-                  class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"
-                  oninput="updateChannelPostCharCount()"
-                ></textarea>
-                <div id="channelPostImagePreview" class="mt-2 flex flex-wrap gap-2"></div>
-                <div class="flex items-center justify-between mt-2">
-                  <div class="flex gap-2 items-center">
-                    <span id="channelPostCharCount" class="text-xs text-zinc-500 dark:text-zinc-500">0/2000</span>
-                    <button
-                      onclick="attachImageToChannelPost()"
-                      class="px-2 py-1 text-xs text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition"
-                      title="Attach image"
-                    >📎</button>
-                  </div>
-                  <button
-                    id="channelPostBtn"
-                    onclick="submitChannelPost()"
-                    class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled
-                  >Post</button>
-                </div>
-              </div>
-            `;
-          }
-
-          if (data.posts.length === 0) {
-            html += `<div class="text-center py-12 text-zinc-600 dark:text-zinc-500">
-              <p class="text-lg font-medium mb-2">No posts yet in #${escapeHtml(channel.name)}</p>
-              <p class="text-sm">Be the first to post in this channel!</p>
-            </div>`;
-          } else {
-            html += '<div class="space-y-3 p-4" id="channelPostsContainer">';
-            data.posts.forEach(post => {
-              html += renderChannelPost(post);
-            });
-            html += '</div>';
-
-            if (channelPostsHasMore) {
-              html += '<div class="p-4 flex justify-center"><button onclick="loadMoreChannelPosts(' + channelId + ')" class="py-2 px-6 text-sm font-medium text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition border border-cyan-600 dark:border-cyan-500 rounded">Load more posts</button></div>';
-            } else if (data.posts.length > 0) {
-              html += '<div class="p-4 text-center text-xs text-zinc-500 dark:text-zinc-500">No more posts</div>';
-            }
-          }
-          document.getElementById('feedContentWrapper').innerHTML = html;
-          channelPostsOffset = 50;
-        } else if (data && data.error) {
-          throw new Error(data.error);
-        }
-      } catch (err) {
-        console.error('Error loading channel posts:', err);
-        showToast('Error loading channel posts', 'error');
-      } finally {
-        isLoadingChannelPosts = false;
-      }
-    }
-
     async function loadMoreChannelPosts(channelId) {
       if (isLoadingChannelPosts || !channelPostsHasMore) return;
 
@@ -7408,24 +7327,6 @@
       }
     }
 
-    function backToChannelList() {
-      // Clear polling for channels (matching DM/Group cleanup pattern)
-      if (pollInterval) clearInterval(pollInterval);
-      currentChannelId = null;
-
-      // Hide header content and show channels view
-      document.getElementById('headerContent').classList.add('hidden');
-      document.getElementById('backBtnContainer').classList.add('hidden');
-      document.getElementById('menuBtn').classList.remove('hidden');
-      document.getElementById('conversationMenuBtn').classList.add('hidden');
-
-      // Clear message content
-      document.getElementById('feedContentWrapper').innerHTML = '';
-
-      showChannelList();
-    }
-
-
     function editChannelModal(channelId) {
       const channel = channelsList.find(ch => ch.id === channelId);
       if (!channel) return;
@@ -7470,26 +7371,6 @@
 
       if (confirm(`Are you sure you want to delete the channel "#${channel.name}"? This action cannot be undone.`)) {
         deleteChannel(channelId);
-      }
-    }
-
-    async function deleteChannel(channelId) {
-      try {
-        const data = await apiCall(`/api/channels/${channelId}`, {
-          method: 'DELETE'
-        });
-
-        if (data && data.error) {
-          showToast(`Error deleting channel: ${data.error}`, 'error');
-          return;
-        }
-
-        showToast('Channel deleted successfully', 'success');
-        await loadChannels();
-        backToChannelList();
-      } catch (err) {
-        console.error('Error deleting channel:', err);
-        showToast('Failed to delete channel', 'error');
       }
     }
 
