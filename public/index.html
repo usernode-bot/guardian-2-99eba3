@@ -7626,16 +7626,44 @@
 
     async function loadMyChannels() {
       try {
+        console.log('[DEBUG] loadMyChannels() called');
         const data = await apiCall('/api/user/channels');
-        if (data && data.channels) {
+        console.log('[DEBUG] API response received:', data);
+
+        const contentWrapper = document.getElementById('feedContentWrapper');
+        if (!contentWrapper) {
+          console.error('[ERROR] feedContentWrapper element not found');
+          return;
+        }
+
+        // Handle API errors (e.g., { error: "...", status: 401 })
+        if (data && data.error) {
+          console.error('[ERROR] API error:', data.error, 'status:', data.status);
+          showToast(data.error || 'Failed to load channels', 'error');
+          contentWrapper.innerHTML = `
+            <div class="text-center py-12 text-zinc-600 dark:text-zinc-500">
+              <p class="text-lg font-medium mb-2">Error loading channels</p>
+              <p class="text-sm">${escapeHtml(data.error || 'An unexpected error occurred')}</p>
+              <button onclick="loadMyChannels()" class="mt-4 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition">Try Again</button>
+            </div>
+          `;
+          return;
+        }
+
+        // Handle successful response with channels array
+        if (data && Array.isArray(data.channels)) {
+          console.log('[DEBUG] data.channels exists, rendering', data.channels.length, 'channels');
           let html = '';
+
           if (data.channels.length === 0) {
+            console.log('[DEBUG] No channels found, showing empty state');
             html = `<div class="text-center py-12 text-zinc-600 dark:text-zinc-500">
               <p class="text-lg font-medium mb-2">You haven't created any channels yet</p>
               <p class="text-sm mb-4">Create your first channel to get started!</p>
               <button onclick="openCreateChannelModal()" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition">Create Your First Channel</button>
             </div>`;
           } else {
+            console.log('[DEBUG] Rendering channel grid with', data.channels.length, 'channels');
             html = '<div class="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">';
             data.channels.forEach(channel => {
               html += `
@@ -7651,11 +7679,34 @@
             });
             html += '</div>';
           }
-          document.getElementById('feedContentWrapper').innerHTML = html;
+          contentWrapper.innerHTML = html;
+          console.log('[DEBUG] feedContentWrapper innerHTML updated successfully');
+          return;
         }
+
+        // Handle malformed response (missing channels array)
+        console.error('[ERROR] API response missing channels array. Data:', data);
+        showToast('Invalid response format from server', 'error');
+        contentWrapper.innerHTML = `
+          <div class="text-center py-12 text-zinc-600 dark:text-zinc-500">
+            <p class="text-lg font-medium mb-2">Error loading channels</p>
+            <p class="text-sm">Server returned invalid data format</p>
+            <button onclick="loadMyChannels()" class="mt-4 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition">Try Again</button>
+          </div>
+        `;
       } catch (err) {
-        console.error('Error loading my channels:', err);
+        console.error('[ERROR] Exception in loadMyChannels():', err);
         showToast('Error loading channels', 'error');
+        const contentWrapper = document.getElementById('feedContentWrapper');
+        if (contentWrapper) {
+          contentWrapper.innerHTML = `
+            <div class="text-center py-12 text-zinc-600 dark:text-zinc-500">
+              <p class="text-lg font-medium mb-2">Error loading channels</p>
+              <p class="text-sm">${escapeHtml(err.message || 'An unexpected error occurred')}</p>
+              <button onclick="loadMyChannels()" class="mt-4 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition">Try Again</button>
+            </div>
+          `;
+        }
       }
     }
 
