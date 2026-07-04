@@ -6811,14 +6811,12 @@
       if (pollInterval) clearInterval(pollInterval);
       currentChannelId = null;
 
-      // Reset search state
-      currentSearchQuery = '';
-      document.getElementById('searchChannelsInput').value = '';
-
-      // Load channels list for Discover
-      await loadChannels();
       // Load My Channels tab by default
       await switchFeedTab('myChannels');
+
+      // Reset search state (after initialization to avoid interference)
+      currentSearchQuery = '';
+      document.getElementById('searchChannelsInput').value = '';
     }
 
     async function loadChannels() {
