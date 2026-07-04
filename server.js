@@ -6502,16 +6502,20 @@ app.get('/api/channels/:channelId/unread', async (req, res) => {
 // GET /api/user/channels - List user's owned channels
 app.get('/api/user/channels', async (req, res) => {
   try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
     const offset = Math.max(parseInt(req.query.offset || 0), 0);
     const sort = req.query.sort || 'created_desc';
 
+    // In demo mode, serve mock data regardless of authentication
     if (ENABLE_DEMO_MODE) {
-      return res.json(mockData.getMockUserChannels(req.user.id, limit, offset));
+      const userId = req.user ? req.user.id : 1; // Use default user ID 1 for unauthenticated requests in demo mode
+      console.log(`[API] /api/user/channels demo mode: serving mock data for user ${userId}`);
+      return res.json(mockData.getMockUserChannels(userId, limit, offset));
+    }
+
+    // In non-demo mode, require authentication
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
     }
 
     const sortMap = {
@@ -6538,6 +6542,7 @@ app.get('/api/user/channels', async (req, res) => {
 
     const total = parseInt(countResult[0].total);
 
+    console.log(`[API] /api/user/channels: returning ${channels.length} channels for user ${req.user.id}`);
     res.json({
       channels: channels.map(c => ({
         id: c.id,
