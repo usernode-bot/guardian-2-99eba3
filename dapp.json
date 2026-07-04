@@ -89,6 +89,16 @@
       "name": "Profile Guardian's tab loads",
       "path": "/",
       "expectSelector": "#profileTabGuardians"
+    },
+    {
+      "name": "My Channels tab loads",
+      "path": "/",
+      "expectSelector": "#feedTabMyChannels"
+    },
+    {
+      "name": "Channel management view renders",
+      "path": "/",
+      "expectText": "Settings"
     }
   ],
   "visibility": {

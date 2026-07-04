@@ -617,6 +617,148 @@ function getMockTransactionsByUser(userId, limit = 20, offset = 0) {
   };
 }
 
+const MOCK_CHANNEL_ADMINS = [
+  { id: 1, channelId: 302, userId: 3, promotedAt: getTimeOffset(1440), promotedBy: 1 }
+];
+
+const MOCK_CHANNEL_FOLLOWERS = [
+  { id: 1, channelId: 300, userId: 2, followedAt: getTimeOffset(2880) },
+  { id: 2, channelId: 300, userId: 3, followedAt: getTimeOffset(2400) },
+  { id: 3, channelId: 300, userId: 4, followedAt: getTimeOffset(1440) },
+  { id: 4, channelId: 302, userId: 2, followedAt: getTimeOffset(1200) },
+  { id: 5, channelId: 302, userId: 3, followedAt: getTimeOffset(960) },
+  { id: 6, channelId: 302, userId: 4, followedAt: getTimeOffset(720) },
+  { id: 7, channelId: 302, userId: 5, followedAt: getTimeOffset(480) }
+];
+
+const MOCK_CHANNEL_NOTIFICATIONS = [
+  { id: 1, recipientUserId: 1, channelId: 302, actionType: 'new_post', actorUserId: 2, postId: 5010, message: 'bob posted in My Channel', createdAt: getTimeOffset(30), readAt: null },
+  { id: 2, recipientUserId: 1, channelId: 302, actionType: 'new_follower', actorUserId: 3, postId: null, message: 'charlie followed My Channel', createdAt: getTimeOffset(60), readAt: null },
+  { id: 3, recipientUserId: 1, channelId: 302, actionType: 'new_post', actorUserId: 4, postId: 5011, message: 'diana posted in My Channel', createdAt: getTimeOffset(120), readAt: null }
+];
+
+function getMockUserChannels(userId, limit = 50, offset = 0) {
+  const mockChannels = [
+    {
+      id: 302,
+      name: '[Staging] My Channel',
+      description: 'Alice\'s personal channel for testing',
+      ownerId: 1,
+      category: 'General',
+      postCount: 3,
+      followerCount: 5,
+      isArchived: false,
+      allowFollowersToPost: true,
+      createdAt: getTimeOffset(1440),
+      updatedAt: getTimeOffset(120)
+    }
+  ].filter(c => c.ownerId === userId);
+
+  return {
+    channels: mockChannels.slice(offset, offset + limit),
+    pagination: {
+      limit,
+      offset,
+      total: mockChannels.length,
+      hasMore: offset + limit < mockChannels.length
+    }
+  };
+}
+
+function getMockChannelManage(channelId, userId) {
+  const channelMap = {
+    302: {
+      id: 302,
+      name: '[Staging] My Channel',
+      description: 'Alice\'s personal channel for testing',
+      ownerId: 1,
+      ownerUsername: 'alice',
+      category: 'General',
+      postCount: 3,
+      followerCount: 5,
+      adminCount: 1,
+      allowFollowersToPost: true,
+      isArchived: false,
+      createdAt: getTimeOffset(1440),
+      currentUserRole: userId === 1 ? 'owner' : userId === 3 ? 'admin' : 'follower',
+      admins: [
+        { userId: 3, username: 'charlie', promotedAt: getTimeOffset(1440) }
+      ]
+    }
+  };
+
+  return { channel: channelMap[channelId] || { id: channelId, name: 'Channel', error: 'Not found' } };
+}
+
+function getMockChannelAdmins(channelId, limit = 50, offset = 0) {
+  const admins = MOCK_CHANNEL_ADMINS.filter(a => a.channelId === channelId);
+  return {
+    admins: admins.slice(offset, offset + limit).map(a => ({
+      userId: a.userId,
+      username: MOCK_USERS[a.userId - 1]?.username || 'Unknown',
+      promotedAt: a.promotedAt
+    })),
+    pagination: {
+      limit,
+      offset,
+      total: admins.length,
+      hasMore: offset + limit < admins.length
+    }
+  };
+}
+
+function getMockChannelFollowers(channelId, limit = 50, offset = 0, sort = 'followed_desc') {
+  let followers = MOCK_CHANNEL_FOLLOWERS.filter(f => f.channelId === channelId);
+
+  if (sort === 'followed_asc') {
+    followers.sort((a, b) => a.followedAt - b.followedAt);
+  } else if (sort === 'name_asc') {
+    followers.sort((a, b) => (MOCK_USERS[a.userId - 1]?.username || '').localeCompare(MOCK_USERS[b.userId - 1]?.username || ''));
+  } else if (sort === 'name_desc') {
+    followers.sort((a, b) => (MOCK_USERS[b.userId - 1]?.username || '').localeCompare(MOCK_USERS[a.userId - 1]?.username || ''));
+  } else {
+    followers.sort((a, b) => b.followedAt - a.followedAt);
+  }
+
+  return {
+    followers: followers.slice(offset, offset + limit).map(f => ({
+      userId: f.userId,
+      username: MOCK_USERS[f.userId - 1]?.username || 'Unknown',
+      followedAt: f.followedAt
+    })),
+    pagination: {
+      limit,
+      offset,
+      total: followers.length,
+      hasMore: offset + limit < followers.length
+    }
+  };
+}
+
+function getMockPinnedPost(postId, isPinned) {
+  return {
+    id: postId,
+    userId: 1,
+    username: 'alice',
+    verified: true,
+    avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=alice',
+    content: { text: 'Sample pinned post' },
+    createdAt: getTimeOffset(240),
+    updatedAt: getTimeOffset(0),
+    isPinned,
+    pinnedAt: isPinned ? getTimeOffset(0) : null,
+    pinnedBy: isPinned ? 1 : null
+  };
+}
+
+function getMockPromotedAdmin(userId) {
+  return {
+    userId,
+    username: MOCK_USERS[userId - 1]?.username || 'Unknown',
+    promotedAt: new Date().toISOString()
+  };
+}
+
 module.exports = {
   getMockConversations,
   getMockGroups,
@@ -630,9 +772,18 @@ module.exports = {
   getMockUserMessages,
   getMockFeedPosts,
   getMockTransactionsByUser,
+  getMockUserChannels,
+  getMockChannelManage,
+  getMockChannelAdmins,
+  getMockChannelFollowers,
+  getMockPinnedPost,
+  getMockPromotedAdmin,
   MOCK_USER_STATS,
   MOCK_USERS,
   MOCK_CONVERSATIONS,
   MOCK_GROUPS,
-  MOCK_CHANNELS
+  MOCK_CHANNELS,
+  MOCK_CHANNEL_ADMINS,
+  MOCK_CHANNEL_FOLLOWERS,
+  MOCK_CHANNEL_NOTIFICATIONS
 };
