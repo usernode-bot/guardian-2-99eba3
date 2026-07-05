@@ -7024,7 +7024,7 @@
               html += '<div class="p-4 text-center text-xs text-zinc-500 dark:text-zinc-500">No more posts</div>';
             }
           }
-          document.getElementById('feedContentWrapper').innerHTML = html;
+          document.getElementById('messageList').innerHTML = html;
           channelPostsOffset = 50;
         } else if (data && data.error) {
           throw new Error(data.error);
@@ -7044,19 +7044,23 @@
         isLoadingChannelPosts = true;
         const data = await apiCall(`/api/channels/${channelId}/posts?limit=50&offset=${channelPostsOffset}`);
         if (data && data.posts) {
-          const container = document.getElementById('channelPostsContainer');
-          if (container) {
+          // Append posts to messageList after removing the "Load more" button
+          const messageList = document.getElementById('messageList');
+          const loadMoreBtn = document.querySelector('[onclick*="loadMoreChannelPosts"]');
+
+          if (messageList && loadMoreBtn) {
             let postsHtml = '';
             data.posts.forEach(post => {
               postsHtml += renderChannelPost(post);
             });
-            container.innerHTML += postsHtml;
+            // Insert new posts before the load more button
+            loadMoreBtn.parentElement.insertAdjacentHTML('beforebegin', postsHtml);
           }
 
           channelPostsHasMore = data.hasMore || false;
           channelPostsOffset += 50;
 
-          const loadMoreBtn = document.querySelector('[onclick*="loadMoreChannelPosts"]');
+          // Update load more button visibility
           if (loadMoreBtn) {
             if (channelPostsHasMore) {
               loadMoreBtn.style.display = 'block';
@@ -7421,20 +7425,8 @@
       if (pollInterval) clearInterval(pollInterval);
       currentChannelId = null;
 
-      // Hide header content and show channels view
-      document.getElementById('headerContent').classList.add('hidden');
-      document.getElementById('backBtnContainer').classList.add('hidden');
-      document.getElementById('menuBtn').classList.remove('hidden');
-      document.getElementById('conversationMenuBtn').classList.add('hidden');
-
-      // Reset padding when hiding channelDetailHeader
-      document.getElementById('channelDetailHeader').classList.add('hidden');
-      document.getElementById('feedContentWrapper').style.paddingTop = '';
-
-      // Clear message content
-      document.getElementById('feedContentWrapper').innerHTML = '';
-
-      showChannelList();
+      // Show feed view again (this hides chatView and shows feedView)
+      showFeedView();
     }
 
 
