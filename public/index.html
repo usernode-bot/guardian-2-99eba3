@@ -2259,8 +2259,9 @@
           const accordion = document.getElementById('configAccordion');
           const rpcEndpointInput = document.getElementById('rpcEndpointInput');
 
-          // Set dropdown to current network mode, normalize 'real_testnet' to 'testnet'
-          let currentMode = config.networkMode || 'devnet';
+          // Get user's network mode from currentUser (which comes from /api/user endpoint)
+          // This is the per-user setting, not the global server NETWORK_MODE
+          let currentMode = currentUser?.networkMode || 'devnet';
           if (currentMode === 'real_testnet') {
             currentMode = 'testnet';
           }
@@ -2456,22 +2457,28 @@
         });
 
         if (result && !result.error) {
+          // The API returns the stored mode (normalized 'real_testnet' → 'testnet')
+          const storedMode = result.networkMode || mode;
+
           // Save to localStorage
           const settings = loadSettings();
-          settings.networkMode = mode;
+          settings.networkMode = storedMode;
           saveSettings(settings);
 
-          // Update currentUser
+          // Update currentUser with the stored mode from API response
           if (currentUser) {
-            currentUser.networkMode = mode;
+            currentUser.networkMode = storedMode;
           }
 
-          updateConfigDotColor(mode === 'devnet');
-          const modeName = mode === 'devnet' ? 'Devnet' : 'Testnet';
+          updateConfigDotColor(storedMode === 'devnet');
+          const modeName = storedMode === 'devnet' ? 'Devnet' : 'Testnet';
           showToast('Switched to ' + modeName + ' mode', 'success');
 
-          // Update conditional visibility
-          updateNetworkModeVisibility(mode);
+          // Update conditional visibility with the stored mode
+          updateNetworkModeVisibility(storedMode);
+
+          // Update dropdown to show the confirmed stored mode
+          dropdown.value = storedMode;
 
           // Reload config state to refresh all UI elements
           await loadConfigState();
