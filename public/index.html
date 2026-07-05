@@ -3580,9 +3580,15 @@
     function setupEventListeners() {
       document.getElementById('menuBtn').addEventListener('click', toggleSidebar);
       document.getElementById('backBtn').addEventListener('click', () => {
-        currentConvId = null;
-        currentGroupId = null;
-        showConversationsView();
+        if (currentChannelId) {
+          // Back from channel detail to channel list
+          backToChannelList();
+        } else {
+          // Back from DM/Group to conversations
+          currentConvId = null;
+          currentGroupId = null;
+          showConversationsView();
+        }
       });
 
       document.getElementById('msgInput').addEventListener('keydown', (e) => {

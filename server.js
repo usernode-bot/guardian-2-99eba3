@@ -5665,7 +5665,7 @@ app.post('/api/channels/:channelId/posts', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const channelId = parseInt(req.params.channelId);
+    const channelId = parseInt(req.params.channelId, 10);
     const userId = parseInt(req.user.id, 10);
     const { content, imageUrls } = req.body;
 
@@ -5790,8 +5790,8 @@ app.post('/api/channels/:channelId/posts/:postId', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const channelId = parseInt(req.params.channelId);
-    const postId = parseInt(req.params.postId);
+    const channelId = parseInt(req.params.channelId, 10);
+    const postId = parseInt(req.params.postId, 10);
     const userId = parseInt(req.user.id, 10);
     const { content } = req.body;
 
@@ -5906,8 +5906,8 @@ app.delete('/api/channels/:channelId/posts/:postId', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const channelId = parseInt(req.params.channelId);
-    const postId = parseInt(req.params.postId);
+    const channelId = parseInt(req.params.channelId, 10);
+    const postId = parseInt(req.params.postId, 10);
     const userId = parseInt(req.user.id, 10);
 
     if (isNaN(channelId) || isNaN(postId) || isNaN(userId)) {
@@ -6109,7 +6109,7 @@ app.put('/api/channels/:channelId', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const channelId = parseInt(req.params.channelId);
+    const channelId = parseInt(req.params.channelId, 10);
     const { name, description } = req.body;
 
     if (isNaN(channelId)) {
@@ -6186,7 +6186,7 @@ app.delete('/api/channels/:channelId', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const channelId = parseInt(req.params.channelId);
+    const channelId = parseInt(req.params.channelId, 10);
 
     if (isNaN(channelId)) {
       return res.status(400).json({ error: 'Invalid channel ID' });
@@ -6325,7 +6325,7 @@ app.post('/api/channels/:channelId/follow', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const channelId = parseInt(req.params.channelId);
+    const channelId = parseInt(req.params.channelId, 10);
     if (isNaN(channelId)) {
       return res.status(400).json({ error: 'Invalid channel ID' });
     }
@@ -6365,7 +6365,7 @@ app.delete('/api/channels/:channelId/follow', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const channelId = parseInt(req.params.channelId);
+    const channelId = parseInt(req.params.channelId, 10);
     if (isNaN(channelId)) {
       return res.status(400).json({ error: 'Invalid channel ID' });
     }
@@ -6433,7 +6433,7 @@ app.post('/api/user/pinned-channels/:channelId', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const channelId = parseInt(req.params.channelId);
+    const channelId = parseInt(req.params.channelId, 10);
 
     await pool.query(`
       INSERT INTO pinned_channels (user_id, channel_id)
@@ -6455,7 +6455,7 @@ app.delete('/api/user/pinned-channels/:channelId', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const channelId = parseInt(req.params.channelId);
+    const channelId = parseInt(req.params.channelId, 10);
 
     await pool.query(`
       DELETE FROM pinned_channels WHERE user_id = $1 AND channel_id = $2
@@ -6475,7 +6475,7 @@ app.put('/api/channels/:channelId/read', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const channelId = parseInt(req.params.channelId);
+    const channelId = parseInt(req.params.channelId, 10);
     const { lastReadPostId } = req.body;
 
     await pool.query(`
@@ -6499,7 +6499,7 @@ app.get('/api/channels/:channelId/unread', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const channelId = parseInt(req.params.channelId);
+    const channelId = parseInt(req.params.channelId, 10);
 
     const { rows } = await pool.query(`
       SELECT unread_count, last_read_at FROM channel_unread
