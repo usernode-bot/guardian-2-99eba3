@@ -818,10 +818,15 @@
               <!-- Tab Buttons -->
               <div class="flex gap-2 mb-3 border-b border-zinc-200 dark:border-zinc-800">
                 <button id="feedTabHome" onclick="switchFeedTab('home')" class="pb-2 px-1 font-medium text-sm text-zinc-600 dark:text-zinc-400 border-b-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100 transition active-tab">Home</button>
+                <button id="feedTabMyChannels" onclick="switchFeedTab('my-channels')" class="pb-2 px-1 font-medium text-sm text-zinc-600 dark:text-zinc-400 border-b-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100 transition hidden">My Channels</button>
                 <button id="feedTabDiscover" onclick="switchFeedTab('discover')" class="pb-2 px-1 font-medium text-sm text-zinc-600 dark:text-zinc-400 border-b-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100 transition">Discover</button>
               </div>
               <!-- Search and Create for Home Tab -->
               <div id="feedHeaderHome" class="space-y-2">
+                <button onclick="openCreateChannelModal()" class="w-full px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition duration-200 ease-out active:scale-95" title="Create a new channel">Create Channel</button>
+              </div>
+              <!-- Header for My Channels Tab -->
+              <div id="feedHeaderMyChannels" class="space-y-2 hidden">
                 <button onclick="openCreateChannelModal()" class="w-full px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition duration-200 ease-out active:scale-95" title="Create a new channel">Create Channel</button>
               </div>
               <!-- Search for Discover Tab (hidden initially) -->
@@ -4133,6 +4138,12 @@
       document.getElementById('channelCategoryInput').value = '';
     }
 
+    // Open channel management view
+    async function openMyChannelManagement(channelId, channelName) {
+      showToast('Channel management coming soon', 'info');
+      // TODO: Implement full management modal with Posts, Followers, Admins, Settings, Delete tabs
+    }
+
     // Create channel with wallet signature
     async function createChannel() {
       const name = document.getElementById('channelNameInput').value.trim();
@@ -6786,8 +6797,25 @@
 
       // Load channels list for Discover
       await loadChannels();
+      // Check if user owns or admins channels, show My Channels tab if so
+      await checkAndShowMyChannelsTab();
       // Load Home tab by default (posts from followed channels)
       await switchFeedTab('home');
+    }
+
+    async function checkAndShowMyChannelsTab() {
+      try {
+        const data = await apiCall('/api/user/my-channels');
+        const myChannelsTab = document.getElementById('feedTabMyChannels');
+        if (data && data.channels && data.channels.length > 0) {
+          myChannelsTab.classList.remove('hidden');
+        } else {
+          myChannelsTab.classList.add('hidden');
+        }
+      } catch (err) {
+        console.error('Error checking my channels:', err);
+        document.getElementById('feedTabMyChannels').classList.add('hidden');
+      }
     }
 
     async function loadChannels() {
@@ -7622,19 +7650,21 @@
       document.getElementById('channelDetailHeader').classList.add('hidden');
 
       const homeTab = document.getElementById('feedTabHome');
+      const myChannelsTab = document.getElementById('feedTabMyChannels');
       const discoverTab = document.getElementById('feedTabDiscover');
       const feedHeaderHome = document.getElementById('feedHeaderHome');
+      const feedHeaderMyChannels = document.getElementById('feedHeaderMyChannels');
       const feedHeaderDiscover = document.getElementById('feedHeaderDiscover');
 
 
       // Reset all tabs
-      [homeTab, discoverTab].forEach(tab => {
+      [homeTab, myChannelsTab, discoverTab].forEach(tab => {
         if (tab) {
           tab.classList.remove('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
           tab.classList.add('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
         }
       });
-      [feedHeaderHome, feedHeaderDiscover].forEach(header => {
+      [feedHeaderHome, feedHeaderMyChannels, feedHeaderDiscover].forEach(header => {
         if (header) header.classList.add('hidden');
       });
 
@@ -7643,6 +7673,11 @@
         homeTab.classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
         feedHeaderHome.classList.remove('hidden');
         await loadHomeFeed();
+      } else if (tabName === 'my-channels') {
+        myChannelsTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
+        myChannelsTab.classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
+        feedHeaderMyChannels.classList.remove('hidden');
+        await loadMyChannels();
       } else if (tabName === 'discover') {
         discoverTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
         discoverTab.classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
@@ -7706,6 +7741,55 @@
         console.error('Error loading home feed:', err);
         showToast('Error loading posts', 'error');
       }
+    }
+
+    async function loadMyChannels() {
+      try {
+        const data = await apiCall('/api/user/my-channels');
+        if (data && data.channels) {
+          let html = '';
+          if (data.channels.length === 0) {
+            html = `<div class="text-center py-12 text-zinc-600 dark:text-zinc-500">
+              <p class="text-lg font-medium mb-2">No channels yet</p>
+              <p class="text-sm mb-4">Create a channel to get started managing it.</p>
+              <button onclick="openCreateChannelModal()" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition">Create Channel</button>
+            </div>`;
+          } else {
+            html = '<div class="space-y-3 p-4">';
+            data.channels.forEach(channel => {
+              html += renderMyChannelCard(channel);
+            });
+            html += '</div>';
+          }
+          document.getElementById('feedContentWrapper').innerHTML = html;
+        }
+      } catch (err) {
+        console.error('Error loading my channels:', err);
+        showToast('Error loading my channels', 'error');
+      }
+    }
+
+    function renderMyChannelCard(channel) {
+      const formattedTime = formatRelativeTime(channel.updatedAt);
+      const latestPostSnippet = channel.latestPost ? `<p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1 truncate">Latest: ${channel.latestPost.contentSnippet}</p>` : '';
+
+      return `
+        <div class="p-3 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg hover:shadow-md transition">
+          <div class="flex items-start justify-between gap-3">
+            <div class="flex-1 min-w-0">
+              <h3 class="font-semibold text-zinc-900 dark:text-zinc-100 truncate">${escapeHtml(channel.name)}</h3>
+              <p class="text-xs text-zinc-600 dark:text-zinc-400 truncate">${escapeHtml(channel.description || '')}</p>
+              <div class="flex gap-3 text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+                <span>${channel.followerCount} follower${channel.followerCount !== 1 ? 's' : ''}</span>
+                <span>${channel.adminCount} admin${channel.adminCount !== 1 ? 's' : ''}</span>
+                <span>${formattedTime}</span>
+              </div>
+              ${latestPostSnippet}
+            </div>
+            <button onclick="openMyChannelManagement(${channel.id}, '${escapeHtml(channel.name)}')" class="flex-shrink-0 px-2 py-1 bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-200 rounded text-xs font-medium transition">Manage</button>
+          </div>
+        </div>
+      `;
     }
 
     function renderFeedPost(post) {
