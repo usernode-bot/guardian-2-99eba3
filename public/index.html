@@ -6817,12 +6817,16 @@
 
     async function showFeedView() {
       updateMenuHighlight('channels');
-      document.getElementById('messagesView').classList.add('hidden');
-      document.getElementById('conversationsView').classList.add('hidden');
-      document.getElementById('chatView').classList.add('hidden');
-      document.getElementById('chatView').classList.remove('active-chat');
-      document.getElementById('contactsView').classList.add('hidden');
-      document.getElementById('profileView').classList.add('hidden');
+      const viewsToHide = ['messagesView', 'conversationsView', 'chatView', 'contactsView', 'profileView', 'channelChatView'];
+      viewsToHide.forEach(viewId => {
+        const element = document.getElementById(viewId);
+        if (element) {
+          element.classList.add('hidden');
+          if (viewId === 'chatView') {
+            element.classList.remove('active-chat');
+          }
+        }
+      });
       document.getElementById('feedView').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('footer-in-view');
@@ -6832,7 +6836,6 @@
       document.getElementById('headerContent').classList.remove('hidden');
       document.getElementById('headerBranding').textContent = 'Guardian';
       document.getElementById('headerPageLabel').textContent = 'Channels';
-      document.getElementById('backBtnContainer').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
       document.getElementById('postBtn').classList.remove('hidden');
@@ -6841,10 +6844,12 @@
       // Clear channel polling when switching away from channel view
       if (pollInterval) clearInterval(pollInterval);
       currentChannelId = null;
+      currentChannel = null;
 
       // Reset search state
       currentSearchQuery = '';
-      document.getElementById('searchChannelsInput').value = '';
+      const searchInput = document.getElementById('searchChannelsInput');
+      if (searchInput) searchInput.value = '';
 
       // Load channels list for Discover
       await loadChannels();
@@ -6855,16 +6860,34 @@
     async function loadChannels() {
       try {
         const data = await apiCall('/api/channels');
-        if (data && data.channels) {
-          channelsList = data.channels;
-          filteredChannelsList = channelsList;
-        } else if (data && data.error) {
-          console.error('Error loading channels:', data.error);
-          showToast('Failed to load channels', 'error');
+        if (!data) {
+          console.error('loadChannels: API returned null');
+          channelsList = [];
+          filteredChannelsList = [];
+          return;
         }
+
+        if (data.error) {
+          console.error('loadChannels: API returned error', data.error);
+          showToast('Failed to load channels', 'error');
+          return;
+        }
+
+        if (!Array.isArray(data.channels)) {
+          console.error('loadChannels: channels is not an array', data);
+          channelsList = [];
+          filteredChannelsList = [];
+          return;
+        }
+
+        // Validate and filter out invalid channel objects
+        channelsList = data.channels.filter(ch => ch && typeof ch === 'object' && ch.id && ch.name);
+        filteredChannelsList = channelsList;
       } catch (err) {
-        console.error('Error loading channels:', err);
+        console.error('loadChannels: fetch error', err);
         showToast('Error loading channels', 'error');
+        channelsList = [];
+        filteredChannelsList = [];
       }
     }
 
@@ -6909,6 +6932,13 @@
     }
 
     async function showChannelPosts(channelId) {
+      // Validate channelId
+      if (!channelId || isNaN(parseInt(channelId, 10))) {
+        console.error('showChannelPosts: invalid channelId', channelId);
+        showToast('Invalid channel', 'error');
+        return;
+      }
+
       // Clear cross-context state to match DM/Group pattern
       currentConvId = null;
       currentOtherId = null;
@@ -6916,28 +6946,59 @@
       currentChannelId = channelId;
       channelPostsOffset = 0;
       channelPostsHasMore = false;
-      let channel = channelsList.find(ch => ch.id === channelId);
+
+      let channel = channelsList && channelsList.find(ch => ch && ch.id === channelId);
 
       // If channel not found, reload channels (in case a newly created channel hasn't loaded yet)
       if (!channel) {
-        await loadChannels();
-        channel = channelsList.find(ch => ch.id === channelId);
+        try {
+          await loadChannels();
+          channel = channelsList && channelsList.find(ch => ch && ch.id === channelId);
+        } catch (err) {
+          console.error('showChannelPosts: error reloading channels', err);
+          showToast('Failed to load channel', 'error');
+          return;
+        }
       }
 
-      if (!channel) return;
+      if (!channel) {
+        console.error('showChannelPosts: channel not found after reload', channelId);
+        showToast('Channel not found', 'error');
+        return;
+      }
 
       currentChannel = channel;
 
+      // Validate required DOM elements exist
+      const headerContent = document.getElementById('headerContent');
+      const headerBranding = document.getElementById('headerBranding');
+      const headerPageLabel = document.getElementById('headerPageLabel');
+      const backBtnContainer = document.getElementById('backBtnContainer');
+      const menuBtn = document.getElementById('menuBtn');
+      const conversationMenuBtn = document.getElementById('conversationMenuBtn');
+      const channelDetailHeader = document.getElementById('channelDetailHeader');
+      const actionButtonsContainer = document.getElementById('channelActionButtons');
+
+      if (!headerContent || !backBtnContainer || !actionButtonsContainer) {
+        console.error('showChannelPosts: required DOM elements not found');
+        showToast('Interface error', 'error');
+        return;
+      }
+
       // Set up standard header (matching openConversation and openGroup pattern)
-      document.getElementById('headerContent').classList.remove('hidden');
-      document.getElementById('headerBranding').textContent = 'Channel';
-      document.getElementById('headerPageLabel').textContent = channel.name + (channel.description ? ` — ${channel.description}` : '');
-      document.getElementById('backBtnContainer').classList.remove('hidden');
-      document.getElementById('menuBtn').classList.add('hidden');
-      document.getElementById('conversationMenuBtn').classList.add('hidden');
+      headerContent.classList.remove('hidden');
+      if (headerBranding) headerBranding.textContent = 'Channel';
+      if (headerPageLabel) {
+        headerPageLabel.textContent = escapeHtml(channel.name) + (channel.description ? ` — ${escapeHtml(channel.description)}` : '');
+      }
+      backBtnContainer.classList.remove('hidden');
+      if (menuBtn) menuBtn.classList.add('hidden');
+      if (conversationMenuBtn) conversationMenuBtn.classList.add('hidden');
 
       // Hide the old custom header
-      document.getElementById('channelDetailHeader').classList.add('hidden');
+      if (channelDetailHeader) {
+        channelDetailHeader.classList.add('hidden');
+      }
 
       // Clear composition state from previous channel
       const channelPostInput = document.getElementById('channelPostInput');
@@ -6949,10 +7010,10 @@
         channelPostCharCount.textContent = '0/2000';
       }
 
-      // Set up action buttons based on ownership (use channelActionButtons from hidden detail header)
-      const isOwner = currentUser && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
+      // Set up action buttons based on ownership
+      const isOwner = currentUser && currentUser.id && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
       const isFollowing = currentUser && channel.isFollowing;
-      const actionButtonsContainer = document.getElementById('channelActionButtons');
+
       if (isOwner) {
         actionButtonsContainer.innerHTML = `
           <button onclick="openChannelSettingsModal(${channel.id})" class="px-3 py-1 bg-zinc-200 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-300 dark:hover:bg-zinc-600 rounded text-sm font-medium transition active:scale-95">Settings</button>
@@ -6971,7 +7032,12 @@
       showChannelChatView();
 
       // Load and render channel posts
-      await loadChannelPosts(channelId);
+      try {
+        await loadChannelPosts(channelId);
+      } catch (err) {
+        console.error('showChannelPosts: error loading channel posts', err);
+        showToast('Failed to load channel posts', 'error');
+      }
 
       // Set up polling (matching DM/Group 2-second poll pattern)
       if (pollInterval) clearInterval(pollInterval);
@@ -7445,7 +7511,11 @@
     function backToChannelList() {
       // Clear polling for channels (matching DM/Group cleanup pattern)
       if (pollInterval) clearInterval(pollInterval);
+      pollInterval = null;
       currentChannelId = null;
+      currentChannel = null;
+      channelPostsOffset = 0;
+      channelPostsHasMore = false;
 
       // Show feed view again (this hides chatView and shows feedView)
       showFeedView();
@@ -7676,9 +7746,25 @@
     }
 
     async function switchFeedTab(tabName) {
+      // Validate tabName
+      const validTabs = ['home', 'discover', 'my-channels'];
+      if (!validTabs.includes(tabName)) {
+        console.warn('switchFeedTab: invalid tabName', tabName);
+        return;
+      }
+
       currentChannelId = null;
-      document.getElementById('channelDetailHeader').classList.add('hidden');
-      document.getElementById('feedContentWrapper').style.paddingTop = '';
+      currentChannel = null;
+
+      const channelDetailHeader = document.getElementById('channelDetailHeader');
+      const feedContentWrapper = document.getElementById('feedContentWrapper');
+
+      if (channelDetailHeader) {
+        channelDetailHeader.classList.add('hidden');
+      }
+      if (feedContentWrapper) {
+        feedContentWrapper.style.paddingTop = '';
+      }
 
       const homeTab = document.getElementById('feedTabHome');
       const discoverTab = document.getElementById('feedTabDiscover');
@@ -7687,6 +7773,11 @@
       const feedHeaderDiscover = document.getElementById('feedHeaderDiscover');
       const feedHeaderMyChannels = document.getElementById('feedHeaderMyChannels');
 
+      // Validate all required elements exist
+      if (!homeTab || !discoverTab || !myChannelsTab || !feedHeaderHome || !feedHeaderDiscover || !feedHeaderMyChannels) {
+        console.error('switchFeedTab: required DOM elements not found');
+        return;
+      }
 
       // Reset all tabs
       [homeTab, discoverTab, myChannelsTab].forEach(tab => {
@@ -7699,21 +7790,26 @@
         if (header) header.classList.add('hidden');
       });
 
-      if (tabName === 'home') {
-        homeTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
-        homeTab.classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
-        feedHeaderHome.classList.remove('hidden');
-        await loadHomeFeed();
-      } else if (tabName === 'discover') {
-        discoverTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
-        discoverTab.classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
-        feedHeaderDiscover.classList.remove('hidden');
-        await loadDiscoverChannels();
-      } else if (tabName === 'my-channels') {
-        myChannelsTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
-        myChannelsTab.classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
-        feedHeaderMyChannels.classList.remove('hidden');
-        await loadMyChannels();
+      try {
+        if (tabName === 'home') {
+          homeTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
+          homeTab.classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
+          feedHeaderHome.classList.remove('hidden');
+          await loadHomeFeed();
+        } else if (tabName === 'discover') {
+          discoverTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
+          discoverTab.classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
+          feedHeaderDiscover.classList.remove('hidden');
+          await loadDiscoverChannels();
+        } else if (tabName === 'my-channels') {
+          myChannelsTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
+          myChannelsTab.classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
+          feedHeaderMyChannels.classList.remove('hidden');
+          await loadMyChannels();
+        }
+      } catch (err) {
+        console.error('switchFeedTab: error loading tab content', tabName, err);
+        showToast('Error loading tab content', 'error');
       }
     }
 
@@ -7776,30 +7872,58 @@
 
     async function loadMyChannels() {
       try {
-        const data = await apiCall('/api/channels');
-        if (data && data.channels) {
-          // Filter to only channels owned by the current user
-          const myChannels = data.channels.filter(ch =>
-            currentUser && parseInt(ch.ownerId, 10) === parseInt(currentUser.id, 10)
-          );
-          // Store the full channel list so showChannelPosts() can find any channel by ID
-          channelsList = data.channels;
-          let html = '';
-          if (myChannels.length === 0) {
-            html = `<div class="text-center py-12 text-zinc-600 dark:text-zinc-500">
-              <p class="text-lg font-medium mb-2">You don't own any channels yet</p>
-              <p class="text-sm mb-4">Create a channel to get started.</p>
-              <button onclick="openCreateChannelModal()" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition">Create Channel</button>
-            </div>`;
-          } else {
-            html = '<div class="space-y-3 p-4">';
-            myChannels.forEach(channel => {
-              html += renderChannelCard(channel, true);
-            });
-            html += '</div>';
-          }
-          document.getElementById('feedContentWrapper').innerHTML = html;
+        if (!currentUser || !currentUser.id) {
+          console.warn('loadMyChannels: currentUser not authenticated');
+          showToast('Please log in to view your channels', 'warning');
+          return;
         }
+
+        const data = await apiCall('/api/channels');
+        if (!data) {
+          console.error('loadMyChannels: API response is null');
+          showToast('Failed to load channels', 'error');
+          return;
+        }
+
+        if (!Array.isArray(data.channels)) {
+          console.error('loadMyChannels: API response does not have channels array', data);
+          showToast('Invalid channels data received', 'error');
+          return;
+        }
+
+        // Filter to only channels owned by the current user
+        const currentUserId = parseInt(currentUser.id, 10);
+        const myChannels = data.channels.filter(ch => {
+          const chOwnerId = parseInt(ch.ownerId, 10);
+          return chOwnerId === currentUserId;
+        });
+
+        // Store the full channel list so showChannelPosts() can find any channel by ID
+        channelsList = data.channels;
+
+        const contentWrapper = document.getElementById('feedContentWrapper');
+        if (!contentWrapper) {
+          console.error('loadMyChannels: feedContentWrapper not found');
+          return;
+        }
+
+        let html = '';
+        if (myChannels.length === 0) {
+          html = `<div class="text-center py-12 text-zinc-600 dark:text-zinc-500">
+            <p class="text-lg font-medium mb-2">You don't own any channels yet</p>
+            <p class="text-sm mb-4">Create a channel to get started.</p>
+            <button onclick="openCreateChannelModal()" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition">Create Channel</button>
+          </div>`;
+        } else {
+          html = '<div class="space-y-3 p-4">';
+          myChannels.forEach(channel => {
+            if (channel && channel.id) {
+              html += renderChannelCard(channel, true);
+            }
+          });
+          html += '</div>';
+        }
+        contentWrapper.innerHTML = html;
       } catch (err) {
         console.error('Error loading my channels:', err);
         showToast('Error loading channels', 'error');
@@ -7907,15 +8031,25 @@
     }
 
     function renderChannelCard(channel, isFollowing) {
-      const isOwner = currentUser && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
+      // Validate channel object
+      if (!channel || !channel.id || !channel.name) {
+        console.warn('renderChannelCard: invalid channel object', channel);
+        return '';
+      }
+
+      const isOwner = currentUser && currentUser.id && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
       const ownerBadge = isOwner ? '<span class="ml-2 text-xs bg-cyan-100 dark:bg-cyan-900 text-cyan-700 dark:text-cyan-300 px-2 py-1 rounded">Owner</span>' : '';
-      const latestPostSection = channel.latestPost ? `
-        <div class="mt-3 p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded text-sm">
-          <div class="text-xs text-zinc-500 dark:text-zinc-500 mb-1">Latest from ${escapeHtml(channel.latestPost.authorUsername)}</div>
-          <p class="text-zinc-700 dark:text-zinc-300 line-clamp-2">${escapeHtml(channel.latestPost.contentSnippet)}</p>
-          <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-1">${formatRelativeTime(channel.latestPost.createdAt)}</div>
-        </div>
-      ` : '';
+
+      let latestPostSection = '';
+      if (channel.latestPost && channel.latestPost.authorUsername && channel.latestPost.contentSnippet) {
+        latestPostSection = `
+          <div class="mt-3 p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded text-sm">
+            <div class="text-xs text-zinc-500 dark:text-zinc-500 mb-1">Latest from ${escapeHtml(channel.latestPost.authorUsername)}</div>
+            <p class="text-zinc-700 dark:text-zinc-300 line-clamp-2">${escapeHtml(channel.latestPost.contentSnippet)}</p>
+            <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-1">${formatRelativeTime(channel.latestPost.createdAt)}</div>
+          </div>
+        `;
+      }
 
       const actionButton = isOwner
         ? `<button onclick="event.stopPropagation(); openChannelSettingsModal(${channel.id})" class="px-3 py-1 bg-zinc-200 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-300 dark:hover:bg-zinc-600 rounded text-sm font-medium transition active:scale-95">Settings</button>`
@@ -7927,6 +8061,9 @@
             ${channel.isFollowing ? 'Following' : 'Follow'}
           </button>`;
 
+      const followerCount = parseInt(channel.followerCount, 10) || 0;
+      const followerLabel = followerCount === 1 ? 'follower' : 'followers';
+
       return `
         <div class="p-4 bg-white dark:bg-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-lg border border-zinc-200 dark:border-zinc-700 transition cursor-pointer" onclick="showChannelPosts(${channel.id})">
           <div class="flex items-start justify-between gap-3">
@@ -7937,7 +8074,7 @@
               </div>
               <p class="text-sm text-zinc-600 dark:text-zinc-400">by ${escapeHtml(channel.ownerUsername || 'Unknown')}</p>
               ${channel.description ? `<p class="text-sm text-zinc-700 dark:text-zinc-300 mt-1 line-clamp-2">${escapeHtml(channel.description)}</p>` : ''}
-              <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-2">${channel.followerCount} ${channel.followerCount === 1 ? 'follower' : 'followers'}</div>
+              <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-2">${followerCount} ${followerLabel}</div>
               ${latestPostSection}
             </div>
             <div class="flex-shrink-0">
