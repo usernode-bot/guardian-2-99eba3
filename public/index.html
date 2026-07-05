@@ -2220,6 +2220,7 @@
     function updateNetworkModeVisibility(mode) {
       const rpcEndpointConfig = document.getElementById('rpcEndpointConfig');
       const transactionPreferencesSection = document.getElementById('transactionPreferencesSection');
+      const skipSignatureCheckbox = document.getElementById('skipSignatureDevnetToggle');
 
       // Show RPC endpoint config only for testnet
       if (mode === 'testnet') {
@@ -2231,8 +2232,16 @@
       // Show transaction preferences only for devnet
       if (mode === 'devnet') {
         transactionPreferencesSection.classList.remove('hidden');
+        // Auto-enable the checkbox when devnet is selected
+        if (skipSignatureCheckbox && !skipSignatureCheckbox.checked) {
+          skipSignatureCheckbox.checked = true;
+        }
       } else {
         transactionPreferencesSection.classList.add('hidden');
+        // Uncheck when switching away from devnet
+        if (skipSignatureCheckbox && skipSignatureCheckbox.checked) {
+          skipSignatureCheckbox.checked = false;
+        }
       }
     }
 

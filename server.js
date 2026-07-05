@@ -1511,7 +1511,13 @@ app.put('/api/user/network-mode', async (req, res) => {
     // Normalize 'real_testnet' to 'testnet' for storage
     const storedMode = networkMode === 'real_testnet' ? 'testnet' : networkMode;
 
-    await pool.query(`UPDATE users SET network_mode = $1 WHERE id = $2`, [storedMode, req.user.id]);
+    // Auto-enable skip signature preference when switching to devnet, disable for others
+    const skipSignatureValue = storedMode === 'devnet' ? true : false;
+
+    await pool.query(
+      `UPDATE users SET network_mode = $1, skip_signature_in_devnet = $2 WHERE id = $3`,
+      [storedMode, skipSignatureValue, req.user.id]
+    );
     res.json({ networkMode: storedMode, status: 'updated' });
   } catch (err) {
     console.error('Error updating network-mode:', err);
