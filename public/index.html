@@ -7051,8 +7051,9 @@
       }
 
       // Set up polling (matching DM/Group 2-second poll pattern)
+      // CRITICAL BUG FIX #4: Capture parsed numeric channelId instead of string to avoid stale closure
       if (pollInterval) clearInterval(pollInterval);
-      pollInterval = setInterval(() => loadChannelPosts(channelId), 2000);
+      pollInterval = setInterval(() => loadChannelPosts(parsedChannelId), 2000);
     }
 
     // New function: loadChannelPosts for consistency with loadMessages and loadGroupMessages
@@ -7067,6 +7068,13 @@
         if (data && data.posts) {
           channelPostsHasMore = data.hasMore || false;
           let html = '';
+
+          // CRITICAL BUG FIX #10: Validate channelsList exists before using .find()
+          if (!channelsList || !Array.isArray(channelsList)) {
+            console.error('loadChannelPosts: channelsList is undefined or not an array');
+            showToast('Failed to load channel', 'error');
+            return;
+          }
 
           const channel = channelsList.find(ch => ch.id === parsedChannelId);
           if (!channel) return;
@@ -7125,7 +7133,12 @@
               html += '<div class="p-4 text-center text-xs text-zinc-500 dark:text-zinc-500">No more posts</div>';
             }
           }
-          document.getElementById('channelChatList').innerHTML = html;
+          const channelChatList = document.getElementById('channelChatList');
+          if (channelChatList) {
+            channelChatList.innerHTML = html;
+            // CRITICAL BUG FIX #3: Reset scroll position to top when loading new channel
+            channelChatList.scrollTop = 0;
+          }
           channelPostsOffset = 50;
         } else if (data && data.error) {
           throw new Error(data.error);
@@ -7532,9 +7545,11 @@
     }
 
     function backToChannelList() {
-      // Clear polling for channels (matching DM/Group cleanup pattern)
+      // MEDIUM BUG FIX #6: Clear polling BEFORE resetting state to avoid timing window
       if (pollInterval) clearInterval(pollInterval);
       pollInterval = null;
+
+      // Now reset state after polling is definitely cleared
       currentChannelId = null;
       currentChannel = null;
       channelPostsOffset = 0;
@@ -7847,12 +7862,21 @@
 
     async function loadDiscoverChannels() {
       try {
+        // CRITICAL BUG FIX #1: Add currentUser null check
+        if (!currentUser || !currentUser.id) {
+          console.warn('loadDiscoverChannels: currentUser not authenticated');
+          showToast('Please log in to view channels', 'warning');
+          return;
+        }
+
         const data = await apiCall('/api/channels');
         if (data && data.channels) {
           // Store all channels so showChannelPosts() can find them
           channelsList = data.channels;
+          // MEDIUM BUG FIX #8: Standardize boolean check with explicit comparison
+          const currentUserId = parseInt(currentUser.id, 10);
           const discoverChannels = data.channels.filter(ch =>
-            ch.ownerId !== currentUser.id && !ch.isFollowing
+            parseInt(ch.ownerId, 10) !== currentUserId && ch.isFollowing === false
           );
           let html = '';
           if (discoverChannels.length === 0) {
@@ -7877,6 +7901,13 @@
 
     async function loadHomeFeed() {
       try {
+        // MEDIUM BUG FIX #7: Add currentUser validation guard
+        if (!currentUser || !currentUser.id) {
+          console.warn('loadHomeFeed: currentUser not authenticated');
+          showToast('Please log in to view your feed', 'warning');
+          return;
+        }
+
         const data = await apiCall('/api/feed/posts?limit=50&offset=0');
         if (data && data.posts) {
           let html = '';
@@ -8062,9 +8093,15 @@
     }
 
     function renderChannelCard(channel, isFollowing) {
-      // Validate channel object
+      // MEDIUM BUG FIX #9: Add complete object validation for required fields
       if (!channel || !channel.id || !channel.name) {
         console.warn('renderChannelCard: invalid channel object', channel);
+        return '';
+      }
+
+      // Validate owner fields exist before accessing
+      if (!channel.ownerId && channel.ownerId !== 0) {
+        console.warn('renderChannelCard: channel missing ownerId', channel);
         return '';
       }
 
@@ -8082,14 +8119,15 @@
         `;
       }
 
+      // MEDIUM BUG FIX #8: Standardize boolean field check to explicit comparison
       const actionButton = isOwner
         ? `<button onclick="event.stopPropagation(); openChannelSettingsModal(${channel.id})" class="px-3 py-1 bg-zinc-200 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-300 dark:hover:bg-zinc-600 rounded text-sm font-medium transition active:scale-95">Settings</button>`
         : `<button class="channel-follow-btn px-3 py-1 text-sm font-medium rounded transition ${
-            channel.isFollowing
+            channel.isFollowing === true
               ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-300 dark:hover:bg-zinc-600'
               : 'bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white'
-          }" data-channel-id="${channel.id}" data-following="${channel.isFollowing ? 'true' : 'false'}" onclick="event.stopPropagation()">
-            ${channel.isFollowing ? 'Following' : 'Follow'}
+          }" data-channel-id="${channel.id}" data-following="${channel.isFollowing === true ? 'true' : 'false'}" onclick="event.stopPropagation()">
+            ${channel.isFollowing === true ? 'Following' : 'Follow'}
           </button>`;
 
       const followerCount = parseInt(channel.followerCount, 10) || 0;
