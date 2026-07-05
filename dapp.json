@@ -31,7 +31,7 @@
     },
     {
       "key": "NETWORK_MODE",
-      "description": "Operating mode for blockchain transactions: demo (simulated with instant confirmation), devnet (database-only, no blockchain), or real_testnet (true blockchain with RPC/explorer polling). Defaults to devnet. Can be set via Secrets or toggled at runtime in Settings (changes persist across restarts).",
+      "description": "Operating mode for blockchain transactions: testnet (true blockchain with RPC/explorer polling), devnet (database-only, no blockchain), or mainnet (future support). Defaults to devnet. Can be set via Secrets or toggled at runtime in Settings → System → Network Mode (changes persist across restarts).",
       "required": false,
       "private": false,
       "default": "devnet"
@@ -76,14 +76,9 @@
       "expectSelector": "#settingsPanel"
     },
     {
-      "name": "Network dropdown in settings",
+      "name": "Network Mode selector in settings",
       "path": "/",
-      "expectSelector": "#networkSelect"
-    },
-    {
-      "name": "Network Status section in settings",
-      "path": "/",
-      "expectSelector": "#networkAccordion"
+      "expectSelector": "#networkModeSelect"
     },
     {
       "name": "Profile Guardian's tab loads",
