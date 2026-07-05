@@ -1363,7 +1363,7 @@
           <div class="p-4 bg-red-100 dark:bg-red-900 border border-red-300 dark:border-red-700 rounded-lg">
             <h3 class="font-semibold text-red-900 dark:text-red-100 mb-2">⚠️ Delete Channel</h3>
             <p class="text-sm text-red-800 dark:text-red-200 mb-4">This action cannot be undone. All posts, followers, and admin roles will be permanently deleted.</p>
-            <button onclick="deleteChannel()" class="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition font-medium">Delete Channel</button>
+            <button onclick="deleteManagementChannel()" class="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition font-medium">Delete Channel</button>
           </div>
         </div>
 
@@ -4232,13 +4232,14 @@
       document.getElementById('manageChannelModal').classList.remove('hidden');
 
       // Load posts for this channel
-      await loadChannelPosts();
+      await loadManagementChannelPosts();
     }
 
     function closeManageChannelModal() {
       document.getElementById('manageChannelModal').classList.add('hidden');
       currentManagedChannelId = null;
       currentManagedChannelName = null;
+      currentChannelTab = 'posts';
     }
 
     function switchChannelTab(tabName) {
@@ -4262,7 +4263,7 @@
       if (tabName === 'posts') {
         document.getElementById('contentPosts').classList.remove('hidden');
         document.getElementById('tabPosts').classList.add('border-cyan-600', 'text-cyan-600', 'dark:text-cyan-400');
-        loadChannelPosts();
+        loadManagementChannelPosts();
       } else if (tabName === 'followers') {
         document.getElementById('contentFollowers').classList.remove('hidden');
         document.getElementById('tabFollowers').classList.add('border-cyan-600', 'text-cyan-600', 'dark:text-cyan-400');
@@ -4281,7 +4282,7 @@
       }
     }
 
-    async function loadChannelPosts() {
+    async function loadManagementChannelPosts() {
       if (!currentManagedChannelId) return;
       const container = document.getElementById('postsContainer');
       try {
@@ -4426,7 +4427,7 @@
       }
     }
 
-    async function deleteChannel() {
+    async function deleteManagementChannel() {
       if (!currentManagedChannelId) return;
       if (!confirm('Are you sure you want to permanently delete this channel? This cannot be undone.')) return;
 
@@ -9348,16 +9349,6 @@
       }
     }
 
-    function escapeHtml(text) {
-      const map = {
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#039;'
-      };
-      return text.replace(/[&<>"']/g, m => map[m]);
-    }
 
     function getStoredToken() {
       const params = new URLSearchParams(window.location.search);
@@ -9609,11 +9600,6 @@
 
 
 
-    function escapeHtml(text) {
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
-    }
 
     function renderMentions(rawText) {
       if (!rawText) return '';
