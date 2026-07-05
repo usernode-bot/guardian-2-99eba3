@@ -2461,7 +2461,7 @@ app.post('/api/conversations/:convId/messages/:messageId/delete', async (req, re
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
-    await pool.query(`
+    const result = await pool.query(`
       UPDATE messages
       SET deleted_by = CASE
         WHEN deleted_by IS NULL THEN ARRAY[$1]
@@ -2469,6 +2469,10 @@ app.post('/api/conversations/:convId/messages/:messageId/delete', async (req, re
       END
       WHERE id = $2 AND conversation_id = $3
     `, [userId, messageId, convId]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
 
     res.json({ ok: true });
   } catch (err) {
@@ -4564,6 +4568,7 @@ app.get('/api/groups/:groupId/messages', async (req, res) => {
 });
 
 app.post('/api/groups/:groupId/messages', async (req, res) => {
+  const client = await pool.connect();
   try {
     if (!req.user) {
       return res.status(401).json({ error: 'Not authenticated' });
@@ -4592,7 +4597,7 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
     }
 
     // Verify user is a member of group
-    const { rows: memberRows } = await pool.query(`
+    const { rows: memberRows } = await client.query(`
       SELECT id FROM group_members WHERE group_id = $1 AND user_id = $2
     `, [groupId, userId]);
 
@@ -4600,13 +4605,16 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
       return res.status(403).json({ error: 'Not a member of this group' });
     }
 
+    // Start a database transaction for atomic INSERT + UPDATE
+    await client.query('BEGIN');
+
     // Fetch user's pubkey (mock in demo mode)
     const userPubkey = req.user.usernode_pubkey || (ENABLE_DEMO_MODE ? 'ut1demo-user-' + userId : null);
     const network = 'testnet';
 
     // Create message with blockchain recording enabled
     const contentHash = computeContentHash(content);
-    const msgRes = await pool.query(`
+    const msgRes = await client.query(`
       INSERT INTO group_messages (group_id, sender_id, type, content, blockchain_recorded, blockchain_audit_log_id, created_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING id, created_at
@@ -4626,23 +4634,39 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
     };
 
     // Use real tx hash from frontend if provided, otherwise generate placeholder
-    const actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-message-' + messageId + '-' + Date.now() : 'ut1-' + network + '-tx-msg-' + Math.random().toString(36).substr(2, 9));
+    let actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-message-' + messageId + '-' + Date.now() : 'ut1-' + network + '-tx-msg-' + Math.random().toString(36).substr(2, 9));
+
+    // Defensive fallback: ensure tx_hash is never null before INSERT
+    if (!actualTxHash) {
+      actualTxHash = `guardian-pending-msg-${messageId}-${Date.now()}-${crypto.randomUUID()}`;
+      console.warn(`[GROUP-MSG] Fallback tx_hash generated: ${actualTxHash}`);
+    }
+
     const auditStatus = txHash ? 'pending' : (ENABLE_DEMO_MODE ? 'confirmed' : 'pending');
 
     let blockchainRecordingId;
     if (auditLogId) {
       // Two-phase flow: audit log already exists from wallet signature, just update it
       console.log(`[GROUP-MSG] Using existing audit log: id=${auditLogId}`);
-      await pool.query(`
+      const updateRes = await client.query(`
         UPDATE blockchain_audit_logs
         SET message_id = $1, group_id = $2, message_type = $3, tx_hash = $4, transaction_payload = $5, status = $6, confirmed_at = $7, content_hash = $8, user_pubkey = $9, action_timestamp = $10, updated_at = NOW()
         WHERE id = $11 AND user_id = $12
       `, [messageId, groupId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, auditLogId, userId]);
+
+      if (updateRes.rowCount === 0) {
+        throw new Error('Audit log not found or does not belong to user');
+      }
       blockchainRecordingId = auditLogId;
       console.log(`[GROUP-MSG] Updated existing audit log: id=${blockchainRecordingId}`);
     } else {
       // Single-phase flow: create new audit log
-      const auditRes = await pool.query(`
+      // Defensive validation: ensure tx_hash is present before INSERT
+      if (!actualTxHash) {
+        throw new Error('Missing tx_hash before audit log creation');
+      }
+
+      const auditRes = await client.query(`
         INSERT INTO blockchain_audit_logs (user_id, message_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
         RETURNING id
@@ -4650,16 +4674,37 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
       blockchainRecordingId = auditRes.rows[0].id;
     }
 
-    // Update message with audit log reference
-    await pool.query(`
+    // Update message with audit log reference (ATOMIC with INSERT)
+    const updateMsgRes = await client.query(`
       UPDATE group_messages SET blockchain_audit_log_id = $1 WHERE id = $2
     `, [blockchainRecordingId, messageId]);
 
+    if (updateMsgRes.rowCount === 0) {
+      throw new Error('Failed to update message with audit log reference');
+    }
+
     // Update group updated_at to reflect new message activity
-    await pool.query(`
+    const updateGrpRes = await client.query(`
       UPDATE groups SET updated_at = NOW() WHERE id = $1
     `, [groupId]);
 
+    if (updateGrpRes.rowCount === 0) {
+      throw new Error('Group not found');
+    }
+
+    // Commit the transaction - all INSERTs/UPDATEs are now atomic
+    await client.query('COMMIT');
+
+    console.log(`[GROUP-MSG] Transaction committed: messageId=${messageId}, auditLogId=${blockchainRecordingId}`);
+
+    // Return success BEFORE starting async polling (fixes race condition)
+    res.json({
+      id: messageId,
+      createdAt: new Date(now),
+      blockchainRecordingId: blockchainRecordingId
+    });
+
+    // Async polling starts AFTER response is sent
     // If real tx hash provided from frontend, start polling immediately
     if (txHash) {
       startChainPoller(network, txHash, blockchainRecordingId).catch(err => {
@@ -4686,15 +4731,18 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
         }
       })();
     }
-
-    res.json({
-      id: messageId,
-      createdAt: new Date(now),
-      blockchainRecordingId: blockchainRecordingId
-    });
   } catch (err) {
+    // Rollback on error
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackErr) {
+      console.error('Rollback error:', rollbackErr.message);
+    }
     console.error('Error sending group message:', err);
     res.status(500).json({ error: err.message });
+  } finally {
+    // Always release the client
+    client.release();
   }
 });
 
@@ -4710,7 +4758,7 @@ app.post('/api/groups/:groupId/messages/:messageId/delete', async (req, res) => 
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
-    await pool.query(`
+    const result = await pool.query(`
       UPDATE group_messages
       SET deleted_by = CASE
         WHEN deleted_by IS NULL THEN ARRAY[$1]
@@ -4718,6 +4766,10 @@ app.post('/api/groups/:groupId/messages/:messageId/delete', async (req, res) => 
       END
       WHERE id = $2 AND group_id = $3
     `, [userId, messageId, groupId]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
 
     res.json({ ok: true });
   } catch (err) {
