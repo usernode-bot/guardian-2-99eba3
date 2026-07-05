@@ -5507,21 +5507,6 @@ app.get('/api/channels', async (req, res) => {
       return res.json(mockData.getMockChannels(1, category, featured));
     }
 
-    // Get user's current network_mode for filtering
-    let userNetworkMode = 'devnet';
-    if (dbConnected) {
-      try {
-        const { rows: userRows } = await pool.query(`
-          SELECT network_mode FROM users WHERE id = $1
-        `, [req.user.id]);
-        if (userRows.length > 0 && userRows[0].network_mode) {
-          userNetworkMode = userRows[0].network_mode;
-        }
-      } catch (err) {
-        console.error('Error fetching user network_mode:', err);
-      }
-    }
-
     let query = `
       SELECT c.id, c.name, c.description, c.is_system, c.owner_id, c.category, c.is_verified, c.verified_at, c.is_featured, c.network_mode, c.created_at, c.updated_at,
              u.username as ownerUsername,
@@ -5531,10 +5516,10 @@ app.get('/api/channels', async (req, res) => {
              (SELECT COUNT(*) FROM channel_followers WHERE user_id = $1 AND channel_id = c.id)::INTEGER as isFollowing
       FROM channels c
       LEFT JOIN users u ON c.owner_id = u.id
-      WHERE (c.network_mode IS NULL OR c.network_mode = $2)
+      WHERE 1=1
     `;
-    const params = [req.user.id, userNetworkMode];
-    let paramCount = 2;
+    const params = [req.user.id];
+    let paramCount = 1;
 
     if (featured) {
       query += ` AND c.is_featured = TRUE`;
@@ -5546,7 +5531,7 @@ app.get('/api/channels', async (req, res) => {
     }
 
     query += ` ORDER BY c.is_featured DESC, c.is_system DESC, c.created_at DESC`;
-    console.log(`GET /api/channels: filtering by network_mode='${userNetworkMode}' for user ${req.user.id}`);
+    console.log(`GET /api/channels: returning all channels accessible to user ${req.user.id}`);
 
     const { rows: channels } = await pool.query(query, params);
 
@@ -5621,23 +5606,8 @@ app.get('/api/channels/:channelId/posts', async (req, res) => {
       });
     }
 
-    // Get user's current network_mode for filtering
-    let userNetworkMode = 'devnet';
-    if (dbConnected) {
-      try {
-        const { rows: userRows } = await pool.query(`
-          SELECT network_mode FROM users WHERE id = $1
-        `, [userId]);
-        if (userRows.length > 0 && userRows[0].network_mode) {
-          userNetworkMode = userRows[0].network_mode;
-        }
-      } catch (err) {
-        console.error('Error fetching user network_mode:', err);
-      }
-    }
-
     // Verify channel exists and user has access (is owner or is following)
-    // Also check that channel is visible in user's current network context
+    // Allow cross-network access: users can access their own channels and followed channels regardless of current network_mode
     const { rows: channelCheck } = await pool.query(`
       SELECT
         c.id,
@@ -5646,11 +5616,11 @@ app.get('/api/channels/:channelId/posts', async (req, res) => {
         c.network_mode,
         (SELECT COUNT(*) > 0 FROM channel_followers WHERE user_id = $2 AND channel_id = $1) as is_following
       FROM channels c
-      WHERE c.id = $1 AND (c.network_mode IS NULL OR c.network_mode = $3)
-    `, [channelId, userId, userNetworkMode]);
+      WHERE c.id = $1
+    `, [channelId, userId]);
 
     if (channelCheck.length === 0) {
-      console.error(`Channel not found or not accessible in network: channelId=${channelId}, userId=${userId}, network_mode=${userNetworkMode}`);
+      console.error(`Channel not found: channelId=${channelId}, userId=${userId}`);
       return res.status(404).json({ error: 'Channel not found' });
     }
 
@@ -5659,7 +5629,7 @@ app.get('/api/channels/:channelId/posts', async (req, res) => {
     const isOwner = ownerIdNum === userId;
     const isFollowing = !!channel.is_following;
 
-    console.log(`Channel access check: channelId=${channelId}, userId=${userId}, network_mode=${userNetworkMode}, ownerIdNum=${ownerIdNum}, isOwner=${isOwner}, isFollowing=${isFollowing}`);
+    console.log(`Channel access check: channelId=${channelId}, userId=${userId}, ownerIdNum=${ownerIdNum}, isOwner=${isOwner}, isFollowing=${isFollowing}, network_mode=${channel.network_mode}`);
 
     if (!isOwner && !isFollowing) {
       console.warn(`User ${userId} attempted to access channel ${channelId} without permission. Owner: ${ownerIdNum}, Following: ${isFollowing}`);
