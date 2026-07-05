@@ -8190,7 +8190,12 @@ async function start() {
       const { rows: aliceChannelRows } = await pool.query(`
         INSERT INTO channels (name, description, owner_id, category, is_system, is_featured)
         VALUES ('[Staging] alice-showcase', '[Staging] Alice demo channel for testing admin features', 1, 'Community', FALSE, FALSE)
-        ON CONFLICT (name) DO NOTHING
+        ON CONFLICT (name) DO UPDATE SET
+          description = EXCLUDED.description,
+          owner_id = EXCLUDED.owner_id,
+          category = EXCLUDED.category,
+          is_system = EXCLUDED.is_system,
+          is_featured = EXCLUDED.is_featured
         RETURNING id
       `);
 
