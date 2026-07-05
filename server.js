@@ -2172,6 +2172,8 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
+    const username = req.user.username;
+
     console.log(`[MESSAGE] POST /api/conversations/${convId}/messages by user ${userId}`);
     console.log(`[MESSAGE] txHash provided: ${txHash ? 'yes - ' + txHash : 'no'}`);
     console.log(`[MESSAGE] Frontend content hash: ${frontendContentHash || 'none'}`);
