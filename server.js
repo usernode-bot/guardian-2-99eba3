@@ -5534,6 +5534,8 @@ app.get('/api/channels', async (req, res) => {
 
     const { rows: channels } = await pool.query(query, params);
 
+    console.log(`GET /api/channels: returning ${channels.length} channels for user ${req.user.id}`);
+
     res.json({
       channels: channels.map(c => ({
         id: c.id,
@@ -5568,8 +5570,15 @@ app.get('/api/channels/:channelId/posts', async (req, res) => {
     }
 
     const channelId = parseInt(req.params.channelId, 10);
+    const userId = parseInt(req.user.id, 10);
+
     if (isNaN(channelId)) {
       return res.status(400).json({ error: 'Invalid channel ID' });
+    }
+
+    if (isNaN(userId)) {
+      console.error('Invalid user ID in request:', req.user.id);
+      return res.status(401).json({ error: 'Invalid user context' });
     }
 
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
@@ -5595,13 +5604,32 @@ app.get('/api/channels/:channelId/posts', async (req, res) => {
       });
     }
 
-    // Verify channel exists
+    // Verify channel exists and user has access (is owner or is following)
     const { rows: channelCheck } = await pool.query(`
-      SELECT id FROM channels WHERE id = $1
-    `, [channelId]);
+      SELECT
+        c.id,
+        c.owner_id,
+        c.name,
+        (SELECT COUNT(*) > 0 FROM channel_followers WHERE user_id = $2 AND channel_id = $1) as is_following
+      FROM channels c
+      WHERE c.id = $1
+    `, [channelId, userId]);
 
     if (channelCheck.length === 0) {
+      console.error(`Channel not found: channelId=${channelId}, userId=${userId}, parsedId=${parseInt(channelId, 10)}`);
       return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    const channel = channelCheck[0];
+    const ownerIdNum = parseInt(channel.owner_id, 10);
+    const isOwner = ownerIdNum === userId;
+    const isFollowing = !!channel.is_following;
+
+    console.log(`Channel access check: channelId=${channelId}, userId=${userId}, ownerIdNum=${ownerIdNum}, isOwner=${isOwner}, isFollowing=${isFollowing}`);
+
+    if (!isOwner && !isFollowing) {
+      console.warn(`User ${userId} attempted to access channel ${channelId} without permission. Owner: ${ownerIdNum}, Following: ${isFollowing}`);
+      return res.status(403).json({ error: 'Access denied' });
     }
 
     // Fetch posts for this channel
@@ -6050,6 +6078,8 @@ app.post('/api/channels', async (req, res) => {
 
     const channel = channelRows[0];
 
+    console.log(`Channel created: id=${channel.id}, owner_id=${channel.owner_id}, parsed_owner_id=${parseInt(channel.owner_id, 10)}, userId=${userId}`);
+
     // Get owner username
     const { rows: userRows } = await pool.query(`
       SELECT username FROM users WHERE id = $1
@@ -6063,6 +6093,8 @@ app.post('/api/channels', async (req, res) => {
       VALUES ($1, $2, NOW())
       ON CONFLICT (user_id, channel_id) DO NOTHING
     `, [userId, channel.id]);
+
+    console.log(`User ${userId} auto-followed channel ${channel.id}`);
 
     // Update audit log with txHash
     if (auditLogId) {
@@ -6094,7 +6126,11 @@ app.post('/api/channels', async (req, res) => {
       isFeatured: channel.is_featured,
       isSystem: channel.is_system,
       createdAt: channel.created_at,
-      updatedAt: channel.updated_at
+      updatedAt: channel.updated_at,
+      unreadCount: 0,
+      isPinned: false,
+      followerCount: 1,
+      isFollowing: true
     });
   } catch (err) {
     console.error('Error creating channel:', err);
