@@ -394,6 +394,42 @@
       margin-bottom: 0;
     }
 
+    /* Feed layout CSS: proper positioning and overflow handling */
+    #feedMainContent {
+      min-height: 0;
+    }
+
+    #feedHeader {
+      flex-wrap: nowrap;
+      min-height: 0;
+    }
+
+    #feedHeaderContent {
+      display: block;
+      height: auto;
+      overflow: visible;
+    }
+
+    #feedContentWrapper {
+      overflow-y: auto;
+      overflow-x: hidden;
+      min-height: 0;
+      transition: padding-top 0.2s ease-out;
+    }
+
+    /* Ensure hidden class works reliably */
+    .hidden {
+      display: none !important;
+    }
+
+    /* Change channelDetailHeader from fixed to sticky for proper scrolling */
+    #channelDetailHeader {
+      position: sticky !important;
+      top: 3.5rem;
+      z-index: 25;
+      margin-top: 0;
+    }
+
     @keyframes splashFadeOut {
       from {
         opacity: 1;
@@ -831,7 +867,7 @@
             </div>
           </div>
           <!-- Channel Detail Header (hidden until a channel is selected) -->
-          <div id="channelDetailHeader" class="fixed inset-x-0 top-14 z-20 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0 hidden">
+          <div id="channelDetailHeader" class="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0 hidden">
             <!-- Main header row with back button, title, and action buttons -->
             <div class="flex items-center justify-between p-4">
               <div class="flex items-center gap-3 flex-1 min-w-0">
@@ -851,7 +887,7 @@
             </div>
           </div>
           <!-- Content wrapper for scrollable channel/post content -->
-          <div id="feedContentWrapper" class="flex-1">
+          <div id="feedContentWrapper" class="flex-1 overflow-hidden">
             <!-- Channel list or posts will be inserted here -->
             <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading channels...</div>
           </div>
@@ -7387,6 +7423,10 @@
       document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
 
+      // Reset padding when hiding channelDetailHeader
+      document.getElementById('channelDetailHeader').classList.add('hidden');
+      document.getElementById('feedContentWrapper').style.paddingTop = '';
+
       // Clear message content
       document.getElementById('feedContentWrapper').innerHTML = '';
 
@@ -7620,6 +7660,7 @@
     async function switchFeedTab(tabName) {
       currentChannelId = null;
       document.getElementById('channelDetailHeader').classList.add('hidden');
+      document.getElementById('feedContentWrapper').style.paddingTop = '';
 
       const homeTab = document.getElementById('feedTabHome');
       const discoverTab = document.getElementById('feedTabDiscover');
