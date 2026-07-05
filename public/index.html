@@ -843,7 +843,7 @@
 
       <!-- Channel Chat View (dedicated container for channel posts) -->
       <div id="channelChatView" class="hidden flex flex-col flex-1 overflow-hidden">
-        <div id="channelChatList" class="flex-1 overflow-y-auto space-y-1 p-4 pt-20"></div>
+        <div id="channelChatList" class="flex-1 overflow-y-auto space-y-1 p-4 pt-20 pb-28"></div>
       </div>
 
       <!-- Channels View -->
@@ -2831,6 +2831,9 @@
       document.getElementById('chatView').classList.remove('active-chat');
       document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('feedView').classList.add('hidden');
+      document.getElementById('channelChatView').classList.add('hidden');
+      currentChannelId = null;
+      currentChannel = null;
       document.getElementById('sidebar').classList.add('hidden');
       document.getElementById('settingsPanel').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
@@ -6091,6 +6094,9 @@
       document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('feedView').classList.add('hidden');
       document.getElementById('feedView').classList.add('hidden');
+      document.getElementById('channelChatView').classList.add('hidden');
+      currentChannelId = null;
+      currentChannel = null;
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('footer-in-view');
       document.getElementById('header').classList.remove('header-chat-fixed');
@@ -6796,6 +6802,9 @@
       document.getElementById('profileView').classList.add('hidden');
       document.getElementById('contactsView').classList.remove('hidden');
       document.getElementById('feedView').classList.add('hidden');
+      document.getElementById('channelChatView').classList.add('hidden');
+      currentChannelId = null;
+      currentChannel = null;
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('footer-in-view');
       document.getElementById('header').classList.remove('header-chat-fixed');
@@ -8134,6 +8143,9 @@
       document.getElementById('chatView').classList.remove('active-chat');
       document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('feedView').classList.add('hidden');
+      document.getElementById('channelChatView').classList.add('hidden');
+      currentChannelId = null;
+      currentChannel = null;
       document.getElementById('profileView').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('footer-in-view');
