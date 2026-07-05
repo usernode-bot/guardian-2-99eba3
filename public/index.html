@@ -1297,6 +1297,85 @@
     </div>
   </div>
 
+  <!-- Manage Channel Modal -->
+  <div id="manageChannelModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-2xl max-h-[90vh] flex flex-col">
+      <!-- Header -->
+      <div class="p-6 border-b border-zinc-300 dark:border-zinc-700 flex justify-between items-center">
+        <h2 id="manageChannelTitle" class="text-lg font-semibold text-zinc-900 dark:text-white">Manage Channel</h2>
+        <button onclick="closeManageChannelModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
+      </div>
+
+      <!-- Tabs -->
+      <div class="border-b border-zinc-300 dark:border-zinc-700 flex gap-4 px-6 pt-4">
+        <button id="tabPosts" onclick="switchChannelTab('posts')" class="pb-3 px-2 font-medium text-sm border-b-2 border-cyan-600 text-cyan-600 dark:text-cyan-400">Posts</button>
+        <button id="tabFollowers" onclick="switchChannelTab('followers')" class="pb-3 px-2 font-medium text-sm border-b-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100">Followers</button>
+        <button id="tabAdmins" onclick="switchChannelTab('admins')" class="pb-3 px-2 font-medium text-sm border-b-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100">Admins</button>
+        <button id="tabEdit" onclick="switchChannelTab('edit')" class="pb-3 px-2 font-medium text-sm border-b-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100">Edit</button>
+        <button id="tabDelete" onclick="switchChannelTab('delete')" class="pb-3 px-2 font-medium text-sm border-b-2 border-transparent text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100">Delete</button>
+      </div>
+
+      <!-- Content Area -->
+      <div class="flex-1 overflow-y-auto p-6">
+
+        <!-- Posts Tab -->
+        <div id="contentPosts" class="space-y-4">
+          <div id="postsContainer" class="space-y-3">
+            <div class="text-center text-zinc-600 dark:text-zinc-400 py-8">Loading posts...</div>
+          </div>
+        </div>
+
+        <!-- Followers Tab -->
+        <div id="contentFollowers" class="hidden space-y-4">
+          <div class="mb-4">
+            <h3 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-2">Channel Followers</h3>
+            <input id="followerSearchInput" type="text" placeholder="Search followers..." class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+          </div>
+          <div id="followersContainer" class="space-y-2">
+            <div class="text-center text-zinc-600 dark:text-zinc-400 py-8">Loading followers...</div>
+          </div>
+        </div>
+
+        <!-- Admins Tab -->
+        <div id="contentAdmins" class="hidden space-y-4">
+          <h3 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-2">Channel Admins</h3>
+          <div id="adminsContainer" class="space-y-2">
+            <div class="text-center text-zinc-600 dark:text-zinc-400 py-8">Loading admins...</div>
+          </div>
+        </div>
+
+        <!-- Edit Tab -->
+        <div id="contentEdit" class="hidden space-y-4">
+          <h3 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-4">Edit Channel Details</h3>
+          <div>
+            <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300 block mb-1">Channel Name</label>
+            <input id="editChannelNameInput" type="text" maxlength="255" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+          </div>
+          <div>
+            <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300 block mb-1">Description</label>
+            <textarea id="editChannelDescInput" maxlength="1000" rows="3" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"></textarea>
+          </div>
+          <button onclick="saveChannelChanges()" class="w-full px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Save Changes</button>
+        </div>
+
+        <!-- Delete Tab -->
+        <div id="contentDelete" class="hidden space-y-4">
+          <div class="p-4 bg-red-100 dark:bg-red-900 border border-red-300 dark:border-red-700 rounded-lg">
+            <h3 class="font-semibold text-red-900 dark:text-red-100 mb-2">⚠️ Delete Channel</h3>
+            <p class="text-sm text-red-800 dark:text-red-200 mb-4">This action cannot be undone. All posts, followers, and admin roles will be permanently deleted.</p>
+            <button onclick="deleteChannel()" class="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition font-medium">Delete Channel</button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Footer -->
+      <div class="p-6 border-t border-zinc-300 dark:border-zinc-700">
+        <button onclick="closeManageChannelModal()" class="w-full px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Post Modal -->
   <div id="postModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-sm">
@@ -4138,10 +4217,294 @@
       document.getElementById('channelCategoryInput').value = '';
     }
 
+    // Channel management modal state
+    let currentManagedChannelId = null;
+    let currentManagedChannelName = null;
+    let currentChannelTab = 'posts';
+
     // Open channel management view
     async function openMyChannelManagement(channelId, channelName) {
-      showToast('Channel management coming soon', 'info');
-      // TODO: Implement full management modal with Posts, Followers, Admins, Settings, Delete tabs
+      currentManagedChannelId = channelId;
+      currentManagedChannelName = channelName;
+      currentChannelTab = 'posts';
+
+      document.getElementById('manageChannelTitle').textContent = `Manage: ${escapeHtml(channelName)}`;
+      document.getElementById('manageChannelModal').classList.remove('hidden');
+
+      // Load posts for this channel
+      await loadChannelPosts();
+    }
+
+    function closeManageChannelModal() {
+      document.getElementById('manageChannelModal').classList.add('hidden');
+      currentManagedChannelId = null;
+      currentManagedChannelName = null;
+    }
+
+    function switchChannelTab(tabName) {
+      currentChannelTab = tabName;
+
+      // Hide all content
+      document.getElementById('contentPosts').classList.add('hidden');
+      document.getElementById('contentFollowers').classList.add('hidden');
+      document.getElementById('contentAdmins').classList.add('hidden');
+      document.getElementById('contentEdit').classList.add('hidden');
+      document.getElementById('contentDelete').classList.add('hidden');
+
+      // Reset all tabs
+      ['tabPosts', 'tabFollowers', 'tabAdmins', 'tabEdit', 'tabDelete'].forEach(id => {
+        const tab = document.getElementById(id);
+        tab.classList.remove('border-cyan-600', 'text-cyan-600', 'dark:text-cyan-400');
+        tab.classList.add('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
+      });
+
+      // Show active tab content and mark as active
+      if (tabName === 'posts') {
+        document.getElementById('contentPosts').classList.remove('hidden');
+        document.getElementById('tabPosts').classList.add('border-cyan-600', 'text-cyan-600', 'dark:text-cyan-400');
+        loadChannelPosts();
+      } else if (tabName === 'followers') {
+        document.getElementById('contentFollowers').classList.remove('hidden');
+        document.getElementById('tabFollowers').classList.add('border-cyan-600', 'text-cyan-600', 'dark:text-cyan-400');
+        loadChannelFollowers();
+      } else if (tabName === 'admins') {
+        document.getElementById('contentAdmins').classList.remove('hidden');
+        document.getElementById('tabAdmins').classList.add('border-cyan-600', 'text-cyan-600', 'dark:text-cyan-400');
+        loadChannelAdmins();
+      } else if (tabName === 'edit') {
+        document.getElementById('contentEdit').classList.remove('hidden');
+        document.getElementById('tabEdit').classList.add('border-cyan-600', 'text-cyan-600', 'dark:text-cyan-400');
+        loadEditChannelForm();
+      } else if (tabName === 'delete') {
+        document.getElementById('contentDelete').classList.remove('hidden');
+        document.getElementById('tabDelete').classList.add('border-cyan-600', 'text-cyan-600', 'dark:text-cyan-400');
+      }
+    }
+
+    async function loadChannelPosts() {
+      if (!currentManagedChannelId) return;
+      const container = document.getElementById('postsContainer');
+      try {
+        const data = await apiCall(`/api/channels/${currentManagedChannelId}/posts?limit=50`);
+        if (data && data.posts) {
+          if (data.posts.length === 0) {
+            container.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No posts in this channel yet</div>';
+          } else {
+            let html = '';
+            data.posts.forEach(post => {
+              const formattedTime = formatRelativeTime(post.createdAt);
+              html += `
+                <div class="p-3 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg">
+                  <div class="flex items-start justify-between gap-2 mb-2">
+                    <div>
+                      <p class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">${escapeHtml(post.username || 'Unknown')}</p>
+                      <p class="text-xs text-zinc-500 dark:text-zinc-400">${formattedTime}</p>
+                    </div>
+                    <div class="flex gap-1">
+                      ${post.userId === currentUser.id || true ? `<button onclick="editPost(${post.id}, ${currentManagedChannelId})" class="text-xs px-2 py-1 bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 rounded transition">Edit</button>` : ''}
+                      ${post.userId === currentUser.id || true ? `<button onclick="deletePost(${post.id}, ${currentManagedChannelId})" class="text-xs px-2 py-1 bg-red-200 dark:bg-red-900 hover:bg-red-300 dark:hover:bg-red-800 rounded transition text-red-700 dark:text-red-200">Delete</button>` : ''}
+                    </div>
+                  </div>
+                  <p class="text-sm text-zinc-700 dark:text-zinc-300">${escapeHtml(post.content?.text || '')}</p>
+                </div>
+              `;
+            });
+            container.innerHTML = html;
+          }
+        }
+      } catch (err) {
+        console.error('Error loading posts:', err);
+        container.innerHTML = '<div class="text-center py-8 text-red-600 dark:text-red-400">Error loading posts</div>';
+      }
+    }
+
+    async function loadChannelFollowers() {
+      if (!currentManagedChannelId) return;
+      const container = document.getElementById('followersContainer');
+      try {
+        const data = await apiCall(`/api/channels/${currentManagedChannelId}/followers?limit=100`);
+        if (data && data.followers) {
+          if (data.followers.length === 0) {
+            container.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No followers yet</div>';
+          } else {
+            let html = '';
+            data.followers.forEach(follower => {
+              const formattedTime = formatRelativeTime(follower.followedAt);
+              html += `
+                <div class="p-3 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg flex items-center justify-between">
+                  <div>
+                    <p class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">${escapeHtml(follower.username)}</p>
+                    <p class="text-xs text-zinc-500 dark:text-zinc-400">Followed ${formattedTime}</p>
+                  </div>
+                  <div class="flex gap-2">
+                    <button onclick="promoteFollowerToAdmin(${follower.userId})" class="text-xs px-2 py-1 bg-cyan-200 dark:bg-cyan-900 hover:bg-cyan-300 dark:hover:bg-cyan-800 rounded transition text-cyan-700 dark:text-cyan-200">Promote</button>
+                    <button onclick="removeFollower(${follower.userId})" class="text-xs px-2 py-1 bg-red-200 dark:bg-red-900 hover:bg-red-300 dark:hover:bg-red-800 rounded transition text-red-700 dark:text-red-200">Remove</button>
+                  </div>
+                </div>
+              `;
+            });
+            container.innerHTML = html;
+          }
+        }
+      } catch (err) {
+        console.error('Error loading followers:', err);
+        container.innerHTML = '<div class="text-center py-8 text-red-600 dark:text-red-400">Error loading followers</div>';
+      }
+    }
+
+    async function loadChannelAdmins() {
+      if (!currentManagedChannelId) return;
+      const container = document.getElementById('adminsContainer');
+      try {
+        const data = await apiCall(`/api/channels/${currentManagedChannelId}/admins`);
+        if (data && data.admins) {
+          if (data.admins.length === 0) {
+            container.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No admins yet</div>';
+          } else {
+            let html = '';
+            data.admins.forEach(admin => {
+              const roleLabel = admin.role === 'owner' ? '👑 Owner' : '⚙️ Admin';
+              html += `
+                <div class="p-3 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg flex items-center justify-between">
+                  <div>
+                    <p class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">${escapeHtml(admin.username)}</p>
+                    <p class="text-xs text-zinc-500 dark:text-zinc-400">${roleLabel}</p>
+                  </div>
+                  ${admin.role === 'admin' ? `<button onclick="removeAdmin(${admin.userId})" class="text-xs px-2 py-1 bg-red-200 dark:bg-red-900 hover:bg-red-300 dark:hover:bg-red-800 rounded transition text-red-700 dark:text-red-200">Remove</button>` : ''}
+                </div>
+              `;
+            });
+            container.innerHTML = html;
+          }
+        }
+      } catch (err) {
+        console.error('Error loading admins:', err);
+        container.innerHTML = '<div class="text-center py-8 text-red-600 dark:text-red-400">Error loading admins</div>';
+      }
+    }
+
+    async function loadEditChannelForm() {
+      if (!currentManagedChannelId) return;
+      try {
+        const data = await apiCall(`/api/channels`);
+        const channel = data.channels?.find(ch => ch.id === currentManagedChannelId);
+        if (channel) {
+          document.getElementById('editChannelNameInput').value = channel.name;
+          document.getElementById('editChannelDescInput').value = channel.description || '';
+        }
+      } catch (err) {
+        console.error('Error loading channel form:', err);
+      }
+    }
+
+    async function saveChannelChanges() {
+      if (!currentManagedChannelId) return;
+      const name = document.getElementById('editChannelNameInput').value.trim();
+      const desc = document.getElementById('editChannelDescInput').value.trim();
+
+      if (!name) {
+        showToast('Channel name is required', 'error');
+        return;
+      }
+
+      try {
+        const data = await apiCall(`/api/channels/${currentManagedChannelId}`, {
+          method: 'PUT',
+          body: JSON.stringify({ name, description: desc || null })
+        });
+
+        if (data && !data.error) {
+          showToast('Channel updated successfully', 'success');
+          currentManagedChannelName = name;
+          document.getElementById('manageChannelTitle').textContent = `Manage: ${escapeHtml(name)}`;
+        } else {
+          showToast(`Error: ${data.error || 'Failed to update channel'}`, 'error');
+        }
+      } catch (err) {
+        console.error('Error saving changes:', err);
+        showToast('Error saving changes', 'error');
+      }
+    }
+
+    async function deleteChannel() {
+      if (!currentManagedChannelId) return;
+      if (!confirm('Are you sure you want to permanently delete this channel? This cannot be undone.')) return;
+
+      try {
+        const data = await apiCall(`/api/channels/${currentManagedChannelId}`, { method: 'DELETE' });
+        if (data && data.success) {
+          showToast('Channel deleted successfully', 'success');
+          closeManageChannelModal();
+          await checkAndShowMyChannelsTab();
+          await loadMyChannels();
+        } else {
+          showToast(`Error: ${data.error || 'Failed to delete channel'}`, 'error');
+        }
+      } catch (err) {
+        console.error('Error deleting channel:', err);
+        showToast('Error deleting channel', 'error');
+      }
+    }
+
+    async function promoteFollowerToAdmin(followerId) {
+      if (!currentManagedChannelId) return;
+      try {
+        const data = await apiCall(`/api/channels/${currentManagedChannelId}/followers/${followerId}/promote`, { method: 'POST' });
+        if (data && data.success) {
+          showToast('Follower promoted to admin', 'success');
+          await loadChannelFollowers();
+          await loadChannelAdmins();
+        } else {
+          showToast(`Error: ${data.error || 'Failed to promote follower'}`, 'error');
+        }
+      } catch (err) {
+        console.error('Error promoting follower:', err);
+        showToast('Error promoting follower', 'error');
+      }
+    }
+
+    async function removeFollower(followerId) {
+      if (!currentManagedChannelId) return;
+      if (!confirm('Remove this follower?')) return;
+
+      try {
+        const data = await apiCall(`/api/channels/${currentManagedChannelId}/followers/${followerId}`, { method: 'DELETE' });
+        if (data && data.success) {
+          showToast('Follower removed', 'success');
+          await loadChannelFollowers();
+        } else {
+          showToast(`Error: ${data.error || 'Failed to remove follower'}`, 'error');
+        }
+      } catch (err) {
+        console.error('Error removing follower:', err);
+        showToast('Error removing follower', 'error');
+      }
+    }
+
+    async function removeAdmin(adminId) {
+      if (!currentManagedChannelId) return;
+      if (!confirm('Remove this admin?')) return;
+
+      try {
+        const data = await apiCall(`/api/channels/${currentManagedChannelId}/admins/${adminId}`, { method: 'DELETE' });
+        if (data && data.success) {
+          showToast('Admin removed', 'success');
+          await loadChannelAdmins();
+        } else {
+          showToast(`Error: ${data.error || 'Failed to remove admin'}`, 'error');
+        }
+      } catch (err) {
+        console.error('Error removing admin:', err);
+        showToast('Error removing admin', 'error');
+      }
+    }
+
+    function editPost(postId, channelId) {
+      showToast('Edit post feature coming soon', 'info');
+    }
+
+    function deletePost(postId, channelId) {
+      showToast('Delete post feature coming soon', 'info');
     }
 
     // Create channel with wallet signature
