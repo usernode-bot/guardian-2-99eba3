@@ -6941,8 +6941,9 @@
     }
 
     async function showChannelPosts(channelId) {
-      // Validate channelId
-      if (!channelId || isNaN(parseInt(channelId, 10))) {
+      // Parse and validate channelId (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
+      if (!channelId || isNaN(parsedChannelId)) {
         console.error('showChannelPosts: invalid channelId', channelId);
         showToast('Invalid channel', 'error');
         return;
@@ -6952,17 +6953,17 @@
       currentConvId = null;
       currentOtherId = null;
       currentGroupId = null;
-      currentChannelId = channelId;
+      currentChannelId = parsedChannelId;
       channelPostsOffset = 0;
       channelPostsHasMore = false;
 
-      let channel = channelsList && channelsList.find(ch => ch && ch.id === channelId);
+      let channel = channelsList && channelsList.find(ch => ch && ch.id === parsedChannelId);
 
       // If channel not found, reload channels (in case a newly created channel hasn't loaded yet)
       if (!channel) {
         try {
           await loadChannels();
-          channel = channelsList && channelsList.find(ch => ch && ch.id === channelId);
+          channel = channelsList && channelsList.find(ch => ch && ch.id === parsedChannelId);
         } catch (err) {
           console.error('showChannelPosts: error reloading channels', err);
           showToast('Failed to load channel', 'error');
@@ -7055,16 +7056,18 @@
 
     // New function: loadChannelPosts for consistency with loadMessages and loadGroupMessages
     async function loadChannelPosts(channelId) {
-      if (!currentChannelId || currentChannelId !== channelId) return;
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
+      if (!currentChannelId || currentChannelId !== parsedChannelId) return;
 
       try {
         isLoadingChannelPosts = true;
-        const data = await apiCall(`/api/channels/${channelId}/posts?limit=50&offset=0`);
+        const data = await apiCall(`/api/channels/${parsedChannelId}/posts?limit=50&offset=0`);
         if (data && data.posts) {
           channelPostsHasMore = data.hasMore || false;
           let html = '';
 
-          const channel = channelsList.find(ch => ch.id === channelId);
+          const channel = channelsList.find(ch => ch.id === parsedChannelId);
           if (!channel) return;
 
           const isOwner = currentUser && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
@@ -7116,7 +7119,7 @@
             html += '</div>';
 
             if (channelPostsHasMore) {
-              html += '<div class="p-4 flex justify-center"><button onclick="loadMoreChannelPosts(' + channelId + ')" class="py-2 px-6 text-sm font-medium text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition border border-cyan-600 dark:border-cyan-500 rounded">Load more posts</button></div>';
+              html += '<div class="p-4 flex justify-center"><button onclick="loadMoreChannelPosts(' + parsedChannelId + ')" class="py-2 px-6 text-sm font-medium text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition border border-cyan-600 dark:border-cyan-500 rounded">Load more posts</button></div>';
             } else if (data.posts.length > 0) {
               html += '<div class="p-4 text-center text-xs text-zinc-500 dark:text-zinc-500">No more posts</div>';
             }
@@ -7135,11 +7138,13 @@
     }
 
     async function loadMoreChannelPosts(channelId) {
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
       if (isLoadingChannelPosts || !channelPostsHasMore) return;
 
       try {
         isLoadingChannelPosts = true;
-        const data = await apiCall(`/api/channels/${channelId}/posts?limit=50&offset=${channelPostsOffset}`);
+        const data = await apiCall(`/api/channels/${parsedChannelId}/posts?limit=50&offset=${channelPostsOffset}`);
         if (data && data.posts) {
           // Append posts to channelChatList after removing the "Load more" button
           const channelChatList = document.getElementById('channelChatList');
@@ -7293,18 +7298,20 @@
     }
 
     async function loadChannelPostsAfterSubmit(channelId) {
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
       try {
         isLoadingChannelPosts = true;
         channelPostsOffset = 0;
         channelPostsHasMore = false;
 
-        const data = await apiCall(`/api/channels/${channelId}/posts?limit=50&offset=0`);
+        const data = await apiCall(`/api/channels/${parsedChannelId}/posts?limit=50&offset=0`);
         if (data && data.posts) {
           channelPostsHasMore = data.hasMore || false;
           let html = '';
 
           // Re-add compose box for owner
-          const channel = channelsList.find(ch => ch.id === channelId);
+          const channel = channelsList.find(ch => ch.id === parsedChannelId);
           const isOwner = currentUser && channel && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
 
           if (isOwner) {
@@ -7352,7 +7359,7 @@
             html += '</div>';
 
             if (channelPostsHasMore) {
-              html += '<div class="p-4 flex justify-center"><button onclick="loadMoreChannelPosts(' + channelId + ')" class="py-2 px-6 text-sm font-medium text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition border border-cyan-600 dark:border-cyan-500 rounded">Load more posts</button></div>';
+              html += '<div class="p-4 flex justify-center"><button onclick="loadMoreChannelPosts(' + parsedChannelId + ')" class="py-2 px-6 text-sm font-medium text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition border border-cyan-600 dark:border-cyan-500 rounded">Load more posts</button></div>';
             } else if (data.posts.length > 0) {
               html += '<div class="p-4 text-center text-xs text-zinc-500 dark:text-zinc-500">No more posts</div>';
             }
@@ -7441,6 +7448,8 @@
     }
 
     async function submitEditPost(channelId, postId) {
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
       const textarea = document.getElementById(`editPostInput-${postId}`);
       const content = textarea.value.trim();
 
@@ -7455,7 +7464,7 @@
       }
 
       try {
-        const response = await apiCall(`/api/channels/${channelId}/posts/${postId}`, {
+        const response = await apiCall(`/api/channels/${parsedChannelId}/posts/${postId}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ content: content })
@@ -7464,7 +7473,7 @@
         if (response && !response.error) {
           showToast('Post updated', 'success');
           document.getElementById(`edit-modal-${postId}`).remove();
-          await loadChannelPostsAfterSubmit(channelId);
+          await loadChannelPostsAfterSubmit(parsedChannelId);
         } else {
           showToast(response?.error || 'Unable to update post', 'error');
         }
@@ -7475,6 +7484,8 @@
     }
 
     function openDeletePostConfirm(channelId, postId) {
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
       // Close any open menu
       document.querySelectorAll('[id^="menu-"]').forEach(m => m.classList.add('hidden'));
 
@@ -7491,7 +7502,7 @@
           </div>
           <div class="px-6 py-4 border-t border-zinc-200 dark:border-zinc-800 flex gap-3">
             <button onclick="document.getElementById('delete-confirm-${postId}').remove()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100 text-sm font-medium">Cancel</button>
-            <button onclick="submitDeletePost(${channelId}, ${postId})" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition text-sm font-medium">Delete</button>
+            <button onclick="submitDeletePost(${parsedChannelId}, ${postId})" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition text-sm font-medium">Delete</button>
           </div>
         </div>
       `;
@@ -7499,15 +7510,17 @@
     }
 
     async function submitDeletePost(channelId, postId) {
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
       try {
-        const response = await apiCall(`/api/channels/${channelId}/posts/${postId}`, {
+        const response = await apiCall(`/api/channels/${parsedChannelId}/posts/${postId}`, {
           method: 'DELETE'
         });
 
         if (response && !response.error) {
           showToast('Post deleted', 'success');
           document.getElementById(`delete-confirm-${postId}`).remove();
-          await loadChannelPostsAfterSubmit(channelId);
+          await loadChannelPostsAfterSubmit(parsedChannelId);
         } else {
           showToast(response?.error || 'Unable to delete post', 'error');
         }
@@ -7532,7 +7545,9 @@
 
 
     function editChannelModal(channelId) {
-      const channel = channelsList.find(ch => ch.id === channelId);
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
+      const channel = channelsList.find(ch => ch.id === parsedChannelId);
       if (!channel) return;
 
       const newName = prompt('Edit channel name:', channel.name);
@@ -7545,7 +7560,7 @@
       const newDesc = prompt('Edit channel description:', channel.description || '');
       if (newDesc === null) return;
 
-      updateChannel(channelId, newName.trim(), newDesc.trim());
+      updateChannel(parsedChannelId, newName.trim(), newDesc.trim());
     }
 
     async function updateChannel(channelId, name, description) {
@@ -7570,17 +7585,21 @@
     }
 
     function deleteChannelConfirm(channelId) {
-      const channel = channelsList.find(ch => ch.id === channelId);
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
+      const channel = channelsList.find(ch => ch.id === parsedChannelId);
       if (!channel) return;
 
       if (confirm(`Are you sure you want to delete the channel "#${channel.name}"? This action cannot be undone.`)) {
-        deleteChannel(channelId);
+        deleteChannel(parsedChannelId);
       }
     }
 
     async function deleteChannel(channelId) {
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
       try {
-        const data = await apiCall(`/api/channels/${channelId}`, {
+        const data = await apiCall(`/api/channels/${parsedChannelId}`, {
           method: 'DELETE'
         });
 
@@ -7605,7 +7624,9 @@
     }
 
     async function openChannelSettingsModal(channelId) {
-      const channel = channelsList.find(ch => ch.id === channelId);
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
+      const channel = channelsList.find(ch => ch.id === parsedChannelId);
       if (!channel) {
         showToast('Channel not found', 'error');
         return;
@@ -7631,7 +7652,7 @@
       // Fetch full channel data
       try {
         const channels = await apiCall('/api/channels');
-        const fullChannel = channels.channels.find(ch => ch.id === channelId);
+        const fullChannel = channels.channels.find(ch => ch.id === parsedChannelId);
 
         if (!fullChannel) {
           showToast('Failed to load channel settings', 'error');
@@ -8095,25 +8116,27 @@
     }
 
     async function toggleFollowChannel(channelId, shouldFollow) {
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
       try {
         if (shouldFollow) {
-          const data = await apiCall(`/api/channels/${channelId}/follow`, { method: 'POST' });
+          const data = await apiCall(`/api/channels/${parsedChannelId}/follow`, { method: 'POST' });
           if (data && !data.error) {
             showToast('Channel followed', 'success');
             await loadChannels();
-            if (currentChannelId === channelId) {
-              await showChannelPosts(channelId);
+            if (currentChannelId === parsedChannelId) {
+              await showChannelPosts(parsedChannelId);
             }
           } else if (data && data.error) {
             showToast(data.error, 'error');
           }
         } else {
-          const data = await apiCall(`/api/channels/${channelId}/follow`, { method: 'DELETE' });
+          const data = await apiCall(`/api/channels/${parsedChannelId}/follow`, { method: 'DELETE' });
           if (data && !data.error) {
             showToast('Channel unfollowed', 'success');
             await loadChannels();
-            if (currentChannelId === channelId) {
-              await showChannelPosts(channelId);
+            if (currentChannelId === parsedChannelId) {
+              await showChannelPosts(parsedChannelId);
             }
           } else if (data && data.error) {
             showToast(data.error, 'error');
