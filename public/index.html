@@ -3262,7 +3262,8 @@
     }
 
     // Pre-flight check for testnet transactions
-    // Ensures bridge is ready and wallet is properly configured before submitting to server
+    // Ensures wallet is properly configured before submitting to server
+    // Does not require bridge to be ready — linked wallet is sufficient
     async function checkWalletReadyForTestnet() {
       const currentMode = loadSettings().network;
 
@@ -3271,21 +3272,8 @@
         return { ready: true, error: null };
       }
 
-      // Check if bridge is available
-      if (!isWalletAvailable()) {
-        // Try waiting for bridge in case it's still loading
-        console.log('[PREFLIGHT] Wallet not available yet, waiting for bridge...');
-        const bridgeReady = await waitForBridge(3000, 'testnet');
-
-        if (!bridgeReady) {
-          return {
-            ready: false,
-            error: 'Usernode wallet bridge failed to initialize. Please refresh the page and try again.'
-          };
-        }
-      }
-
       // Check if user has wallet linked (should be in currentUser)
+      // Linked wallet is sufficient; bridge is optional for signature confirmation
       if (!currentUser || !currentUser.usernode_pubkey) {
         return {
           ready: false,
@@ -4553,27 +4541,41 @@
         throw new Error('You must be connected to Usernode wallet to perform this action. Please refresh your browser.');
       }
 
-      // FIX #2: Fetch wallet address from bridge before signing
+      // Fetch wallet address: try bridge first, fall back to linked wallet
       let connectedWalletAddress = null;
+      let walletSource = null;
+
       try {
         if (typeof window.usernode?.getNodeAddress === 'function') {
           connectedWalletAddress = await window.usernode.getNodeAddress();
-          console.log('[WALLET] Connected address from bridge:', connectedWalletAddress);
+          if (connectedWalletAddress) {
+            console.log('[WALLET] Connected address from bridge:', connectedWalletAddress);
+            walletSource = 'bridge';
+          }
         }
       } catch (err) {
         console.warn('[WALLET] Could not fetch connected address from bridge:', err.message);
       }
 
+      // Fall back to linked wallet if bridge didn't provide one
+      if (!connectedWalletAddress && currentUser && currentUser.usernode_pubkey) {
+        console.log('[WALLET] Bridge not available or returned undefined, using linked wallet:', currentUser.usernode_pubkey);
+        connectedWalletAddress = currentUser.usernode_pubkey;
+        walletSource = 'linked';
+      }
+
       // Validate wallet address format
       if (!connectedWalletAddress) {
-        throw new Error('Wallet address not available. Please reconnect your wallet.');
+        throw new Error('No wallet linked to account. Link a wallet in Settings before using testnet mode.');
       }
       if (typeof connectedWalletAddress !== 'string' || !connectedWalletAddress.startsWith('ut1')) {
         throw new Error('Invalid wallet address format: ' + JSON.stringify(connectedWalletAddress));
       }
 
       // Show loading toast
-      showToast('Requesting wallet signature...', 'info');
+      const sourceLabel = walletSource === 'bridge' ? 'bridge' : 'account';
+      showToast(`Requesting wallet signature (${sourceLabel})...`, 'info');
+      console.log('[WALLET] Using ' + sourceLabel + ' wallet for signature:', connectedWalletAddress);
 
       // Call wallet signature directly with connected address
       return await executeWalletSignature(action, details, auditLogId, connectedWalletAddress);
