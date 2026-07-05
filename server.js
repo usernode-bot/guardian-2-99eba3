@@ -5540,7 +5540,7 @@ app.get('/api/channels', async (req, res) => {
         name: c.name,
         description: c.description,
         ownerId: c.owner_id,
-        ownerUsername: c.ownerUsername || (c.owner_id && c.owner_id !== -1 ? `user-${c.owner_id}` : null),
+        ownerUsername: 'Anonymous',
         category: c.category,
         isVerified: c.is_verified,
         verifiedAt: c.verified_at,
@@ -5567,7 +5567,11 @@ app.get('/api/channels/:channelId/posts', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const channelId = parseInt(req.params.channelId);
+    const channelId = parseInt(req.params.channelId, 10);
+    if (isNaN(channelId)) {
+      return res.status(400).json({ error: 'Invalid channel ID' });
+    }
+
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
     const offset = parseInt(req.query.offset || 0);
 
@@ -5577,9 +5581,9 @@ app.get('/api/channels/:channelId/posts', async (req, res) => {
         posts: mockResult.posts.map(p => ({
           id: p.id,
           userId: p.authorId,
-          username: p.authorUsername,
+          username: 'Anonymous',
           verified: false,
-          avatarUrl: p.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.authorUsername}`,
+          avatarUrl: p.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=Anonymous`,
           content: p.content,
           imageUrls: p.imageUrls || [],
           createdAt: p.createdAt,
@@ -5625,7 +5629,7 @@ app.get('/api/channels/:channelId/posts', async (req, res) => {
     const resultPosts = posts.map(post => ({
       id: post.id,
       userId: post.user_id,
-      username: post.username,
+      username: 'Anonymous',
       verified: !!post.verified_at,
       avatarUrl: post.avatar_url,
       content: post.content,
@@ -6259,7 +6263,7 @@ app.get('/api/user/followed-channels', async (req, res) => {
         name: ch.name,
         description: ch.description,
         ownerId: ch.owner_id,
-        ownerUsername: ch.ownerUsername,
+        ownerUsername: 'Anonymous',
         category: ch.category,
         isVerified: ch.is_verified,
         verifiedAt: ch.verified_at,
@@ -6273,7 +6277,7 @@ app.get('/api/user/followed-channels', async (req, res) => {
         isOwner: ch.owner_id === req.user.id,
         latestPost: ch.latestPostId ? {
           id: ch.latestPostId,
-          authorUsername: ch.latestPostUsername,
+          authorUsername: 'Anonymous',
           contentSnippet: contentSnippet,
           createdAt: ch.latestPostCreatedAt
         } : null
@@ -6300,7 +6304,7 @@ app.get('/api/user/followed-channels', async (req, res) => {
     const users = userContacts.map(r => ({
       id: r.id,
       userId: r.user_id,
-      username: r.username,
+      username: 'Anonymous',
       usernode_pubkey: r.usernode_pubkey || null,
       nickname: r.nickname,
       verified: !!r.verified_at,
@@ -6598,7 +6602,7 @@ app.get('/api/feed/posts', async (req, res) => {
     const resultPosts = posts.map(post => ({
       id: post.id,
       userId: post.user_id,
-      username: post.username,
+      username: 'Anonymous',
       verified: !!post.verified_at,
       avatarUrl: post.avatar_url,
       content: post.content,
