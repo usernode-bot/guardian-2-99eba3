@@ -5500,66 +5500,95 @@ app.get('/api/channels', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      console.error('Invalid user ID:', req.user.id);
+      return res.status(401).json({ error: 'Invalid user context' });
+    }
+
     const category = req.query.category || null;
     const featured = req.query.featured === 'true';
 
-    if (ENABLE_DEMO_MODE) {
-      return res.json(mockData.getMockChannels(1, category, featured));
+    try {
+      // Build the complete query with all required fields and joins
+      let query = `
+        SELECT
+          c.id,
+          c.name,
+          c.description,
+          c.is_system,
+          c.owner_id,
+          c.category,
+          c.is_verified,
+          c.verified_at,
+          c.is_featured,
+          c.network_mode,
+          c.created_at,
+          c.updated_at,
+          COALESCE(u.username, 'Anonymous') as ownerUsername,
+          (SELECT COUNT(*) FROM channel_unread WHERE user_id = $1 AND channel_id = c.id AND unread_count > 0)::INTEGER as unreadCount,
+          (SELECT COUNT(*) FROM pinned_channels WHERE user_id = $1 AND channel_id = c.id)::INTEGER as isPinned,
+          (SELECT COUNT(*) FROM channel_followers WHERE channel_id = c.id)::INTEGER as followerCount,
+          (SELECT COUNT(*) FROM channel_followers WHERE user_id = $1 AND channel_id = c.id)::INTEGER as isFollowing
+        FROM channels c
+        LEFT JOIN users u ON c.owner_id = u.id
+        WHERE 1=1
+      `;
+
+      const params = [userId];
+      let paramCount = 1;
+
+      if (featured) {
+        query += ` AND c.is_featured = TRUE`;
+      }
+      if (category) {
+        paramCount++;
+        query += ` AND c.category = $${paramCount}`;
+        params.push(category);
+      }
+
+      query += ` ORDER BY c.is_featured DESC, c.is_system DESC, c.created_at DESC`;
+
+      console.log(`GET /api/channels: querying database for user ${userId}, featured=${featured}, category=${category || 'all'}`);
+
+      const { rows: channels } = await pool.query(query, params);
+
+      console.log(`GET /api/channels: database returned ${channels.length} channels for user ${userId}`);
+
+      // Map database rows to API response format with all required fields
+      const response = {
+        channels: channels.map(c => {
+          const result = {
+            id: c.id,
+            name: c.name,
+            description: c.description,
+            ownerId: c.owner_id,
+            ownerUsername: c.ownerUsername,
+            category: c.category,
+            isVerified: c.is_verified,
+            verifiedAt: c.verified_at,
+            isFeatured: c.is_featured,
+            isSystem: c.is_system,
+            networkMode: c.network_mode,
+            createdAt: c.created_at,
+            updatedAt: c.updated_at,
+            unreadCount: parseInt(c.unreadCount) || 0,
+            isPinned: parseInt(c.isPinned) > 0,
+            followerCount: parseInt(c.followerCount) || 0,
+            isFollowing: parseInt(c.isFollowing) > 0
+          };
+          return result;
+        })
+      };
+
+      console.log(`GET /api/channels: sending ${response.channels.length} channels to client`);
+      res.json(response);
+    } catch (queryErr) {
+      console.error('Database query error in GET /api/channels:', queryErr);
+      res.status(500).json({ error: 'Failed to query channels' });
     }
-
-    let query = `
-      SELECT c.id, c.name, c.description, c.is_system, c.owner_id, c.category, c.is_verified, c.verified_at, c.is_featured, c.network_mode, c.created_at, c.updated_at,
-             u.username as ownerUsername,
-             (SELECT COUNT(*) FROM channel_unread WHERE user_id = $1 AND channel_id = c.id AND unread_count > 0)::INTEGER as unreadCount,
-             (SELECT COUNT(*) FROM pinned_channels WHERE user_id = $1 AND channel_id = c.id)::INTEGER as isPinned,
-             (SELECT COUNT(*) FROM channel_followers WHERE channel_id = c.id)::INTEGER as followerCount,
-             (SELECT COUNT(*) FROM channel_followers WHERE user_id = $1 AND channel_id = c.id)::INTEGER as isFollowing
-      FROM channels c
-      LEFT JOIN users u ON c.owner_id = u.id
-      WHERE 1=1
-    `;
-    const params = [req.user.id];
-    let paramCount = 1;
-
-    if (featured) {
-      query += ` AND c.is_featured = TRUE`;
-    }
-    if (category) {
-      paramCount++;
-      query += ` AND c.category = $${paramCount}`;
-      params.push(category);
-    }
-
-    query += ` ORDER BY c.is_featured DESC, c.is_system DESC, c.created_at DESC`;
-    console.log(`GET /api/channels: returning all channels accessible to user ${req.user.id}`);
-
-    const { rows: channels } = await pool.query(query, params);
-
-    console.log(`GET /api/channels: returning ${channels.length} channels for user ${req.user.id}`);
-
-    res.json({
-      channels: channels.map(c => ({
-        id: c.id,
-        name: c.name,
-        description: c.description,
-        ownerId: c.owner_id,
-        ownerUsername: 'Anonymous',
-        category: c.category,
-        isVerified: c.is_verified,
-        verifiedAt: c.verified_at,
-        isFeatured: c.is_featured,
-        isSystem: c.is_system,
-        networkMode: c.network_mode,
-        createdAt: c.created_at,
-        updatedAt: c.updated_at,
-        unreadCount: parseInt(c.unreadCount) || 0,
-        isPinned: parseInt(c.isPinned) > 0,
-        followerCount: parseInt(c.followerCount) || 0,
-        isFollowing: parseInt(c.isFollowing) > 0
-      }))
-    });
   } catch (err) {
-    console.error('Error fetching channels:', err);
+    console.error('Error in GET /api/channels:', err);
     res.status(500).json({ error: 'Failed to fetch channels' });
   }
 });
