@@ -81,8 +81,15 @@ function validateAndConfigureRPC() {
   // If not set or invalid, use intelligent defaults based on environment
   if (!configuredUrl && NETWORK_MODE === 'testnet') {
     if (IS_STAGING) {
-      configuredUrl = 'http://host.docker.internal:3001';
-      console.log(`[CONFIG] NODE_RPC_URL not set in staging, using default: ${configuredUrl}`);
+      // In staging, try multiple fallbacks: in-container Usernode, Docker host, localhost
+      const stagingOptions = [
+        'http://usernode-node:3001',      // In-network Usernode service
+        'http://host.docker.internal:3001' // Docker desktop host
+      ];
+      configuredUrl = stagingOptions[0];  // Default to in-network service
+      console.log(`[CONFIG] NODE_RPC_URL not set in staging`);
+      console.log(`[CONFIG] Using default RPC endpoint for staging: ${configuredUrl}`);
+      console.log(`[CONFIG] Fallback endpoints will be tried if primary fails: ${stagingOptions.slice(1).join(', ')}`);
     } else {
       // In production testnet: NODE_RPC_URL is REQUIRED
       console.error(`\n⚠️  [CONFIG] CRITICAL: NODE_RPC_URL not configured in production testnet mode\n`);
@@ -404,6 +411,66 @@ function checkRateLimit(key, limit, windowMs) {
   times.push(now);
   rateLimits.set(key, times);
   return true;
+}
+
+// Centralized wallet validation for transaction endpoints
+// Returns { valid: boolean, error: string | null }
+// Only requires wallet for testnet mode; devnet and demo can proceed without it
+async function validateWalletForMode(networkMode, userId, userWalletPubkey) {
+  // Demo mode: no wallet required
+  if (networkMode === 'demo') {
+    return { valid: true, error: null };
+  }
+
+  // Devnet mode: no wallet required (database-only transactions)
+  if (networkMode === 'devnet') {
+    return { valid: true, error: null };
+  }
+
+  // Testnet mode: wallet is required
+  if (networkMode === 'testnet') {
+    // Check if user has a wallet address linked
+    if (!userWalletPubkey) {
+      return {
+        valid: false,
+        error: 'Wallet not linked to user account. Connect your Usernode wallet in Settings to use testnet.'
+      };
+    }
+
+    // Check if RPC endpoint is configured and reachable
+    if (!NODE_RPC_URL) {
+      console.error('[WALLET-VALIDATION] RPC endpoint not configured in testnet mode');
+      return {
+        valid: false,
+        error: 'Testnet RPC endpoint not configured. Contact administrator.'
+      };
+    }
+
+    // Perform a quick RPC health check
+    const health = await checkRPCHealth();
+    if (!health.reachable) {
+      console.error('[WALLET-VALIDATION] RPC endpoint unreachable:', health.error);
+      return {
+        valid: false,
+        error: `Cannot reach testnet RPC endpoint. ${health.error || 'Network may be unavailable.'}`
+      };
+    }
+
+    return { valid: true, error: null };
+  }
+
+  // Mainnet: not yet supported
+  if (networkMode === 'mainnet') {
+    return {
+      valid: false,
+      error: 'Mainnet support is not yet available.'
+    };
+  }
+
+  return {
+    valid: false,
+    error: `Unknown network mode: ${networkMode}`
+  };
 }
 
 const PUBLIC_API_PATHS = new Set(['/health', '/favicon.ico', '/api/test/production-simulation', '/api/diagnostics/bridge', '/api/diagnostics/status']);
@@ -2179,9 +2246,10 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
     console.log(`[MESSAGE] Frontend content hash: ${frontendContentHash || 'none'}`);
     console.log(`[MESSAGE] Demo mode: ${ENABLE_DEMO_MODE}`);
 
-    // Validate wallet connection before proceeding with message transaction (skip in demo mode)
-    if (!ENABLE_DEMO_MODE && !req.user.usernode_pubkey) {
-      return res.status(401).json({ error: 'Must be connected to Usernode wallet to send messages' });
+    // Validate wallet connection before proceeding with message transaction
+    const walletValidation = await validateWalletForMode(NETWORK_MODE, userId, req.user.usernode_pubkey);
+    if (!walletValidation.valid) {
+      return res.status(401).json({ error: walletValidation.error });
     }
 
     const now = new Date();
@@ -2592,9 +2660,10 @@ app.post('/api/tokens/send', async (req, res) => {
     console.log(`[TOKEN] txHash provided: ${txHash ? 'yes - ' + txHash : 'no'}`);
     console.log(`[TOKEN] Frontend content hash: ${frontendContentHash || 'none'}`);
 
-    // Validate wallet connection before proceeding with transaction (skip in demo mode)
-    if (!ENABLE_DEMO_MODE && !req.user.usernode_pubkey) {
-      return res.status(401).json({ error: 'Must be connected to Usernode wallet to send tokens' });
+    // Validate wallet connection before proceeding with transaction
+    const walletValidation = await validateWalletForMode(NETWORK_MODE, userId, req.user.usernode_pubkey);
+    if (!walletValidation.valid) {
+      return res.status(401).json({ error: walletValidation.error });
     }
 
     const now = new Date();
@@ -4037,10 +4106,11 @@ app.post('/api/groups', async (req, res) => {
     }
 
     // Validation: check wallet connection before proceeding with group creation (skip in demo mode)
-    console.log(`[POST /api/groups::VALIDATE] Checking wallet connection: usernode_pubkey=${req.user.usernode_pubkey ? 'present' : 'missing'}, ENABLE_DEMO_MODE=${ENABLE_DEMO_MODE}`);
-    if (!ENABLE_DEMO_MODE && !req.user.usernode_pubkey) {
-      console.error(`[POST /api/groups::VALIDATE] Wallet not connected - usernode_pubkey is missing`);
-      return res.status(401).json({ error: 'Must be connected to Usernode wallet to create groups' });
+    console.log(`[POST /api/groups::VALIDATE] Checking wallet connection: usernode_pubkey=${req.user.usernode_pubkey ? 'present' : 'missing'}, NETWORK_MODE=${NETWORK_MODE}`);
+    const walletValidation = await validateWalletForMode(NETWORK_MODE, userId, req.user.usernode_pubkey);
+    if (!walletValidation.valid) {
+      console.error(`[POST /api/groups::VALIDATE] Wallet validation failed: ${walletValidation.error}`);
+      return res.status(401).json({ error: walletValidation.error });
     }
 
     // Validation: check group name
@@ -4421,9 +4491,10 @@ app.put('/api/groups/:groupId', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
-    // Validate wallet connection before proceeding with group update (skip in demo mode)
-    if (!ENABLE_DEMO_MODE && !req.user.usernode_pubkey) {
-      return res.status(401).json({ error: 'Must be connected to Usernode wallet to update groups' });
+    // Validate wallet connection before proceeding with group update
+    const walletValidation = await validateWalletForMode(NETWORK_MODE, userId, req.user.usernode_pubkey);
+    if (!walletValidation.valid) {
+      return res.status(401).json({ error: walletValidation.error });
     }
 
     const now = new Date();
@@ -4583,9 +4654,10 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
-    // Validate wallet connection before proceeding with group message transaction (skip in demo mode)
-    if (!ENABLE_DEMO_MODE && !req.user.usernode_pubkey) {
-      return res.status(401).json({ error: 'Must be connected to Usernode wallet to send group messages' });
+    // Validate wallet connection before proceeding with group message transaction
+    const walletValidation = await validateWalletForMode(NETWORK_MODE, userId, req.user.usernode_pubkey);
+    if (!walletValidation.valid) {
+      return res.status(401).json({ error: walletValidation.error });
     }
 
     const now = new Date();
@@ -6063,9 +6135,10 @@ app.post('/api/channels', async (req, res) => {
       return res.status(400).json({ error: 'Invalid user ID' });
     }
 
-    // Verify wallet is connected (skip in demo mode)
-    if (!ENABLE_DEMO_MODE && !req.user.usernode_pubkey) {
-      return res.status(401).json({ error: 'Must be connected to Usernode wallet to create channels' });
+    // Verify wallet is connected
+    const walletValidation = await validateWalletForMode(NETWORK_MODE, userId, req.user.usernode_pubkey);
+    if (!walletValidation.valid) {
+      return res.status(401).json({ error: walletValidation.error });
     }
 
     const { name, description, category, txHash, auditLogId } = req.body;
@@ -6974,6 +7047,64 @@ app.get('/api/diagnostics/status', async (req, res) => {
     res.json(status);
   } catch (err) {
     console.error('[DIAGNOSTICS] Error getting server status:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Wallet health check endpoint for testnet validation
+app.get('/api/diagnostics/wallet-health', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = parseInt(req.user.id, 10);
+    const userWalletPubkey = req.user.usernode_pubkey;
+    const rpcHealth = await checkRPCHealth();
+
+    // Validate wallet for current network mode
+    const walletValidation = await validateWalletForMode(NETWORK_MODE, userId, userWalletPubkey);
+
+    const health = {
+      user: {
+        id: userId,
+        username: req.user.username,
+        hasWalletLinked: !!userWalletPubkey,
+        walletPubkey: userWalletPubkey || null
+      },
+      networkMode: {
+        current: NETWORK_MODE,
+        requiresWallet: NETWORK_MODE === 'testnet',
+        isDemoMode: NETWORK_MODE === 'demo',
+        isDevnet: NETWORK_MODE === 'devnet'
+      },
+      rpc: {
+        configured: !!NODE_RPC_URL,
+        endpoint: NODE_RPC_URL || null,
+        reachable: rpcHealth.reachable,
+        responseTime: rpcHealth.responseTime || null,
+        error: rpcHealth.error || null
+      },
+      walletValidation: {
+        valid: walletValidation.valid,
+        error: walletValidation.error || null
+      },
+      testnetReadiness: {
+        ready: NETWORK_MODE !== 'testnet' || walletValidation.valid,
+        message: NETWORK_MODE !== 'testnet'
+          ? `Not in testnet mode (currently: ${NETWORK_MODE})`
+          : walletValidation.valid
+            ? 'Testnet wallet is properly configured and ready for transactions'
+            : `Testnet not ready: ${walletValidation.error}`
+      },
+      timestamp: new Date().toISOString()
+    };
+
+    console.log(`[WALLET-HEALTH] Check for user ${userId}: walletLinked=${!!userWalletPubkey}, networkMode=${NETWORK_MODE}, walletValid=${walletValidation.valid}`);
+
+    res.json(health);
+  } catch (err) {
+    console.error('[WALLET-HEALTH] Error checking wallet health:', err);
     res.status(500).json({ error: err.message });
   }
 });

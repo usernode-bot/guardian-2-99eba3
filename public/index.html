@@ -2519,6 +2519,18 @@
           const modeName = storedMode === 'devnet' ? 'Devnet' : 'Testnet';
           showToast('Switched to ' + modeName + ' mode', 'success');
 
+          // If switching to testnet, re-validate wallet availability
+          if (storedMode === 'testnet' || storedMode === 'real_testnet') {
+            console.log('[NETWORK-MODE] Switched to testnet, validating wallet...');
+            const preflight = await checkWalletReadyForTestnet();
+            if (!preflight.ready) {
+              console.warn('[NETWORK-MODE] Wallet not ready for testnet:', preflight.error);
+              showToast('⚠️ ' + preflight.error, 'warning');
+            } else {
+              console.log('[NETWORK-MODE] Testnet wallet validation passed');
+            }
+          }
+
           // Update conditional visibility with the stored mode
           updateNetworkModeVisibility(storedMode);
 
@@ -3247,6 +3259,41 @@
         typeof window.usernode === 'object' &&
         window.usernode !== null
       );
+    }
+
+    // Pre-flight check for testnet transactions
+    // Ensures bridge is ready and wallet is properly configured before submitting to server
+    async function checkWalletReadyForTestnet() {
+      const currentMode = loadSettings().network;
+
+      // Only enforce wallet check for testnet mode
+      if (currentMode !== 'testnet' && currentMode !== 'real_testnet') {
+        return { ready: true, error: null };
+      }
+
+      // Check if bridge is available
+      if (!isWalletAvailable()) {
+        // Try waiting for bridge in case it's still loading
+        console.log('[PREFLIGHT] Wallet not available yet, waiting for bridge...');
+        const bridgeReady = await waitForBridge(3000, 'testnet');
+
+        if (!bridgeReady) {
+          return {
+            ready: false,
+            error: 'Usernode wallet bridge failed to initialize. Please refresh the page and try again.'
+          };
+        }
+      }
+
+      // Check if user has wallet linked (should be in currentUser)
+      if (!currentUser || !currentUser.usernode_pubkey) {
+        return {
+          ready: false,
+          error: 'Wallet not linked to user account. Connect your Usernode wallet in Settings to use testnet.'
+        };
+      }
+
+      return { ready: true, error: null };
     }
 
     // Validate and log wallet address information
@@ -4487,6 +4534,17 @@
         console.log('Devnet + skip-signature enabled: skipping wallet confirmation for action:', action);
         showToast('Signature skipped (devnet mode)', 'info');
         return 'devnet-skipped-' + Date.now();
+      }
+
+      // Pre-flight check for testnet: ensure bridge is ready and wallet is configured
+      if (currentNetworkMode === 'testnet' || currentNetworkMode === 'real_testnet') {
+        console.log('[PREFLIGHT] Running testnet wallet readiness check for action:', action);
+        const preflight = await checkWalletReadyForTestnet();
+        if (!preflight.ready) {
+          console.error('[PREFLIGHT] Wallet not ready for testnet:', preflight.error);
+          throw new Error(preflight.error);
+        }
+        console.log('[PREFLIGHT] Testnet wallet readiness check passed');
       }
 
       // Validate wallet connection
