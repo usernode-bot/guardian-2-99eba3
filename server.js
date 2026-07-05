@@ -5507,8 +5507,23 @@ app.get('/api/channels', async (req, res) => {
       return res.json(mockData.getMockChannels(1, category, featured));
     }
 
+    // Get user's current network_mode for filtering
+    let userNetworkMode = 'devnet';
+    if (dbConnected) {
+      try {
+        const { rows: userRows } = await pool.query(`
+          SELECT network_mode FROM users WHERE id = $1
+        `, [req.user.id]);
+        if (userRows.length > 0 && userRows[0].network_mode) {
+          userNetworkMode = userRows[0].network_mode;
+        }
+      } catch (err) {
+        console.error('Error fetching user network_mode:', err);
+      }
+    }
+
     let query = `
-      SELECT c.id, c.name, c.description, c.is_system, c.owner_id, c.category, c.is_verified, c.verified_at, c.is_featured, c.created_at, c.updated_at,
+      SELECT c.id, c.name, c.description, c.is_system, c.owner_id, c.category, c.is_verified, c.verified_at, c.is_featured, c.network_mode, c.created_at, c.updated_at,
              u.username as ownerUsername,
              (SELECT COUNT(*) FROM channel_unread WHERE user_id = $1 AND channel_id = c.id AND unread_count > 0)::INTEGER as unreadCount,
              (SELECT COUNT(*) FROM pinned_channels WHERE user_id = $1 AND channel_id = c.id)::INTEGER as isPinned,
@@ -5516,10 +5531,10 @@ app.get('/api/channels', async (req, res) => {
              (SELECT COUNT(*) FROM channel_followers WHERE user_id = $1 AND channel_id = c.id)::INTEGER as isFollowing
       FROM channels c
       LEFT JOIN users u ON c.owner_id = u.id
-      WHERE 1=1
+      WHERE (c.network_mode IS NULL OR c.network_mode = $2)
     `;
-    const params = [req.user.id];
-    let paramCount = 1;
+    const params = [req.user.id, userNetworkMode];
+    let paramCount = 2;
 
     if (featured) {
       query += ` AND c.is_featured = TRUE`;
@@ -5531,6 +5546,7 @@ app.get('/api/channels', async (req, res) => {
     }
 
     query += ` ORDER BY c.is_featured DESC, c.is_system DESC, c.created_at DESC`;
+    console.log(`GET /api/channels: filtering by network_mode='${userNetworkMode}' for user ${req.user.id}`);
 
     const { rows: channels } = await pool.query(query, params);
 
@@ -5548,6 +5564,7 @@ app.get('/api/channels', async (req, res) => {
         verifiedAt: c.verified_at,
         isFeatured: c.is_featured,
         isSystem: c.is_system,
+        networkMode: c.network_mode,
         createdAt: c.created_at,
         updatedAt: c.updated_at,
         unreadCount: parseInt(c.unreadCount) || 0,
@@ -5604,19 +5621,36 @@ app.get('/api/channels/:channelId/posts', async (req, res) => {
       });
     }
 
+    // Get user's current network_mode for filtering
+    let userNetworkMode = 'devnet';
+    if (dbConnected) {
+      try {
+        const { rows: userRows } = await pool.query(`
+          SELECT network_mode FROM users WHERE id = $1
+        `, [userId]);
+        if (userRows.length > 0 && userRows[0].network_mode) {
+          userNetworkMode = userRows[0].network_mode;
+        }
+      } catch (err) {
+        console.error('Error fetching user network_mode:', err);
+      }
+    }
+
     // Verify channel exists and user has access (is owner or is following)
+    // Also check that channel is visible in user's current network context
     const { rows: channelCheck } = await pool.query(`
       SELECT
         c.id,
         c.owner_id,
         c.name,
+        c.network_mode,
         (SELECT COUNT(*) > 0 FROM channel_followers WHERE user_id = $2 AND channel_id = $1) as is_following
       FROM channels c
-      WHERE c.id = $1
-    `, [channelId, userId]);
+      WHERE c.id = $1 AND (c.network_mode IS NULL OR c.network_mode = $3)
+    `, [channelId, userId, userNetworkMode]);
 
     if (channelCheck.length === 0) {
-      console.error(`Channel not found: channelId=${channelId}, userId=${userId}, parsedId=${parseInt(channelId, 10)}`);
+      console.error(`Channel not found or not accessible in network: channelId=${channelId}, userId=${userId}, network_mode=${userNetworkMode}`);
       return res.status(404).json({ error: 'Channel not found' });
     }
 
@@ -5625,7 +5659,7 @@ app.get('/api/channels/:channelId/posts', async (req, res) => {
     const isOwner = ownerIdNum === userId;
     const isFollowing = !!channel.is_following;
 
-    console.log(`Channel access check: channelId=${channelId}, userId=${userId}, ownerIdNum=${ownerIdNum}, isOwner=${isOwner}, isFollowing=${isFollowing}`);
+    console.log(`Channel access check: channelId=${channelId}, userId=${userId}, network_mode=${userNetworkMode}, ownerIdNum=${ownerIdNum}, isOwner=${isOwner}, isFollowing=${isFollowing}`);
 
     if (!isOwner && !isFollowing) {
       console.warn(`User ${userId} attempted to access channel ${channelId} without permission. Owner: ${ownerIdNum}, Following: ${isFollowing}`);
@@ -6065,12 +6099,29 @@ app.post('/api/channels', async (req, res) => {
       return res.status(400).json({ error: 'Transaction hash and audit log ID are required' });
     }
 
-    // Insert new channel
+    // Get user's current network_mode
+    let userNetworkMode = 'devnet';
+    if (dbConnected) {
+      try {
+        const { rows: userRows } = await pool.query(`
+          SELECT network_mode FROM users WHERE id = $1
+        `, [userId]);
+        if (userRows.length > 0 && userRows[0].network_mode) {
+          userNetworkMode = userRows[0].network_mode;
+        }
+      } catch (err) {
+        console.error('Error fetching user network_mode:', err);
+      }
+    }
+
+    console.log(`Creating channel: userId=${userId}, network_mode=${userNetworkMode}`);
+
+    // Insert new channel with network_mode
     const { rows: channelRows } = await pool.query(`
-      INSERT INTO channels (name, description, owner_id, category, is_system, is_verified, is_featured)
-      VALUES ($1, $2, $3, $4, FALSE, FALSE, FALSE)
-      RETURNING id, name, description, owner_id, category, is_verified, verified_at, is_featured, is_system, created_at, updated_at
-    `, [name, description || null, userId, category]);
+      INSERT INTO channels (name, description, owner_id, category, is_system, is_verified, is_featured, network_mode)
+      VALUES ($1, $2, $3, $4, FALSE, FALSE, FALSE, $5)
+      RETURNING id, name, description, owner_id, category, is_verified, verified_at, is_featured, is_system, network_mode, created_at, updated_at
+    `, [name, description || null, userId, category, userNetworkMode]);
 
     if (channelRows.length === 0) {
       return res.status(500).json({ error: 'Failed to create channel' });
@@ -6125,6 +6176,7 @@ app.post('/api/channels', async (req, res) => {
       verifiedAt: channel.verified_at,
       isFeatured: channel.is_featured,
       isSystem: channel.is_system,
+      networkMode: channel.network_mode,
       createdAt: channel.created_at,
       updatedAt: channel.updated_at,
       unreadCount: 0,
@@ -7695,6 +7747,18 @@ async function start() {
       ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT FALSE
     `);
 
+    // Add network_mode column to channels table for network isolation (idempotent migration)
+    try {
+      console.log('[Migration] Adding network_mode column to channels table...');
+      await pool.query(`
+        ALTER TABLE channels ADD COLUMN IF NOT EXISTS network_mode VARCHAR(50)
+      `);
+      console.log('[Migration] ✅ network_mode column migration completed');
+    } catch (err) {
+      console.error('[Migration] ❌ ERROR adding network_mode column:', err.message);
+      throw err;
+    }
+
     // Create additional indexes
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_channels_is_featured
@@ -7707,6 +7771,14 @@ async function start() {
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_channels_owner_id
         ON channels(owner_id)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_channels_network_mode
+        ON channels(network_mode)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_channels_owner_network
+        ON channels(owner_id, network_mode)
     `);
 
     // Create pinned_channels table
