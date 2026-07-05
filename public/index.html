@@ -394,6 +394,42 @@
       margin-bottom: 0;
     }
 
+    /* Feed layout CSS: proper positioning and overflow handling */
+    #feedMainContent {
+      min-height: 0;
+    }
+
+    #feedHeader {
+      flex-wrap: nowrap;
+      min-height: 0;
+    }
+
+    #feedHeaderContent {
+      display: block;
+      height: auto;
+      overflow: visible;
+    }
+
+    #feedContentWrapper {
+      overflow-y: auto;
+      overflow-x: hidden;
+      min-height: 0;
+      transition: padding-top 0.2s ease-out;
+    }
+
+    /* Ensure hidden class works reliably */
+    .hidden {
+      display: none !important;
+    }
+
+    /* Change channelDetailHeader from fixed to sticky for proper scrolling */
+    #channelDetailHeader {
+      position: sticky !important;
+      top: 3.5rem;
+      z-index: 25;
+      margin-top: 0;
+    }
+
     @keyframes splashFadeOut {
       from {
         opacity: 1;
@@ -783,6 +819,11 @@
         <div id="messageList" class="flex-1 overflow-y-auto space-y-1 p-4 pb-28 pt-20"></div>
       </div>
 
+      <!-- Channel Chat View (dedicated container for channel posts) -->
+      <div id="channelChatView" class="hidden flex flex-col flex-1 overflow-hidden">
+        <div id="channelChatList" class="flex-1 overflow-y-auto space-y-1 p-4 pt-20 pb-28"></div>
+      </div>
+
       <!-- Channels View -->
       <div id="feedView" class="hidden flex flex-col flex-1 overflow-hidden relative">
         <!-- Channel List or Posts Container (now contains sticky headers) -->
@@ -801,19 +842,19 @@
               </div>
               <!-- Search and Create for Home Tab -->
               <div id="feedHeaderHome" class="space-y-2">
-                <button onclick="openCreateChannelModal()" class="w-full px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition duration-200 ease-out active:scale-95" title="Create a new channel">Create Channel</button>
               </div>
               <!-- Search for Discover Tab (hidden initially) -->
               <div id="feedHeaderDiscover" class="space-y-2 hidden">
                 <input id="searchChannelsInput" type="text" placeholder="Search channels..." class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition text-sm" oninput="handleChannelSearch(this.value)">
               </div>
-              <!-- My Channels Tab Header (hidden initially) -->
+              <!-- Header for My Channels Tab (hidden initially) -->
               <div id="feedHeaderMyChannels" class="space-y-2 hidden">
+                <button onclick="openCreateChannelModal()" class="w-full px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition duration-200 ease-out active:scale-95" title="Create a new channel">Create Channel</button>
               </div>
             </div>
           </div>
           <!-- Channel Detail Header (hidden until a channel is selected) -->
-          <div id="channelDetailHeader" class="fixed inset-x-0 top-14 z-20 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0 hidden">
+          <div id="channelDetailHeader" class="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0 hidden">
             <!-- Main header row with back button, title, and action buttons -->
             <div class="flex items-center justify-between p-4">
               <div class="flex items-center gap-3 flex-1 min-w-0">
@@ -833,7 +874,7 @@
             </div>
           </div>
           <!-- Content wrapper for scrollable channel/post content -->
-          <div id="feedContentWrapper" class="flex-1">
+          <div id="feedContentWrapper" class="flex-1 overflow-hidden">
             <!-- Channel list or posts will be inserted here -->
             <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading channels...</div>
           </div>
@@ -2775,6 +2816,9 @@
       document.getElementById('chatView').classList.remove('active-chat');
       document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('feedView').classList.add('hidden');
+      document.getElementById('channelChatView').classList.add('hidden');
+      currentChannelId = null;
+      currentChannel = null;
       document.getElementById('sidebar').classList.add('hidden');
       document.getElementById('settingsPanel').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
@@ -6035,6 +6079,9 @@
       document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('feedView').classList.add('hidden');
       document.getElementById('feedView').classList.add('hidden');
+      document.getElementById('channelChatView').classList.add('hidden');
+      currentChannelId = null;
+      currentChannel = null;
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('footer-in-view');
       document.getElementById('header').classList.remove('header-chat-fixed');
@@ -6708,8 +6755,25 @@
       document.getElementById('profileView').classList.add('hidden');
       document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('feedView').classList.add('hidden');
+      document.getElementById('channelChatView').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('footer-in-view');
+      document.getElementById('header').classList.add('header-chat-fixed');
+      if (conversationsPollInterval) clearInterval(conversationsPollInterval);
+    }
+
+    function showChannelChatView() {
+      document.getElementById('messagesView').classList.add('hidden');
+      document.getElementById('conversationsView').classList.add('hidden');
+      document.getElementById('chatView').classList.add('hidden');
+      document.getElementById('chatView').classList.remove('active-chat');
+      document.getElementById('profileView').classList.add('hidden');
+      document.getElementById('contactsView').classList.add('hidden');
+      document.getElementById('feedView').classList.add('hidden');
+      document.getElementById('channelChatView').classList.remove('hidden');
+      document.getElementById('channelChatView').classList.add('active-channel');
+      document.getElementById('inputFooter').classList.add('hidden');
+      document.getElementById('inputFooter').classList.remove('footer-in-view');
       document.getElementById('header').classList.add('header-chat-fixed');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
     }
@@ -6723,6 +6787,9 @@
       document.getElementById('profileView').classList.add('hidden');
       document.getElementById('contactsView').classList.remove('hidden');
       document.getElementById('feedView').classList.add('hidden');
+      document.getElementById('channelChatView').classList.add('hidden');
+      currentChannelId = null;
+      currentChannel = null;
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('footer-in-view');
       document.getElementById('header').classList.remove('header-chat-fixed');
@@ -6744,12 +6811,16 @@
 
     async function showFeedView() {
       updateMenuHighlight('channels');
-      document.getElementById('messagesView').classList.add('hidden');
-      document.getElementById('conversationsView').classList.add('hidden');
-      document.getElementById('chatView').classList.add('hidden');
-      document.getElementById('chatView').classList.remove('active-chat');
-      document.getElementById('contactsView').classList.add('hidden');
-      document.getElementById('profileView').classList.add('hidden');
+      const viewsToHide = ['messagesView', 'conversationsView', 'chatView', 'contactsView', 'profileView', 'channelChatView'];
+      viewsToHide.forEach(viewId => {
+        const element = document.getElementById(viewId);
+        if (element) {
+          element.classList.add('hidden');
+          if (viewId === 'chatView') {
+            element.classList.remove('active-chat');
+          }
+        }
+      });
       document.getElementById('feedView').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('footer-in-view');
@@ -6759,7 +6830,6 @@
       document.getElementById('headerContent').classList.remove('hidden');
       document.getElementById('headerBranding').textContent = 'Guardian';
       document.getElementById('headerPageLabel').textContent = 'Channels';
-      document.getElementById('backBtnContainer').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
       document.getElementById('postBtn').classList.remove('hidden');
@@ -6768,10 +6838,12 @@
       // Clear channel polling when switching away from channel view
       if (pollInterval) clearInterval(pollInterval);
       currentChannelId = null;
+      currentChannel = null;
 
       // Reset search state
       currentSearchQuery = '';
-      document.getElementById('searchChannelsInput').value = '';
+      const searchInput = document.getElementById('searchChannelsInput');
+      if (searchInput) searchInput.value = '';
 
       // Load channels list for Discover
       await loadChannels();
@@ -6782,16 +6854,34 @@
     async function loadChannels() {
       try {
         const data = await apiCall('/api/channels');
-        if (data && data.channels) {
-          channelsList = data.channels;
-          filteredChannelsList = channelsList;
-        } else if (data && data.error) {
-          console.error('Error loading channels:', data.error);
-          showToast('Failed to load channels', 'error');
+        if (!data) {
+          console.error('loadChannels: API returned null');
+          channelsList = [];
+          filteredChannelsList = [];
+          return;
         }
+
+        if (data.error) {
+          console.error('loadChannels: API returned error', data.error);
+          showToast('Failed to load channels', 'error');
+          return;
+        }
+
+        if (!Array.isArray(data.channels)) {
+          console.error('loadChannels: channels is not an array', data);
+          channelsList = [];
+          filteredChannelsList = [];
+          return;
+        }
+
+        // Validate and filter out invalid channel objects
+        channelsList = data.channels.filter(ch => ch && typeof ch === 'object' && ch.id && ch.name);
+        filteredChannelsList = channelsList;
       } catch (err) {
-        console.error('Error loading channels:', err);
+        console.error('loadChannels: fetch error', err);
         showToast('Error loading channels', 'error');
+        channelsList = [];
+        filteredChannelsList = [];
       }
     }
 
@@ -6836,35 +6926,74 @@
     }
 
     async function showChannelPosts(channelId) {
+      // Parse and validate channelId (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
+      if (!channelId || isNaN(parsedChannelId)) {
+        console.error('showChannelPosts: invalid channelId', channelId);
+        showToast('Invalid channel', 'error');
+        return;
+      }
+
       // Clear cross-context state to match DM/Group pattern
       currentConvId = null;
       currentOtherId = null;
       currentGroupId = null;
-      currentChannelId = channelId;
+      currentChannelId = parsedChannelId;
       channelPostsOffset = 0;
       channelPostsHasMore = false;
-      let channel = channelsList.find(ch => ch.id === channelId);
+
+      let channel = channelsList && channelsList.find(ch => ch && ch.id === parsedChannelId);
 
       // If channel not found, reload channels (in case a newly created channel hasn't loaded yet)
       if (!channel) {
-        await loadChannels();
-        channel = channelsList.find(ch => ch.id === channelId);
+        try {
+          await loadChannels();
+          channel = channelsList && channelsList.find(ch => ch && ch.id === parsedChannelId);
+        } catch (err) {
+          console.error('showChannelPosts: error reloading channels', err);
+          showToast('Failed to load channel', 'error');
+          return;
+        }
       }
 
-      if (!channel) return;
+      if (!channel) {
+        console.error('showChannelPosts: channel not found after reload', channelId);
+        showToast('Channel not found', 'error');
+        return;
+      }
 
       currentChannel = channel;
 
+      // Validate required DOM elements exist
+      const headerContent = document.getElementById('headerContent');
+      const headerBranding = document.getElementById('headerBranding');
+      const headerPageLabel = document.getElementById('headerPageLabel');
+      const backBtnContainer = document.getElementById('backBtnContainer');
+      const menuBtn = document.getElementById('menuBtn');
+      const conversationMenuBtn = document.getElementById('conversationMenuBtn');
+      const channelDetailHeader = document.getElementById('channelDetailHeader');
+      const actionButtonsContainer = document.getElementById('channelActionButtons');
+
+      if (!headerContent || !backBtnContainer || !actionButtonsContainer) {
+        console.error('showChannelPosts: required DOM elements not found');
+        showToast('Interface error', 'error');
+        return;
+      }
+
       // Set up standard header (matching openConversation and openGroup pattern)
-      document.getElementById('headerContent').classList.remove('hidden');
-      document.getElementById('headerBranding').textContent = 'Channel';
-      document.getElementById('headerPageLabel').textContent = channel.name + (channel.description ? ` — ${channel.description}` : '');
-      document.getElementById('backBtnContainer').classList.remove('hidden');
-      document.getElementById('menuBtn').classList.add('hidden');
-      document.getElementById('conversationMenuBtn').classList.add('hidden');
+      headerContent.classList.remove('hidden');
+      if (headerBranding) headerBranding.textContent = 'Channel';
+      if (headerPageLabel) {
+        headerPageLabel.textContent = escapeHtml(channel.name) + (channel.description ? ` — ${escapeHtml(channel.description)}` : '');
+      }
+      backBtnContainer.classList.remove('hidden');
+      if (menuBtn) menuBtn.classList.add('hidden');
+      if (conversationMenuBtn) conversationMenuBtn.classList.add('hidden');
 
       // Hide the old custom header
-      document.getElementById('channelDetailHeader').classList.add('hidden');
+      if (channelDetailHeader) {
+        channelDetailHeader.classList.add('hidden');
+      }
 
       // Clear composition state from previous channel
       const channelPostInput = document.getElementById('channelPostInput');
@@ -6876,10 +7005,10 @@
         channelPostCharCount.textContent = '0/2000';
       }
 
-      // Set up action buttons based on ownership (use channelActionButtons from hidden detail header)
-      const isOwner = currentUser && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
+      // Set up action buttons based on ownership
+      const isOwner = currentUser && currentUser.id && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
       const isFollowing = currentUser && channel.isFollowing;
-      const actionButtonsContainer = document.getElementById('channelActionButtons');
+
       if (isOwner) {
         actionButtonsContainer.innerHTML = `
           <button onclick="openChannelSettingsModal(${channel.id})" class="px-3 py-1 bg-zinc-200 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-300 dark:hover:bg-zinc-600 rounded text-sm font-medium transition active:scale-95">Settings</button>
@@ -6894,11 +7023,16 @@
         `;
       }
 
-      // Call showChatView() to properly switch views (matching DM/Group pattern)
-      showChatView();
+      // Call showChannelChatView() to show dedicated channel view
+      showChannelChatView();
 
       // Load and render channel posts
-      await loadChannelPosts(channelId);
+      try {
+        await loadChannelPosts(channelId);
+      } catch (err) {
+        console.error('showChannelPosts: error loading channel posts', err);
+        showToast('Failed to load channel posts', 'error');
+      }
 
       // Set up polling (matching DM/Group 2-second poll pattern)
       if (pollInterval) clearInterval(pollInterval);
@@ -6907,16 +7041,18 @@
 
     // New function: loadChannelPosts for consistency with loadMessages and loadGroupMessages
     async function loadChannelPosts(channelId) {
-      if (!currentChannelId || currentChannelId !== channelId) return;
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
+      if (!currentChannelId || currentChannelId !== parsedChannelId) return;
 
       try {
         isLoadingChannelPosts = true;
-        const data = await apiCall(`/api/channels/${channelId}/posts?limit=50&offset=0`);
+        const data = await apiCall(`/api/channels/${parsedChannelId}/posts?limit=50&offset=0`);
         if (data && data.posts) {
           channelPostsHasMore = data.hasMore || false;
           let html = '';
 
-          const channel = channelsList.find(ch => ch.id === channelId);
+          const channel = channelsList.find(ch => ch.id === parsedChannelId);
           if (!channel) return;
 
           const isOwner = currentUser && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
@@ -6968,12 +7104,12 @@
             html += '</div>';
 
             if (channelPostsHasMore) {
-              html += '<div class="p-4 flex justify-center"><button onclick="loadMoreChannelPosts(' + channelId + ')" class="py-2 px-6 text-sm font-medium text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition border border-cyan-600 dark:border-cyan-500 rounded">Load more posts</button></div>';
+              html += '<div class="p-4 flex justify-center"><button onclick="loadMoreChannelPosts(' + parsedChannelId + ')" class="py-2 px-6 text-sm font-medium text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition border border-cyan-600 dark:border-cyan-500 rounded">Load more posts</button></div>';
             } else if (data.posts.length > 0) {
               html += '<div class="p-4 text-center text-xs text-zinc-500 dark:text-zinc-500">No more posts</div>';
             }
           }
-          document.getElementById('feedContentWrapper').innerHTML = html;
+          document.getElementById('channelChatList').innerHTML = html;
           channelPostsOffset = 50;
         } else if (data && data.error) {
           throw new Error(data.error);
@@ -6987,25 +7123,31 @@
     }
 
     async function loadMoreChannelPosts(channelId) {
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
       if (isLoadingChannelPosts || !channelPostsHasMore) return;
 
       try {
         isLoadingChannelPosts = true;
-        const data = await apiCall(`/api/channels/${channelId}/posts?limit=50&offset=${channelPostsOffset}`);
+        const data = await apiCall(`/api/channels/${parsedChannelId}/posts?limit=50&offset=${channelPostsOffset}`);
         if (data && data.posts) {
-          const container = document.getElementById('channelPostsContainer');
-          if (container) {
+          // Append posts to channelChatList after removing the "Load more" button
+          const channelChatList = document.getElementById('channelChatList');
+          const loadMoreBtn = document.querySelector('[onclick*="loadMoreChannelPosts"]');
+
+          if (channelChatList && loadMoreBtn) {
             let postsHtml = '';
             data.posts.forEach(post => {
               postsHtml += renderChannelPost(post);
             });
-            container.innerHTML += postsHtml;
+            // Insert new posts before the load more button
+            loadMoreBtn.parentElement.insertAdjacentHTML('beforebegin', postsHtml);
           }
 
           channelPostsHasMore = data.hasMore || false;
           channelPostsOffset += 50;
 
-          const loadMoreBtn = document.querySelector('[onclick*="loadMoreChannelPosts"]');
+          // Update load more button visibility
           if (loadMoreBtn) {
             if (channelPostsHasMore) {
               loadMoreBtn.style.display = 'block';
@@ -7141,18 +7283,20 @@
     }
 
     async function loadChannelPostsAfterSubmit(channelId) {
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
       try {
         isLoadingChannelPosts = true;
         channelPostsOffset = 0;
         channelPostsHasMore = false;
 
-        const data = await apiCall(`/api/channels/${channelId}/posts?limit=50&offset=0`);
+        const data = await apiCall(`/api/channels/${parsedChannelId}/posts?limit=50&offset=0`);
         if (data && data.posts) {
           channelPostsHasMore = data.hasMore || false;
           let html = '';
 
           // Re-add compose box for owner
-          const channel = channelsList.find(ch => ch.id === channelId);
+          const channel = channelsList.find(ch => ch.id === parsedChannelId);
           const isOwner = currentUser && channel && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
 
           if (isOwner) {
@@ -7200,7 +7344,7 @@
             html += '</div>';
 
             if (channelPostsHasMore) {
-              html += '<div class="p-4 flex justify-center"><button onclick="loadMoreChannelPosts(' + channelId + ')" class="py-2 px-6 text-sm font-medium text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition border border-cyan-600 dark:border-cyan-500 rounded">Load more posts</button></div>';
+              html += '<div class="p-4 flex justify-center"><button onclick="loadMoreChannelPosts(' + parsedChannelId + ')" class="py-2 px-6 text-sm font-medium text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition border border-cyan-600 dark:border-cyan-500 rounded">Load more posts</button></div>';
             } else if (data.posts.length > 0) {
               html += '<div class="p-4 text-center text-xs text-zinc-500 dark:text-zinc-500">No more posts</div>';
             }
@@ -7289,6 +7433,8 @@
     }
 
     async function submitEditPost(channelId, postId) {
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
       const textarea = document.getElementById(`editPostInput-${postId}`);
       const content = textarea.value.trim();
 
@@ -7303,7 +7449,7 @@
       }
 
       try {
-        const response = await apiCall(`/api/channels/${channelId}/posts/${postId}`, {
+        const response = await apiCall(`/api/channels/${parsedChannelId}/posts/${postId}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ content: content })
@@ -7312,7 +7458,7 @@
         if (response && !response.error) {
           showToast('Post updated', 'success');
           document.getElementById(`edit-modal-${postId}`).remove();
-          await loadChannelPostsAfterSubmit(channelId);
+          await loadChannelPostsAfterSubmit(parsedChannelId);
         } else {
           showToast(response?.error || 'Unable to update post', 'error');
         }
@@ -7323,6 +7469,8 @@
     }
 
     function openDeletePostConfirm(channelId, postId) {
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
       // Close any open menu
       document.querySelectorAll('[id^="menu-"]').forEach(m => m.classList.add('hidden'));
 
@@ -7339,7 +7487,7 @@
           </div>
           <div class="px-6 py-4 border-t border-zinc-200 dark:border-zinc-800 flex gap-3">
             <button onclick="document.getElementById('delete-confirm-${postId}').remove()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100 text-sm font-medium">Cancel</button>
-            <button onclick="submitDeletePost(${channelId}, ${postId})" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition text-sm font-medium">Delete</button>
+            <button onclick="submitDeletePost(${parsedChannelId}, ${postId})" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition text-sm font-medium">Delete</button>
           </div>
         </div>
       `;
@@ -7347,15 +7495,17 @@
     }
 
     async function submitDeletePost(channelId, postId) {
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
       try {
-        const response = await apiCall(`/api/channels/${channelId}/posts/${postId}`, {
+        const response = await apiCall(`/api/channels/${parsedChannelId}/posts/${postId}`, {
           method: 'DELETE'
         });
 
         if (response && !response.error) {
           showToast('Post deleted', 'success');
           document.getElementById(`delete-confirm-${postId}`).remove();
-          await loadChannelPostsAfterSubmit(channelId);
+          await loadChannelPostsAfterSubmit(parsedChannelId);
         } else {
           showToast(response?.error || 'Unable to delete post', 'error');
         }
@@ -7368,23 +7518,21 @@
     function backToChannelList() {
       // Clear polling for channels (matching DM/Group cleanup pattern)
       if (pollInterval) clearInterval(pollInterval);
+      pollInterval = null;
       currentChannelId = null;
+      currentChannel = null;
+      channelPostsOffset = 0;
+      channelPostsHasMore = false;
 
-      // Hide header content and show channels view
-      document.getElementById('headerContent').classList.add('hidden');
-      document.getElementById('backBtnContainer').classList.add('hidden');
-      document.getElementById('menuBtn').classList.remove('hidden');
-      document.getElementById('conversationMenuBtn').classList.add('hidden');
-
-      // Clear message content
-      document.getElementById('feedContentWrapper').innerHTML = '';
-
-      showChannelList();
+      // Show feed view again (this hides chatView and shows feedView)
+      showFeedView();
     }
 
 
     function editChannelModal(channelId) {
-      const channel = channelsList.find(ch => ch.id === channelId);
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
+      const channel = channelsList.find(ch => ch.id === parsedChannelId);
       if (!channel) return;
 
       const newName = prompt('Edit channel name:', channel.name);
@@ -7397,7 +7545,7 @@
       const newDesc = prompt('Edit channel description:', channel.description || '');
       if (newDesc === null) return;
 
-      updateChannel(channelId, newName.trim(), newDesc.trim());
+      updateChannel(parsedChannelId, newName.trim(), newDesc.trim());
     }
 
     async function updateChannel(channelId, name, description) {
@@ -7422,17 +7570,21 @@
     }
 
     function deleteChannelConfirm(channelId) {
-      const channel = channelsList.find(ch => ch.id === channelId);
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
+      const channel = channelsList.find(ch => ch.id === parsedChannelId);
       if (!channel) return;
 
       if (confirm(`Are you sure you want to delete the channel "#${channel.name}"? This action cannot be undone.`)) {
-        deleteChannel(channelId);
+        deleteChannel(parsedChannelId);
       }
     }
 
     async function deleteChannel(channelId) {
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
       try {
-        const data = await apiCall(`/api/channels/${channelId}`, {
+        const data = await apiCall(`/api/channels/${parsedChannelId}`, {
           method: 'DELETE'
         });
 
@@ -7457,7 +7609,9 @@
     }
 
     async function openChannelSettingsModal(channelId) {
-      const channel = channelsList.find(ch => ch.id === channelId);
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
+      const channel = channelsList.find(ch => ch.id === parsedChannelId);
       if (!channel) {
         showToast('Channel not found', 'error');
         return;
@@ -7483,7 +7637,7 @@
       // Fetch full channel data
       try {
         const channels = await apiCall('/api/channels');
-        const fullChannel = channels.channels.find(ch => ch.id === channelId);
+        const fullChannel = channels.channels.find(ch => ch.id === parsedChannelId);
 
         if (!fullChannel) {
           showToast('Failed to load channel settings', 'error');
@@ -7607,8 +7761,25 @@
     }
 
     async function switchFeedTab(tabName) {
+      // Validate tabName
+      const validTabs = ['home', 'discover', 'my-channels'];
+      if (!validTabs.includes(tabName)) {
+        console.warn('switchFeedTab: invalid tabName', tabName);
+        return;
+      }
+
       currentChannelId = null;
-      document.getElementById('channelDetailHeader').classList.add('hidden');
+      currentChannel = null;
+
+      const channelDetailHeader = document.getElementById('channelDetailHeader');
+      const feedContentWrapper = document.getElementById('feedContentWrapper');
+
+      if (channelDetailHeader) {
+        channelDetailHeader.classList.add('hidden');
+      }
+      if (feedContentWrapper) {
+        feedContentWrapper.style.paddingTop = '';
+      }
 
       const homeTab = document.getElementById('feedTabHome');
       const discoverTab = document.getElementById('feedTabDiscover');
@@ -7617,6 +7788,11 @@
       const feedHeaderDiscover = document.getElementById('feedHeaderDiscover');
       const feedHeaderMyChannels = document.getElementById('feedHeaderMyChannels');
 
+      // Validate all required elements exist
+      if (!homeTab || !discoverTab || !myChannelsTab || !feedHeaderHome || !feedHeaderDiscover || !feedHeaderMyChannels) {
+        console.error('switchFeedTab: required DOM elements not found');
+        return;
+      }
 
       // Reset all tabs
       [homeTab, discoverTab, myChannelsTab].forEach(tab => {
@@ -7629,21 +7805,26 @@
         if (header) header.classList.add('hidden');
       });
 
-      if (tabName === 'home') {
-        homeTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
-        homeTab.classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
-        feedHeaderHome.classList.remove('hidden');
-        await loadHomeFeed();
-      } else if (tabName === 'discover') {
-        discoverTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
-        discoverTab.classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
-        feedHeaderDiscover.classList.remove('hidden');
-        await loadDiscoverChannels();
-      } else if (tabName === 'my-channels') {
-        myChannelsTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
-        myChannelsTab.classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
-        feedHeaderMyChannels.classList.remove('hidden');
-        await loadMyChannels();
+      try {
+        if (tabName === 'home') {
+          homeTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
+          homeTab.classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
+          feedHeaderHome.classList.remove('hidden');
+          await loadHomeFeed();
+        } else if (tabName === 'discover') {
+          discoverTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
+          discoverTab.classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
+          feedHeaderDiscover.classList.remove('hidden');
+          await loadDiscoverChannels();
+        } else if (tabName === 'my-channels') {
+          myChannelsTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
+          myChannelsTab.classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
+          feedHeaderMyChannels.classList.remove('hidden');
+          await loadMyChannels();
+        }
+      } catch (err) {
+        console.error('switchFeedTab: error loading tab content', tabName, err);
+        showToast('Error loading tab content', 'error');
       }
     }
 
@@ -7706,30 +7887,58 @@
 
     async function loadMyChannels() {
       try {
-        const data = await apiCall('/api/channels');
-        if (data && data.channels) {
-          const myChannels = data.channels.filter(ch =>
-            currentUser && parseInt(ch.ownerId, 10) === parseInt(currentUser.id, 10)
-          );
-          // Store the full channel list so showChannelPosts() can find any channel by ID.
-          // Filtering happens only for display; global state must contain all channels.
-          channelsList = data.channels;
-          let html = '';
-          if (myChannels.length === 0) {
-            html = `<div class="text-center py-12 text-zinc-600 dark:text-zinc-500">
-              <p class="text-lg font-medium mb-2">You don't own any channels yet</p>
-              <p class="text-sm mb-4">Create a channel to get started.</p>
-              <button onclick="openCreateChannelModal()" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition">Create Channel</button>
-            </div>`;
-          } else {
-            html = '<div class="space-y-3 p-4">';
-            myChannels.forEach(channel => {
-              html += renderChannelCard(channel, true);
-            });
-            html += '</div>';
-          }
-          document.getElementById('feedContentWrapper').innerHTML = html;
+        if (!currentUser || !currentUser.id) {
+          console.warn('loadMyChannels: currentUser not authenticated');
+          showToast('Please log in to view your channels', 'warning');
+          return;
         }
+
+        const data = await apiCall('/api/channels');
+        if (!data) {
+          console.error('loadMyChannels: API response is null');
+          showToast('Failed to load channels', 'error');
+          return;
+        }
+
+        if (!Array.isArray(data.channels)) {
+          console.error('loadMyChannels: API response does not have channels array', data);
+          showToast('Invalid channels data received', 'error');
+          return;
+        }
+
+        // Filter to only channels owned by the current user
+        const currentUserId = parseInt(currentUser.id, 10);
+        const myChannels = data.channels.filter(ch => {
+          const chOwnerId = parseInt(ch.ownerId, 10);
+          return chOwnerId === currentUserId;
+        });
+
+        // Store the full channel list so showChannelPosts() can find any channel by ID
+        channelsList = data.channels;
+
+        const contentWrapper = document.getElementById('feedContentWrapper');
+        if (!contentWrapper) {
+          console.error('loadMyChannels: feedContentWrapper not found');
+          return;
+        }
+
+        let html = '';
+        if (myChannels.length === 0) {
+          html = `<div class="text-center py-12 text-zinc-600 dark:text-zinc-500">
+            <p class="text-lg font-medium mb-2">You don't own any channels yet</p>
+            <p class="text-sm mb-4">Create a channel to get started.</p>
+            <button onclick="openCreateChannelModal()" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition">Create Channel</button>
+          </div>`;
+        } else {
+          html = '<div class="space-y-3 p-4">';
+          myChannels.forEach(channel => {
+            if (channel && channel.id) {
+              html += renderChannelCard(channel, true);
+            }
+          });
+          html += '</div>';
+        }
+        contentWrapper.innerHTML = html;
       } catch (err) {
         console.error('Error loading my channels:', err);
         showToast('Error loading channels', 'error');
@@ -7837,15 +8046,25 @@
     }
 
     function renderChannelCard(channel, isFollowing) {
-      const isOwner = currentUser && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
+      // Validate channel object
+      if (!channel || !channel.id || !channel.name) {
+        console.warn('renderChannelCard: invalid channel object', channel);
+        return '';
+      }
+
+      const isOwner = currentUser && currentUser.id && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
       const ownerBadge = isOwner ? '<span class="ml-2 text-xs bg-cyan-100 dark:bg-cyan-900 text-cyan-700 dark:text-cyan-300 px-2 py-1 rounded">Owner</span>' : '';
-      const latestPostSection = channel.latestPost ? `
-        <div class="mt-3 p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded text-sm">
-          <div class="text-xs text-zinc-500 dark:text-zinc-500 mb-1">Latest from ${escapeHtml(channel.latestPost.authorUsername)}</div>
-          <p class="text-zinc-700 dark:text-zinc-300 line-clamp-2">${escapeHtml(channel.latestPost.contentSnippet)}</p>
-          <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-1">${formatRelativeTime(channel.latestPost.createdAt)}</div>
-        </div>
-      ` : '';
+
+      let latestPostSection = '';
+      if (channel.latestPost && channel.latestPost.authorUsername && channel.latestPost.contentSnippet) {
+        latestPostSection = `
+          <div class="mt-3 p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded text-sm">
+            <div class="text-xs text-zinc-500 dark:text-zinc-500 mb-1">Latest from ${escapeHtml(channel.latestPost.authorUsername)}</div>
+            <p class="text-zinc-700 dark:text-zinc-300 line-clamp-2">${escapeHtml(channel.latestPost.contentSnippet)}</p>
+            <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-1">${formatRelativeTime(channel.latestPost.createdAt)}</div>
+          </div>
+        `;
+      }
 
       const actionButton = isOwner
         ? `<button onclick="event.stopPropagation(); openChannelSettingsModal(${channel.id})" class="px-3 py-1 bg-zinc-200 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-300 dark:hover:bg-zinc-600 rounded text-sm font-medium transition active:scale-95">Settings</button>`
@@ -7857,6 +8076,9 @@
             ${channel.isFollowing ? 'Following' : 'Follow'}
           </button>`;
 
+      const followerCount = parseInt(channel.followerCount, 10) || 0;
+      const followerLabel = followerCount === 1 ? 'follower' : 'followers';
+
       return `
         <div class="p-4 bg-white dark:bg-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-lg border border-zinc-200 dark:border-zinc-700 transition cursor-pointer" onclick="showChannelPosts(${channel.id})">
           <div class="flex items-start justify-between gap-3">
@@ -7867,7 +8089,7 @@
               </div>
               <p class="text-sm text-zinc-600 dark:text-zinc-400">by ${escapeHtml(channel.ownerUsername || 'Unknown')}</p>
               ${channel.description ? `<p class="text-sm text-zinc-700 dark:text-zinc-300 mt-1 line-clamp-2">${escapeHtml(channel.description)}</p>` : ''}
-              <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-2">${channel.followerCount} ${channel.followerCount === 1 ? 'follower' : 'followers'}</div>
+              <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-2">${followerCount} ${followerLabel}</div>
               ${latestPostSection}
             </div>
             <div class="flex-shrink-0">
@@ -7879,25 +8101,27 @@
     }
 
     async function toggleFollowChannel(channelId, shouldFollow) {
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
       try {
         if (shouldFollow) {
-          const data = await apiCall(`/api/channels/${channelId}/follow`, { method: 'POST' });
+          const data = await apiCall(`/api/channels/${parsedChannelId}/follow`, { method: 'POST' });
           if (data && !data.error) {
             showToast('Channel followed', 'success');
             await loadChannels();
-            if (currentChannelId === channelId) {
-              await showChannelPosts(channelId);
+            if (currentChannelId === parsedChannelId) {
+              await showChannelPosts(parsedChannelId);
             }
           } else if (data && data.error) {
             showToast(data.error, 'error');
           }
         } else {
-          const data = await apiCall(`/api/channels/${channelId}/follow`, { method: 'DELETE' });
+          const data = await apiCall(`/api/channels/${parsedChannelId}/follow`, { method: 'DELETE' });
           if (data && !data.error) {
             showToast('Channel unfollowed', 'success');
             await loadChannels();
-            if (currentChannelId === channelId) {
-              await showChannelPosts(channelId);
+            if (currentChannelId === parsedChannelId) {
+              await showChannelPosts(parsedChannelId);
             }
           } else if (data && data.error) {
             showToast(data.error, 'error');
@@ -7927,6 +8151,9 @@
       document.getElementById('chatView').classList.remove('active-chat');
       document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('feedView').classList.add('hidden');
+      document.getElementById('channelChatView').classList.add('hidden');
+      currentChannelId = null;
+      currentChannel = null;
       document.getElementById('profileView').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('footer-in-view');
