@@ -4244,6 +4244,10 @@
           // Channel created but Feed view has been removed
           // Show the newly created channel detail view if possible
           if (data && data.id) {
+            // Add the newly created channel to channelsList immediately to prevent race condition
+            if (!channelsList.find(ch => ch.id === data.id)) {
+              channelsList.push(data);
+            }
             await showChannelPosts(data.id);
           }
         } else if (data && data.error) {
@@ -6966,20 +6970,39 @@
 
       let channel = channelsList && channelsList.find(ch => ch && ch.id === parsedChannelId);
 
-      // If channel not found, reload channels (in case a newly created channel hasn't loaded yet)
+      // If channel not found, reload based on current tab context
+      // This ensures we reload the correct dataset that was originally displayed
       if (!channel) {
         try {
-          await loadChannels();
+          if (currentFeedTab === 'my-channels') {
+            await loadMyChannels();
+          } else if (currentFeedTab === 'discover') {
+            await loadDiscoverChannels();
+          } else {
+            // home tab
+            await loadHomeFeed();
+          }
           channel = channelsList && channelsList.find(ch => ch && ch.id === parsedChannelId);
         } catch (err) {
-          console.error('showChannelPosts: error reloading channels', err);
+          console.error('showChannelPosts: error reloading channels for tab', currentFeedTab, err);
           showToast('Failed to load channel', 'error');
           return;
         }
       }
 
       if (!channel) {
-        console.error('showChannelPosts: channel not found after reload', channelId);
+        // Fallback: try a general reload in case the tab-specific reload failed
+        try {
+          console.warn('showChannelPosts: channel not found in', currentFeedTab, 'tab, attempting general reload');
+          await loadChannels();
+          channel = channelsList && channelsList.find(ch => ch && ch.id === parsedChannelId);
+        } catch (err) {
+          console.error('showChannelPosts: error on fallback channel reload', err);
+        }
+      }
+
+      if (!channel) {
+        console.error('showChannelPosts: channel not found after reload (tab:', currentFeedTab, ', id:', channelId, ')');
         showToast('Channel not found', 'error');
         return;
       }
@@ -7804,6 +7827,9 @@
         console.warn('switchFeedTab: invalid tabName', tabName);
         return;
       }
+
+      // Track which tab user is on so showChannelPosts() can reload the correct data
+      currentFeedTab = tabName;
 
       currentChannelId = null;
       currentChannel = null;
@@ -9370,6 +9396,7 @@
     let currentChannel = null;
     let channelsList = [];
     let filteredChannelsList = [];
+    let currentFeedTab = 'home'; // Track which feed tab user is on (home, discover, my-channels)
     let channelPostsOffset = 0;
     let channelPostsHasMore = false;
     let isLoadingChannelPosts = false;
