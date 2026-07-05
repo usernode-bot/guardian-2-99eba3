@@ -4662,9 +4662,9 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
       console.log(`[GROUP-MSG] Using existing audit log: id=${auditLogId}`);
       const updateRes = await client.query(`
         UPDATE blockchain_audit_logs
-        SET message_id = $1, group_id = $2, message_type = $3, tx_hash = $4, transaction_payload = $5, status = $6, confirmed_at = $7, content_hash = $8, user_pubkey = $9, action_timestamp = $10, network_origin = $11, updated_at = NOW()
-        WHERE id = $12 AND user_id = $13
-      `, [messageId, groupId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, networkOriginValue, auditLogId, userId]);
+        SET group_id = $1, message_type = $2, tx_hash = $3, transaction_payload = $4, status = $5, confirmed_at = $6, content_hash = $7, user_pubkey = $8, action_timestamp = $9, network_origin = $10, updated_at = NOW()
+        WHERE id = $11 AND user_id = $12
+      `, [groupId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, networkOriginValue, auditLogId, userId]);
 
       if (updateRes.rowCount === 0) {
         throw new Error('Audit log not found or does not belong to user');
@@ -4679,10 +4679,10 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
       }
 
       const auditRes = await client.query(`
-        INSERT INTO blockchain_audit_logs (user_id, message_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, network_origin, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)
+        INSERT INTO blockchain_audit_logs (user_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, network_origin, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
         RETURNING id
-      `, [userId, messageId, groupId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, networkOriginValue, now]);
+      `, [userId, groupId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, networkOriginValue, now]);
       blockchainRecordingId = auditRes.rows[0].id;
     }
 
