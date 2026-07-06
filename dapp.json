@@ -45,8 +45,8 @@
     },
     {
       "key": "TRANSACTIONS_BASE_URL",
-      "description": "Transaction API endpoint for testnet mode wallet bridge integration. Must be the full transaction API URL including the chain suffix, e.g., https://testnet-explorer.usernodelabs.org/testnet or http://localhost:3000/explorer-api/testnet. The Usernode bridge appends '/transactions' to this URL to poll for on-chain inclusion. Required for testnet transactions.",
-      "required": true,
+      "description": "Optional: Base URL for transaction API integration with wallet bridge. If not set, dynamically derives from request origin (e.g., https://staging.example.com). If set, use the full transaction API URL including the chain suffix, e.g., https://testnet-explorer.usernodelabs.org/testnet or http://localhost:3000/explorer-api/testnet — the Usernode bridge appends '/transactions' to this URL to poll for on-chain inclusion.",
+      "required": false,
       "private": false,
       "staging_default": "http://localhost:3000/explorer-api/testnet"
     }

@@ -1624,6 +1624,14 @@
     const token = params.get('token') || '';
     const headers = token ? { 'x-usernode-token': token } : {};
 
+    // Detect active chain from user's network mode preference
+    if (typeof window.usernode === 'object') {
+      fetch('/api/active_chain', { headers }).then(r => r.json()).then(d => {
+        window.usernode.activeChainId = d.chainId;
+        console.log('[CHAIN] Active chain detected:', d.chainId, '(network mode:', d.networkMode + ')');
+      }).catch(e => console.warn('[CHAIN] Failed to fetch active chain:', e.message));
+    }
+
     function escapeHtml(text) {
       const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
       return String(text).replace(/[&<>"']/g, m => map[m]);
