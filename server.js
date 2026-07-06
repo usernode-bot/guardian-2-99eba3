@@ -1860,14 +1860,10 @@ app.get('/api/active_chain', async (req, res) => {
 
     const networkMode = userRes.rows[0].network_mode || 'devnet';
 
-    // Map network modes to chainIds
-    let chainId = 'testnet'; // default
-    if (networkMode === 'devnet') {
+    // Map network modes to chainIds: devnet→devnet, testnet→testnet, mainnet→mainnet
+    let chainId = networkMode;
+    if (!['devnet', 'testnet', 'mainnet'].includes(chainId)) {
       chainId = 'devnet';
-    } else if (networkMode === 'real_testnet') {
-      chainId = 'testnet';
-    } else if (networkMode === 'demo') {
-      chainId = 'testnet';
     }
 
     res.json({
