@@ -3111,10 +3111,18 @@ app.get('/api/transactions-by-user', async (req, res) => {
         bal.created_at,
         bal.transaction_payload,
         g.name as group_name,
-        u.username as recipient_username_from_pubkey
+        u.username as recipient_username_from_pubkey,
+        u_msg_recipient.username as message_recipient_username
       FROM blockchain_audit_logs bal
       LEFT JOIN groups g ON g.id = bal.group_id
       LEFT JOIN users u ON u.usernode_pubkey = (bal.transaction_payload->>'recipient')
+      LEFT JOIN messages m ON m.id = bal.message_id
+      LEFT JOIN conversations c ON c.id = m.conversation_id
+      LEFT JOIN users u_msg_recipient ON u_msg_recipient.id = CASE
+        WHEN m.sender_id = bal.user_id THEN
+          CASE WHEN c.participant_a_id = bal.user_id THEN c.participant_b_id ELSE c.participant_a_id END
+        ELSE m.sender_id
+      END
       WHERE ${whereClause}
       ORDER BY bal.created_at DESC
       LIMIT $${params.length - 1} OFFSET $${params.length}
@@ -3144,10 +3152,8 @@ app.get('/api/transactions-by-user', async (req, res) => {
         let groupName = r.group_name || null;
 
         if (r.message_id && r.message_type === 'message') {
-          const payload = typeof r.transaction_payload === 'string'
-            ? JSON.parse(r.transaction_payload)
-            : r.transaction_payload;
-          recipientUsername = payload?.recipientUsername || null;
+          // For message transactions, use the username resolved from the conversation/users JOINs
+          recipientUsername = r.message_recipient_username || null;
         } else if (r.message_type === 'token_transfer' && r.recipient_username_from_pubkey) {
           // For token_transfer, use the username resolved from the recipient pubkey
           recipientUsername = r.recipient_username_from_pubkey;
