@@ -45,10 +45,10 @@
     },
     {
       "key": "TRANSACTIONS_BASE_URL",
-      "description": "Base URL where the app's transaction submission endpoint is hosted; required for testnet mode wallet bridge integration. If not set, defaults to the app's own origin.",
-      "required": false,
+      "description": "Base URL where the app is hosted for testnet mode wallet bridge integration. Must be the public URL where users access the app (e.g., https://guardian.example.com). Required for testnet transactions to work correctly.",
+      "required": true,
       "private": false,
-      "default": "http://localhost:3000"
+      "staging_default": "http://localhost:3000"
     }
   ],
   "tests": [
