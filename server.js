@@ -7628,6 +7628,13 @@ app.get('*', (req, res) => {
     const configScript = `<script>
 window.usernode = window.usernode || {};
 window.usernode.transactionsBaseUrl = ${JSON.stringify(transactionsBaseUrl)};
+window.addEventListener('load', function() {
+  // Re-apply transactionsBaseUrl in case the bridge overwrote window.usernode during initialization
+  if (typeof window.usernode === 'object' && window.usernode !== null) {
+    window.usernode.transactionsBaseUrl = ${JSON.stringify(transactionsBaseUrl)};
+    console.log('[CONFIG] ✓ Re-applied transactionsBaseUrl after bridge init');
+  }
+});
 </script>`;
 
     const injectedHtml = html.replace(
