@@ -600,6 +600,16 @@ function getMockTransactionsByUser(userId, limit = 20, offset = 0) {
       recipientUsername: 'bob'
     },
     {
+      id: 9002,
+      user_id: userId,
+      tx_hash: 'demo-tx-hash-token-001',
+      message_type: 'token_transfer',
+      status: 'confirmed',
+      confirmed_at: getTimeOffset(60),
+      created_at: getTimeOffset(75),
+      recipientUsername: 'alice'
+    },
+    {
       id: 9001,
       user_id: userId,
       tx_hash: 'demo-tx-hash-002',

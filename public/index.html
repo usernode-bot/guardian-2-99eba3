@@ -394,6 +394,42 @@
       margin-bottom: 0;
     }
 
+    /* Feed layout CSS: proper positioning and overflow handling */
+    #feedMainContent {
+      min-height: 0;
+    }
+
+    #feedHeader {
+      flex-wrap: nowrap;
+      min-height: 0;
+    }
+
+    #feedHeaderContent {
+      display: block;
+      height: auto;
+      overflow: visible;
+    }
+
+    #feedContentWrapper {
+      overflow-y: auto;
+      overflow-x: hidden;
+      min-height: 0;
+      transition: padding-top 0.2s ease-out;
+    }
+
+    /* Ensure hidden class works reliably */
+    .hidden {
+      display: none !important;
+    }
+
+    /* Change channelDetailHeader from fixed to sticky for proper scrolling */
+    #channelDetailHeader {
+      position: sticky !important;
+      top: 3.5rem;
+      z-index: 25;
+      margin-top: 0;
+    }
+
     @keyframes splashFadeOut {
       from {
         opacity: 1;
@@ -624,25 +660,6 @@
             </svg>
           </button>
           <div id="systemContent" class="hidden pt-2 space-y-2">
-            <!-- Network (Sub-Accordion) -->
-            <div id="networkAccordion" class="space-y-1">
-              <button id="networkToggle" onclick="toggleNetworkAccordion()" class="w-full flex items-center justify-between px-0 py-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
-                <div class="flex items-center gap-2">
-                  <span>Network</span>
-                  <span id="networkHeaderDot" class="inline-block w-2.5 h-2.5 rounded-full bg-gray-400 transition-colors"></span>
-                </div>
-                <svg id="networkArrow" class="w-5 h-5 transition-transform duration-200 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                </svg>
-              </button>
-              <div id="networkContent" class="hidden pt-2 space-y-2">
-                <!-- Network Selector (Disabled) -->
-                <select id="networkSelect" disabled class="w-full px-2 py-2 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed">
-                  <option value="testnet" selected>Testnet</option>
-                  <option value="mainnet">Mainnet</option>
-                </select>
-              </div>
-            </div>
 
             <!-- On-Chain Activity (Sub-Accordion) -->
             <div id="transactionHistoryAccordion" class="space-y-1">
@@ -659,6 +676,63 @@
                 <!-- Transaction History List -->
                 <div id="transactionHistoryList" class="max-h-64 overflow-y-auto space-y-1 text-xs">
                   <div class="text-center py-4 text-zinc-500 dark:text-zinc-400">Loading...</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Network Mode (Sub-Accordion) -->
+            <div id="networkModeAccordion" class="space-y-1">
+              <button id="networkModeToggle" onclick="toggleNetworkModeAccordion()" class="w-full flex items-center justify-between px-0 py-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
+                <div class="flex items-center gap-2">
+                  <span>Network Mode</span>
+                  <span id="networkModeHeaderDot" class="inline-block w-2.5 h-2.5 rounded-full bg-gray-400 transition-colors"></span>
+                </div>
+                <svg id="networkModeArrow" class="w-5 h-5 transition-transform duration-200 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                </svg>
+              </button>
+              <div id="networkModeContent" class="hidden pt-2 space-y-3">
+                <div class="space-y-2">
+                  <label class="text-xs sm:text-sm font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-2">
+                    <span>Network Mode</span>
+                    <span id="networkModeLoading" class="hidden inline-block w-3 h-3 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></span>
+                  </label>
+                  <select id="networkModeSelect" onchange="updateNetworkMode(this.value)" class="w-full px-3 py-2.5 sm:py-2 bg-zinc-50 dark:bg-zinc-700 border border-zinc-400 dark:border-zinc-600 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-400 text-sm">
+                    <option value="mainnet" disabled>Mainnet (Coming soon)</option>
+                    <option value="testnet">Testnet</option>
+                    <option value="devnet">Devnet</option>
+                  </select>
+                  <p class="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">Select your network environment.</p>
+                </div>
+
+                <!-- RPC Endpoint Configuration (only shown in testnet mode) -->
+                <div id="rpcEndpointConfig" class="hidden space-y-2">
+                  <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400 flex items-center gap-2">
+                    <span>RPC Endpoint URL</span>
+                    <span id="rpcEndpointLoading" class="hidden inline-block w-3 h-3 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></span>
+                  </label>
+                  <input
+                    id="rpcEndpointInput"
+                    type="text"
+                    placeholder="e.g., http://localhost:3001 or https://testnet-rpc.usernodelabs.org"
+                    class="w-full px-2 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  />
+                  <button id="rpcEndpointSave" onclick="updateRpcEndpoint()" class="w-full px-3 py-1.5 bg-cyan-500 text-white rounded text-xs font-medium hover:bg-cyan-600 transition">
+                    Save RPC Endpoint
+                  </button>
+                  <p class="text-xs text-zinc-600 dark:text-zinc-400">Usernode testnet RPC endpoint for submitting transactions.</p>
+                </div>
+
+                <!-- Transaction Preferences (only shown in devnet mode) -->
+                <div id="transactionPreferencesSection" class="hidden space-y-3">
+                  <label class="text-xs sm:text-sm font-medium text-zinc-700 dark:text-zinc-300 block">Transaction Preferences</label>
+                  <div class="flex items-start gap-3 p-3 bg-zinc-100 dark:bg-zinc-800 rounded">
+                    <input type="checkbox" id="skipSignatureDevnetToggle" onchange="updateSkipSignatureDevnet(this.checked)" class="w-5 h-5 rounded cursor-pointer mt-0.5 flex-shrink-0">
+                    <div class="flex-1 min-w-0">
+                      <label for="skipSignatureDevnetToggle" class="text-xs sm:text-sm font-medium text-zinc-900 dark:text-zinc-100 cursor-pointer block mb-1">Skip signature confirmation in devnet mode</label>
+                      <p class="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">When enabled, transactions will broadcast immediately without wallet confirmation.</p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -686,55 +760,6 @@
                   </div>
                 </div>
 
-                <!-- Network Mode Selection -->
-                <div class="space-y-2">
-                  <label class="text-xs sm:text-sm font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-2">
-                    <span>Network Mode</span>
-                    <span id="networkModeLoading" class="hidden inline-block w-3 h-3 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></span>
-                  </label>
-                  <select id="networkModeSelect" onchange="updateNetworkMode(this.value)" class="w-full px-3 py-2.5 sm:py-2 bg-zinc-50 dark:bg-zinc-700 border border-zinc-400 dark:border-zinc-600 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-400 text-sm">
-                    <option value="real_testnet">Real Testnet (Live Transactions)</option>
-                    <option value="devnet">Devnet (Database Only)</option>
-                    <option value="demo">Demo (Simulated)</option>
-                  </select>
-                  <p class="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed break-words">
-                    <strong class="block mb-1">Real Testnet:</strong> Live blockchain transactions; wallet confirmation required; transactions remain pending until blockchain confirms.
-                    <strong class="block mb-1 mt-2">Devnet:</strong> Database-only transactions; immediate confirmation; useful for testing.
-                    <strong class="block mb-1 mt-2">Demo:</strong> Transactions are simulated with fake hashes; audit logs immediately mark as confirmed.
-                  </p>
-                </div>
-
-                <!-- Transaction Preferences -->
-                <div class="space-y-3 border-t border-zinc-300 dark:border-zinc-600 pt-3 mt-3">
-                  <label class="text-xs sm:text-sm font-medium text-zinc-700 dark:text-zinc-300 block">Transaction Preferences</label>
-                  <div class="flex items-start gap-3 p-3 bg-zinc-100 dark:bg-zinc-800 rounded">
-                    <input type="checkbox" id="skipSignatureDevnetToggle" onchange="updateSkipSignatureDevnet(this.checked)" class="w-5 h-5 rounded cursor-pointer mt-0.5 flex-shrink-0">
-                    <div class="flex-1 min-w-0">
-                      <label for="skipSignatureDevnetToggle" class="text-xs sm:text-sm font-medium text-zinc-900 dark:text-zinc-100 cursor-pointer block mb-1">Skip signature confirmation in devnet mode</label>
-                      <p class="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">When enabled and devnet is the active network mode, transactions will broadcast immediately without wallet confirmation.</p>
-                      <p class="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed mt-1"><em>Only applies when devnet mode is active above.</em></p>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- RPC Endpoint Configuration (only shown in testnet mode) -->
-                <div id="rpcEndpointConfig" class="hidden space-y-2">
-                  <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400 flex items-center gap-2">
-                    <span>RPC Endpoint URL</span>
-                    <span id="rpcEndpointLoading" class="hidden inline-block w-3 h-3 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></span>
-                  </label>
-                  <input
-                    id="rpcEndpointInput"
-                    type="text"
-                    placeholder="e.g., http://localhost:3001 or https://testnet-rpc.usernodelabs.org"
-                    class="w-full px-2 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                  />
-                  <button id="rpcEndpointSave" onclick="updateRpcEndpoint()" class="w-full px-3 py-1.5 bg-cyan-500 text-white rounded text-xs font-medium hover:bg-cyan-600 transition">
-                    Save RPC Endpoint
-                  </button>
-                  <p class="text-xs text-zinc-600 dark:text-zinc-400">Usernode testnet RPC endpoint for submitting transactions.</p>
-                </div>
-
                 <!-- Permission Notice -->
                 <div id="configNoPermission" class="hidden text-xs text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800 p-2 rounded">
                   You don't have permission to change configuration settings.
@@ -759,7 +784,7 @@
         <div class="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
           <span class="text-blue-700 dark:text-blue-300 flex-shrink-0 mt-0.5">ℹ️</span>
           <p class="text-xs sm:text-sm text-blue-900 dark:text-blue-100 leading-snug break-words font-medium">
-            <strong>Note:</strong> Testnet mode is still in development. Expect changes and improvements. You can change network mode in Settings (gear icon) → Preferences → Network Mode.
+            <strong>Note:</strong> Testnet mode is still in development. Expect changes and improvements. You can change network mode in Settings (gear icon) → System → Network Mode.
           </p>
         </div>
         <button onclick="dismissDevStatusBanner()" class="text-blue-700 dark:text-blue-300 hover:text-blue-900 dark:hover:text-blue-100 transition flex-shrink-0 mt-1 sm:mt-0 self-end sm:self-center p-1" title="Dismiss">
@@ -805,6 +830,11 @@
         <div id="messageList" class="flex-1 overflow-y-auto space-y-1 p-4 pb-28 pt-20"></div>
       </div>
 
+      <!-- Channel Chat View (dedicated container for channel posts) -->
+      <div id="channelChatView" class="hidden flex flex-col flex-1 overflow-hidden">
+        <div id="channelChatList" class="flex-1 overflow-y-auto space-y-1 p-4 pt-20 pb-28"></div>
+      </div>
+
       <!-- Channels View -->
       <div id="feedView" class="hidden flex flex-col flex-1 overflow-hidden relative">
         <!-- Channel List or Posts Container (now contains sticky headers) -->
@@ -819,19 +849,23 @@
               <div class="flex gap-2 mb-3 border-b border-zinc-200 dark:border-zinc-800">
                 <button id="feedTabHome" onclick="switchFeedTab('home')" class="pb-2 px-1 font-medium text-sm text-zinc-600 dark:text-zinc-400 border-b-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100 transition active-tab">Home</button>
                 <button id="feedTabDiscover" onclick="switchFeedTab('discover')" class="pb-2 px-1 font-medium text-sm text-zinc-600 dark:text-zinc-400 border-b-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100 transition">Discover</button>
+                <button id="feedTabMyChannels" onclick="switchFeedTab('my-channels')" class="pb-2 px-1 font-medium text-sm text-zinc-600 dark:text-zinc-400 border-b-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100 transition">My Channels</button>
               </div>
               <!-- Search and Create for Home Tab -->
               <div id="feedHeaderHome" class="space-y-2">
-                <button onclick="openCreateChannelModal()" class="w-full px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition duration-200 ease-out active:scale-95" title="Create a new channel">Create Channel</button>
               </div>
               <!-- Search for Discover Tab (hidden initially) -->
               <div id="feedHeaderDiscover" class="space-y-2 hidden">
                 <input id="searchChannelsInput" type="text" placeholder="Search channels..." class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition text-sm" oninput="handleChannelSearch(this.value)">
               </div>
+              <!-- Header for My Channels Tab (hidden initially) -->
+              <div id="feedHeaderMyChannels" class="space-y-2 hidden">
+                <button onclick="openCreateChannelModal()" class="w-full px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition duration-200 ease-out active:scale-95" title="Create a new channel">Create Channel</button>
+              </div>
             </div>
           </div>
           <!-- Channel Detail Header (hidden until a channel is selected) -->
-          <div id="channelDetailHeader" class="fixed inset-x-0 top-14 z-20 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0 hidden">
+          <div id="channelDetailHeader" class="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0 hidden">
             <!-- Main header row with back button, title, and action buttons -->
             <div class="flex items-center justify-between p-4">
               <div class="flex items-center gap-3 flex-1 min-w-0">
@@ -851,7 +885,7 @@
             </div>
           </div>
           <!-- Content wrapper for scrollable channel/post content -->
-          <div id="feedContentWrapper" class="flex-1">
+          <div id="feedContentWrapper" class="flex-1 overflow-hidden">
             <!-- Channel list or posts will be inserted here -->
             <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading channels...</div>
           </div>
@@ -1003,11 +1037,8 @@
               <!-- Foreground Hours Section -->
               <div class="space-y-2">
                 <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Foreground Hours</label>
-                <div id="profileGuardianForegroundHoursContainer" class="cursor-pointer group" onclick="showPeerModal()">
-                  <div class="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg hover:bg-zinc-150 dark:hover:bg-zinc-750 transition">
-                    <div id="profileGuardianHours" class="text-xl font-bold text-cyan-600 dark:text-cyan-400">0</div>
-                    <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">click to view peer details</div>
-                  </div>
+                <div class="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
+                  <div id="profileGuardianHours" class="text-xl font-bold text-cyan-600 dark:text-cyan-400">0</div>
                 </div>
               </div>
 
@@ -1722,26 +1753,40 @@
         const txHashFull = data.txHash || '';
 
         // Determine network origin label with icon
-        let networkOriginLabel = 'Unknown';
+        let networkOriginLabel = 'Not specified';
         let networkOriginIcon = '❓';
-        let networkOriginClass = 'text-yellow-600 dark:text-yellow-400';
+        let networkOriginClass = 'text-zinc-600 dark:text-zinc-400';
 
-        if (data.network_origin === 'blockchain') {
-          networkOriginLabel = 'Real Blockchain';
-          networkOriginIcon = '⛓️';
+        // Map network_origin values to display labels
+        // Supports both audit-log values (blockchain, demo, database, bridge) and Guardian network modes (testnet, devnet, mainnet)
+        if (data.network_origin === 'testnet') {
+          networkOriginLabel = 'Testnet';
+          networkOriginIcon = '🔗';
           networkOriginClass = 'text-green-600 dark:text-green-400';
-        } else if (data.network_origin === 'demo') {
-          networkOriginLabel = 'Demo Mode (Simulated)';
-          networkOriginIcon = '🎭';
-          networkOriginClass = 'text-amber-600 dark:text-amber-400';
-        } else if (data.network_origin === 'database') {
-          networkOriginLabel = 'Database Only (Devnet)';
+        } else if (data.network_origin === 'blockchain') {
+          networkOriginLabel = 'Testnet';
+          networkOriginIcon = '🔗';
+          networkOriginClass = 'text-green-600 dark:text-green-400';
+        } else if (data.network_origin === 'devnet') {
+          networkOriginLabel = 'Devnet';
           networkOriginIcon = '💾';
           networkOriginClass = 'text-blue-600 dark:text-blue-400';
-        } else if (data.network_origin === 'bridge') {
-          networkOriginLabel = 'Bridge Fallback';
-          networkOriginIcon = '🌉';
+        } else if (data.network_origin === 'database') {
+          networkOriginLabel = 'Devnet';
+          networkOriginIcon = '💾';
+          networkOriginClass = 'text-blue-600 dark:text-blue-400';
+        } else if (data.network_origin === 'mainnet') {
+          networkOriginLabel = 'Mainnet';
+          networkOriginIcon = '🌍';
+          networkOriginClass = 'text-amber-600 dark:text-amber-400';
+        } else if (data.network_origin === 'demo') {
+          networkOriginLabel = 'Demo';
+          networkOriginIcon = '🎭';
           networkOriginClass = 'text-purple-600 dark:text-purple-400';
+        } else if (data.network_origin === 'bridge') {
+          networkOriginLabel = 'Bridge';
+          networkOriginIcon = '🌉';
+          networkOriginClass = 'text-orange-600 dark:text-orange-400';
         }
 
         let txHashHtml = '';
@@ -2202,9 +2247,9 @@
       }
     }
 
-    function toggleNetworkAccordion() {
-      const content = document.getElementById('networkContent');
-      const arrow = document.getElementById('networkArrow');
+    function toggleNetworkModeAccordion() {
+      const content = document.getElementById('networkModeContent');
+      const arrow = document.getElementById('networkModeArrow');
       const isHidden = content.classList.contains('hidden');
 
       if (isHidden) {
@@ -2213,6 +2258,34 @@
       } else {
         content.classList.add('hidden');
         arrow.style.transform = 'rotate(0deg)';
+      }
+    }
+
+    function updateNetworkModeVisibility(mode) {
+      const rpcEndpointConfig = document.getElementById('rpcEndpointConfig');
+      const transactionPreferencesSection = document.getElementById('transactionPreferencesSection');
+      const skipSignatureCheckbox = document.getElementById('skipSignatureDevnetToggle');
+
+      // Show RPC endpoint config only for testnet
+      if (mode === 'testnet') {
+        rpcEndpointConfig.classList.remove('hidden');
+      } else {
+        rpcEndpointConfig.classList.add('hidden');
+      }
+
+      // Show transaction preferences only for devnet
+      if (mode === 'devnet') {
+        transactionPreferencesSection.classList.remove('hidden');
+        // Auto-enable the checkbox when devnet is selected
+        if (skipSignatureCheckbox && !skipSignatureCheckbox.checked) {
+          skipSignatureCheckbox.checked = true;
+        }
+      } else {
+        transactionPreferencesSection.classList.add('hidden');
+        // Uncheck when switching away from devnet
+        if (skipSignatureCheckbox && skipSignatureCheckbox.checked) {
+          skipSignatureCheckbox.checked = false;
+        }
       }
     }
 
@@ -2237,23 +2310,24 @@
           const dropdown = document.getElementById('networkModeSelect');
           const noPermission = document.getElementById('configNoPermission');
           const accordion = document.getElementById('configAccordion');
-          const rpcEndpointConfig = document.getElementById('rpcEndpointConfig');
           const rpcEndpointInput = document.getElementById('rpcEndpointInput');
 
-          // Set dropdown to current network mode, defaulting to networkMode if available, else isDemoMode for backward compat
-          const currentMode = config.networkMode || (config.isDemoMode ? 'demo' : 'devnet');
+          // Get user's network mode from currentUser (which comes from /api/user endpoint)
+          // This is the per-user setting, not the global server NETWORK_MODE
+          let currentMode = currentUser?.networkMode || 'devnet';
+          if (currentMode === 'real_testnet') {
+            currentMode = 'testnet';
+          }
           dropdown.value = currentMode;
-          // Network mode dropdown is always enabled for authenticated users (personal preference)
-          // It calls /api/user/network-mode which is available to all authenticated users
           dropdown.disabled = false;
 
-          // Show/hide RPC endpoint config based on network mode and permission
-          if (currentMode === 'real_testnet' && config.canEditRpc) {
-            rpcEndpointConfig.classList.remove('hidden');
+          // Update conditional visibility for RPC endpoint and transaction preferences
+          updateNetworkModeVisibility(currentMode);
+
+          // Set RPC endpoint input value if in testnet mode
+          if (currentMode === 'testnet') {
             rpcEndpointInput.value = config.rpcEndpoint || 'http://localhost:3001';
             rpcEndpointInput.disabled = !config.canEditRpc;
-          } else {
-            rpcEndpointConfig.classList.add('hidden');
           }
 
           // Save to localStorage
@@ -2269,13 +2343,13 @@
             accordion.classList.remove('opacity-60');
           }
 
-          // Update dot color based on network mode (demo = amber, testnet = gray)
-          updateConfigDotColor(currentMode === 'demo');
+          // Update dot color based on network mode (devnet = cyan, testnet/mainnet = gray)
+          updateNetworkModeDotColor(currentMode === 'devnet');
 
           // Render secrets display
           renderSecretsDisplay(config.secrets);
 
-          // Start polling transaction history (always, not just demo mode)
+          // Start polling transaction history
           pollTransactionHistory();
           if (transactionHistoryIntervalId) clearInterval(transactionHistoryIntervalId);
           transactionHistoryIntervalId = setInterval(pollTransactionHistory, 2000);
@@ -2348,17 +2422,28 @@
     }
 
     function updateConfigDotColor(isDemoMode) {
-      const systemDot = document.getElementById('systemHeaderDot');
       const configDot = document.getElementById('configHeaderDot');
       const dotClassName = isDemoMode
         ? 'inline-block w-2.5 h-2.5 rounded-full bg-cyan-500 transition-colors'
         : 'inline-block w-2.5 h-2.5 rounded-full bg-gray-400 transition-colors';
 
-      if (systemDot) {
-        systemDot.className = dotClassName;
-      }
       if (configDot) {
         configDot.className = dotClassName;
+      }
+    }
+
+    function updateNetworkModeDotColor(isDemoMode) {
+      const systemDot = document.getElementById('systemHeaderDot');
+      const networkModeHeaderDot = document.getElementById('networkModeHeaderDot');
+      const dotClassName = isDemoMode
+        ? 'inline-block w-2.5 h-2.5 rounded-full bg-cyan-500 transition-colors'
+        : 'inline-block w-2.5 h-2.5 rounded-full bg-gray-400 transition-colors';
+
+      if (networkModeHeaderDot) {
+        networkModeHeaderDot.className = dotClassName;
+      }
+      if (systemDot) {
+        systemDot.className = dotClassName;
       }
     }
 
@@ -2417,8 +2502,14 @@
     async function updateNetworkMode(mode) {
       const dropdown = document.getElementById('networkModeSelect');
       const loading = document.getElementById('networkModeLoading');
-      const rpcEndpointConfig = document.getElementById('rpcEndpointConfig');
       const previousMode = dropdown.value;
+
+      // Prevent mainnet selection (it's disabled but handle just in case)
+      if (mode === 'mainnet') {
+        showToast('Mainnet is not yet available', 'info');
+        dropdown.value = previousMode;
+        return;
+      }
 
       try {
         loading.classList.remove('hidden');
@@ -2430,26 +2521,40 @@
         });
 
         if (result && !result.error) {
+          // The API returns the stored mode (normalized 'real_testnet' → 'testnet')
+          const storedMode = result.networkMode || mode;
+
           // Save to localStorage
           const settings = loadSettings();
-          settings.networkMode = mode;
+          settings.networkMode = storedMode;
           saveSettings(settings);
 
-          // Update currentUser
+          // Update currentUser with the stored mode from API response
           if (currentUser) {
-            currentUser.networkMode = mode;
+            currentUser.networkMode = storedMode;
           }
 
-          updateConfigDotColor(mode === 'demo' || mode === 'devnet');
-          const modeName = mode === 'demo' ? 'Demo' : (mode === 'devnet' ? 'Devnet' : 'Testnet');
+          updateNetworkModeDotColor(storedMode === 'devnet');
+          const modeName = storedMode === 'devnet' ? 'Devnet' : 'Testnet';
           showToast('Switched to ' + modeName + ' mode', 'success');
 
-          // Show/hide RPC endpoint config based on mode
-          if (mode === 'real_testnet') {
-            rpcEndpointConfig.classList.remove('hidden');
-          } else {
-            rpcEndpointConfig.classList.add('hidden');
+          // If switching to testnet, re-validate wallet availability
+          if (storedMode === 'testnet' || storedMode === 'real_testnet') {
+            console.log('[NETWORK-MODE] Switched to testnet, validating wallet...');
+            const preflight = await checkWalletReadyForTestnet();
+            if (!preflight.ready) {
+              console.warn('[NETWORK-MODE] Wallet not ready for testnet:', preflight.error);
+              showToast('⚠️ ' + preflight.error, 'warning');
+            } else {
+              console.log('[NETWORK-MODE] Testnet wallet validation passed');
+            }
           }
+
+          // Update conditional visibility with the stored mode
+          updateNetworkModeVisibility(storedMode);
+
+          // Update dropdown to show the confirmed stored mode
+          dropdown.value = storedMode;
 
           // Reload config state to refresh all UI elements
           await loadConfigState();
@@ -2794,6 +2899,9 @@
       document.getElementById('chatView').classList.remove('active-chat');
       document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('feedView').classList.add('hidden');
+      document.getElementById('channelChatView').classList.add('hidden');
+      currentChannelId = null;
+      currentChannel = null;
       document.getElementById('sidebar').classList.add('hidden');
       document.getElementById('settingsPanel').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
@@ -3170,6 +3278,29 @@
         typeof window.usernode === 'object' &&
         window.usernode !== null
       );
+    }
+
+    // Pre-flight check for testnet transactions
+    // Ensures wallet is properly configured before submitting to server
+    // Does not require bridge to be ready — linked wallet is sufficient
+    async function checkWalletReadyForTestnet() {
+      const currentMode = loadSettings().network;
+
+      // Only enforce wallet check for testnet mode
+      if (currentMode !== 'testnet' && currentMode !== 'real_testnet') {
+        return { ready: true, error: null };
+      }
+
+      // Check if user has wallet linked (should be in currentUser)
+      // Linked wallet is sufficient; bridge is optional for signature confirmation
+      if (!currentUser || !currentUser.usernode_pubkey) {
+        return {
+          ready: false,
+          error: 'Wallet not linked to user account. Connect your Usernode wallet in Settings to use testnet.'
+        };
+      }
+
+      return { ready: true, error: null };
     }
 
     // Validate and log wallet address information
@@ -4412,33 +4543,58 @@
         return 'devnet-skipped-' + Date.now();
       }
 
+      // Pre-flight check for testnet: ensure bridge is ready and wallet is configured
+      if (currentNetworkMode === 'testnet' || currentNetworkMode === 'real_testnet') {
+        console.log('[PREFLIGHT] Running testnet wallet readiness check for action:', action);
+        const preflight = await checkWalletReadyForTestnet();
+        if (!preflight.ready) {
+          console.error('[PREFLIGHT] Wallet not ready for testnet:', preflight.error);
+          throw new Error(preflight.error);
+        }
+        console.log('[PREFLIGHT] Testnet wallet readiness check passed');
+      }
+
       // Validate wallet connection
       if (!currentUser || !currentUser.usernode_pubkey) {
         console.error('Wallet not connected: currentUser=', currentUser);
         throw new Error('You must be connected to Usernode wallet to perform this action. Please refresh your browser.');
       }
 
-      // FIX #2: Fetch wallet address from bridge before signing
+      // Fetch wallet address: try bridge first, fall back to linked wallet
       let connectedWalletAddress = null;
+      let walletSource = null;
+
       try {
         if (typeof window.usernode?.getNodeAddress === 'function') {
           connectedWalletAddress = await window.usernode.getNodeAddress();
-          console.log('[WALLET] Connected address from bridge:', connectedWalletAddress);
+          if (connectedWalletAddress) {
+            console.log('[WALLET] Connected address from bridge:', connectedWalletAddress);
+            walletSource = 'bridge';
+          }
         }
       } catch (err) {
         console.warn('[WALLET] Could not fetch connected address from bridge:', err.message);
       }
 
+      // Fall back to linked wallet if bridge didn't provide one
+      if (!connectedWalletAddress && currentUser && currentUser.usernode_pubkey) {
+        console.log('[WALLET] Bridge not available or returned undefined, using linked wallet:', currentUser.usernode_pubkey);
+        connectedWalletAddress = currentUser.usernode_pubkey;
+        walletSource = 'linked';
+      }
+
       // Validate wallet address format
       if (!connectedWalletAddress) {
-        throw new Error('Wallet address not available. Please reconnect your wallet.');
+        throw new Error('No wallet linked to account. Link a wallet in Settings before using testnet mode.');
       }
       if (typeof connectedWalletAddress !== 'string' || !connectedWalletAddress.startsWith('ut1')) {
         throw new Error('Invalid wallet address format: ' + JSON.stringify(connectedWalletAddress));
       }
 
       // Show loading toast
-      showToast('Requesting wallet signature...', 'info');
+      const sourceLabel = walletSource === 'bridge' ? 'bridge' : 'account';
+      showToast(`Requesting wallet signature (${sourceLabel})...`, 'info');
+      console.log('[WALLET] Using ' + sourceLabel + ' wallet for signature:', connectedWalletAddress);
 
       // Call wallet signature directly with connected address
       return await executeWalletSignature(action, details, auditLogId, connectedWalletAddress);
@@ -6054,6 +6210,9 @@
       document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('feedView').classList.add('hidden');
       document.getElementById('feedView').classList.add('hidden');
+      document.getElementById('channelChatView').classList.add('hidden');
+      currentChannelId = null;
+      currentChannel = null;
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('footer-in-view');
       document.getElementById('header').classList.remove('header-chat-fixed');
@@ -6727,8 +6886,25 @@
       document.getElementById('profileView').classList.add('hidden');
       document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('feedView').classList.add('hidden');
+      document.getElementById('channelChatView').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('footer-in-view');
+      document.getElementById('header').classList.add('header-chat-fixed');
+      if (conversationsPollInterval) clearInterval(conversationsPollInterval);
+    }
+
+    function showChannelChatView() {
+      document.getElementById('messagesView').classList.add('hidden');
+      document.getElementById('conversationsView').classList.add('hidden');
+      document.getElementById('chatView').classList.add('hidden');
+      document.getElementById('chatView').classList.remove('active-chat');
+      document.getElementById('profileView').classList.add('hidden');
+      document.getElementById('contactsView').classList.add('hidden');
+      document.getElementById('feedView').classList.add('hidden');
+      document.getElementById('channelChatView').classList.remove('hidden');
+      document.getElementById('channelChatView').classList.add('active-channel');
+      document.getElementById('inputFooter').classList.add('hidden');
+      document.getElementById('inputFooter').classList.remove('footer-in-view');
       document.getElementById('header').classList.add('header-chat-fixed');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
     }
@@ -6742,6 +6918,9 @@
       document.getElementById('profileView').classList.add('hidden');
       document.getElementById('contactsView').classList.remove('hidden');
       document.getElementById('feedView').classList.add('hidden');
+      document.getElementById('channelChatView').classList.add('hidden');
+      currentChannelId = null;
+      currentChannel = null;
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('footer-in-view');
       document.getElementById('header').classList.remove('header-chat-fixed');
@@ -6763,12 +6942,16 @@
 
     async function showFeedView() {
       updateMenuHighlight('channels');
-      document.getElementById('messagesView').classList.add('hidden');
-      document.getElementById('conversationsView').classList.add('hidden');
-      document.getElementById('chatView').classList.add('hidden');
-      document.getElementById('chatView').classList.remove('active-chat');
-      document.getElementById('contactsView').classList.add('hidden');
-      document.getElementById('profileView').classList.add('hidden');
+      const viewsToHide = ['messagesView', 'conversationsView', 'chatView', 'contactsView', 'profileView', 'channelChatView'];
+      viewsToHide.forEach(viewId => {
+        const element = document.getElementById(viewId);
+        if (element) {
+          element.classList.add('hidden');
+          if (viewId === 'chatView') {
+            element.classList.remove('active-chat');
+          }
+        }
+      });
       document.getElementById('feedView').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('footer-in-view');
@@ -6778,7 +6961,6 @@
       document.getElementById('headerContent').classList.remove('hidden');
       document.getElementById('headerBranding').textContent = 'Guardian';
       document.getElementById('headerPageLabel').textContent = 'Channels';
-      document.getElementById('backBtnContainer').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
       document.getElementById('postBtn').classList.remove('hidden');
@@ -6787,10 +6969,12 @@
       // Clear channel polling when switching away from channel view
       if (pollInterval) clearInterval(pollInterval);
       currentChannelId = null;
+      currentChannel = null;
 
       // Reset search state
       currentSearchQuery = '';
-      document.getElementById('searchChannelsInput').value = '';
+      const searchInput = document.getElementById('searchChannelsInput');
+      if (searchInput) searchInput.value = '';
 
       // Load channels list for Discover
       await loadChannels();
@@ -6801,16 +6985,34 @@
     async function loadChannels() {
       try {
         const data = await apiCall('/api/channels');
-        if (data && data.channels) {
-          channelsList = data.channels;
-          filteredChannelsList = channelsList;
-        } else if (data && data.error) {
-          console.error('Error loading channels:', data.error);
-          showToast('Failed to load channels', 'error');
+        if (!data) {
+          console.error('loadChannels: API returned null');
+          channelsList = [];
+          filteredChannelsList = [];
+          return;
         }
+
+        if (data.error) {
+          console.error('loadChannels: API returned error', data.error);
+          showToast('Failed to load channels', 'error');
+          return;
+        }
+
+        if (!Array.isArray(data.channels)) {
+          console.error('loadChannels: channels is not an array', data);
+          channelsList = [];
+          filteredChannelsList = [];
+          return;
+        }
+
+        // Validate and filter out invalid channel objects
+        channelsList = data.channels.filter(ch => ch && typeof ch === 'object' && ch.id && ch.name);
+        filteredChannelsList = channelsList;
       } catch (err) {
-        console.error('Error loading channels:', err);
+        console.error('loadChannels: fetch error', err);
         showToast('Error loading channels', 'error');
+        channelsList = [];
+        filteredChannelsList = [];
       }
     }
 
@@ -6855,35 +7057,74 @@
     }
 
     async function showChannelPosts(channelId) {
+      // Parse and validate channelId (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
+      if (!channelId || isNaN(parsedChannelId)) {
+        console.error('showChannelPosts: invalid channelId', channelId);
+        showToast('Invalid channel', 'error');
+        return;
+      }
+
       // Clear cross-context state to match DM/Group pattern
       currentConvId = null;
       currentOtherId = null;
       currentGroupId = null;
-      currentChannelId = channelId;
+      currentChannelId = parsedChannelId;
       channelPostsOffset = 0;
       channelPostsHasMore = false;
-      let channel = channelsList.find(ch => ch.id === channelId);
+
+      let channel = channelsList && channelsList.find(ch => ch && ch.id === parsedChannelId);
 
       // If channel not found, reload channels (in case a newly created channel hasn't loaded yet)
       if (!channel) {
-        await loadChannels();
-        channel = channelsList.find(ch => ch.id === channelId);
+        try {
+          await loadChannels();
+          channel = channelsList && channelsList.find(ch => ch && ch.id === parsedChannelId);
+        } catch (err) {
+          console.error('showChannelPosts: error reloading channels', err);
+          showToast('Failed to load channel', 'error');
+          return;
+        }
       }
 
-      if (!channel) return;
+      if (!channel) {
+        console.error('showChannelPosts: channel not found after reload', channelId);
+        showToast('Channel not found', 'error');
+        return;
+      }
 
       currentChannel = channel;
 
+      // Validate required DOM elements exist
+      const headerContent = document.getElementById('headerContent');
+      const headerBranding = document.getElementById('headerBranding');
+      const headerPageLabel = document.getElementById('headerPageLabel');
+      const backBtnContainer = document.getElementById('backBtnContainer');
+      const menuBtn = document.getElementById('menuBtn');
+      const conversationMenuBtn = document.getElementById('conversationMenuBtn');
+      const channelDetailHeader = document.getElementById('channelDetailHeader');
+      const actionButtonsContainer = document.getElementById('channelActionButtons');
+
+      if (!headerContent || !backBtnContainer || !actionButtonsContainer) {
+        console.error('showChannelPosts: required DOM elements not found');
+        showToast('Interface error', 'error');
+        return;
+      }
+
       // Set up standard header (matching openConversation and openGroup pattern)
-      document.getElementById('headerContent').classList.remove('hidden');
-      document.getElementById('headerBranding').textContent = 'Channel';
-      document.getElementById('headerPageLabel').textContent = channel.name + (channel.description ? ` — ${channel.description}` : '');
-      document.getElementById('backBtnContainer').classList.remove('hidden');
-      document.getElementById('menuBtn').classList.add('hidden');
-      document.getElementById('conversationMenuBtn').classList.add('hidden');
+      headerContent.classList.remove('hidden');
+      if (headerBranding) headerBranding.textContent = 'Channel';
+      if (headerPageLabel) {
+        headerPageLabel.textContent = escapeHtml(channel.name) + (channel.description ? ` — ${escapeHtml(channel.description)}` : '');
+      }
+      backBtnContainer.classList.remove('hidden');
+      if (menuBtn) menuBtn.classList.add('hidden');
+      if (conversationMenuBtn) conversationMenuBtn.classList.add('hidden');
 
       // Hide the old custom header
-      document.getElementById('channelDetailHeader').classList.add('hidden');
+      if (channelDetailHeader) {
+        channelDetailHeader.classList.add('hidden');
+      }
 
       // Clear composition state from previous channel
       const channelPostInput = document.getElementById('channelPostInput');
@@ -6895,10 +7136,10 @@
         channelPostCharCount.textContent = '0/2000';
       }
 
-      // Set up action buttons based on ownership (use channelActionButtons from hidden detail header)
-      const isOwner = currentUser && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
+      // Set up action buttons based on ownership
+      const isOwner = currentUser && currentUser.id && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
       const isFollowing = currentUser && channel.isFollowing;
-      const actionButtonsContainer = document.getElementById('channelActionButtons');
+
       if (isOwner) {
         actionButtonsContainer.innerHTML = `
           <button onclick="openChannelSettingsModal(${channel.id})" class="px-3 py-1 bg-zinc-200 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-300 dark:hover:bg-zinc-600 rounded text-sm font-medium transition active:scale-95">Settings</button>
@@ -6913,11 +7154,16 @@
         `;
       }
 
-      // Call showChatView() to properly switch views (matching DM/Group pattern)
-      showChatView();
+      // Call showChannelChatView() to show dedicated channel view
+      showChannelChatView();
 
       // Load and render channel posts
-      await loadChannelPosts(channelId);
+      try {
+        await loadChannelPosts(channelId);
+      } catch (err) {
+        console.error('showChannelPosts: error loading channel posts', err);
+        showToast('Failed to load channel posts', 'error');
+      }
 
       // Set up polling (matching DM/Group 2-second poll pattern)
       if (pollInterval) clearInterval(pollInterval);
@@ -6926,16 +7172,18 @@
 
     // New function: loadChannelPosts for consistency with loadMessages and loadGroupMessages
     async function loadChannelPosts(channelId) {
-      if (!currentChannelId || currentChannelId !== channelId) return;
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
+      if (!currentChannelId || currentChannelId !== parsedChannelId) return;
 
       try {
         isLoadingChannelPosts = true;
-        const data = await apiCall(`/api/channels/${channelId}/posts?limit=50&offset=0`);
+        const data = await apiCall(`/api/channels/${parsedChannelId}/posts?limit=50&offset=0`);
         if (data && data.posts) {
           channelPostsHasMore = data.hasMore || false;
           let html = '';
 
-          const channel = channelsList.find(ch => ch.id === channelId);
+          const channel = channelsList.find(ch => ch.id === parsedChannelId);
           if (!channel) return;
 
           const isOwner = currentUser && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
@@ -6987,12 +7235,12 @@
             html += '</div>';
 
             if (channelPostsHasMore) {
-              html += '<div class="p-4 flex justify-center"><button onclick="loadMoreChannelPosts(' + channelId + ')" class="py-2 px-6 text-sm font-medium text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition border border-cyan-600 dark:border-cyan-500 rounded">Load more posts</button></div>';
+              html += '<div class="p-4 flex justify-center"><button onclick="loadMoreChannelPosts(' + parsedChannelId + ')" class="py-2 px-6 text-sm font-medium text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition border border-cyan-600 dark:border-cyan-500 rounded">Load more posts</button></div>';
             } else if (data.posts.length > 0) {
               html += '<div class="p-4 text-center text-xs text-zinc-500 dark:text-zinc-500">No more posts</div>';
             }
           }
-          document.getElementById('feedContentWrapper').innerHTML = html;
+          document.getElementById('channelChatList').innerHTML = html;
           channelPostsOffset = 50;
         } else if (data && data.error) {
           throw new Error(data.error);
@@ -7006,25 +7254,31 @@
     }
 
     async function loadMoreChannelPosts(channelId) {
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
       if (isLoadingChannelPosts || !channelPostsHasMore) return;
 
       try {
         isLoadingChannelPosts = true;
-        const data = await apiCall(`/api/channels/${channelId}/posts?limit=50&offset=${channelPostsOffset}`);
+        const data = await apiCall(`/api/channels/${parsedChannelId}/posts?limit=50&offset=${channelPostsOffset}`);
         if (data && data.posts) {
-          const container = document.getElementById('channelPostsContainer');
-          if (container) {
+          // Append posts to channelChatList after removing the "Load more" button
+          const channelChatList = document.getElementById('channelChatList');
+          const loadMoreBtn = document.querySelector('[onclick*="loadMoreChannelPosts"]');
+
+          if (channelChatList && loadMoreBtn) {
             let postsHtml = '';
             data.posts.forEach(post => {
               postsHtml += renderChannelPost(post);
             });
-            container.innerHTML += postsHtml;
+            // Insert new posts before the load more button
+            loadMoreBtn.parentElement.insertAdjacentHTML('beforebegin', postsHtml);
           }
 
           channelPostsHasMore = data.hasMore || false;
           channelPostsOffset += 50;
 
-          const loadMoreBtn = document.querySelector('[onclick*="loadMoreChannelPosts"]');
+          // Update load more button visibility
           if (loadMoreBtn) {
             if (channelPostsHasMore) {
               loadMoreBtn.style.display = 'block';
@@ -7160,18 +7414,20 @@
     }
 
     async function loadChannelPostsAfterSubmit(channelId) {
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
       try {
         isLoadingChannelPosts = true;
         channelPostsOffset = 0;
         channelPostsHasMore = false;
 
-        const data = await apiCall(`/api/channels/${channelId}/posts?limit=50&offset=0`);
+        const data = await apiCall(`/api/channels/${parsedChannelId}/posts?limit=50&offset=0`);
         if (data && data.posts) {
           channelPostsHasMore = data.hasMore || false;
           let html = '';
 
           // Re-add compose box for owner
-          const channel = channelsList.find(ch => ch.id === channelId);
+          const channel = channelsList.find(ch => ch.id === parsedChannelId);
           const isOwner = currentUser && channel && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
 
           if (isOwner) {
@@ -7219,7 +7475,7 @@
             html += '</div>';
 
             if (channelPostsHasMore) {
-              html += '<div class="p-4 flex justify-center"><button onclick="loadMoreChannelPosts(' + channelId + ')" class="py-2 px-6 text-sm font-medium text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition border border-cyan-600 dark:border-cyan-500 rounded">Load more posts</button></div>';
+              html += '<div class="p-4 flex justify-center"><button onclick="loadMoreChannelPosts(' + parsedChannelId + ')" class="py-2 px-6 text-sm font-medium text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition border border-cyan-600 dark:border-cyan-500 rounded">Load more posts</button></div>';
             } else if (data.posts.length > 0) {
               html += '<div class="p-4 text-center text-xs text-zinc-500 dark:text-zinc-500">No more posts</div>';
             }
@@ -7308,6 +7564,8 @@
     }
 
     async function submitEditPost(channelId, postId) {
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
       const textarea = document.getElementById(`editPostInput-${postId}`);
       const content = textarea.value.trim();
 
@@ -7322,7 +7580,7 @@
       }
 
       try {
-        const response = await apiCall(`/api/channels/${channelId}/posts/${postId}`, {
+        const response = await apiCall(`/api/channels/${parsedChannelId}/posts/${postId}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ content: content })
@@ -7331,7 +7589,7 @@
         if (response && !response.error) {
           showToast('Post updated', 'success');
           document.getElementById(`edit-modal-${postId}`).remove();
-          await loadChannelPostsAfterSubmit(channelId);
+          await loadChannelPostsAfterSubmit(parsedChannelId);
         } else {
           showToast(response?.error || 'Unable to update post', 'error');
         }
@@ -7342,6 +7600,8 @@
     }
 
     function openDeletePostConfirm(channelId, postId) {
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
       // Close any open menu
       document.querySelectorAll('[id^="menu-"]').forEach(m => m.classList.add('hidden'));
 
@@ -7358,7 +7618,7 @@
           </div>
           <div class="px-6 py-4 border-t border-zinc-200 dark:border-zinc-800 flex gap-3">
             <button onclick="document.getElementById('delete-confirm-${postId}').remove()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100 text-sm font-medium">Cancel</button>
-            <button onclick="submitDeletePost(${channelId}, ${postId})" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition text-sm font-medium">Delete</button>
+            <button onclick="submitDeletePost(${parsedChannelId}, ${postId})" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition text-sm font-medium">Delete</button>
           </div>
         </div>
       `;
@@ -7366,15 +7626,17 @@
     }
 
     async function submitDeletePost(channelId, postId) {
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
       try {
-        const response = await apiCall(`/api/channels/${channelId}/posts/${postId}`, {
+        const response = await apiCall(`/api/channels/${parsedChannelId}/posts/${postId}`, {
           method: 'DELETE'
         });
 
         if (response && !response.error) {
           showToast('Post deleted', 'success');
           document.getElementById(`delete-confirm-${postId}`).remove();
-          await loadChannelPostsAfterSubmit(channelId);
+          await loadChannelPostsAfterSubmit(parsedChannelId);
         } else {
           showToast(response?.error || 'Unable to delete post', 'error');
         }
@@ -7387,23 +7649,21 @@
     function backToChannelList() {
       // Clear polling for channels (matching DM/Group cleanup pattern)
       if (pollInterval) clearInterval(pollInterval);
+      pollInterval = null;
       currentChannelId = null;
+      currentChannel = null;
+      channelPostsOffset = 0;
+      channelPostsHasMore = false;
 
-      // Hide header content and show channels view
-      document.getElementById('headerContent').classList.add('hidden');
-      document.getElementById('backBtnContainer').classList.add('hidden');
-      document.getElementById('menuBtn').classList.remove('hidden');
-      document.getElementById('conversationMenuBtn').classList.add('hidden');
-
-      // Clear message content
-      document.getElementById('feedContentWrapper').innerHTML = '';
-
-      showChannelList();
+      // Show feed view again (this hides chatView and shows feedView)
+      showFeedView();
     }
 
 
     function editChannelModal(channelId) {
-      const channel = channelsList.find(ch => ch.id === channelId);
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
+      const channel = channelsList.find(ch => ch.id === parsedChannelId);
       if (!channel) return;
 
       const newName = prompt('Edit channel name:', channel.name);
@@ -7416,7 +7676,7 @@
       const newDesc = prompt('Edit channel description:', channel.description || '');
       if (newDesc === null) return;
 
-      updateChannel(channelId, newName.trim(), newDesc.trim());
+      updateChannel(parsedChannelId, newName.trim(), newDesc.trim());
     }
 
     async function updateChannel(channelId, name, description) {
@@ -7441,17 +7701,21 @@
     }
 
     function deleteChannelConfirm(channelId) {
-      const channel = channelsList.find(ch => ch.id === channelId);
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
+      const channel = channelsList.find(ch => ch.id === parsedChannelId);
       if (!channel) return;
 
       if (confirm(`Are you sure you want to delete the channel "#${channel.name}"? This action cannot be undone.`)) {
-        deleteChannel(channelId);
+        deleteChannel(parsedChannelId);
       }
     }
 
     async function deleteChannel(channelId) {
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
       try {
-        const data = await apiCall(`/api/channels/${channelId}`, {
+        const data = await apiCall(`/api/channels/${parsedChannelId}`, {
           method: 'DELETE'
         });
 
@@ -7476,7 +7740,9 @@
     }
 
     async function openChannelSettingsModal(channelId) {
-      const channel = channelsList.find(ch => ch.id === channelId);
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
+      const channel = channelsList.find(ch => ch.id === parsedChannelId);
       if (!channel) {
         showToast('Channel not found', 'error');
         return;
@@ -7502,7 +7768,7 @@
       // Fetch full channel data
       try {
         const channels = await apiCall('/api/channels');
-        const fullChannel = channels.channels.find(ch => ch.id === channelId);
+        const fullChannel = channels.channels.find(ch => ch.id === parsedChannelId);
 
         if (!fullChannel) {
           showToast('Failed to load channel settings', 'error');
@@ -7626,36 +7892,70 @@
     }
 
     async function switchFeedTab(tabName) {
+      // Validate tabName
+      const validTabs = ['home', 'discover', 'my-channels'];
+      if (!validTabs.includes(tabName)) {
+        console.warn('switchFeedTab: invalid tabName', tabName);
+        return;
+      }
+
       currentChannelId = null;
-      document.getElementById('channelDetailHeader').classList.add('hidden');
+      currentChannel = null;
+
+      const channelDetailHeader = document.getElementById('channelDetailHeader');
+      const feedContentWrapper = document.getElementById('feedContentWrapper');
+
+      if (channelDetailHeader) {
+        channelDetailHeader.classList.add('hidden');
+      }
+      if (feedContentWrapper) {
+        feedContentWrapper.style.paddingTop = '';
+      }
 
       const homeTab = document.getElementById('feedTabHome');
       const discoverTab = document.getElementById('feedTabDiscover');
+      const myChannelsTab = document.getElementById('feedTabMyChannels');
       const feedHeaderHome = document.getElementById('feedHeaderHome');
       const feedHeaderDiscover = document.getElementById('feedHeaderDiscover');
+      const feedHeaderMyChannels = document.getElementById('feedHeaderMyChannels');
 
+      // Validate all required elements exist
+      if (!homeTab || !discoverTab || !myChannelsTab || !feedHeaderHome || !feedHeaderDiscover || !feedHeaderMyChannels) {
+        console.error('switchFeedTab: required DOM elements not found');
+        return;
+      }
 
       // Reset all tabs
-      [homeTab, discoverTab].forEach(tab => {
+      [homeTab, discoverTab, myChannelsTab].forEach(tab => {
         if (tab) {
           tab.classList.remove('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
           tab.classList.add('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
         }
       });
-      [feedHeaderHome, feedHeaderDiscover].forEach(header => {
+      [feedHeaderHome, feedHeaderDiscover, feedHeaderMyChannels].forEach(header => {
         if (header) header.classList.add('hidden');
       });
 
-      if (tabName === 'home') {
-        homeTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
-        homeTab.classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
-        feedHeaderHome.classList.remove('hidden');
-        await loadHomeFeed();
-      } else if (tabName === 'discover') {
-        discoverTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
-        discoverTab.classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
-        feedHeaderDiscover.classList.remove('hidden');
-        await loadDiscoverChannels();
+      try {
+        if (tabName === 'home') {
+          homeTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
+          homeTab.classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
+          feedHeaderHome.classList.remove('hidden');
+          await loadHomeFeed();
+        } else if (tabName === 'discover') {
+          discoverTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
+          discoverTab.classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
+          feedHeaderDiscover.classList.remove('hidden');
+          await loadDiscoverChannels();
+        } else if (tabName === 'my-channels') {
+          myChannelsTab.classList.add('border-cyan-600', 'text-zinc-900', 'dark:text-zinc-100');
+          myChannelsTab.classList.remove('border-transparent', 'text-zinc-600', 'dark:text-zinc-400');
+          feedHeaderMyChannels.classList.remove('hidden');
+          await loadMyChannels();
+        }
+      } catch (err) {
+        console.error('switchFeedTab: error loading tab content', tabName, err);
+        showToast('Error loading tab content', 'error');
       }
     }
 
@@ -7713,6 +8013,66 @@
       } catch (err) {
         console.error('Error loading home feed:', err);
         showToast('Error loading posts', 'error');
+      }
+    }
+
+    async function loadMyChannels() {
+      try {
+        if (!currentUser || !currentUser.id) {
+          console.warn('loadMyChannels: currentUser not authenticated');
+          showToast('Please log in to view your channels', 'warning');
+          return;
+        }
+
+        const data = await apiCall('/api/channels');
+        if (!data) {
+          console.error('loadMyChannels: API response is null');
+          showToast('Failed to load channels', 'error');
+          return;
+        }
+
+        if (!Array.isArray(data.channels)) {
+          console.error('loadMyChannels: API response does not have channels array', data);
+          showToast('Invalid channels data received', 'error');
+          return;
+        }
+
+        // Filter to only channels owned by the current user
+        const currentUserId = parseInt(currentUser.id, 10);
+        const myChannels = data.channels.filter(ch => {
+          const chOwnerId = parseInt(ch.ownerId, 10);
+          return chOwnerId === currentUserId;
+        });
+
+        // Store the full channel list so showChannelPosts() can find any channel by ID
+        channelsList = data.channels;
+
+        const contentWrapper = document.getElementById('feedContentWrapper');
+        if (!contentWrapper) {
+          console.error('loadMyChannels: feedContentWrapper not found');
+          return;
+        }
+
+        let html = '';
+        if (myChannels.length === 0) {
+          html = `<div class="text-center py-12 text-zinc-600 dark:text-zinc-500">
+            <p class="text-lg font-medium mb-2">You don't own any channels yet</p>
+            <p class="text-sm mb-4">Create a channel to get started.</p>
+            <button onclick="openCreateChannelModal()" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-sm font-medium transition">Create Channel</button>
+          </div>`;
+        } else {
+          html = '<div class="space-y-3 p-4">';
+          myChannels.forEach(channel => {
+            if (channel && channel.id) {
+              html += renderChannelCard(channel, true);
+            }
+          });
+          html += '</div>';
+        }
+        contentWrapper.innerHTML = html;
+      } catch (err) {
+        console.error('Error loading my channels:', err);
+        showToast('Error loading channels', 'error');
       }
     }
 
@@ -7817,15 +8177,25 @@
     }
 
     function renderChannelCard(channel, isFollowing) {
-      const isOwner = currentUser && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
+      // Validate channel object
+      if (!channel || !channel.id || !channel.name) {
+        console.warn('renderChannelCard: invalid channel object', channel);
+        return '';
+      }
+
+      const isOwner = currentUser && currentUser.id && parseInt(channel.ownerId, 10) === parseInt(currentUser.id, 10);
       const ownerBadge = isOwner ? '<span class="ml-2 text-xs bg-cyan-100 dark:bg-cyan-900 text-cyan-700 dark:text-cyan-300 px-2 py-1 rounded">Owner</span>' : '';
-      const latestPostSection = channel.latestPost ? `
-        <div class="mt-3 p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded text-sm">
-          <div class="text-xs text-zinc-500 dark:text-zinc-500 mb-1">Latest from ${escapeHtml(channel.latestPost.authorUsername)}</div>
-          <p class="text-zinc-700 dark:text-zinc-300 line-clamp-2">${escapeHtml(channel.latestPost.contentSnippet)}</p>
-          <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-1">${formatRelativeTime(channel.latestPost.createdAt)}</div>
-        </div>
-      ` : '';
+
+      let latestPostSection = '';
+      if (channel.latestPost && channel.latestPost.authorUsername && channel.latestPost.contentSnippet) {
+        latestPostSection = `
+          <div class="mt-3 p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded text-sm">
+            <div class="text-xs text-zinc-500 dark:text-zinc-500 mb-1">Latest from ${escapeHtml(channel.latestPost.authorUsername)}</div>
+            <p class="text-zinc-700 dark:text-zinc-300 line-clamp-2">${escapeHtml(channel.latestPost.contentSnippet)}</p>
+            <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-1">${formatRelativeTime(channel.latestPost.createdAt)}</div>
+          </div>
+        `;
+      }
 
       const actionButton = isOwner
         ? `<button onclick="event.stopPropagation(); openChannelSettingsModal(${channel.id})" class="px-3 py-1 bg-zinc-200 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-300 dark:hover:bg-zinc-600 rounded text-sm font-medium transition active:scale-95">Settings</button>`
@@ -7837,6 +8207,9 @@
             ${channel.isFollowing ? 'Following' : 'Follow'}
           </button>`;
 
+      const followerCount = parseInt(channel.followerCount, 10) || 0;
+      const followerLabel = followerCount === 1 ? 'follower' : 'followers';
+
       return `
         <div class="p-4 bg-white dark:bg-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-lg border border-zinc-200 dark:border-zinc-700 transition cursor-pointer" onclick="showChannelPosts(${channel.id})">
           <div class="flex items-start justify-between gap-3">
@@ -7847,7 +8220,7 @@
               </div>
               <p class="text-sm text-zinc-600 dark:text-zinc-400">by ${escapeHtml(channel.ownerUsername || 'Unknown')}</p>
               ${channel.description ? `<p class="text-sm text-zinc-700 dark:text-zinc-300 mt-1 line-clamp-2">${escapeHtml(channel.description)}</p>` : ''}
-              <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-2">${channel.followerCount} ${channel.followerCount === 1 ? 'follower' : 'followers'}</div>
+              <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-2">${followerCount} ${followerLabel}</div>
               ${latestPostSection}
             </div>
             <div class="flex-shrink-0">
@@ -7859,25 +8232,27 @@
     }
 
     async function toggleFollowChannel(channelId, shouldFollow) {
+      // Parse channelId to numeric (may come as string from onclick)
+      const parsedChannelId = parseInt(channelId, 10);
       try {
         if (shouldFollow) {
-          const data = await apiCall(`/api/channels/${channelId}/follow`, { method: 'POST' });
+          const data = await apiCall(`/api/channels/${parsedChannelId}/follow`, { method: 'POST' });
           if (data && !data.error) {
             showToast('Channel followed', 'success');
             await loadChannels();
-            if (currentChannelId === channelId) {
-              await showChannelPosts(channelId);
+            if (currentChannelId === parsedChannelId) {
+              await showChannelPosts(parsedChannelId);
             }
           } else if (data && data.error) {
             showToast(data.error, 'error');
           }
         } else {
-          const data = await apiCall(`/api/channels/${channelId}/follow`, { method: 'DELETE' });
+          const data = await apiCall(`/api/channels/${parsedChannelId}/follow`, { method: 'DELETE' });
           if (data && !data.error) {
             showToast('Channel unfollowed', 'success');
             await loadChannels();
-            if (currentChannelId === channelId) {
-              await showChannelPosts(channelId);
+            if (currentChannelId === parsedChannelId) {
+              await showChannelPosts(parsedChannelId);
             }
           } else if (data && data.error) {
             showToast(data.error, 'error');
@@ -7907,6 +8282,9 @@
       document.getElementById('chatView').classList.remove('active-chat');
       document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('feedView').classList.add('hidden');
+      document.getElementById('channelChatView').classList.add('hidden');
+      currentChannelId = null;
+      currentChannel = null;
       document.getElementById('profileView').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('footer-in-view');
@@ -8042,91 +8420,6 @@
       loadProfileActivity();
     }
 
-    async function fetchPeerCount() {
-      try {
-        const response = await apiCall('/api/network/peer-count');
-        return response;
-      } catch (err) {
-        console.error('Error fetching peer count:', err);
-        return { peerCount: 0, status: 'offline' };
-      }
-    }
-
-    async function refreshPeerCount() {
-      try {
-        const peerCountResponse = await fetchPeerCount();
-        if (!peerCountResponse) return;
-
-        if (cachedGuardiansData) {
-          cachedGuardiansData.peerCount = peerCountResponse;
-        }
-
-        const peerCount = peerCountResponse.peerCount || 0;
-        const hours = cachedGuardiansData?.foregroundHours || 0;
-
-        const hoursDisplay = document.getElementById('profileGuardianHours');
-        if (hoursDisplay) {
-          hoursDisplay.innerHTML = `<div>${hours}</div><div class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Connected Peers: ${peerCount}</div>`;
-        }
-
-        // Update count in Peer Details modal if it is currently open
-        const peerModal = document.getElementById('peerModal');
-        if (peerModal) {
-          const countEl = peerModal.querySelector('.text-blue-600');
-          if (countEl) countEl.textContent = peerCount;
-        }
-      } catch (err) {
-        console.error('Error refreshing peer count:', err);
-      }
-    }
-
-    async function refreshUserPeerCount() {
-      try {
-        const userPeerResponse = await apiCall('/api/user/peers/connected');
-
-        // If 403, network_mode is not 'real_testnet', so stop polling
-        if (userPeerResponse && userPeerResponse.error && userPeerResponse.available === false) {
-          console.log('[Guardian Data] Real testnet not enabled, stopping polling');
-          if (guardianPollInterval) {
-            clearInterval(guardianPollInterval);
-            guardianPollInterval = null;
-          }
-          return;
-        }
-
-        if (!userPeerResponse) return;
-
-        if (cachedGuardiansData) {
-          cachedGuardiansData.userPeerCount = userPeerResponse.userPeerCount;
-          cachedGuardiansData.userPeerIds = userPeerResponse.peerIds;
-        }
-
-        const userPeerCount = userPeerResponse.userPeerCount || 0;
-        const hours = cachedGuardiansData?.foregroundHours || 0;
-
-        const hoursDisplay = document.getElementById('profileGuardianHours');
-        if (hoursDisplay) {
-          hoursDisplay.innerHTML = `<div>${hours}</div><div class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Connected Peers: ${userPeerCount}</div>`;
-        }
-
-        // Update count in Peer Details modal if it is currently open
-        const peerModal = document.getElementById('peerModal');
-        if (peerModal) {
-          const countEl = peerModal.querySelector('.text-3xl');
-          if (countEl) countEl.textContent = userPeerCount;
-        }
-      } catch (err) {
-        console.error('Error refreshing user peer count:', err);
-        // Stop polling on 403 (testnet disabled)
-        if (err && err.status === 403) {
-          if (guardianPollInterval) {
-            clearInterval(guardianPollInterval);
-            guardianPollInterval = null;
-          }
-        }
-      }
-    }
-
     async function loadGuardiansData() {
       try {
         console.log('[Guardian Data] Loading guardians data...');
@@ -8183,64 +8476,12 @@
           contributionLevel: response.contributionLevel
         });
 
-        // Fetch peer data using usernode_pubkey if available
-        if (response.usernode_pubkey) {
-          try {
-            console.log('[Guardian Data] Fetching peer data for:', response.usernode_pubkey);
-            const peerResponse = await apiCall(`/api/peers/${response.usernode_pubkey}`);
-            if (peerResponse) {
-              response.peerData = peerResponse;
-              console.log('[Guardian Data] Peer data loaded');
-            }
-          } catch (err) {
-            console.error('[Guardian Data] Error loading peer data:', err);
-          }
-        }
-
-        // Fetch user's peer count (user-specific testnet peers) - only if network_mode is 'real_testnet'
-        try {
-          console.log('[Guardian Data] Fetching user peer count...');
-          const userPeerResponse = await apiCall('/api/user/peers/connected');
-          if (userPeerResponse) {
-            response.userPeerCount = userPeerResponse.userPeerCount;
-            response.userPeerIds = userPeerResponse.peerIds;
-            console.log('[Guardian Data] User peer count loaded:', userPeerResponse.userPeerCount);
-          }
-        } catch (err) {
-          // 403 means network_mode is not 'real_testnet', so set to null to hide the feature
-          if (err.status === 403 || (err.response && err.response.status === 403)) {
-            console.log('[Guardian Data] Real testnet not enabled for this user (network_mode is not real_testnet)');
-            response.userPeerCount = null;
-            response.userPeerIds = [];
-          } else {
-            console.error('[Guardian Data] Error loading user peer count:', err);
-          }
-        }
-
-        // Fetch peer count (network connectivity) - only if testnet is enabled
-        if (response.userPeerCount !== null) {
-          try {
-            console.log('[Guardian Data] Fetching network peer count...');
-            const peerCountResponse = await fetchPeerCount();
-            if (peerCountResponse) {
-              response.peerCount = peerCountResponse;
-              console.log('[Guardian Data] Network peer count loaded:', peerCountResponse.peerCount);
-            }
-          } catch (err) {
-            console.error('[Guardian Data] Error loading network peer count:', err);
-          }
-        }
 
         // Cache the data and update display with real data
         cachedGuardiansData = response;
         console.log('[Guardian Data] Data cached and ready');
         displayGuardiansData(response);
 
-        // Start polling if testnet is enabled
-        if (response.userPeerCount !== null && !guardianPollInterval) {
-          console.log('[Guardian Data] Starting peer count polling');
-          guardianPollInterval = setInterval(refreshUserPeerCount, 10000);
-        }
       } catch (err) {
         console.error('[Guardian Data] Unexpected error:', err);
         displayGuardiansError();
@@ -8250,7 +8491,7 @@
     function createFallbackMockData() {
       // Create deterministic mock data based on user ID (matches backend mock pattern)
       const userId = currentUser?.id || 1;
-      const mockDataSet = [5, 25, 100, 300, 15, 50, 75, 150, 200, 250];
+      const mockDataSet = [5, 25, 100, 300, 15, 50, 75, 150, 200, 250, 500, 750, 1000];
       const foregroundHours = mockDataSet[userId % mockDataSet.length];
 
       // Calculate rank and contribution level based on hours (mirrors backend logic)
@@ -8272,15 +8513,13 @@
       let hoursBracket = foregroundHours < 10 ? '0-10'
         : foregroundHours < 50 ? '10-50'
         : foregroundHours < 200 ? '50-200'
-        : '200+';
+        : '200-1000+';
 
       return {
         foregroundHours,
         rank,
         contributionLevel,
-        hoursBracket,
-        peerCount: { peerCount: 0, status: 'offline' },
-        usernode_pubkey: currentUser?.usernode_pubkey || null
+        hoursBracket
       };
     }
 
@@ -8295,16 +8534,11 @@
       const hours = data.foregroundHours || 0;
       const level = data.contributionLevel || 0;
       const rank = data.rank || 'New Guardian';
-      const userPeerCount = data.userPeerCount !== null ? data.userPeerCount : null;
 
-      // Update hours with user peer count info (only show peer count in testnet mode)
+      // Update hours display
       const hoursDisplay = document.getElementById('profileGuardianHours');
       if (hoursDisplay) {
-        if (userPeerCount !== null) {
-          hoursDisplay.innerHTML = `<div>${hours}</div><div class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Connected Peers: ${userPeerCount}</div>`;
-        } else {
-          hoursDisplay.textContent = hours;
-        }
+        hoursDisplay.textContent = hours;
       }
 
       // Update rank
@@ -8422,61 +8656,6 @@
       if (modal) modal.remove();
     }
 
-    function showPeerModal(data) {
-      // Use cached data if available, otherwise show error
-      const guardianData = data || cachedGuardiansData;
-
-      if (!guardianData) {
-        console.error('Peer modal: no Guardian data available');
-        showErrorModal('Peer Details', 'Unable to load peer details. Please try again.');
-        return;
-      }
-
-      const userPeerCount = guardianData.userPeerCount;
-      const foregroundHours = (guardianData.peerData && guardianData.peerData.foreground_hours) || guardianData.foregroundHours || 0;
-
-      // Check if peer count is available (null means network_mode is not 'real_testnet')
-      if (userPeerCount === null) {
-        showErrorModal('Peer Details', 'Peer count feature is not enabled. Please switch to real testnet mode in your settings to view connected peers.');
-        return;
-      }
-
-      // Create modal
-      const modal = document.createElement('div');
-      modal.id = 'peerModal';
-      modal.className = 'fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4';
-      modal.onclick = (e) => {
-        if (e.target === modal) closePeerModal();
-      };
-
-      modal.innerHTML = `
-        <div class="bg-white dark:bg-zinc-900 rounded-lg p-6 w-full max-w-md shadow-lg space-y-4">
-          <div class="flex justify-between items-start">
-            <h2 class="text-xl font-bold text-zinc-900 dark:text-white">Peer Details</h2>
-            <button onclick="closePeerModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
-          </div>
-          <div class="space-y-4">
-            <div class="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-              <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Your Connected Peers</div>
-              <div class="text-3xl font-bold text-blue-600 dark:text-blue-400">${userPeerCount}</div>
-              <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">testnet peers connected to your node</div>
-            </div>
-            <div class="bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-200 dark:border-cyan-800 rounded-lg p-4">
-              <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Your Foreground Hours</div>
-              <div class="text-3xl font-bold text-cyan-600 dark:text-cyan-400">${foregroundHours}</div>
-            </div>
-          </div>
-        </div>
-      `;
-
-      document.body.appendChild(modal);
-    }
-
-    function closePeerModal() {
-      const modal = document.getElementById('peerModal');
-      if (modal) modal.remove();
-    }
-
     function showErrorModal(title, message) {
       const modal = document.createElement('div');
       modal.id = 'errorModal';
@@ -8517,11 +8696,11 @@
 
         const foregroundHours = guardiansRes.foregroundHours || 0;
         const isVerified = userRes?.verified || false;
-        const isEligible = foregroundHours >= 200 && isVerified;
+        const isEligible = foregroundHours >= 1000 && isVerified;
 
         console.log('[GuardiaNFT] Loaded:', { foregroundHours, isVerified, isEligible });
 
-        const progressPercentage = Math.min((foregroundHours / 200) * 100, 100);
+        const progressPercentage = Math.min((foregroundHours / 1000) * 100, 100);
         const verifiedText = isVerified ? 'Verified' : 'Unverified';
         const verifiedColor = isVerified
           ? 'bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800'
@@ -8554,7 +8733,7 @@
                 <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3">Foreground Hours</div>
                 <div class="flex justify-between items-end mb-3">
                   <div class="text-3xl font-bold text-cyan-600 dark:text-cyan-400">${foregroundHours}</div>
-                  <div class="text-sm text-zinc-600 dark:text-zinc-400">/ 200</div>
+                  <div class="text-sm text-zinc-600 dark:text-zinc-400">/ 1000</div>
                 </div>
                 <div class="w-full bg-zinc-300 dark:bg-zinc-700 rounded-full h-2">
                   <div class="bg-cyan-600 dark:bg-cyan-500 h-2 rounded-full transition-all" style="width: ${progressPercentage}%"></div>
@@ -8972,11 +9151,11 @@
 
           if (tx.messageType === 'message') {
             typeIcon = '💬';
-            const recipient = payload.recipientUsername || 'unknown';
+            const recipient = tx.recipientUsername || 'unknown';
             description = `Sent message to @${escapeHtml(recipient)}`;
           } else if (tx.messageType === 'token_transfer') {
             typeIcon = '💰';
-            const recipient = payload.recipientUsername || 'unknown';
+            const recipient = tx.recipientUsername || 'unknown';
             const amount = payload.amount || '?';
             description = `Transferred ${amount} tokens to @${escapeHtml(recipient)}`;
           } else if (tx.messageType === 'group_create') {
