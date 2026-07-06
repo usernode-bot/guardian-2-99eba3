@@ -41,7 +41,7 @@
       "description": "Block explorer base URL for polling transaction confirmation status. Defaults to Usernode's testnet explorer. Override for custom testnet deployments or alternate explorer endpoints.",
       "required": false,
       "private": false,
-      "default": "https://testnet-explorer.usernodelabs.org"
+      "default": "https://explorer.testnet.usernodelabs.org"
     },
     {
       "key": "TRANSACTIONS_BASE_URL",
