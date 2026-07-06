@@ -118,6 +118,13 @@ let rpcHealthCache = null;
 let rpcHealthCacheTime = 0;
 const RPC_HEALTH_CACHE_MS = 30000; // 30 seconds
 
+// Peer sync cache and configuration
+const USERNODE_API_URL = process.env.USERNODE_API_URL || 'http://usernode-node:3001';
+const PEER_SYNC_CACHE_MS = parseInt(process.env.PEER_SYNC_CACHE_MS || '300000', 10); // 5 minutes default
+const PEER_SYNC_TIMEOUT_MS = parseInt(process.env.PEER_SYNC_TIMEOUT_MS || '5000', 10); // 5 seconds default
+let peerSyncCache = new Map(); // Map<userId, { timestamp, peersHours }>
+let peerSyncPromises = new Map(); // Map<userId, Promise> for concurrent request deduplication
+
 async function checkRPCHealth() {
   // RPC health checks only in testnet mode
   if (NETWORK_MODE !== 'testnet') {
@@ -511,33 +518,171 @@ function calculateRankData(foregroundHours) {
   const hoursBracket = foregroundHours < 10 ? '0-10'
     : foregroundHours < 50 ? '10-50'
     : foregroundHours < 200 ? '50-200'
-    : '200+';
+    : '200-1000+';
 
   return { rank, hoursBracket, contributionLevel };
 }
 
-// Helper function to get foreground hours for a user (staging: mock data, prod: from sessions table)
-async function getForegroundHours(userId) {
+// Helper function to sync peer data from Usernode Social Vibecoding API
+async function syncPeerDataFromUsernode(userId, token) {
+  try {
+    // Check if already syncing for this user to avoid concurrent requests
+    if (peerSyncPromises.has(userId)) {
+      return await peerSyncPromises.get(userId);
+    }
+
+    // Check cache
+    const now = Date.now();
+    const cached = peerSyncCache.get(userId);
+    if (cached && (now - cached.timestamp) < PEER_SYNC_CACHE_MS) {
+      console.log(`[PEER-SYNC] Using cached peer data for user ${userId}`);
+      return cached.peersHours;
+    }
+
+    // Create promise for this sync to deduplicate concurrent requests
+    const syncPromise = (async () => {
+      try {
+        // Build request to Usernode API
+        const apiUrl = new URL(`/api/users/${userId}/peers`, USERNODE_API_URL);
+        const isHttps = USERNODE_API_URL.startsWith('https');
+        const client = isHttps ? https : http;
+
+        return new Promise((resolve, reject) => {
+          const options = {
+            hostname: apiUrl.hostname,
+            port: apiUrl.port,
+            path: apiUrl.pathname + (apiUrl.search || ''),
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            timeout: PEER_SYNC_TIMEOUT_MS
+          };
+
+          // Add authentication headers
+          if (token) {
+            options.headers['Authorization'] = `Bearer ${token}`;
+          }
+          if (process.env.APP_SECRET_KEY) {
+            options.headers['x-app-secret'] = process.env.APP_SECRET_KEY;
+          }
+
+          const req = client.request(options, (res) => {
+            let data = '';
+            res.on('data', chunk => { data += chunk; });
+            res.on('end', async () => {
+              try {
+                if (res.statusCode < 200 || res.statusCode >= 300) {
+                  console.error(`[PEER-SYNC] Usernode API error (HTTP ${res.statusCode}) for user ${userId}`);
+                  resolve(0); // Fallback to 0, will use local data
+                  return;
+                }
+
+                const response = JSON.parse(data);
+                const peers = response.peers || [];
+                console.log(`[PEER-SYNC] Fetched ${peers.length} peers for user ${userId}`);
+
+                // Upsert peers into database
+                for (const peer of peers) {
+                  if (peer.peer_id && typeof peer.foreground_hours === 'number') {
+                    await pool.query(`
+                      INSERT INTO peers (peer_id, foreground_hours, created_at)
+                      VALUES ($1, $2, NOW())
+                      ON CONFLICT (peer_id) DO UPDATE SET
+                        foreground_hours = EXCLUDED.foreground_hours
+                    `, [peer.peer_id, peer.foreground_hours]);
+                  }
+                }
+
+                // Upsert user_peers relationships
+                for (const peer of peers) {
+                  if (peer.peer_id) {
+                    await pool.query(`
+                      INSERT INTO user_peers (user_id, peer_id, connected_at, last_seen_at)
+                      VALUES ($1, $2, NOW(), NOW())
+                      ON CONFLICT (user_id, peer_id) DO UPDATE SET
+                        last_seen_at = NOW()
+                    `, [userId, peer.peer_id]);
+                  }
+                }
+
+                // Calculate total hours from synced peers
+                let totalHours = 0;
+                for (const peer of peers) {
+                  if (typeof peer.foreground_hours === 'number') {
+                    totalHours += peer.foreground_hours;
+                  }
+                }
+
+                // Cache the result
+                peerSyncCache.set(userId, { timestamp: now, peersHours: totalHours });
+                console.log(`[PEER-SYNC] Synced ${peers.length} peers, total ${totalHours} hours for user ${userId}`);
+                resolve(totalHours);
+              } catch (err) {
+                console.error(`[PEER-SYNC] Error processing response for user ${userId}:`, err.message);
+                resolve(0); // Fallback to 0
+              }
+            });
+          });
+
+          req.on('error', (err) => {
+            const errorType = err.code || err.message || 'unknown';
+            console.error(`[PEER-SYNC] Network error (${errorType}) fetching peers for user ${userId}`);
+            resolve(0); // Fallback to 0
+          });
+
+          req.on('timeout', () => {
+            req.destroy();
+            console.error(`[PEER-SYNC] Request timeout (>${PEER_SYNC_TIMEOUT_MS}ms) for user ${userId}`);
+            resolve(0); // Fallback to 0
+          });
+
+          req.end();
+        });
+      } finally {
+        // Remove from concurrent request map
+        peerSyncPromises.delete(userId);
+      }
+    })();
+
+    peerSyncPromises.set(userId, syncPromise);
+    return await syncPromise;
+  } catch (err) {
+    console.error(`[PEER-SYNC] Unexpected error syncing peer data for user ${userId}:`, err);
+    return 0; // Fallback to 0
+  }
+}
+
+// Helper function to get foreground hours for a user (from synced peers or fallback to local data)
+async function getForegroundHours(userId, token) {
   if (IS_STAGING) {
     // In staging, provide mock data based on user ID for consistency
     const numUserId = parseInt(userId, 10);
-    const mockDataSet = [5, 25, 100, 300, 15, 50, 75, 150, 200, 250];
+    const mockDataSet = [5, 25, 100, 300, 15, 50, 75, 150, 200, 250, 500, 750, 1000];
     // Use modulo to deterministically map user ID to a value
     return mockDataSet[numUserId % mockDataSet.length];
-  } else {
-    // In production, sum foreground hours from sessions table
-    try {
-      const { rows } = await pool.query(`
-        SELECT COALESCE(SUM(duration_seconds), 0) as total_seconds
-        FROM user_foreground_sessions
-        WHERE user_id = $1
-      `, [userId]);
-      const totalSeconds = rows[0].total_seconds || 0;
-      return Math.floor(totalSeconds / 3600); // Convert seconds to hours
-    } catch (err) {
-      console.error('Error fetching foreground hours from sessions:', err);
-      return 0;
+  }
+
+  // In production, attempt to sync peer data from Usernode API
+  if (token && USERNODE_API_URL) {
+    const syncedHours = await syncPeerDataFromUsernode(userId, token);
+    if (syncedHours > 0) {
+      return syncedHours;
     }
+  }
+
+  // Fallback: query synced peers from local database
+  try {
+    const { rows } = await pool.query(`
+      SELECT COALESCE(SUM(p.foreground_hours), 0) as total_hours
+      FROM user_peers up
+      JOIN peers p ON up.peer_id = p.peer_id
+      WHERE up.user_id = $1
+    `, [userId]);
+    return rows[0].total_hours || 0;
+  } catch (err) {
+    console.error('Error fetching foreground hours from peers:', err);
+    return 0;
   }
 }
 
@@ -3949,7 +4094,8 @@ app.get('/api/users/by-username/:username', async (req, res) => {
     `, [username]);
     if (!rows.length) return res.status(404).json({ error: 'User not found' });
     const user = rows[0];
-    const foregroundHours = await getForegroundHours(user.id);
+    const token = req.query.token || req.headers['x-usernode-token'];
+    const foregroundHours = await getForegroundHours(user.id, token);
     const { rank, hoursBracket, contributionLevel } = calculateRankData(foregroundHours);
     res.json({
       id: user.id,
@@ -3982,7 +4128,8 @@ app.get('/api/users/:userId', async (req, res) => {
     }
 
     const user = rows[0];
-    const foregroundHours = await getForegroundHours(userId);
+    const token = req.query.token || req.headers['x-usernode-token'];
+    const foregroundHours = await getForegroundHours(userId, token);
     const { rank, hoursBracket, contributionLevel } = calculateRankData(foregroundHours);
 
     res.json({
@@ -5388,7 +5535,15 @@ app.get('/api/user/guardians', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const foregroundHours = await getForegroundHours(req.user.id);
+    // Get JWT token from request for peer sync authentication
+    const token = req.query.token || req.headers['x-usernode-token'];
+
+    // Bypass cache if refresh=true query param
+    if (req.query.refresh === 'true') {
+      peerSyncCache.delete(req.user.id);
+    }
+
+    const foregroundHours = await getForegroundHours(req.user.id, token);
     const { rank, hoursBracket, contributionLevel } = calculateRankData(foregroundHours);
 
     res.json({
@@ -9122,6 +9277,41 @@ async function start() {
             foreground_hours = EXCLUDED.foreground_hours
         `, [peer.peer_id, peer.foreground_hours]);
       }
+
+      // Seed user_peers relationships for staging test data
+      // Alice (user 1) connects to peers 001, 002, 003 (total 130 hours)
+      await pool.query(`
+        INSERT INTO user_peers (user_id, peer_id, connected_at, last_seen_at)
+        VALUES
+          ($1, 'ut1staging-peer-001', NOW(), NOW()),
+          ($1, 'ut1staging-peer-002', NOW(), NOW()),
+          ($1, 'ut1staging-peer-003', NOW(), NOW())
+        ON CONFLICT (user_id, peer_id) DO UPDATE SET
+          last_seen_at = NOW()
+      `, [alice]);
+
+      // Bob (user 2) connects to peers 004, 005, 006 (total 365 hours)
+      await pool.query(`
+        INSERT INTO user_peers (user_id, peer_id, connected_at, last_seen_at)
+        VALUES
+          ($1, 'ut1staging-peer-004', NOW(), NOW()),
+          ($1, 'ut1staging-peer-005', NOW(), NOW()),
+          ($1, 'ut1staging-peer-006', NOW(), NOW())
+        ON CONFLICT (user_id, peer_id) DO UPDATE SET
+          last_seen_at = NOW()
+      `, [bob]);
+
+      // Charlie (user 3) connects to peers 007, 008, 009, 010 (total 675 hours)
+      await pool.query(`
+        INSERT INTO user_peers (user_id, peer_id, connected_at, last_seen_at)
+        VALUES
+          ($1, 'ut1staging-peer-007', NOW(), NOW()),
+          ($1, 'ut1staging-peer-008', NOW(), NOW()),
+          ($1, 'ut1staging-peer-009', NOW(), NOW()),
+          ($1, 'ut1staging-peer-010', NOW(), NOW())
+        ON CONFLICT (user_id, peer_id) DO UPDATE SET
+          last_seen_at = NOW()
+      `, [charlie]);
 
       // Seed additional test data for profile counter verification
       // Create a conversation where Alice receives messages but doesn't send any
