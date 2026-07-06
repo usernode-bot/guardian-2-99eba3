@@ -7419,8 +7419,10 @@ app.get('*', (req, res) => {
     }
 
     // Determine transactionsBaseUrl from env or request origin
+    const isConfigured = !!process.env.TRANSACTIONS_BASE_URL;
     const transactionsBaseUrl = process.env.TRANSACTIONS_BASE_URL ||
       `${req.protocol}://${req.get('host')}`;
+    const configSource = isConfigured ? 'environment variable' : 'auto-detected from request origin';
 
     // Inject configuration script into the HTML head
     const configScript = `<script>
@@ -7433,6 +7435,22 @@ window.usernode.transactionsBaseUrl = ${JSON.stringify(transactionsBaseUrl)};
       `<head$1>${configScript}`
     );
 
+    // Validate that injection succeeded
+    if (injectedHtml === html) {
+      console.error('[CONFIG] ✗ Failed to inject transactionsBaseUrl: regex did not match <head> tag in HTML');
+      // Inject fallback error script so the failure is visible in browser console
+      const errorScript = `<script>
+console.error('[Guardian] Failed to inject transactionsBaseUrl at server initialization.');
+console.error('[Guardian] window.usernode.transactionsBaseUrl is undefined - testnet transactions will fail.');
+console.error('[Guardian] Check server logs for more details.');
+</script>`;
+      const fallbackHtml = html.replace(/<head([^>]*)>/, `<head$1>${errorScript}`);
+      return res.type('text/html').send(fallbackHtml);
+    }
+
+    // Log successful configuration
+    console.log(`[CONFIG] ✓ TRANSACTIONS_BASE_URL: ${transactionsBaseUrl} (${configSource})`);
+    console.log('[CONFIG] ✓ window.usernode.transactionsBaseUrl injected into HTML');
     res.type('text/html').send(injectedHtml);
   });
 });
