@@ -7838,7 +7838,8 @@ app.get('/api/test/production-simulation', async (req, res) => {
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('*', (req, res) => {
-  if (!req.user) {
+  // In staging, allow unauthenticated access so automated checks can verify frontend selectors
+  if (!req.user && !IS_STAGING) {
     return res.status(401).send(`<!doctype html><meta charset=utf-8><title>Open in Usernode</title>
 <body style="font-family:system-ui;background:#09090b;color:#e4e4e7;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0">
   <div style="max-width:24rem;padding:2rem;text-align:center">

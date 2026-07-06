@@ -49,6 +49,13 @@
       "required": false,
       "private": false,
       "staging_default": "http://localhost:3000/explorer-api/testnet"
+    },
+    {
+      "key": "JWT_SECRET",
+      "description": "Secret key for signing and verifying JWT tokens used in session authentication. Required for user authentication in staging and demo modes.",
+      "required": false,
+      "private": true,
+      "staging_default": "staging-jwt-secret-do-not-use-in-production-12345678"
     }
   ],
   "tests": [
