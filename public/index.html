@@ -2179,7 +2179,7 @@
 
     function getExplorerLink(txHash) {
       if (!txHash) return null;
-      return `${explorerUrl}/tx/${escapeHtml(txHash)}`;
+      return `${explorerUrl}/tx/${txHash}`;
     }
 
     function dismissDevStatusBanner() {
