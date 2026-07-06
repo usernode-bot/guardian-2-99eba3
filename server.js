@@ -3110,6 +3110,7 @@ app.get('/api/transactions-by-user', async (req, res) => {
         bal.confirmed_at,
         bal.created_at,
         bal.transaction_payload,
+        bal.network_origin,
         g.name as group_name,
         u.username as recipient_username_from_pubkey,
         u_msg_recipient.username as message_recipient_username
@@ -3171,6 +3172,7 @@ app.get('/api/transactions-by-user', async (req, res) => {
           createdAt: r.created_at,
           groupName: groupName,
           recipientUsername: recipientUsername,
+          networkOrigin: r.network_origin || null,
           transactionPayload: r.transaction_payload
         };
       });
