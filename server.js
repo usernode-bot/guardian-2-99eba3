@@ -3119,9 +3119,9 @@ app.get('/api/transactions-by-user', async (req, res) => {
       LEFT JOIN messages m ON m.id = bal.message_id
       LEFT JOIN conversations c ON c.id = m.conversation_id
       LEFT JOIN users u_msg_recipient ON u_msg_recipient.id = CASE
-        WHEN m.sender_id = bal.user_id THEN
+        WHEN m.id IS NOT NULL AND c.id IS NOT NULL THEN
           CASE WHEN c.participant_a_id = bal.user_id THEN c.participant_b_id ELSE c.participant_a_id END
-        ELSE m.sender_id
+        ELSE NULL
       END
       WHERE ${whereClause}
       ORDER BY bal.created_at DESC
