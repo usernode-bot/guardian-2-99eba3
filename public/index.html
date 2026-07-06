@@ -4379,7 +4379,17 @@
           if (notification) {
             const badge = notification.querySelector('[data-status-badge]');
             if (badge) {
-              badge.innerHTML = '⏱ Confirmation timeout - <a href="#" onclick="checkTransactionStatus(this)" style="text-decoration: underline; cursor: pointer;">Check Now</a>';
+              // Detect if this is a synthetic hash (temporary placeholder for real transaction)
+              const isSyntheticHash = signatureState.txHash && signatureState.txHash.startsWith('synthetic_');
+              let timeoutMessage = isSyntheticHash
+                ? '⏱ Waiting for blockchain confirmation (synthetic hash detected) - <a href="#" onclick="checkTransactionStatus(this)" style="text-decoration: underline; cursor: pointer;">Check Now</a>'
+                : '⏱ Confirmation timeout - <a href="#" onclick="checkTransactionStatus(this)" style="text-decoration: underline; cursor: pointer;">Check Now</a>';
+
+              if (isSyntheticHash) {
+                console.warn('[POLL] Synthetic hash still pending after all polling attempts:', signatureState.txHash, '- Backend may not have found real transaction. Check TRANSACTIONS_BASE_URL configuration.');
+              }
+
+              badge.innerHTML = timeoutMessage;
               badge.className = 'text-xs px-2 py-1 rounded bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200';
               badge.dataset.auditLogId = auditLogId;
             }
@@ -4459,21 +4469,32 @@
       event.preventDefault();
       const auditLogId = element.parentElement.dataset.auditLogId;
       if (auditLogId) {
+        const badge = element.parentElement;
+        badge.innerHTML = '⏱ Checking...';
         apiCall(`/api/blockchain-audit/${auditLogId}`).then(response => {
           if (response) {
-            const badge = element.parentElement;
             if (response.status === 'confirmed') {
               badge.innerHTML = '✓ Confirmed';
               badge.className = 'text-xs px-2 py-1 rounded bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200';
+              console.log('[CHECK-NOW] Transaction confirmed:', response.txHash);
             } else if (response.status === 'failed') {
-              badge.innerHTML = '✗ Failed';
+              badge.innerHTML = `✗ Failed${response.errorMessage ? ': ' + response.errorMessage : ''}`;
               badge.className = 'text-xs px-2 py-1 rounded bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200';
+              console.log('[CHECK-NOW] Transaction failed:', response.errorMessage);
             } else {
-              badge.innerHTML = '⏱ Still pending - check again in a few minutes';
+              // Still pending - provide more helpful messaging
+              const isSynthetic = response.txHash && response.txHash.startsWith('synthetic_');
+              if (isSynthetic) {
+                badge.innerHTML = `⏱ Still pending (synthetic hash) - backend discovering real transaction. Check again in a few minutes or verify TRANSACTIONS_BASE_URL is configured.`;
+                console.warn('[CHECK-NOW] Synthetic hash still pending. Verify TRANSACTIONS_BASE_URL env var points to correct explorer endpoint.');
+              } else {
+                badge.innerHTML = '⏱ Still pending - check again in a few minutes';
+              }
             }
           }
         }).catch(err => {
-          console.error('Error checking transaction status:', err);
+          console.error('[CHECK-NOW] Error checking transaction status:', err);
+          badge.innerHTML = '⏱ Error checking status - try again in a moment';
         });
       }
     }
@@ -4611,7 +4632,8 @@
           throw new Error('Wallet bridge is not available. Please ensure your wallet extension is enabled.');
         }
 
-        // Build memo from action and details
+        // Build memo from action and details following Last One Wins pattern
+        // Memo structure: { app: "guardian", action: "send_message|create_group|etc", details: {...} }
         const memo = JSON.stringify({
           app: 'guardian',
           action: action,
@@ -4841,11 +4863,30 @@
                 // Suppress the error - transaction was likely already submitted to blockchain
                 // Generate a synthetic txHash based on memo so the message can be saved to database
                 // The backend will validate the actual transaction on-chain via polling
+                // SYNTHETIC HASH EXPLANATION: When the Usernode bridge raises a transactionsBaseUrl
+                // error, the transaction has typically already been submitted to the blockchain
+                // asynchronously. We generate a temporary synthetic hash to allow persistence to the
+                // database while the backend's chain poller searches for the real transaction on-chain.
+                // Verify that TRANSACTIONS_BASE_URL is correctly configured to reach the explorer
+                // endpoint (e.g., https://explorer.usernodelabs.org for testnet).
                 console.warn('[CONFIG] Suppressing transactionsBaseUrl error in executeWalletSignature - transaction likely already submitted:', signErr.message);
                 const syntheticTxHash = 'synthetic_' + memo.substring(0, 20).replace(/[^a-zA-Z0-9]/g, '_') + '_' + Date.now();
                 if (!firstSuccessfulTxHash) {
                   firstSuccessfulTxHash = syntheticTxHash;
-                  console.log('[CONFIG] Using synthetic txHash to allow message persistence:', syntheticTxHash);
+                  // Log synthetic hash generation with full context for operator debugging
+                  const syntheticHashContext = {
+                    txHash: syntheticTxHash,
+                    action: action,
+                    userId: currentUser?.id,
+                    username: currentUser?.username,
+                    timestamp: new Date().toISOString(),
+                    userAgent: navigator.userAgent.substring(0, 100),
+                    isSynthetic: true
+                  };
+                  console.log('[SYNTHETIC-HASH] Generated synthetic txHash - backend will discover real transaction via explorer polling:', syntheticHashContext);
+                  // Store in window for potential recovery/debugging
+                  if (!window.syntheticHashes) window.syntheticHashes = {};
+                  window.syntheticHashes[syntheticTxHash] = syntheticHashContext;
                 }
                 break; // Exit retry loop without throwing
               }
