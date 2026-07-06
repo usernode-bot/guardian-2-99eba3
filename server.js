@@ -1836,6 +1836,51 @@ app.put('/api/config/demo-mode', async (req, res) => {
   }
 });
 
+// Get active chain ID based on user's network mode
+app.get('/api/active_chain', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    // Get user's network mode preference
+    const userRes = await pool.query(
+      `SELECT network_mode FROM users WHERE id = $1`,
+      [userId]
+    );
+
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const networkMode = userRes.rows[0].network_mode || 'devnet';
+
+    // Map network modes to chainIds
+    let chainId = 'testnet'; // default
+    if (networkMode === 'devnet') {
+      chainId = 'devnet';
+    } else if (networkMode === 'real_testnet') {
+      chainId = 'testnet';
+    } else if (networkMode === 'demo') {
+      chainId = 'testnet';
+    }
+
+    res.json({
+      chainId: chainId,
+      networkMode: networkMode,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('Error fetching active chain:', err);
+    res.status(500).json({ error: 'Failed to fetch active chain' });
+  }
+});
+
 // RPC health check endpoint
 app.get('/api/health/rpc', async (req, res) => {
   try {
@@ -7181,7 +7226,45 @@ app.get('*', (req, res) => {
   </div>
 </body>`);
   }
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+
+  // Determine transactionsBaseUrl: env var if set, otherwise derive from request
+  let transactionsBaseUrl = process.env.TRANSACTIONS_BASE_URL;
+  if (!transactionsBaseUrl) {
+    transactionsBaseUrl = `${req.protocol}://${req.get('host')}`;
+  }
+
+  // Validate URL format
+  try {
+    new URL(transactionsBaseUrl);
+  } catch (urlErr) {
+    console.error(`[CONFIG] ✗ Invalid transactionsBaseUrl: ${transactionsBaseUrl}`);
+    return res.status(500).send('Server configuration error: transactionsBaseUrl is invalid. Contact administrator.');
+  }
+
+  // Read HTML file and inject configuration
+  const fs = require('fs');
+  try {
+    const html = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
+
+    // Inject configuration script into the HTML head
+    const configScript = `<script>
+window.usernode = window.usernode || {};
+window.usernode.transactionsBaseUrl = ${JSON.stringify(transactionsBaseUrl)};
+</script>`;
+
+    const injectedHtml = html.replace(
+      /<head([^>]*)>/,
+      `<head$1>${configScript}`
+    );
+
+    const source = process.env.TRANSACTIONS_BASE_URL ? 'environment variable' : 'auto-detected from request origin';
+    console.log(`[CONFIG] ✓ transactionsBaseUrl: ${transactionsBaseUrl} (${source})`);
+    console.log('[CONFIG] ✓ window.usernode.transactionsBaseUrl injected into HTML');
+    res.type('text/html').send(injectedHtml);
+  } catch (err) {
+    console.error('[CONFIG] Error reading or injecting HTML:', err.message);
+    return res.status(500).send('Failed to load app');
+  }
 });
 
 // ===== DATABASE INITIALIZATION =====

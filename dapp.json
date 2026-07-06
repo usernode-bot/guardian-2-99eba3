@@ -42,6 +42,12 @@
       "required": false,
       "private": false,
       "default": "https://testnet-explorer.usernodelabs.org"
+    },
+    {
+      "key": "TRANSACTIONS_BASE_URL",
+      "description": "Optional: Base URL for transaction API integration with wallet bridge. If not set, dynamically derives from request origin (e.g., https://staging.example.com). Only set this if you need to override the auto-detected URL for custom deployments or multi-host setups.",
+      "required": false,
+      "private": false
     }
   ],
   "tests": [
