@@ -7573,11 +7573,14 @@ app.get('*', (req, res) => {
       return res.status(500).send('Failed to load app');
     }
 
-    // Determine transactionsBaseUrl from env or request origin
-    const isConfigured = !!process.env.TRANSACTIONS_BASE_URL;
-    const transactionsBaseUrl = process.env.TRANSACTIONS_BASE_URL ||
-      `${req.protocol}://${req.get('host')}`;
-    const configSource = isConfigured ? 'environment variable' : 'auto-detected from request origin';
+    // transactionsBaseUrl is now required via dapp.json secrets (required: true)
+    // If we reach here, it must be set; if not, the deploy would have failed
+    const transactionsBaseUrl = process.env.TRANSACTIONS_BASE_URL;
+
+    if (!transactionsBaseUrl) {
+      console.error('[CONFIG] ✗ CRITICAL: TRANSACTIONS_BASE_URL not set. Deploy should have failed. Check Secrets configuration.');
+      return res.status(500).send('Server configuration error: TRANSACTIONS_BASE_URL not configured. Contact administrator.');
+    }
 
     // Inject configuration script into the HTML head
     const configScript = `<script>
@@ -7604,7 +7607,7 @@ console.error('[Guardian] Check server logs for more details.');
     }
 
     // Log successful configuration
-    console.log(`[CONFIG] ✓ TRANSACTIONS_BASE_URL: ${transactionsBaseUrl} (${configSource})`);
+    console.log(`[CONFIG] ✓ TRANSACTIONS_BASE_URL: ${transactionsBaseUrl} (from required secret)`);
     console.log('[CONFIG] ✓ window.usernode.transactionsBaseUrl injected into HTML');
     res.type('text/html').send(injectedHtml);
   });
