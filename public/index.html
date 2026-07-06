@@ -1828,7 +1828,7 @@
 
         const explorerLink = document.getElementById('txExplorerLink');
         if (data.txHash && !data.txHash.includes('staging')) {
-          explorerLink.href = `https://explorer.usernodelabs.org/tx/${escapeHtml(data.txHash)}`;
+          explorerLink.href = getExplorerLink(data.txHash);
           explorerLink.classList.remove('hidden');
         } else {
           explorerLink.classList.add('hidden');
@@ -1854,6 +1854,9 @@
     let currentActiveView = 'messages';
     let pendingConvIds = new Set();
     let pendingConversationData = {}; // Maps convId to full conversation object for recipient check
+
+    // Explorer configuration
+    let explorerUrl = 'https://testnet-explorer.usernodelabs.org'; // Fallback default
 
     // Guardian's tab caching
     let cachedGuardiansData = null;
@@ -2151,6 +2154,37 @@
 
     function getCurrentNetwork() {
       return 'real_testnet';
+    }
+
+    async function initializeExplorerUrl() {
+      try {
+        const statusParams = new URLSearchParams(window.location.search);
+        const statusToken = statusParams.get('token') || '';
+        const statusHeaders = statusToken ? { 'x-usernode-token': statusToken } : {};
+
+        const response = await fetch('/api/status', {
+          method: 'GET',
+          headers: statusHeaders
+        });
+
+        if (!response.ok) {
+          console.warn('[Explorer] Failed to fetch status, using fallback explorer URL');
+          return;
+        }
+
+        const data = await response.json();
+        if (data.blockchain && data.blockchain.explorerUrl) {
+          explorerUrl = data.blockchain.explorerUrl;
+          console.log(`[Explorer] Loaded explorer URL: ${explorerUrl}`);
+        }
+      } catch (err) {
+        console.warn('[Explorer] Error fetching explorer URL:', err.message);
+      }
+    }
+
+    function getExplorerLink(txHash) {
+      if (!txHash) return null;
+      return `${explorerUrl}/tx/${escapeHtml(txHash)}`;
     }
 
     function dismissDevStatusBanner() {
@@ -3600,6 +3634,9 @@
       }
       currentUser = user;
       isDemoMode = user.isDemoMode ?? false;
+
+      // Initialize explorer URL from backend configuration
+      await initializeExplorerUrl();
 
       // Initialize environment state and polling infrastructure
       await initializeAppState();
@@ -9253,7 +9290,8 @@
           let txHashHtml = '';
           if (tx.txHash) {
             const txHashShort = tx.txHash.substring(0, 12);
-            txHashHtml = `<a href="https://explorer.usernodelabs.org/tx/${escapeHtml(tx.txHash)}" target="_blank" class="text-cyan-600 dark:text-cyan-400 hover:underline">Tx: ${txHashShort}...</a>`;
+            const txLink = getExplorerLink(tx.txHash);
+            txHashHtml = `<a href="${txLink}" target="_blank" class="text-cyan-600 dark:text-cyan-400 hover:underline">Tx: ${txHashShort}...</a>`;
           } else {
             txHashHtml = '<span class="text-zinc-500 dark:text-zinc-500">Pending verification</span>';
           }
