@@ -3110,9 +3110,11 @@ app.get('/api/transactions-by-user', async (req, res) => {
         bal.confirmed_at,
         bal.created_at,
         bal.transaction_payload,
-        g.name as group_name
+        g.name as group_name,
+        u.username as recipient_username_from_pubkey
       FROM blockchain_audit_logs bal
       LEFT JOIN groups g ON g.id = bal.group_id
+      LEFT JOIN users u ON u.usernode_pubkey = (bal.transaction_payload->>'recipient')
       WHERE ${whereClause}
       ORDER BY bal.created_at DESC
       LIMIT $${params.length - 1} OFFSET $${params.length}
@@ -3146,6 +3148,9 @@ app.get('/api/transactions-by-user', async (req, res) => {
             ? JSON.parse(r.transaction_payload)
             : r.transaction_payload;
           recipientUsername = payload?.recipientUsername || null;
+        } else if (r.message_type === 'token_transfer' && r.recipient_username_from_pubkey) {
+          // For token_transfer, use the username resolved from the recipient pubkey
+          recipientUsername = r.recipient_username_from_pubkey;
         }
 
         return {
