@@ -2158,17 +2158,12 @@
 
     async function initializeExplorerUrl() {
       try {
-        const statusParams = new URLSearchParams(window.location.search);
-        const statusToken = statusParams.get('token') || '';
-        const statusHeaders = statusToken ? { 'x-usernode-token': statusToken } : {};
-
-        const response = await fetch('/api/status', {
-          method: 'GET',
-          headers: statusHeaders
+        const response = await fetch('/api/diagnostics/status', {
+          method: 'GET'
         });
 
         if (!response.ok) {
-          console.warn('[Explorer] Failed to fetch status, using fallback explorer URL');
+          console.warn('[Explorer] Failed to fetch diagnostics status, using fallback explorer URL');
           return;
         }
 
