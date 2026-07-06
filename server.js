@@ -786,6 +786,195 @@ async function pollTransactionStatus(chainId, txHash, auditLogId) {
   }
 }
 
+// Fallback transaction lookup: when synthetic hash polling fails, search explorer for matching transaction
+// by sender pubkey, timestamp, and memo pattern
+async function fallbackTransactionLookup(chainId, syntheticHash, auditLogId) {
+  try {
+    // Fetch the audit log to get search parameters
+    const { rows: auditRows } = await pool.query(`
+      SELECT user_pubkey, action_timestamp, message_type, transaction_payload, content_hash
+      FROM blockchain_audit_logs
+      WHERE id = $1
+    `, [auditLogId]);
+
+    if (auditRows.length === 0) {
+      console.warn(`[FALLBACK] Audit log not found for auditLogId=${auditLogId}`);
+      return { found: false };
+    }
+
+    const auditLog = auditRows[0];
+    const { user_pubkey, action_timestamp, message_type, transaction_payload, content_hash } = auditLog;
+
+    if (!user_pubkey) {
+      console.warn(`[FALLBACK] No user_pubkey in audit log ${auditLogId}, cannot search`);
+      return { found: false };
+    }
+
+    const config = CHAIN_CONFIG[chainId];
+    if (!config) {
+      console.warn(`[FALLBACK] Invalid chain ID ${chainId}`);
+      return { found: false };
+    }
+
+    // Try to query explorer for recent transactions by sender
+    // Try multiple endpoint formats since explorers vary
+    const endpoints = [
+      `${config.explorerUrl}/api/transactions?sender=${encodeURIComponent(user_pubkey)}&limit=100`,
+      `${config.explorerUrl}/api/address/${encodeURIComponent(user_pubkey)}/transactions?limit=100`
+    ];
+
+    let transactions = [];
+    for (const endpoint of endpoints) {
+      try {
+        console.log(`[FALLBACK] Querying explorer: ${endpoint}`);
+        const response = await new Promise((resolve, reject) => {
+          const url = new URL(endpoint);
+          const isHttps = url.protocol === 'https:';
+          const client = isHttps ? https : http;
+
+          const options = {
+            hostname: url.hostname,
+            port: url.port,
+            path: url.pathname + url.search,
+            method: 'GET',
+            timeout: 5000
+          };
+
+          const req = client.request(options, (res) => {
+            let data = '';
+            res.on('data', chunk => { data += chunk; });
+            res.on('end', () => {
+              if (res.statusCode === 200) {
+                try {
+                  const parsed = JSON.parse(data);
+                  resolve(Array.isArray(parsed) ? parsed : parsed.transactions || parsed.data || []);
+                } catch (e) {
+                  console.warn(`[FALLBACK] Failed to parse response from ${endpoint}: ${e.message}`);
+                  reject(new Error('Invalid JSON response'));
+                }
+              } else {
+                reject(new Error(`HTTP ${res.statusCode}`));
+              }
+            });
+          });
+
+          req.on('error', (err) => {
+            reject(err);
+          });
+
+          req.on('timeout', () => {
+            req.destroy();
+            reject(new Error('Timeout'));
+          });
+
+          req.end();
+        });
+
+        if (response && response.length > 0) {
+          transactions = response;
+          console.log(`[FALLBACK] Retrieved ${transactions.length} transactions from ${endpoint}`);
+          break;
+        }
+      } catch (err) {
+        console.warn(`[FALLBACK] Endpoint ${endpoint} failed: ${err.message}`);
+        continue;
+      }
+    }
+
+    if (transactions.length === 0) {
+      console.warn(`[FALLBACK] No transactions found for sender ${user_pubkey}`);
+      return { found: false };
+    }
+
+    // Parse action_timestamp for comparison (handle both ISO 8601 and Unix timestamp formats)
+    let actionTime = 0;
+    if (typeof action_timestamp === 'string') {
+      actionTime = new Date(action_timestamp).getTime();
+    } else if (typeof action_timestamp === 'number') {
+      actionTime = action_timestamp > 1e10 ? action_timestamp : action_timestamp * 1000;
+    }
+
+    const timeWindow = 5 * 60 * 1000; // ±5 minutes
+
+    // Search through transactions for a match
+    for (const tx of transactions) {
+      try {
+        // Extract memo - it might be in different fields depending on explorer format
+        const memoStr = tx.memo || tx.message || tx.data;
+        if (!memoStr) {
+          continue;
+        }
+
+        // Parse memo as JSON
+        let memo = {};
+        if (typeof memoStr === 'string') {
+          try {
+            memo = JSON.parse(memoStr);
+          } catch {
+            // Memo might not be valid JSON, skip this transaction
+            continue;
+          }
+        } else if (typeof memoStr === 'object') {
+          memo = memoStr;
+        }
+
+        // Verify memo matches guardian app pattern
+        if (memo.app !== 'guardian') {
+          continue;
+        }
+
+        // Match transaction type with audit log message_type
+        // message_type might be 'message', 'group_create', 'group_add_members', etc.
+        // memo.type should match (or at least start with the same)
+        if (memo.type && memo.type !== message_type) {
+          // Allow some flexibility in type matching
+          if (!(message_type.startsWith(memo.type) || memo.type.startsWith(message_type))) {
+            continue;
+          }
+        }
+
+        // Check timestamp within ±5 minutes
+        let txTime = 0;
+        if (tx.timestamp) {
+          if (typeof tx.timestamp === 'string') {
+            txTime = new Date(tx.timestamp).getTime();
+          } else if (typeof tx.timestamp === 'number') {
+            txTime = tx.timestamp > 1e10 ? tx.timestamp : tx.timestamp * 1000;
+          }
+        }
+
+        if (actionTime && txTime && Math.abs(txTime - actionTime) > timeWindow) {
+          continue;
+        }
+
+        // Optional: verify content hash if both available
+        if (content_hash && memo.contentHash && memo.contentHash !== content_hash) {
+          continue;
+        }
+
+        // Found a match! Extract the real transaction hash
+        const realHash = tx.hash || tx.txHash || tx.tx_hash;
+        if (!realHash) {
+          console.warn(`[FALLBACK] Transaction matched but no hash field found`);
+          continue;
+        }
+
+        console.log(`[FALLBACK-MATCH] Found matching transaction: hash=${realHash}, memo.type=${memo.type}, timestamp=${tx.timestamp}`);
+        return { found: true, realHash };
+      } catch (err) {
+        console.warn(`[FALLBACK] Error processing transaction:`, err.message);
+        continue;
+      }
+    }
+
+    console.warn(`[FALLBACK] Searched ${transactions.length} transactions but no match found for sender=${user_pubkey}, type=${message_type}, timestamp=${action_timestamp}`);
+    return { found: false };
+  } catch (err) {
+    console.error(`[FALLBACK] Unexpected error in fallback lookup:`, err.message);
+    return { found: false };
+  }
+}
+
 async function startChainPoller(chainId, txHash, auditLogId) {
   const pollerId = `${chainId}:${txHash}`;
 
@@ -839,28 +1028,59 @@ async function startChainPoller(chainId, txHash, auditLogId) {
         }
 
         if (pollCount >= maxPolls) {
-          // Mark remaining audit logs as failed
-          for (const logId of poller.auditLogIds) {
-            try {
-              // SYNTHETIC HASH DETECTION: If txHash starts with 'synthetic_', this indicates the
-              // transaction was submitted to the blockchain but the bridge raised a
-              // transactionsBaseUrl error before returning the real hash. The backend has polled
-              // the explorer maxPolls times without finding a match. Operator should verify that
-              // TRANSACTIONS_BASE_URL environment variable is correctly configured to reach the
-              // explorer endpoint (e.g., https://explorer.usernodelabs.org/api/tx for testnet).
-              const isSyntheticHash = txHash.startsWith('synthetic_');
-              if (isSyntheticHash) {
-                console.error(`[SYNTHETIC-HASH-FAILED] Explorer polling exhausted for synthetic hash ${txHash} (auditLogId=${logId}). The real transaction may exist on-chain but under a different hash. Operator action required: verify TRANSACTIONS_BASE_URL configuration and consider manual transaction lookup by sender+timestamp or memo signature.`);
-              }
+          // SYNTHETIC HASH: If txHash is synthetic, try fallback lookup before marking failed
+          const isSyntheticHash = txHash.startsWith('synthetic_');
 
-              await pool.query(`
-                UPDATE blockchain_audit_logs
-                SET status = 'failed', error_message = $1, updated_at = NOW()
-                WHERE id = $2 AND status = 'pending'
-              `, [`Transaction not confirmed after ${maxPolls} polls${isSyntheticHash ? ' (synthetic hash - check TRANSACTIONS_BASE_URL config)' : ''}`, logId]);
-              console.warn(`[Chain Poller] Max polls (${maxPolls}) reached for ${txHash}, auditLogId=${logId} marked as failed`);
-            } catch (err) {
-              console.error(`[Chain Poller] Failed to mark auditLogId=${logId} as failed:`, err.message);
+          if (isSyntheticHash) {
+            console.log(`[Chain Poller] Max polls reached for synthetic hash ${txHash}, initiating fallback transaction lookup...`);
+
+            // Try fallback lookup for each audit log
+            for (const logId of poller.auditLogIds) {
+              try {
+                const fallbackResult = await fallbackTransactionLookup(chainId, txHash, logId);
+                if (fallbackResult.found) {
+                  console.log(`[FALLBACK-SUCCESS] Found real transaction ${fallbackResult.realHash} for synthetic hash ${txHash} (auditLogId=${logId})`);
+                  // Update with real hash and confirmed status
+                  await pool.query(`
+                    UPDATE blockchain_audit_logs
+                    SET tx_hash = $1, status = 'confirmed', confirmed_at = NOW(), updated_at = NOW()
+                    WHERE id = $2 AND status = 'pending'
+                  `, [fallbackResult.realHash, logId]);
+                  poller.auditLogIds.delete(logId);
+                  continue;
+                }
+              } catch (err) {
+                console.error(`[FALLBACK-ERROR] Fallback lookup failed for auditLogId=${logId}:`, err.message);
+              }
+            }
+
+            // Mark any remaining audit logs as failed
+            for (const logId of poller.auditLogIds) {
+              try {
+                console.error(`[SYNTHETIC-HASH-FAILED] Fallback lookup exhausted for synthetic hash ${txHash} (auditLogId=${logId}). The real transaction was not found on-chain. Operator action required: verify TRANSACTIONS_BASE_URL configuration and check explorer connectivity.`);
+                await pool.query(`
+                  UPDATE blockchain_audit_logs
+                  SET status = 'failed', error_message = $1, updated_at = NOW()
+                  WHERE id = $2 AND status = 'pending'
+                `, [`Fallback lookup exhausted: transaction not found on explorer after ${maxPolls} direct polls`, logId]);
+                console.warn(`[Chain Poller] Fallback exhausted for synthetic hash ${txHash}, auditLogId=${logId} marked as failed`);
+              } catch (err) {
+                console.error(`[Chain Poller] Failed to mark auditLogId=${logId} as failed:`, err.message);
+              }
+            }
+          } else {
+            // For non-synthetic hashes, mark as failed normally
+            for (const logId of poller.auditLogIds) {
+              try {
+                await pool.query(`
+                  UPDATE blockchain_audit_logs
+                  SET status = 'failed', error_message = $1, updated_at = NOW()
+                  WHERE id = $2 AND status = 'pending'
+                `, [`Transaction not confirmed after ${maxPolls} polls`, logId]);
+                console.warn(`[Chain Poller] Max polls (${maxPolls}) reached for ${txHash}, auditLogId=${logId} marked as failed`);
+              } catch (err) {
+                console.error(`[Chain Poller] Failed to mark auditLogId=${logId} as failed:`, err.message);
+              }
             }
           }
           chainPollers.delete(pollerId);
