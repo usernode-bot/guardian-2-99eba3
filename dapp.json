@@ -42,6 +42,13 @@
       "required": false,
       "private": false,
       "default": "https://testnet-explorer.usernodelabs.org"
+    },
+    {
+      "key": "TRANSACTIONS_BASE_URL",
+      "description": "Base URL where the app is hosted for testnet mode wallet bridge integration. Must be the public URL where users access the app (e.g., https://guardian.example.com). Required for testnet transactions to work correctly.",
+      "required": true,
+      "private": false,
+      "staging_default": "http://localhost:3000"
     }
   ],
   "tests": [

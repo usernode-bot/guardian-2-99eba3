@@ -7264,7 +7264,46 @@ app.get('*', (req, res) => {
   </div>
 </body>`);
   }
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+
+  // Validate TRANSACTIONS_BASE_URL is configured
+  const transactionsBaseUrl = process.env.TRANSACTIONS_BASE_URL;
+
+  if (!transactionsBaseUrl) {
+    console.error('[CONFIG] ✗ CRITICAL: TRANSACTIONS_BASE_URL not set. Deploy should have failed. Check Secrets configuration.');
+    return res.status(500).send('Server configuration error: TRANSACTIONS_BASE_URL not configured. Contact administrator.');
+  }
+
+  // Validate that the value is a valid URL format
+  try {
+    new URL(transactionsBaseUrl);
+  } catch (urlErr) {
+    console.error(`[CONFIG] ✗ CRITICAL: TRANSACTIONS_BASE_URL is not a valid URL: ${transactionsBaseUrl}`);
+    return res.status(500).send('Server configuration error: TRANSACTIONS_BASE_URL is invalid. Contact administrator.');
+  }
+
+  // Read the HTML file and inject configuration
+  const fs = require('fs');
+  try {
+    const html = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
+
+    // Inject configuration script into the HTML head
+    const configScript = `<script>
+window.usernode = window.usernode || {};
+window.usernode.transactionsBaseUrl = ${JSON.stringify(transactionsBaseUrl)};
+</script>`;
+
+    const injectedHtml = html.replace(
+      /<head([^>]*)>/,
+      `<head$1>${configScript}`
+    );
+
+    console.log(`[CONFIG] ✓ TRANSACTIONS_BASE_URL: ${transactionsBaseUrl} (from required secret)`);
+    console.log('[CONFIG] ✓ window.usernode.transactionsBaseUrl injected into HTML');
+    res.type('text/html').send(injectedHtml);
+  } catch (err) {
+    console.error('[CONFIG] Error reading or injecting HTML:', err.message);
+    return res.status(500).send('Failed to load app');
+  }
 });
 
 // ===== DATABASE INITIALIZATION =====
