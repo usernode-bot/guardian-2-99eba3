@@ -9,6 +9,13 @@
       "staging_default": "postgresql://localhost/guardian_staging"
     },
     {
+      "key": "JWT_SECRET",
+      "description": "Secret key for signing session tokens and verifying JWTs. Used internally for user authentication.",
+      "required": false,
+      "private": true,
+      "staging_default": "guardian_staging_secret_key"
+    },
+    {
       "key": "APP_PUBKEY",
       "description": "Guardian app's ED25519 public key address (ut1...) for blockchain transactions. Used for transaction signing and app identification on Usernode testnet.",
       "required": true,
