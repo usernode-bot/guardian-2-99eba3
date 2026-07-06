@@ -42,6 +42,13 @@
       "required": false,
       "private": false,
       "default": "https://testnet-explorer.usernodelabs.org"
+    },
+    {
+      "key": "TRANSACTIONS_BASE_URL",
+      "description": "Base URL where the app's transaction submission endpoint is hosted; required for testnet mode wallet bridge integration. If not set, defaults to the app's own origin.",
+      "required": false,
+      "private": false,
+      "default": "http://localhost:3000"
     }
   ],
   "tests": [
