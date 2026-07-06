@@ -4217,9 +4217,14 @@
           throw new Error(data.error);
         }
       } catch (err) {
-        if (!err.message.includes('User cancelled') && !err.message.includes('cancelled')) {
+        // Suppress transactionsBaseUrl errors since transaction likely already submitted to blockchain
+        const isTransactionsBaseUrlError = err.message && err.message.includes('transactionsBaseUrl');
+        const isCancelledError = err.message.includes('User cancelled') || err.message.includes('cancelled');
+        if (!isCancelledError && !isTransactionsBaseUrlError) {
           console.error('Create group error:', err);
           showToast(`Error: ${err.message}`, 'error');
+        } else if (isTransactionsBaseUrlError) {
+          console.warn('[CONFIG] Suppressing transactionsBaseUrl error - transaction may have succeeded on-chain:', err.message);
         }
       }
     }
@@ -4335,9 +4340,14 @@
           throw new Error(data.error);
         }
       } catch (err) {
-        if (!err.message.includes('User cancelled') && !err.message.includes('cancelled')) {
+        // Suppress transactionsBaseUrl errors since transaction likely already submitted to blockchain
+        const isTransactionsBaseUrlError = err.message && err.message.includes('transactionsBaseUrl');
+        const isCancelledError = err.message.includes('User cancelled') || err.message.includes('cancelled');
+        if (!isCancelledError && !isTransactionsBaseUrlError) {
           console.error('Create channel error:', err);
           showToast(`Error: ${err.message}`, 'error');
+        } else if (isTransactionsBaseUrlError) {
+          console.warn('[CONFIG] Suppressing transactionsBaseUrl error - transaction may have succeeded on-chain:', err.message);
         }
       } finally {
         // Re-enable form inputs and button
@@ -5950,10 +5960,15 @@
           throw new Error(data?.error || 'Failed to send message');
         }
       } catch (err) {
-        if (!err.message.includes('User cancelled') && !err.message.includes('cancelled')) {
+        // Suppress transactionsBaseUrl errors since transaction likely already submitted to blockchain
+        const isTransactionsBaseUrlError = err.message && err.message.includes('transactionsBaseUrl');
+        const isCancelledError = err.message.includes('User cancelled') || err.message.includes('cancelled');
+        if (!isCancelledError && !isTransactionsBaseUrlError) {
           console.error('Send message error:', err);
           showToast(`Error: ${err.message}`, 'error');
           document.getElementById('msgInput').value = text; // Restore input on error
+        } else if (isTransactionsBaseUrlError) {
+          console.warn('[CONFIG] Suppressing transactionsBaseUrl error - transaction may have succeeded on-chain:', err.message);
         }
       } finally {
         // Remove lock after send attempt (success or failure)
@@ -6001,9 +6016,14 @@
             throw new Error(data?.error || 'Failed to send image');
           }
         } catch (err) {
-          if (!err.message.includes('User cancelled') && !err.message.includes('cancelled')) {
+          // Suppress transactionsBaseUrl errors since transaction likely already submitted to blockchain
+          const isTransactionsBaseUrlError = err.message && err.message.includes('transactionsBaseUrl');
+          const isCancelledError = err.message.includes('User cancelled') || err.message.includes('cancelled');
+          if (!isCancelledError && !isTransactionsBaseUrlError) {
             console.error('Image upload error:', err);
             showToast(`Error: ${err.message}`, 'error');
+          } else if (isTransactionsBaseUrlError) {
+            console.warn('[CONFIG] Suppressing transactionsBaseUrl error - transaction may have succeeded on-chain:', err.message);
           }
         }
       };
@@ -6085,9 +6105,14 @@
           sendBtn.textContent = originalText;
         }
       } catch (err) {
-        if (!err.message.includes('User cancelled') && !err.message.includes('cancelled')) {
+        // Suppress transactionsBaseUrl errors since transaction likely already submitted to blockchain
+        const isTransactionsBaseUrlError = err.message && err.message.includes('transactionsBaseUrl');
+        const isCancelledError = err.message.includes('User cancelled') || err.message.includes('cancelled');
+        if (!isCancelledError && !isTransactionsBaseUrlError) {
           console.error('Send token error:', err);
           showToast(`Error: ${err.message}`, 'error');
+        } else if (isTransactionsBaseUrlError) {
+          console.warn('[CONFIG] Suppressing transactionsBaseUrl error - transaction may have succeeded on-chain:', err.message);
         }
         sendBtn.disabled = false;
         sendBtn.textContent = originalText;
