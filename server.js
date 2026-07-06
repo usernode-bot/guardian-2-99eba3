@@ -7563,7 +7563,33 @@ app.get('*', (req, res) => {
   </div>
 </body>`);
   }
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+
+  // Read the HTML file
+  const fs = require('fs');
+  const indexPath = path.join(__dirname, 'public', 'index.html');
+  fs.readFile(indexPath, 'utf8', (err, html) => {
+    if (err) {
+      console.error('[ERROR] Failed to read index.html:', err);
+      return res.status(500).send('Failed to load app');
+    }
+
+    // Determine transactionsBaseUrl from env or request origin
+    const transactionsBaseUrl = process.env.TRANSACTIONS_BASE_URL ||
+      `${req.protocol}://${req.get('host')}`;
+
+    // Inject configuration script into the HTML head
+    const configScript = `<script>
+window.usernode = window.usernode || {};
+window.usernode.transactionsBaseUrl = ${JSON.stringify(transactionsBaseUrl)};
+</script>`;
+
+    const injectedHtml = html.replace(
+      /<head([^>]*)>/,
+      `<head$1>${configScript}`
+    );
+
+    res.type('text/html').send(injectedHtml);
+  });
 });
 
 // ===== DATABASE INITIALIZATION =====
