@@ -1696,8 +1696,130 @@
       return notificationId;
     }
 
+    // Transaction details polling
+    let transactionDetailsPollInterval = null;
+    let currentOpenedAuditLogId = null;
+
     function closeTransactionDetailsModal() {
       document.getElementById('transactionDetailsModal').classList.add('hidden');
+      // Stop polling when modal closes
+      if (transactionDetailsPollInterval) {
+        clearInterval(transactionDetailsPollInterval);
+        transactionDetailsPollInterval = null;
+      }
+      currentOpenedAuditLogId = null;
+    }
+
+    async function renderTransactionDetailsContent(auditLogId, data) {
+      const content = document.getElementById('transactionDetailsContent');
+      const timestamp = new Date(data.createdAt).toLocaleString();
+      const payload = typeof data.transactionPayload === 'string' ? JSON.parse(data.transactionPayload || '{}') : (data.transactionPayload || {});
+
+      let typeIcon = '🔄';
+      let typeLabel = 'Transaction';
+      let details = '';
+
+      if (data.messageType === 'message') {
+        typeIcon = '💬';
+        typeLabel = 'Message Sent';
+        details = `<div class="text-sm text-zinc-600 dark:text-zinc-400">Message transaction recorded</div>`;
+      } else if (data.messageType === 'token_transfer') {
+        typeIcon = '💰';
+        typeLabel = 'Token Transfer';
+        details = `<div class="text-sm text-zinc-600 dark:text-zinc-400">
+          <div>Amount: <span class="font-medium text-zinc-900 dark:text-zinc-100">${escapeHtml(String(payload.amount || '?'))} tokens</span></div>
+        </div>`;
+      } else if (data.messageType === 'group_create') {
+        typeIcon = '👥';
+        typeLabel = 'Group Created';
+        details = `<div class="text-sm text-zinc-600 dark:text-zinc-400">
+          <div>Group: <span class="font-medium text-zinc-900 dark:text-zinc-100">${escapeHtml(data.groupName || 'Unknown')}</span></div>
+        </div>`;
+      }
+
+      let statusClass = 'text-gray-600 dark:text-gray-400';
+      let statusIcon = '⏳';
+      if (data.status === 'confirmed') {
+        statusClass = 'text-green-600 dark:text-green-400';
+        statusIcon = '✓';
+      } else if (data.status === 'failed') {
+        statusClass = 'text-red-600 dark:text-red-400';
+        statusIcon = '✗';
+      }
+
+      const txHashShort = data.txHash ? data.txHash.substring(0, 12) : 'N/A';
+
+      // Determine network origin label with icon
+      let networkOriginLabel = 'Not specified';
+      let networkOriginIcon = '❓';
+      let networkOriginClass = 'text-zinc-600 dark:text-zinc-400';
+
+      if (data.network_origin === 'testnet' || data.network_origin === 'blockchain') {
+        networkOriginLabel = 'Testnet';
+        networkOriginIcon = '🔗';
+        networkOriginClass = 'text-green-600 dark:text-green-400';
+      } else if (data.network_origin === 'devnet' || data.network_origin === 'database') {
+        networkOriginLabel = 'Devnet';
+        networkOriginIcon = '💾';
+        networkOriginClass = 'text-blue-600 dark:text-blue-400';
+      } else if (data.network_origin === 'mainnet') {
+        networkOriginLabel = 'Mainnet';
+        networkOriginIcon = '🌍';
+        networkOriginClass = 'text-amber-600 dark:text-amber-400';
+      } else if (data.network_origin === 'demo') {
+        networkOriginLabel = 'Demo';
+        networkOriginIcon = '🎭';
+        networkOriginClass = 'text-purple-600 dark:text-purple-400';
+      } else if (data.network_origin === 'bridge') {
+        networkOriginLabel = 'Bridge';
+        networkOriginIcon = '🌉';
+        networkOriginClass = 'text-orange-600 dark:text-orange-400';
+      }
+
+      let txHashHtml = '';
+      if (data.txHash && !data.txHash.includes('staging')) {
+        txHashHtml = `<div class="text-sm"><span class="text-zinc-600 dark:text-zinc-400">Hash:</span> <span class="font-mono text-xs text-cyan-600 dark:text-cyan-400 break-all" id="txHashDisplay">${escapeHtml(data.txHash)}</span></div>`;
+      } else if (data.txHash) {
+        txHashHtml = `<div class="text-sm"><span class="text-zinc-600 dark:text-zinc-400">Hash:</span> <span class="font-mono text-xs text-zinc-500" id="txHashDisplay">${escapeHtml(txHashShort)}...</span></div>`;
+      }
+
+      content.innerHTML = `
+        <div class="space-y-4">
+          <div>
+            <div class="text-lg font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+              <span class="text-2xl">${typeIcon}</span>
+              ${typeLabel}
+            </div>
+          </div>
+          ${details}
+          <div class="pt-4 border-t border-zinc-200 dark:border-zinc-700 space-y-2">
+            <div class="text-sm flex items-center justify-between">
+              <span class="text-zinc-600 dark:text-zinc-400">Status:</span>
+              <span class="flex items-center gap-1 ${statusClass}">
+                <span class="text-lg">${statusIcon}</span>
+                <span class="capitalize font-medium" id="statusDisplay">${data.status}</span>
+              </span>
+            </div>
+            <div class="text-sm flex items-center justify-between">
+              <span class="text-zinc-600 dark:text-zinc-400">Mode:</span>
+              <span class="flex items-center gap-1 ${networkOriginClass}">
+                <span class="text-lg">${networkOriginIcon}</span>
+                <span class="font-medium">${networkOriginLabel}</span>
+              </span>
+            </div>
+            ${txHashHtml}
+            <div class="text-sm"><span class="text-zinc-600 dark:text-zinc-400">Timestamp:</span> <span class="text-zinc-900 dark:text-zinc-100">${timestamp}</span></div>
+          </div>
+        </div>
+      `;
+
+      const explorerLink = document.getElementById('txExplorerLink');
+      if (data.txHash && !data.txHash.includes('staging')) {
+        explorerLink.href = `https://explorer.usernodelabs.org/tx/${escapeHtml(data.txHash)}`;
+        explorerLink.classList.remove('hidden');
+      } else {
+        explorerLink.classList.add('hidden');
+      }
     }
 
     async function openTransactionDetailsModal(auditLogId) {
@@ -1707,6 +1829,15 @@
       modal.classList.remove('hidden');
       content.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Loading transaction details...</div>';
 
+      // Store current audit log ID for polling
+      currentOpenedAuditLogId = auditLogId;
+
+      // Clear any existing polling interval
+      if (transactionDetailsPollInterval) {
+        clearInterval(transactionDetailsPollInterval);
+        transactionDetailsPollInterval = null;
+      }
+
       try {
         const data = await apiCall(`/api/blockchain-audit/${auditLogId}`);
         if (!data) {
@@ -1714,125 +1845,28 @@
           return;
         }
 
-        const timestamp = new Date(data.createdAt).toLocaleString();
-        const payload = typeof data.transactionPayload === 'string' ? JSON.parse(data.transactionPayload || '{}') : (data.transactionPayload || {});
+        await renderTransactionDetailsContent(auditLogId, data);
 
-        let typeIcon = '🔄';
-        let typeLabel = 'Transaction';
-        let details = '';
+        // Start polling for updates every 3 seconds
+        transactionDetailsPollInterval = setInterval(async () => {
+          try {
+            const updatedData = await apiCall(`/api/blockchain-audit/${auditLogId}`);
+            if (updatedData && currentOpenedAuditLogId === auditLogId) {
+              // Check if hash or status changed
+              const currentHash = document.getElementById('txHashDisplay')?.textContent || '';
+              const newHash = updatedData.txHash ? updatedData.txHash.substring(0, 12) : '';
 
-        if (data.messageType === 'message') {
-          typeIcon = '💬';
-          typeLabel = 'Message Sent';
-          details = `<div class="text-sm text-zinc-600 dark:text-zinc-400">Message transaction recorded</div>`;
-        } else if (data.messageType === 'token_transfer') {
-          typeIcon = '💰';
-          typeLabel = 'Token Transfer';
-          details = `<div class="text-sm text-zinc-600 dark:text-zinc-400">
-            <div>Amount: <span class="font-medium text-zinc-900 dark:text-zinc-100">${escapeHtml(String(payload.amount || '?'))} tokens</span></div>
-          </div>`;
-        } else if (data.messageType === 'group_create') {
-          typeIcon = '👥';
-          typeLabel = 'Group Created';
-          details = `<div class="text-sm text-zinc-600 dark:text-zinc-400">
-            <div>Group: <span class="font-medium text-zinc-900 dark:text-zinc-100">${escapeHtml(data.groupName || 'Unknown')}</span></div>
-          </div>`;
-        }
-
-        let statusClass = 'text-gray-600 dark:text-gray-400';
-        let statusIcon = '⏳';
-        if (data.status === 'confirmed') {
-          statusClass = 'text-green-600 dark:text-green-400';
-          statusIcon = '✓';
-        } else if (data.status === 'failed') {
-          statusClass = 'text-red-600 dark:text-red-400';
-          statusIcon = '✗';
-        }
-
-        const txHashShort = data.txHash ? data.txHash.substring(0, 12) : 'N/A';
-        const txHashFull = data.txHash || '';
-
-        // Determine network origin label with icon
-        let networkOriginLabel = 'Not specified';
-        let networkOriginIcon = '❓';
-        let networkOriginClass = 'text-zinc-600 dark:text-zinc-400';
-
-        // Map network_origin values to display labels
-        // Supports both audit-log values (blockchain, demo, database, bridge) and Guardian network modes (testnet, devnet, mainnet)
-        if (data.network_origin === 'testnet') {
-          networkOriginLabel = 'Testnet';
-          networkOriginIcon = '🔗';
-          networkOriginClass = 'text-green-600 dark:text-green-400';
-        } else if (data.network_origin === 'blockchain') {
-          networkOriginLabel = 'Testnet';
-          networkOriginIcon = '🔗';
-          networkOriginClass = 'text-green-600 dark:text-green-400';
-        } else if (data.network_origin === 'devnet') {
-          networkOriginLabel = 'Devnet';
-          networkOriginIcon = '💾';
-          networkOriginClass = 'text-blue-600 dark:text-blue-400';
-        } else if (data.network_origin === 'database') {
-          networkOriginLabel = 'Devnet';
-          networkOriginIcon = '💾';
-          networkOriginClass = 'text-blue-600 dark:text-blue-400';
-        } else if (data.network_origin === 'mainnet') {
-          networkOriginLabel = 'Mainnet';
-          networkOriginIcon = '🌍';
-          networkOriginClass = 'text-amber-600 dark:text-amber-400';
-        } else if (data.network_origin === 'demo') {
-          networkOriginLabel = 'Demo';
-          networkOriginIcon = '🎭';
-          networkOriginClass = 'text-purple-600 dark:text-purple-400';
-        } else if (data.network_origin === 'bridge') {
-          networkOriginLabel = 'Bridge';
-          networkOriginIcon = '🌉';
-          networkOriginClass = 'text-orange-600 dark:text-orange-400';
-        }
-
-        let txHashHtml = '';
-        if (data.txHash && !data.txHash.includes('staging')) {
-          txHashHtml = `<div class="text-sm"><span class="text-zinc-600 dark:text-zinc-400">Hash:</span> <span class="font-mono text-xs text-cyan-600 dark:text-cyan-400 break-all">${escapeHtml(data.txHash)}</span></div>`;
-        } else if (data.txHash) {
-          txHashHtml = `<div class="text-sm"><span class="text-zinc-600 dark:text-zinc-400">Hash:</span> <span class="font-mono text-xs text-zinc-500">${escapeHtml(txHashShort)}...</span></div>`;
-        }
-
-        content.innerHTML = `
-          <div class="space-y-4">
-            <div>
-              <div class="text-lg font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                <span class="text-2xl">${typeIcon}</span>
-                ${typeLabel}
-              </div>
-            </div>
-            ${details}
-            <div class="pt-4 border-t border-zinc-200 dark:border-zinc-700 space-y-2">
-              <div class="text-sm flex items-center justify-between">
-                <span class="text-zinc-600 dark:text-zinc-400">Status:</span>
-                <span class="flex items-center gap-1 ${statusClass}">
-                  <span class="text-lg">${statusIcon}</span>
-                  <span class="capitalize font-medium">${data.status}</span>
-                </span>
-              </div>
-              <div class="text-sm flex items-center justify-between">
-                <span class="text-zinc-600 dark:text-zinc-400">Mode:</span>
-                <span class="flex items-center gap-1 ${networkOriginClass}">
-                  <span class="text-lg">${networkOriginIcon}</span>
-                  <span class="font-medium">${networkOriginLabel}</span>
-                </span>
-              </div>
-              ${txHashHtml}
-              <div class="text-sm"><span class="text-zinc-600 dark:text-zinc-400">Timestamp:</span> <span class="text-zinc-900 dark:text-zinc-100">${timestamp}</span></div>
-            </div>
-          </div>
-        `;
-
-        const explorerLink = document.getElementById('txExplorerLink');
-        if (data.txHash && !data.txHash.includes('staging')) {
-          explorerLink.href = `https://explorer.usernodelabs.org/tx/${escapeHtml(data.txHash)}`;
-          explorerLink.classList.remove('hidden');
-        } else {
-          explorerLink.classList.add('hidden');
-        }
+              if (updatedData.txHash !== data.txHash || updatedData.status !== data.status) {
+                console.log('[TxModal] Transaction updated - hash or status changed, refreshing modal');
+                // Update the data reference so we don't keep updating on the same hash
+                Object.assign(data, updatedData);
+                await renderTransactionDetailsContent(auditLogId, updatedData);
+              }
+            }
+          } catch (err) {
+            console.warn('[TxModal] Polling error:', err);
+          }
+        }, 3000);
       } catch (err) {
         console.error('Error loading transaction details:', err);
         content.innerHTML = '<div class="text-center py-8 text-red-600 dark:text-red-400">Error loading transaction details</div>';
@@ -8426,6 +8460,29 @@
         // Polling will start in loadGuardiansData if network_mode is 'real_testnet'
       }
 
+      // Manage activity polling
+      if (tabName === 'activity') {
+        // Start activity polling when switching to activity tab
+        if (!activityPollInterval) {
+          activityPollInterval = setInterval(async () => {
+            try {
+              const response = await apiCall(`/api/transactions-by-user?limit=20&offset=0`);
+              if (response && response.transactions) {
+                await updateActivityListIfChanged(response.transactions);
+              }
+            } catch (err) {
+              console.warn('[ActivityList] Polling error:', err);
+            }
+          }, 5000);
+        }
+      } else {
+        // Stop activity polling when leaving activity tab
+        if (activityPollInterval) {
+          clearInterval(activityPollInterval);
+          activityPollInterval = null;
+        }
+      }
+
       // Save tab preference
       if (currentUser) {
         localStorage.setItem(`guardian_profile_tab_${currentUser.id}`, tabName);
@@ -9172,9 +9229,116 @@
     // Activity transactions offset tracking
     let activityTransactionsOffset = 0;
 
+    // Activity transactions polling
+    let activityPollInterval = null;
+    let lastActivityData = null;
+
     async function loadProfileActivity() {
       activityTransactionsOffset = 0;
       await loadActivityTransactions(0);
+    }
+
+    function renderTransactionRow(tx) {
+      const timestamp = formatRelativeTime(tx.createdAt);
+
+      // Determine status icon and class
+      let statusIcon = '⏳';
+      let statusClass = 'text-gray-500 dark:text-gray-400';
+      if (tx.status === 'confirmed') {
+        statusIcon = '✓';
+        statusClass = 'text-green-600 dark:text-green-400';
+      } else if (tx.status === 'failed') {
+        statusIcon = '✗';
+        statusClass = 'text-red-600 dark:text-red-400';
+      }
+
+      // Determine transaction type icon and description
+      let typeIcon = '🔄';
+      let description = 'Transaction';
+      const payload = typeof tx.transactionPayload === 'string'
+        ? JSON.parse(tx.transactionPayload || '{}')
+        : (tx.transactionPayload || {});
+
+      if (tx.messageType === 'message') {
+        typeIcon = '💬';
+        const recipient = tx.recipientUsername || 'unknown';
+        description = `Sent message to @${escapeHtml(recipient)}`;
+      } else if (tx.messageType === 'token_transfer') {
+        typeIcon = '💰';
+        const recipient = tx.recipientUsername || 'unknown';
+        const amount = payload.amount || '?';
+        description = `Transferred ${amount} tokens to @${escapeHtml(recipient)}`;
+      } else if (tx.messageType === 'group_create') {
+        typeIcon = '👥';
+        const groupName = tx.groupName || 'group';
+        description = `Created group '${escapeHtml(groupName)}'`;
+      } else if (tx.messageType === 'group_add_members') {
+        typeIcon = '👥';
+        const groupName = tx.groupName || 'group';
+        description = `Added members to '${escapeHtml(groupName)}'`;
+      } else if (tx.messageType === 'group_remove_member') {
+        typeIcon = '👥';
+        const groupName = tx.groupName || 'group';
+        description = `Removed member from '${escapeHtml(groupName)}'`;
+      } else if (tx.messageType === 'group_update') {
+        typeIcon = '👥';
+        const groupName = tx.groupName || 'group';
+        description = `Updated '${escapeHtml(groupName)}'`;
+      } else if (tx.messageType === 'group_delete') {
+        typeIcon = '👥';
+        const groupName = tx.groupName || 'group';
+        description = `Deleted group '${escapeHtml(groupName)}'`;
+      } else if (tx.messageType === 'group_leave') {
+        typeIcon = '👥';
+        const groupName = tx.groupName || 'group';
+        description = `Left '${escapeHtml(groupName)}'`;
+      }
+
+      // Render transaction hash link
+      let txHashHtml = '';
+      if (tx.txHash && !tx.txHash.startsWith('synthetic_')) {
+        const txHashShort = tx.txHash.substring(0, 12);
+        txHashHtml = `<a href="https://explorer.usernodelabs.org/tx/${escapeHtml(tx.txHash)}" target="_blank" class="text-cyan-600 dark:text-cyan-400 hover:underline">Tx: ${txHashShort}...</a>`;
+      } else if (tx.txHash && tx.txHash.startsWith('synthetic_')) {
+        txHashHtml = '<span class="text-zinc-500 dark:text-zinc-500">Waiting for hash...</span>';
+      } else {
+        txHashHtml = '<span class="text-zinc-500 dark:text-zinc-500">Pending verification</span>';
+      }
+
+      return `
+        <div class="h-14 px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded border border-zinc-200 dark:border-zinc-700 cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-700 transition flex flex-col justify-between" data-tx-id="${tx.id}" onclick="openTransactionDetailsModal(${tx.id})">
+          <div class="flex justify-between items-center">
+            <div class="text-xs font-medium text-zinc-900 dark:text-zinc-100 truncate flex-1">${typeIcon} ${description}</div>
+            <div class="text-sm font-medium ${statusClass} ml-2">${statusIcon}</div>
+          </div>
+          <div class="flex justify-between items-center text-xs text-zinc-600 dark:text-zinc-400">
+            <div class="truncate flex-1">${txHashHtml}</div>
+            <div class="ml-2 whitespace-nowrap">${timestamp}</div>
+          </div>
+        </div>
+      `;
+    }
+
+    async function updateActivityListIfChanged(newTransactions) {
+      if (!lastActivityData) return;
+
+      // Check for changes in first 20 transactions
+      for (let i = 0; i < Math.min(newTransactions.length, lastActivityData.length); i++) {
+        const oldTx = lastActivityData[i];
+        const newTx = newTransactions[i];
+
+        // Check if hash or status changed
+        if (oldTx.txHash !== newTx.txHash || oldTx.status !== newTx.status) {
+          console.log(`[ActivityList] Transaction ${newTx.id} updated - refreshing row`);
+          // Update the old data reference
+          lastActivityData[i] = newTx;
+          // Re-render just this transaction's row
+          const row = document.querySelector(`[data-tx-id="${newTx.id}"]`);
+          if (row) {
+            row.outerHTML = renderTransactionRow(newTx);
+          }
+        }
+      }
     }
 
     async function loadActivityTransactions(offset) {
@@ -9194,91 +9358,20 @@
 
         let html = '';
         for (const tx of response.transactions) {
-          const timestamp = formatRelativeTime(tx.createdAt);
-
-          // Determine status icon and class
-          let statusIcon = '⏳';
-          let statusClass = 'text-gray-500 dark:text-gray-400';
-          if (tx.status === 'confirmed') {
-            statusIcon = '✓';
-            statusClass = 'text-green-600 dark:text-green-400';
-          } else if (tx.status === 'failed') {
-            statusIcon = '✗';
-            statusClass = 'text-red-600 dark:text-red-400';
-          }
-
-          // Determine transaction type icon and description
-          let typeIcon = '🔄';
-          let description = 'Transaction';
-          const payload = typeof tx.transactionPayload === 'string'
-            ? JSON.parse(tx.transactionPayload || '{}')
-            : (tx.transactionPayload || {});
-
-          if (tx.messageType === 'message') {
-            typeIcon = '💬';
-            const recipient = tx.recipientUsername || 'unknown';
-            description = `Sent message to @${escapeHtml(recipient)}`;
-          } else if (tx.messageType === 'token_transfer') {
-            typeIcon = '💰';
-            const recipient = tx.recipientUsername || 'unknown';
-            const amount = payload.amount || '?';
-            description = `Transferred ${amount} tokens to @${escapeHtml(recipient)}`;
-          } else if (tx.messageType === 'group_create') {
-            typeIcon = '👥';
-            const groupName = tx.groupName || 'group';
-            description = `Created group '${escapeHtml(groupName)}'`;
-          } else if (tx.messageType === 'group_add_members') {
-            typeIcon = '👥';
-            const groupName = tx.groupName || 'group';
-            description = `Added members to '${escapeHtml(groupName)}'`;
-          } else if (tx.messageType === 'group_remove_member') {
-            typeIcon = '👥';
-            const groupName = tx.groupName || 'group';
-            description = `Removed member from '${escapeHtml(groupName)}'`;
-          } else if (tx.messageType === 'group_update') {
-            typeIcon = '👥';
-            const groupName = tx.groupName || 'group';
-            description = `Updated '${escapeHtml(groupName)}'`;
-          } else if (tx.messageType === 'group_delete') {
-            typeIcon = '👥';
-            const groupName = tx.groupName || 'group';
-            description = `Deleted group '${escapeHtml(groupName)}'`;
-          } else if (tx.messageType === 'group_leave') {
-            typeIcon = '👥';
-            const groupName = tx.groupName || 'group';
-            description = `Left '${escapeHtml(groupName)}'`;
-          }
-
-          // Render transaction hash link
-          let txHashHtml = '';
-          if (tx.txHash) {
-            const txHashShort = tx.txHash.substring(0, 12);
-            txHashHtml = `<a href="https://explorer.usernodelabs.org/tx/${escapeHtml(tx.txHash)}" target="_blank" class="text-cyan-600 dark:text-cyan-400 hover:underline">Tx: ${txHashShort}...</a>`;
-          } else {
-            txHashHtml = '<span class="text-zinc-500 dark:text-zinc-500">Pending verification</span>';
-          }
-
-          html += `
-            <div class="h-14 px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded border border-zinc-200 dark:border-zinc-700 cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-700 transition flex flex-col justify-between" onclick="openTransactionDetailsModal(${tx.id})">
-              <div class="flex justify-between items-center">
-                <div class="text-xs font-medium text-zinc-900 dark:text-zinc-100 truncate flex-1">${typeIcon} ${description}</div>
-                <div class="text-sm font-medium ${statusClass} ml-2">${statusIcon}</div>
-              </div>
-              <div class="flex justify-between items-center text-xs text-zinc-600 dark:text-zinc-400">
-                <div class="truncate flex-1">${txHashHtml}</div>
-                <div class="ml-2 whitespace-nowrap">${timestamp}</div>
-              </div>
-            </div>
-          `;
+          html += renderTransactionRow(tx);
         }
 
         if (offset === 0) {
           document.getElementById('activityTransactionsList').innerHTML = html;
+          // Store transactions for polling comparison
+          lastActivityData = [...response.transactions];
         } else {
           const container = document.getElementById('activityTransactionsList');
           const loadMoreBtn = container.querySelector('[data-load-more="transactions"]');
           if (loadMoreBtn) loadMoreBtn.remove();
           container.innerHTML += html;
+          // Append to stored data
+          lastActivityData.push(...response.transactions);
         }
 
         // Show load more button if there are more items
