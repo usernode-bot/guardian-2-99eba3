@@ -25,7 +25,7 @@ const pool = new Pool({
   connectionString: DATABASE_URL,
   max: 20,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000
+  connectionTimeoutMillis: 5000
 });
 
 // Track database connection state
@@ -1745,9 +1745,20 @@ app.use(async (req, res, next) => {
   next();
 });
 
+// Health check - HTTP/container level only (doesn't require database)
 app.get('/health', async (_req, res) => {
+  res.json({
+    status: 'ok',
+    staging: IS_STAGING,
+    environment: IS_STAGING ? 'staging' : 'production',
+    message: 'HTTP server is running'
+  });
+});
+
+// Database health check - returns 503 if database is unavailable
+app.get('/health/db', async (_req, res) => {
   try {
-    // Quick database connectivity check (timeout after 1 second)
+    // Test database connectivity
     await Promise.race([
       pool.query('SELECT 1'),
       new Promise((_, reject) => setTimeout(() => reject(new Error('DB timeout')), 1000))
@@ -1756,18 +1767,18 @@ app.get('/health', async (_req, res) => {
       status: 'ok',
       staging: IS_STAGING,
       environment: IS_STAGING ? 'staging' : 'production',
-      database: 'connected'
+      database: 'connected',
+      ready: dbConnected
     });
   } catch (err) {
-    // Graceful degradation: respond 200 even if DB is unavailable
-    // This prevents container startup from failing when DB takes time to initialize
-    console.warn('[HEALTH] Database check failed:', err.message);
-    res.json({
-      status: 'ok',
+    console.warn('[HEALTH/DB] Database check failed:', err.message);
+    res.status(503).json({
+      status: 'unavailable',
       staging: IS_STAGING,
       environment: IS_STAGING ? 'staging' : 'production',
       database: 'disconnected',
-      warning: 'Database unavailable but server is running'
+      error: err.message,
+      ready: false
     });
   }
 });
@@ -7898,21 +7909,142 @@ window.addEventListener('load', function() {
 
 // ===== DATABASE INITIALIZATION =====
 
+// Seed staging/test data if database is connected
+async function seedStagingData() {
+  if (!dbConnected) {
+    console.log('[SEED] Skipping staging data seed - database not connected');
+    return;
+  }
+
+  try {
+    console.log('[SEED] Starting staging data seed...');
+    // Seed mock testnet users (grace, henry, iris, jack) in all environments for user search testing
+    const grace = 11, henry = 12, iris = 13, jack = 14;
+    await pool.query(`
+      INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at, bio, avatar_url) VALUES
+        ($1, 'test-user-grace', 'ut1staging-grace-001', NOW(), NOW() - INTERVAL '5 days', 'Test user - DevOps engineer', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2310b981%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EG%3C/text%3E%3C/svg%3E'),
+        ($2, 'test-user-henry', 'ut1staging-henry-001', NOW(), NOW() - INTERVAL '3 days', 'Test user - Frontend specialist', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%238b5cf6%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EH%3C/text%3E%3C/svg%3E'),
+        ($3, 'test-user-iris', 'ut1staging-iris-001', null, NOW() - INTERVAL '1 day', 'Test user - Data scientist', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%23f59e0b%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EI%3C/text%3E%3C/svg%3E'),
+        ($4, 'test-user-jack', 'ut1staging-jack-001', NOW(), NOW(), 'Test user - QA engineer', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%23ef4444%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EJ%3C/text%3E%3C/svg%3E')
+      ON CONFLICT (id) DO UPDATE SET
+        username = EXCLUDED.username,
+        usernode_pubkey = EXCLUDED.usernode_pubkey,
+        verified_at = EXCLUDED.verified_at,
+        bio = EXCLUDED.bio,
+        avatar_url = EXCLUDED.avatar_url
+    `, [grace, henry, iris, jack]);
+
+    if (IS_STAGING) {
+      const alice = 1, bob = 2, charlie = 3, david = 4, emma = 5, frank = 10;
+
+      // Create staging demo users with wallet addresses
+      await pool.query(`
+        INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at, bio, avatar_url) VALUES
+          ($1, 'staging-demo-alice', 'ut1staging-alice-001', NOW(), NOW() - INTERVAL '6 months', 'Staging demo user - Cloud architect | Web3 enthusiast', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EA%3C/text%3E%3C/svg%3E'),
+          ($2, 'staging-demo-bob', 'ut1staging-bob-001', NOW(), NOW() - INTERVAL '4 months', 'Staging demo user - Blockchain developer', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EB%3C/text%3E%3C/svg%3E'),
+          ($3, 'staging-demo-charlie', 'ut1staging-charlie-001', null, NOW() - INTERVAL '3 months', 'Staging demo user - Designer', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EC%3C/text%3E%3C/svg%3E'),
+          ($4, 'staging-demo-david', 'ut1staging-david-001', NOW(), NOW() - INTERVAL '2 months', 'Staging demo user - Product Manager', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3ED%3C/text%3E%3C/svg%3E'),
+          ($5, 'staging-demo-emma', 'ut1staging-emma-001', NOW(), NOW() - INTERVAL '1 month', 'Staging demo user - Security researcher', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EE%3C/text%3E%3C/svg%3E'),
+          ($6, 'staging-demo-frank', 'ut1staging-frank-001', NOW(), NOW() - INTERVAL '7 days', 'Staging demo user - Just joined!', null)
+        ON CONFLICT (id) DO UPDATE SET
+          username = EXCLUDED.username,
+          usernode_pubkey = EXCLUDED.usernode_pubkey,
+          verified_at = EXCLUDED.verified_at,
+          bio = EXCLUDED.bio,
+          avatar_url = EXCLUDED.avatar_url
+      `, [alice, bob, charlie, david, emma, frank]);
+    }
+
+    console.log('[SEED] ✅ Staging data seed completed');
+  } catch (seedErr) {
+    console.warn('[SEED] ⚠️  Staging data seeding failed:', seedErr.message);
+  }
+}
+
+// Validate that all required tables and columns exist
+async function validateSchemaInitialization() {
+  try {
+    const requiredTables = [
+      'users', 'conversations', 'messages', 'read_receipts', 'user_contacts',
+      'blockchain_audit_logs', 'groups', 'group_members', 'group_messages',
+      'group_read_receipts', 'channels', 'pinned_channels', 'channel_unread',
+      'channel_followers', 'channel_categories', 'feed_posts', 'peers',
+      'network_milestones', 'user_peers', 'user_foreground_sessions'
+    ];
+
+    const result = await pool.query(`
+      SELECT table_name FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+    `);
+
+    const existingTables = new Set(result.rows.map(r => r.table_name));
+    const missingTables = requiredTables.filter(t => !existingTables.has(t));
+
+    if (missingTables.length > 0) {
+      console.error(`[DB VALIDATION] ❌ Missing tables: ${missingTables.join(', ')}`);
+      return false;
+    }
+
+    // Verify critical columns on users table
+    const columnsResult = await pool.query(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'users'
+    `);
+
+    const criticalColumns = ['id', 'username', 'created_at'];
+    const existingColumns = new Set(columnsResult.rows.map(r => r.column_name));
+    const missingColumns = criticalColumns.filter(c => !existingColumns.has(c));
+
+    if (missingColumns.length > 0) {
+      console.error(`[DB VALIDATION] ❌ Missing columns on users table: ${missingColumns.join(', ')}`);
+      return false;
+    }
+
+    console.log('[DB VALIDATION] ✅ All required tables and columns exist');
+    return true;
+  } catch (err) {
+    console.error('[DB VALIDATION] Error validating schema:', err.message);
+    return false;
+  }
+}
+
+// Exponential backoff retry logic for database connection
+async function connectWithRetry(maxRetries = 3) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[DB] Connection attempt ${attempt}/${maxRetries}...`);
+      await Promise.race([
+        pool.query('SELECT 1'),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), 5000))
+      ]);
+      console.log('[DB] ✅ Connection successful');
+      return true;
+    } catch (err) {
+      lastError = err;
+      const delay = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s exponential backoff
+      if (attempt < maxRetries) {
+        console.warn(`[DB] Connection failed (attempt ${attempt}/${maxRetries}): ${err.message}`);
+        console.log(`[DB] Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+  return false;
+}
+
 async function start() {
   try {
     console.log('[STARTUP] Initializing Guardian 2 server...');
 
-    // Test database connectivity with timeout
-    console.log('[DB] Testing connection...');
-    try {
-      await Promise.race([
-        pool.query('SELECT 1'),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), 3000))
-      ]);
-      console.log('[DB] ✅ Connection successful');
+    // Test database connectivity with exponential backoff retry
+    console.log('[DB] Testing connection with retries...');
+    const connected = await connectWithRetry(3);
+
+    if (connected) {
       dbConnected = true;
-    } catch (dbErr) {
-      console.warn('[DB] ⚠️  Cannot reach database, continuing with limited functionality:', dbErr.message);
+    } else {
+      console.warn('[DB] ⚠️  Cannot reach database after retries, continuing with limited functionality');
       console.warn('[DB] The app will serve static pages but database features will be unavailable');
       dbConnected = false;
       // Don't throw - allow server to continue
@@ -7982,8 +8114,7 @@ async function start() {
       `);
       console.log('[Migration] ✅ is_bot column migration completed');
     } catch (err) {
-      console.error('[Migration] ❌ ERROR adding is_bot column:', err.message);
-      throw err;
+      console.warn('[Migration] ⚠️  Could not add is_bot column (may already exist):', err.message);
     }
 
     // Add skip_signature_in_devnet column to users table (idempotent migration)
@@ -7994,8 +8125,7 @@ async function start() {
       `);
       console.log('[Migration] ✅ skip_signature_in_devnet column migration completed');
     } catch (err) {
-      console.error('[Migration] ❌ ERROR adding skip_signature_in_devnet column:', err.message);
-      throw err;
+      console.warn('[Migration] ⚠️  Could not add skip_signature_in_devnet column (may already exist):', err.message);
     }
 
     // Add network_mode column to users table (idempotent migration)
@@ -8006,8 +8136,7 @@ async function start() {
       `);
       console.log('[Migration] ✅ network_mode column migration completed');
     } catch (err) {
-      console.error('[Migration] ❌ ERROR adding network_mode column:', err.message);
-      throw err;
+      console.warn('[Migration] ⚠️  Could not add network_mode column (may already exist):', err.message);
     }
 
     // Normalize network_mode values: 'real_testnet' -> 'testnet', 'demo' -> 'devnet' (idempotent migration)
@@ -8021,8 +8150,7 @@ async function start() {
       `);
       console.log('[Migration] ✅ network_mode value normalization completed');
     } catch (err) {
-      console.error('[Migration] ❌ ERROR normalizing network_mode values:', err.message);
-      throw err;
+      console.warn('[Migration] ⚠️  Could not normalize network_mode values:', err.message);
     }
 
     // Update skip_signature_in_devnet default from FALSE to TRUE (idempotent migration)
@@ -8033,8 +8161,7 @@ async function start() {
       `);
       console.log('[Migration] ✅ skip_signature_in_devnet default migration completed');
     } catch (err) {
-      console.error('[Migration] ❌ ERROR updating skip_signature_in_devnet default:', err.message);
-      throw err;
+      console.warn('[Migration] ⚠️  Could not update skip_signature_in_devnet default:', err.message);
     }
 
     // Create conversations table (marked private)
@@ -8676,16 +8803,30 @@ async function start() {
     await pool.query(`COMMENT ON TABLE user_peers IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE user_foreground_sessions IS 'staging:private'`);
 
-        // Schema initialization complete. Start the server immediately so healthchecks pass.
-        // All seeding and non-critical initialization will run in the background.
-        console.log('[STARTUP] Schema initialization complete, starting HTTP server...');
+        // Validate that schema initialization succeeded
+        const schemaValid = await validateSchemaInitialization();
+        if (!schemaValid) {
+          console.error('[STARTUP] ❌ Schema validation failed - some tables or columns are missing');
+          dbConnected = false;
+        } else {
+          console.log('[STARTUP] ✅ Schema initialization complete');
+        }
       } catch (dbInitErr) {
         console.error('[DB] Database schema initialization error:', dbInitErr.message);
-        console.log('[STARTUP] Continuing with degraded functionality');
+        console.error('[STARTUP] ❌ Schema initialization failed');
+        dbConnected = false;
       }
     }
 
-    // Start HTTP server now, before any blocking seeding operations
+    // Seed staging data synchronously before HTTP server starts
+    if (dbConnected) {
+      await seedStagingData();
+    }
+
+    // Log final database status
+    console.log(`[STARTUP] Database: ${dbConnected ? '✅ CONNECTED' : '❌ OFFLINE (retrying)'}`);
+
+    // Start HTTP server
     app.listen(port, async () => {
       console.log(`[STARTUP] ✅ Server listening on port ${port}`);
       console.log(`[CONFIG] USERNODE_ENV: ${process.env.USERNODE_ENV || 'not set'}`);
@@ -8725,1339 +8866,8 @@ async function start() {
         console.warn('[EXPLORER] Failed to validate explorer:', explorerErr.message);
       }
 
-      // Seed staging data
-      try {
-        // Seed mock testnet users (grace, henry, iris, jack) in all environments for user search testing
-        const grace = 11, henry = 12, iris = 13, jack = 14;
-    await pool.query(`
-      INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at, bio, avatar_url) VALUES
-        ($1, 'test-user-grace', 'ut1staging-grace-001', NOW(), NOW() - INTERVAL '5 days', 'Test user - DevOps engineer', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2310b981%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EG%3C/text%3E%3C/svg%3E'),
-        ($2, 'test-user-henry', 'ut1staging-henry-001', NOW(), NOW() - INTERVAL '3 days', 'Test user - Frontend specialist', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%238b5cf6%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EH%3C/text%3E%3C/svg%3E'),
-        ($3, 'test-user-iris', 'ut1staging-iris-001', null, NOW() - INTERVAL '1 day', 'Test user - Data scientist', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%23f59e0b%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EI%3C/text%3E%3C/svg%3E'),
-        ($4, 'test-user-jack', 'ut1staging-jack-001', NOW(), NOW(), 'Test user - QA engineer', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%23ef4444%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EJ%3C/text%3E%3C/svg%3E')
-      ON CONFLICT (id) DO UPDATE SET
-        username = EXCLUDED.username,
-        usernode_pubkey = EXCLUDED.usernode_pubkey,
-        verified_at = EXCLUDED.verified_at,
-        bio = EXCLUDED.bio,
-        avatar_url = EXCLUDED.avatar_url
-    `, [grace, henry, iris, jack]);
+      // Note: Staging data is now seeded synchronously before app.listen()
 
-    if (IS_STAGING) {
-      const alice = 1, bob = 2, charlie = 3, david = 4, emma = 5, frank = 10;
-      // Note: User 10 will map to 10 % 10 = 0 -> 5 hours (New Guardian)
-      // User 1 -> 25 hours (Active Guardian)
-      // User 2 -> 100 hours (Trusted Guardian)
-      // User 3 -> 300 hours (Elite Guardian)
-      // User 4 -> 15 hours (Active Guardian)
-      // User 5 -> 50 hours (Trusted Guardian)
-      // User 11 -> 1 % 10 = 1 -> 25 hours (Active Guardian)
-      // User 12 -> 2 % 10 = 2 -> 100 hours (Trusted Guardian)
-      // User 13 -> 3 % 10 = 3 -> 300 hours (Elite Guardian)
-      // User 14 -> 4 % 10 = 4 -> 15 hours (Active Guardian)
-
-      // Create staging demo users with wallet addresses
-      await pool.query(`
-        INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at, bio, avatar_url) VALUES
-          ($1, 'staging-demo-alice', 'ut1staging-alice-001', NOW(), NOW() - INTERVAL '6 months', 'Staging demo user - Cloud architect | Web3 enthusiast', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EA%3C/text%3E%3C/svg%3E'),
-          ($2, 'staging-demo-bob', 'ut1staging-bob-001', NOW(), NOW() - INTERVAL '4 months', 'Staging demo user - Blockchain developer', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EB%3C/text%3E%3C/svg%3E'),
-          ($3, 'staging-demo-charlie', 'ut1staging-charlie-001', null, NOW() - INTERVAL '3 months', 'Staging demo user - Designer', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EC%3C/text%3E%3C/svg%3E'),
-          ($4, 'staging-demo-david', 'ut1staging-david-001', NOW(), NOW() - INTERVAL '2 months', 'Staging demo user - Product Manager', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3ED%3C/text%3E%3C/svg%3E'),
-          ($5, 'staging-demo-emma', 'ut1staging-emma-001', NOW(), NOW() - INTERVAL '1 month', 'Staging demo user - Security researcher', 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2250%22 fill=%22%2306b6d4%22/%3E%3Ctext x=%2250%22 y=%2265%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 font-weight=%22bold%22%3EE%3C/text%3E%3C/svg%3E'),
-          ($6, 'staging-demo-frank', 'ut1staging-frank-001', NOW(), NOW() - INTERVAL '7 days', 'Staging demo user - Just joined!', null)
-        ON CONFLICT (id) DO UPDATE SET
-          username = EXCLUDED.username,
-          usernode_pubkey = EXCLUDED.usernode_pubkey,
-          verified_at = EXCLUDED.verified_at,
-          bio = EXCLUDED.bio,
-          avatar_url = EXCLUDED.avatar_url
-      `, [alice, bob, charlie, david, emma, frank]);
-
-      // Create conversation
-      const { rows: convRows } = await pool.query(`
-        SELECT id FROM conversations WHERE participant_a_id = $1 AND participant_b_id = $2
-      `, [alice, bob]);
-
-      let convId;
-      if (convRows.length === 0) {
-        const result = await pool.query(`
-          INSERT INTO conversations (participant_a_id, participant_b_id, created_at)
-          VALUES ($1, $2, NOW())
-          RETURNING id
-        `, [alice, bob]);
-        convId = result.rows[0].id;
-      } else {
-        convId = convRows[0].id;
-      }
-
-      // Fetch user pubkeys for direct messages
-      const { rows: dmUserRows } = await pool.query(`
-        SELECT id, usernode_pubkey FROM users WHERE id IN ($1, $2)
-      `, [alice, bob]);
-      const dmUserPubkeyMap = {};
-      dmUserRows.forEach(row => {
-        dmUserPubkeyMap[row.id] = row.usernode_pubkey;
-      });
-
-      // Seed messages
-      const baseTime = new Date(Date.now() - 3600000);
-      const messages = [
-        { offset: 0, sender: alice, type: 'text', content: { text: '[Staging] Hey Bob!' }, blockchain: true },
-        { offset: 60000, sender: bob, type: 'text', content: { text: '[Staging] Hi Alice! How are you?' }, blockchain: false },
-        { offset: 120000, sender: alice, type: 'text', content: { text: '[Staging] Doing great, thanks!' }, blockchain: false },
-        { offset: 180000, sender: alice, type: 'image', content: { imageUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mP8z8DwHwMxxGAIwAAADkkBkMTjF4UAAAAASUVORK5CYII=' }, blockchain: false },
-        { offset: 240000, sender: bob, type: 'text', content: { text: '[Staging] Nice photo!' }, blockchain: false },
-        { offset: 300000, sender: alice, type: 'token', content: { recipientId: bob, amount: 100, memo: '[Staging] Here is a gift', txHash: 'staging-tx-001', status: 'confirmed' }, blockchain: true },
-        { offset: 360000, sender: bob, type: 'text', content: { text: '[Staging] Thanks for the tokens!' }, blockchain: false },
-        { offset: 420000, sender: bob, type: 'image', content: { imageUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mNkYPhfwcDAwMjIyMjIyAgAEq4DBaIjqKQAAAAASUVORK5CYII=' }, blockchain: false },
-        { offset: 480000, sender: alice, type: 'token', content: { recipientId: bob, amount: 50, memo: '[Staging] bonus', txHash: 'staging-tx-002', status: 'confirmed' }, blockchain: false },
-        { offset: 540000, sender: bob, type: 'text', content: { text: '[Staging] This is awesome!' }, blockchain: false },
-      ];
-
-      for (const msg of messages) {
-        const msgTime = new Date(baseTime.getTime() + msg.offset);
-        const result = await pool.query(`
-          INSERT INTO messages (conversation_id, sender_id, type, content, blockchain_recorded, created_at)
-          VALUES ($1, $2, $3, $4, $5, $6)
-          ON CONFLICT DO NOTHING
-          RETURNING id
-        `, [convId, msg.sender, msg.type, JSON.stringify(msg.content), msg.blockchain, msgTime]);
-
-        // Seed blockchain audit log for messages that have blockchain recording
-        if (msg.blockchain && result.rows.length > 0) {
-          const messageId = result.rows[0].id;
-          const contentHash = computeContentHash(msg.content);
-          const txHash = 'ut1staging-testnet-message-' + messageId + '-' + msgTime.getTime();
-          const messageType = msg.type === 'token' ? 'token_transfer' : 'message';
-          const transactionPayload = msg.type === 'token'
-            ? {
-                type: 'token_transfer',
-                messageId: messageId,
-                sender: msg.sender,
-                recipient: msg.content.recipientId,
-                amount: msg.content.amount,
-                memo: msg.content.memo,
-                userPubkey: dmUserPubkeyMap[msg.sender],
-                contentHash: contentHash,
-                timestamp: msgTime.toISOString(),
-                rpcEndpoint: NODE_RPC_URL
-              }
-            : {
-                type: 'message',
-                messageId: messageId,
-                senderId: msg.sender,
-                userPubkey: dmUserPubkeyMap[msg.sender],
-                contentHash: contentHash,
-                timestamp: msgTime.toISOString(),
-                rpcEndpoint: NODE_RPC_URL
-              };
-
-          const auditResult = await pool.query(`
-            INSERT INTO blockchain_audit_logs (user_id, message_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, 'confirmed', $6, $7, $8, $9, $10, $10)
-            ON CONFLICT DO NOTHING
-            RETURNING id
-          `, [msg.sender, messageId, messageType, txHash, JSON.stringify(transactionPayload), msgTime, contentHash, dmUserPubkeyMap[msg.sender], msgTime, msgTime]);
-
-          // Update message with audit log reference
-          if (auditResult.rows.length > 0) {
-            await pool.query(`
-              UPDATE messages SET blockchain_audit_log_id = $1 WHERE id = $2
-            `, [auditResult.rows[0].id, messageId]);
-          }
-        }
-      }
-
-      // Initialize read receipts
-      await pool.query(`
-        INSERT INTO read_receipts (user_id, conversation_id, last_read_at)
-        VALUES ($1, $2, NOW()), ($3, $2, NOW())
-        ON CONFLICT DO NOTHING
-      `, [alice, convId, bob]);
-
-
-      // Seed sample conversations with different statuses to demonstrate incoming message controls
-      // Emma → Alice: unaccepted incoming message (Alice will see "New Message" badge)
-      const [emmaAliceA, emmaAliceB] = [alice, emma].sort((x, y) => x - y);
-      const { rows: convEmmAliceRows } = await pool.query(`
-        SELECT id FROM conversations WHERE participant_a_id = $1 AND participant_b_id = $2
-      `, [emmaAliceA, emmaAliceB]);
-
-      let convEmmAliceId;
-      if (convEmmAliceRows.length === 0) {
-        const result = await pool.query(`
-          INSERT INTO conversations (participant_a_id, participant_b_id, status_a, status_b, created_at, updated_at)
-          VALUES ($1, $2, 'accepted', 'ignored', NOW(), NOW())
-          RETURNING id
-        `, [emmaAliceA, emmaAliceB]);
-        convEmmAliceId = result.rows[0].id;
-      } else {
-        convEmmAliceId = convEmmAliceRows[0].id;
-      }
-
-      // Add a test message from Emma to Alice
-      await pool.query(`
-        INSERT INTO messages (conversation_id, sender_id, type, content, created_at)
-        VALUES ($1, $2, 'text', '{"text": "[Staging] Hi Alice, just reaching out!"}', NOW())
-        ON CONFLICT DO NOTHING
-      `, [convEmmAliceId, emma]);
-
-      // David → Bob: muted incoming message
-      const [davidBobA, davidBobB] = [bob, david].sort((x, y) => x - y);
-      const { rows: convDavidBobRows } = await pool.query(`
-        SELECT id FROM conversations WHERE participant_a_id = $1 AND participant_b_id = $2
-      `, [davidBobA, davidBobB]);
-
-      let convDavidBobId;
-      if (convDavidBobRows.length === 0) {
-        const result = await pool.query(`
-          INSERT INTO conversations (participant_a_id, participant_b_id, status_a, status_b, created_at, updated_at)
-          VALUES ($1, $2, 'accepted', 'muted', NOW(), NOW())
-          RETURNING id
-        `, [davidBobA, davidBobB]);
-        convDavidBobId = result.rows[0].id;
-      } else {
-        convDavidBobId = convDavidBobRows[0].id;
-      }
-
-      // Add a test message from David to Bob
-      await pool.query(`
-        INSERT INTO messages (conversation_id, sender_id, type, content, created_at)
-        VALUES ($1, $2, 'text', '{"text": "[Staging] Hi Bob! Check this out"}', NOW())
-        ON CONFLICT DO NOTHING
-      `, [convDavidBobId, david]);
-
-      // Seed archived alice-charlie conversation (archived by alice) for testing archive/unarchive UI
-      const { rows: convAliceCharlieRows } = await pool.query(`
-        SELECT id FROM conversations
-        WHERE (participant_a_id = $1 AND participant_b_id = $2)
-           OR (participant_a_id = $2 AND participant_b_id = $1)
-      `, [alice, charlie]);
-
-      let convAliceCharlieId;
-      if (convAliceCharlieRows.length === 0) {
-        const result = await pool.query(`
-          INSERT INTO conversations (participant_a_id, participant_b_id, status_a, status_b, archived_by, created_at, updated_at)
-          VALUES ($1, $2, 'accepted', 'accepted', ARRAY[$1]::integer[], NOW(), NOW())
-          RETURNING id
-        `, [alice, charlie]);
-        convAliceCharlieId = result.rows[0].id;
-      } else {
-        convAliceCharlieId = convAliceCharlieRows[0].id;
-        // Ensure alice is in archived_by
-        await pool.query(`
-          UPDATE conversations SET archived_by = array_append(archived_by, $1)
-          WHERE id = $2 AND NOT (archived_by @> ARRAY[$1]::integer[])
-        `, [alice, convAliceCharlieId]);
-      }
-
-      await pool.query(`
-        INSERT INTO messages (conversation_id, sender_id, type, content, created_at)
-        VALUES
-          ($1, $2, 'text', '{"text": "[Staging] Hey Alice, long time no chat!"}', NOW() - INTERVAL '3 days'),
-          ($1, $3, 'text', '{"text": "[Staging] Hi Charlie! Yeah it has been a while."}', NOW() - INTERVAL '3 days' + INTERVAL '5 minutes'),
-          ($1, $2, 'text', '{"text": "[Staging] Let me know if you want to catch up sometime."}', NOW() - INTERVAL '3 days' + INTERVAL '10 minutes')
-        ON CONFLICT DO NOTHING
-      `, [convAliceCharlieId, charlie, alice]);
-
-      // Seed pending contact requests for testing "Pending Requests" feature
-      // Charlie → Alice: Charlie sends a pending request to Alice
-      const [charlieAliceA, charlieAliceB] = [alice, charlie].sort((x, y) => x - y);
-      const { rows: convCharlieAliceRows } = await pool.query(`
-        SELECT id FROM conversations WHERE participant_a_id = $1 AND participant_b_id = $2
-      `, [charlieAliceA, charlieAliceB]);
-
-      if (convCharlieAliceRows.length === 0) {
-        const charlieIsA = charlie === charlieAliceA;
-        const result = await pool.query(`
-          INSERT INTO conversations (participant_a_id, participant_b_id, status_a, status_b, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, NOW(), NOW())
-          RETURNING id
-        `, [charlieAliceA, charlieAliceB,
-            charlieIsA ? 'accepted' : 'pending',
-            charlieIsA ? 'pending' : 'accepted']);
-        const convCharlieAliceId = result.rows[0].id;
-
-        // Add a test message from Charlie to Alice
-        await pool.query(`
-          INSERT INTO messages (conversation_id, sender_id, type, content, created_at)
-          VALUES ($1, $2, 'text', '{"text": "[Staging] Hey Alice, want to connect?"}', NOW() - INTERVAL '2 hours')
-          ON CONFLICT DO NOTHING
-        `, [convCharlieAliceId, charlie]);
-      }
-
-      // David → Bob: David sends a pending request to Bob
-      const [davidBobA2, davidBobB2] = [bob, david].sort((x, y) => x - y);
-      const { rows: convDavidBob2Rows } = await pool.query(`
-        SELECT id FROM conversations WHERE participant_a_id = $1 AND participant_b_id = $2
-      `, [davidBobA2, davidBobB2]);
-
-      if (convDavidBob2Rows.length === 0) {
-        const davidIsA = david === davidBobA2;
-        const result = await pool.query(`
-          INSERT INTO conversations (participant_a_id, participant_b_id, status_a, status_b, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, NOW(), NOW())
-          RETURNING id
-        `, [davidBobA2, davidBobB2,
-            davidIsA ? 'accepted' : 'pending',
-            davidIsA ? 'pending' : 'accepted']);
-        const convDavidBob2Id = result.rows[0].id;
-
-        // Add a test message from David to Bob
-        await pool.query(`
-          INSERT INTO messages (conversation_id, sender_id, type, content, created_at)
-          VALUES ($1, $2, 'text', '{"text": "[Staging] Hi Bob, I have something interesting to share!"}', NOW() - INTERVAL '1 hour')
-          ON CONFLICT DO NOTHING
-        `, [convDavidBob2Id, david]);
-      }
-
-      // Seed sample contact relationships for testing "Add Contact" feature
-      // Alice has Bob as a saved contact
-      await pool.query(`
-        INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
-        VALUES ($1, $2, NULL, NOW())
-        ON CONFLICT (user_id, contact_user_id) DO NOTHING
-      `, [alice, bob]);
-
-      // Bob has Alice as a saved contact
-      await pool.query(`
-        INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
-        VALUES ($1, $2, NULL, NOW())
-        ON CONFLICT (user_id, contact_user_id) DO NOTHING
-      `, [bob, alice]);
-
-      // Alice also has Charlie as a contact for testing wallet address search with saved contacts
-      await pool.query(`
-        INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
-        VALUES ($1, $2, NULL, NOW())
-        ON CONFLICT (user_id, contact_user_id) DO NOTHING
-      `, [alice, charlie]);
-
-      // Alice has David and Emma as additional contacts
-      await pool.query(`
-        INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
-        VALUES ($1, $2, NULL, NOW()), ($1, $3, NULL, NOW())
-        ON CONFLICT (user_id, contact_user_id) DO NOTHING
-      `, [alice, david, emma]);
-
-      // Seed archived, muted, and archived+muted contacts for testing contact options menu
-      const { rows: archiveRows } = await pool.query(`
-        SELECT id FROM user_contacts WHERE user_id = $1 AND contact_user_id = $2
-      `, [alice, bob]);
-      if (archiveRows.length > 0) {
-        await pool.query(`
-          UPDATE user_contacts SET muted_by = ARRAY[$1]::integer[] WHERE id = $2
-        `, [alice, archiveRows[0].id]);
-      }
-
-      const { rows: archiveRows2 } = await pool.query(`
-        SELECT id FROM user_contacts WHERE user_id = $1 AND contact_user_id = $2
-      `, [alice, charlie]);
-      if (archiveRows2.length > 0) {
-        await pool.query(`
-          UPDATE user_contacts SET archived_by = ARRAY[$1]::integer[] WHERE id = $2
-        `, [alice, archiveRows2[0].id]);
-      }
-
-      const { rows: archiveRows3 } = await pool.query(`
-        SELECT id FROM user_contacts WHERE user_id = $1 AND contact_user_id = $2
-      `, [alice, david]);
-      if (archiveRows3.length > 0) {
-        await pool.query(`
-          UPDATE user_contacts SET archived_by = ARRAY[$1]::integer[], muted_by = ARRAY[$1]::integer[] WHERE id = $2
-        `, [alice, archiveRows3[0].id]);
-      }
-
-      // Seed a clearly-labelled test post for edit/delete feature testing
-      const { rows: editTestRows } = await pool.query(`
-        SELECT id FROM feed_posts WHERE user_id = $1 AND content->>'text' LIKE '%edited or deleted%' LIMIT 1
-      `, [alice]);
-      if (editTestRows.length === 0) {
-        await pool.query(`
-          INSERT INTO feed_posts (user_id, content, created_at, updated_at)
-          VALUES ($1, $2, NOW() - INTERVAL '30 minutes', NOW() - INTERVAL '30 minutes')
-        `, [alice, JSON.stringify({ text: '[Staging] This post can be edited or deleted — try it!' })]);
-      }
-
-      // Seed feed posts for Alice (min 8-12 posts)
-      const postTimes = [
-        Date.now() - 7*24*60*60*1000,
-        Date.now() - 6*24*60*60*1000,
-        Date.now() - 5*24*60*60*1000,
-        Date.now() - 4*24*60*60*1000,
-        Date.now() - 3*24*60*60*1000,
-        Date.now() - 2*24*60*60*1000,
-        Date.now() - 24*60*60*1000,
-        Date.now() - 12*60*60*1000,
-        Date.now() - 6*60*60*1000,
-        Date.now() - 2*60*60*1000,
-      ];
-
-      for (let i = 0; i < postTimes.length; i++) {
-        await pool.query(`
-          INSERT INTO feed_posts (user_id, content, created_at)
-          VALUES ($1, $2, to_timestamp($3/1000.0))
-          ON CONFLICT DO NOTHING
-        `, [alice, JSON.stringify({ text: `[Staging] Demo feed post #${i+1}` }), postTimes[i]]);
-      }
-
-      // Create sample groups
-      const { rows: designGroupRows } = await pool.query(`
-        SELECT id FROM groups WHERE creator_id = $1 AND name = 'Staging Design Feedback'
-      `, [alice]);
-
-      let designGroupId;
-      if (designGroupRows.length === 0) {
-        const result = await pool.query(`
-          INSERT INTO groups (creator_id, name, description, created_at, updated_at)
-          VALUES ($1, 'Staging Design Feedback', '[Staging] Share design ideas and feedback', NOW(), NOW())
-          RETURNING id
-        `, [alice]);
-        designGroupId = result.rows[0].id;
-      } else {
-        designGroupId = designGroupRows[0].id;
-      }
-
-      // Add members to Design Feedback group
-      for (const memberId of [alice, bob, charlie]) {
-        await pool.query(`
-          INSERT INTO group_members (group_id, user_id, role, joined_at)
-          VALUES ($1, $2, $3, NOW())
-          ON CONFLICT (group_id, user_id) DO NOTHING
-        `, [designGroupId, memberId, memberId === alice ? 'creator' : 'member']);
-      }
-
-      // Add messages to Design Feedback group
-      const designBaseTime = new Date(Date.now() - 1800000);
-      const designMessages = [
-        { offset: 0, sender: alice, type: 'text', content: { text: '[Staging] Hey team! Check out this new design' }, blockchain: true },
-        { offset: 600000, sender: bob, type: 'text', content: { text: '[Staging] Looks great! Love the color scheme' }, blockchain: false },
-        { offset: 1200000, sender: charlie, type: 'text', content: { text: '[Staging] Really nice work, Alice!' }, blockchain: false },
-      ];
-
-      // Fetch user pubkeys for seeding
-      const { rows: userPubkeyRows } = await pool.query(`
-        SELECT id, usernode_pubkey FROM users WHERE id IN ($1, $2, $3)
-      `, [alice, bob, charlie]);
-      const userPubkeyMap = {};
-      userPubkeyRows.forEach(row => {
-        userPubkeyMap[row.id] = row.usernode_pubkey;
-      });
-
-      // Create audit log entries for group creation
-      const { rows: designGroupCheckRows } = await pool.query(`
-        SELECT id, creator_id, created_at FROM groups WHERE id = $1
-      `, [designGroupId]);
-      if (designGroupCheckRows.length > 0 && designGroupCheckRows[0].creator_id === alice) {
-        const groupCreateTime = designGroupCheckRows[0].created_at;
-        const groupCreateTxHash = 'ut1staging-testnet-group-create-' + designGroupId + '-' + new Date(groupCreateTime).getTime();
-        const groupCreatePayload = {
-          type: 'group_create',
-          groupId: designGroupId,
-          groupName: 'Staging Design Feedback',
-          creatorPubkey: userPubkeyMap[alice],
-          memberPubkeys: [userPubkeyMap[alice], userPubkeyMap[bob], userPubkeyMap[charlie]],
-          timestamp: groupCreateTime ? new Date(groupCreateTime).toISOString() : new Date().toISOString()
-        };
-        await pool.query(`
-          INSERT INTO blockchain_audit_logs (user_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
-          VALUES ($1, $2, 'group_create', $3, $4, 'confirmed', $5, $6, $7, $8, $9, $9)
-          ON CONFLICT DO NOTHING
-        `, [alice, designGroupId, groupCreateTxHash, JSON.stringify(groupCreatePayload), groupCreateTime, null, userPubkeyMap[alice], groupCreateTime || new Date(), groupCreateTime || new Date()]);
-      }
-
-      for (const msg of designMessages) {
-        const msgTime = new Date(designBaseTime.getTime() + msg.offset);
-        const result = await pool.query(`
-          INSERT INTO group_messages (group_id, sender_id, type, content, blockchain_recorded, created_at)
-          VALUES ($1, $2, $3, $4, $5, $6)
-          ON CONFLICT DO NOTHING
-          RETURNING id
-        `, [designGroupId, msg.sender, msg.type, JSON.stringify(msg.content), msg.blockchain, msgTime]);
-
-        if (msg.blockchain && result.rows.length > 0) {
-          const messageId = result.rows[0].id;
-          const contentHash = computeContentHash(msg.content);
-          const txHash = 'ut1staging-testnet-message-' + messageId + '-' + msgTime.getTime();
-          const transactionPayload = {
-            type: 'message',
-            messageId: messageId,
-            groupId: designGroupId,
-            senderPubkey: userPubkeyMap[msg.sender],
-            contentHash: contentHash,
-            timestamp: msgTime.toISOString()
-          };
-
-          const auditResult = await pool.query(`
-            INSERT INTO blockchain_audit_logs (user_id, message_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, 'confirmed', $7, $8, $9, $10, $11, $11)
-            ON CONFLICT DO NOTHING
-            RETURNING id
-          `, [msg.sender, messageId, designGroupId, 'message', txHash, JSON.stringify(transactionPayload), msgTime, contentHash, userPubkeyMap[msg.sender], msgTime, msgTime]);
-
-          if (auditResult.rows.length > 0) {
-            await pool.query(`
-              UPDATE group_messages SET blockchain_audit_log_id = $1 WHERE id = $2
-            `, [auditResult.rows[0].id, messageId]);
-          }
-        }
-      }
-
-      // Initialize read receipts for Design Feedback group
-      for (const memberId of [alice, bob, charlie]) {
-        await pool.query(`
-          INSERT INTO group_read_receipts (user_id, group_id, last_read_at)
-          VALUES ($1, $2, NOW())
-          ON CONFLICT (user_id, group_id) DO NOTHING
-        `, [memberId, designGroupId]);
-      }
-
-      // Create General Chat group
-      const { rows: generalGroupRows } = await pool.query(`
-        SELECT id FROM groups WHERE creator_id = $1 AND name = 'Staging General Chat'
-      `, [bob]);
-
-      let generalGroupId;
-      if (generalGroupRows.length === 0) {
-        const result = await pool.query(`
-          INSERT INTO groups (creator_id, name, description, created_at, updated_at)
-          VALUES ($1, 'Staging General Chat', '[Staging] General discussion and updates', NOW(), NOW())
-          RETURNING id
-        `, [bob]);
-        generalGroupId = result.rows[0].id;
-      } else {
-        generalGroupId = generalGroupRows[0].id;
-      }
-
-      // Add members to General Chat group
-      for (const memberId of [bob, alice, david, emma]) {
-        await pool.query(`
-          INSERT INTO group_members (group_id, user_id, role, joined_at)
-          VALUES ($1, $2, $3, NOW())
-          ON CONFLICT (group_id, user_id) DO NOTHING
-        `, [generalGroupId, memberId, memberId === bob ? 'creator' : 'member']);
-      }
-
-      // Add messages to General Chat group
-      const generalBaseTime = new Date(Date.now() - 1800000);
-      const generalMessages = [
-        { offset: 0, sender: bob, type: 'text', content: { text: '[Staging] Welcome to the group! Looking forward to great discussions' }, blockchain: false },
-        { offset: 600000, sender: alice, type: 'text', content: { text: '[Staging] Thanks for creating this! Already excited about the energy' }, blockchain: false },
-        { offset: 900000, sender: david, type: 'image', content: { imageUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mP8z8DwHwMxxGAIwAAADkkBkMTjF4UAAAAASUVORK5CYII=' }, blockchain: false },
-        { offset: 1200000, sender: emma, type: 'token', content: { recipientId: bob, amount: 50, memo: '[Staging] Thanks for the invite!', txHash: 'staging-gp-tx-001', status: 'confirmed' }, blockchain: true },
-      ];
-
-      // Fetch additional user pubkeys for General Chat
-      const { rows: generalUserRows } = await pool.query(`
-        SELECT id, usernode_pubkey FROM users WHERE id IN ($1, $2, $3, $4)
-      `, [bob, alice, david, emma]);
-      const generalUserPubkeyMap = {};
-      generalUserRows.forEach(row => {
-        generalUserPubkeyMap[row.id] = row.usernode_pubkey;
-      });
-
-      // Create audit log entry for General Chat group creation
-      const { rows: generalGroupCheckRows } = await pool.query(`
-        SELECT id, creator_id, created_at FROM groups WHERE id = $1
-      `, [generalGroupId]);
-      if (generalGroupCheckRows.length > 0 && generalGroupCheckRows[0].creator_id === bob) {
-        const genGroupCreateTime = generalGroupCheckRows[0].created_at;
-        const genGroupCreateTxHash = 'ut1staging-testnet-group-create-' + generalGroupId + '-' + new Date(genGroupCreateTime).getTime();
-        const genGroupCreatePayload = {
-          type: 'group_create',
-          groupId: generalGroupId,
-          groupName: 'Staging General Chat',
-          creatorId: bob,
-          memberIds: [bob, alice, david, emma],
-          userPubkey: generalUserPubkeyMap[bob],
-          timestamp: genGroupCreateTime ? new Date(genGroupCreateTime).toISOString() : new Date().toISOString()
-        };
-        await pool.query(`
-          INSERT INTO blockchain_audit_logs (user_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
-          VALUES ($1, $2, 'group_create', $3, $4, 'confirmed', $5, $6, $7, $8, $9, $9)
-          ON CONFLICT DO NOTHING
-        `, [bob, generalGroupId, genGroupCreateTxHash, JSON.stringify(genGroupCreatePayload), genGroupCreateTime, null, generalUserPubkeyMap[bob], genGroupCreateTime || new Date(), genGroupCreateTime || new Date()]);
-      }
-
-      for (const msg of generalMessages) {
-        const msgTime = new Date(generalBaseTime.getTime() + msg.offset);
-        const result = await pool.query(`
-          INSERT INTO group_messages (group_id, sender_id, type, content, blockchain_recorded, created_at)
-          VALUES ($1, $2, $3, $4, $5, $6)
-          ON CONFLICT DO NOTHING
-          RETURNING id
-        `, [generalGroupId, msg.sender, msg.type, JSON.stringify(msg.content), msg.blockchain, msgTime]);
-
-        if (msg.blockchain && result.rows.length > 0) {
-          const messageId = result.rows[0].id;
-          const contentHash = computeContentHash(msg.content);
-          const txHash = 'ut1staging-testnet-message-' + messageId + '-' + msgTime.getTime();
-          const messageType = msg.type === 'token' ? 'token_transfer' : 'message';
-          const transactionPayload = msg.type === 'token'
-            ? {
-                type: 'token_transfer',
-                messageId: messageId,
-                groupId: generalGroupId,
-                sender: msg.sender,
-                recipient: msg.content.recipientId,
-                amount: msg.content.amount,
-                memo: msg.content.memo,
-                userPubkey: generalUserPubkeyMap[msg.sender],
-                contentHash: contentHash,
-                timestamp: msgTime.toISOString()
-              }
-            : {
-                type: 'message',
-                messageId: messageId,
-                groupId: generalGroupId,
-                senderId: msg.sender,
-                userPubkey: generalUserPubkeyMap[msg.sender],
-                contentHash: contentHash,
-                timestamp: msgTime.toISOString()
-              };
-
-          const auditResult = await pool.query(`
-            INSERT INTO blockchain_audit_logs (user_id, message_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, 'confirmed', $7, $8, $9, $10, $11, $11)
-            ON CONFLICT DO NOTHING
-            RETURNING id
-          `, [msg.sender, messageId, generalGroupId, messageType, txHash, JSON.stringify(transactionPayload), msgTime, contentHash, generalUserPubkeyMap[msg.sender], msgTime, msgTime]);
-
-          if (auditResult.rows.length > 0) {
-            await pool.query(`
-              UPDATE group_messages SET blockchain_audit_log_id = $1 WHERE id = $2
-            `, [auditResult.rows[0].id, messageId]);
-          }
-        }
-      }
-
-      // Initialize read receipts for General Chat group
-      for (const memberId of [bob, alice, david, emma]) {
-        await pool.query(`
-          INSERT INTO group_read_receipts (user_id, group_id, last_read_at)
-          VALUES ($1, $2, NOW())
-          ON CONFLICT (user_id, group_id) DO NOTHING
-        `, [memberId, generalGroupId]);
-      }
-
-      // Seed feed posts
-      const feedBaseTime = new Date();
-      const feedPosts = [
-        {
-          userId: alice,
-          content: { text: '[Staging demo] Hello Guardian community! 👋' },
-          offset: 7200000
-        },
-        {
-          userId: bob,
-          content: {
-            text: '[Staging demo] Just deployed v2.0 of my dapp',
-            link: 'https://example.com/dapp',
-            linkTitle: 'My Cool Dapp',
-            linkImage: 'https://via.placeholder.com/200'
-          },
-          offset: 3600000
-        },
-        {
-          userId: david,
-          content: { text: '[Staging demo] Anyone interested in discussing Web3 standards?' },
-          offset: 1800000
-        },
-        {
-          userId: alice,
-          content: {
-            text: '[Staging demo] Check out this article on blockchain security',
-            link: 'https://example.com/article',
-            linkTitle: 'Blockchain Security Best Practices',
-            linkImage: 'https://via.placeholder.com/200'
-          },
-          offset: 900000
-        },
-        {
-          userId: emma,
-          content: { text: '[Staging demo] Excited about the new Guardian features!' },
-          offset: 600000
-        },
-        {
-          userId: david,
-          content: {
-            text: '[Staging demo] Check out this resource',
-            link: 'https://example.com/resource'
-          },
-          offset: 300000
-        },
-        {
-          userId: alice,
-          content: { text: '[Staging demo] Hey @staging-demo-bob, loved your new dapp! 🚀' },
-          offset: 120000
-        },
-        {
-          userId: emma,
-          content: { text: '[Staging demo] @staging-demo-david and @staging-demo-alice — anyone joining the Web3 standards discussion?' },
-          offset: 60000
-        }
-      ];
-
-      for (const post of feedPosts) {
-        const createdAt = new Date(feedBaseTime.getTime() - post.offset);
-        const isOnChain = Math.random() > 0.5;
-        await pool.query(`
-          INSERT INTO feed_posts (user_id, content, on_chain, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, $4)
-          ON CONFLICT DO NOTHING
-        `, [post.userId, JSON.stringify(post.content), isOnChain, createdAt]);
-      }
-
-      // Seed feed likes on posts
-      const { rows: allPosts } = await pool.query(`
-        SELECT id, user_id FROM feed_posts LIMIT 10
-      `);
-
-      for (const post of allPosts) {
-        const likers = [alice, bob, charlie, david, emma].filter(id => id !== post.user_id);
-        const likeCount = Math.floor(Math.random() * likers.length) + 1;
-        const selectedLikers = likers.sort(() => Math.random() - 0.5).slice(0, likeCount);
-
-        for (const likerId of selectedLikers) {
-          const likeTime = new Date(feedBaseTime.getTime() - Math.random() * 3600000);
-          await pool.query(`
-            INSERT INTO feed_likes (post_id, user_id, created_at)
-            VALUES ($1, $2, $3)
-            ON CONFLICT DO NOTHING
-          `, [post.id, likerId, likeTime]);
-        }
-      }
-
-      // Seed feed comments
-      // Get post IDs for seeding comments
-      const { rows: bobDeployPostRows } = await pool.query(`
-        SELECT id FROM feed_posts WHERE user_id = $1 AND content->>'text' LIKE '%v2.0%' LIMIT 1
-      `, [bob]);
-
-      const { rows: aliceArticlePostRows } = await pool.query(`
-        SELECT id FROM feed_posts WHERE user_id = $1 AND content->>'text' LIKE '%blockchain security%' LIMIT 1
-      `, [alice]);
-
-      const { rows: davidWeb3PostRows } = await pool.query(`
-        SELECT id FROM feed_posts WHERE user_id = $1 AND content->>'text' LIKE '%Web3 standards%' LIMIT 1
-      `, [david]);
-
-      // Seed comments on Bob's deployment post
-      if (bobDeployPostRows.length > 0) {
-        const bobPostId = bobDeployPostRows[0].id;
-        const commentTime1 = new Date(feedBaseTime.getTime() - 2400000);
-        const commentTime2 = new Date(feedBaseTime.getTime() - 2100000);
-
-        await pool.query(`
-          INSERT INTO feed_comments (post_id, user_id, content, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, $4), ($1, $5, $6, $7, $7)
-          ON CONFLICT DO NOTHING
-        `, [bobPostId, alice, '[Staging demo] That sounds amazing! Congrats on the release!', commentTime1, charlie, '[Staging demo] Would love to check it out!', commentTime2]);
-      }
-
-      // Seed comments on Alice's article post
-      if (aliceArticlePostRows.length > 0) {
-        const alicePostId = aliceArticlePostRows[0].id;
-        const commentTime = new Date(feedBaseTime.getTime() - 300000);
-        const commentTime2 = new Date(feedBaseTime.getTime() - 200000);
-
-        await pool.query(`
-          INSERT INTO feed_comments (post_id, user_id, content, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, $4), ($1, $5, $6, $7, $7)
-          ON CONFLICT DO NOTHING
-        `, [alicePostId, bob, '[Staging demo] Great read! Security is so important in Web3.', commentTime, charlie, '[Staging demo] @staging-demo-alice nice one! 👏', commentTime2]);
-      }
-
-      // Seed comments on David's Web3 standards post
-      if (davidWeb3PostRows.length > 0) {
-        const davidPostId = davidWeb3PostRows[0].id;
-        const commentTime1 = new Date(feedBaseTime.getTime() - 1200000);
-        const commentTime2 = new Date(feedBaseTime.getTime() - 600000);
-
-        await pool.query(`
-          INSERT INTO feed_comments (post_id, user_id, content, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, $4), ($1, $5, $6, $7, $7)
-          ON CONFLICT DO NOTHING
-        `, [davidPostId, alice, '[Staging demo] Count me in! We should organize a discussion thread.', commentTime1, emma, '[Staging demo] This is an important topic for the ecosystem!', commentTime2]);
-      }
-
-      // Create additional test group with many messages for archive/delete testing
-      const { rows: techGroupRows } = await pool.query(`
-        SELECT id FROM groups WHERE creator_id = $1 AND name = 'Staging Tech Discussions'
-      `, [charlie]);
-
-      let techGroupId;
-      if (techGroupRows.length === 0) {
-        const result = await pool.query(`
-          INSERT INTO groups (creator_id, name, description, created_at, updated_at)
-          VALUES ($1, 'Staging Tech Discussions', '[Staging] Technical discussions and Q&A', NOW(), NOW())
-          RETURNING id
-        `, [charlie]);
-        techGroupId = result.rows[0].id;
-      } else {
-        techGroupId = techGroupRows[0].id;
-      }
-
-      // Add members to Tech Discussions group
-      for (const memberId of [charlie, alice, bob, david]) {
-        await pool.query(`
-          INSERT INTO group_members (group_id, user_id, role, joined_at)
-          VALUES ($1, $2, $3, NOW())
-          ON CONFLICT (group_id, user_id) DO NOTHING
-        `, [techGroupId, memberId, memberId === charlie ? 'creator' : 'member']);
-      }
-
-      // Add many messages to Tech group (30+ for testing bulk delete)
-      const techBaseTime = new Date(Date.now() - 3600000);
-      const techMessages = [
-        { offset: 0, sender: charlie, content: { text: '[Staging] Anyone here familiar with smart contract optimization?' } },
-        { offset: 120000, sender: alice, content: { text: '[Staging] Yes, I work with Solidity regularly. What are you trying to optimize?' } },
-        { offset: 240000, sender: bob, content: { text: '[Staging] Gas optimization is always the tricky part' } },
-        { offset: 360000, sender: david, content: { text: '[Staging] Have you considered using assembly? Sometimes thats the answer' } },
-        { offset: 480000, sender: charlie, content: { text: '[Staging] We are already using some assembly, but thanks for the tip!' } },
-        { offset: 600000, sender: alice, content: { text: '[Staging] What patterns are you using for state management?' } },
-        { offset: 720000, sender: bob, content: { text: '[Staging] Mapping with enumerable sets is usually my go-to' } },
-        { offset: 840000, sender: david, content: { text: '[Staging] Just be careful with array iteration performance' } },
-        { offset: 960000, sender: charlie, content: { text: '[Staging] Good point! We had issues with that before' } },
-        { offset: 1080000, sender: alice, content: { text: '[Staging] Have you looked at OpenZeppelin libraries?' } },
-        { offset: 1200000, sender: bob, content: { text: '[Staging] Their upgradeable patterns are really solid' } },
-        { offset: 1320000, sender: david, content: { text: '[Staging] Just make sure to audit thoroughly if using upgrades' } },
-        { offset: 1440000, sender: charlie, content: { text: '[Staging] Security is always the priority for us' } },
-        { offset: 1560000, sender: alice, content: { text: '[Staging] What testing frameworks do you use?' } },
-        { offset: 1680000, sender: bob, content: { text: '[Staging] Hardhat and Foundry are my favorites currently' } },
-        { offset: 1800000, sender: david, content: { text: '[Staging] Foundry is getting really good. Love the speed' } },
-        { offset: 1920000, sender: charlie, content: { text: '[Staging] Were migrating to Foundry soon actually' } },
-        { offset: 2040000, sender: alice, content: { text: '[Staging] Excellent choice. The developer experience is much better' } },
-        { offset: 2160000, sender: bob, content: { text: '[Staging] Agreed. Cheatcodes are super useful for testing' } },
-        { offset: 2280000, sender: david, content: { text: '[Staging] Make sure you have good coverage targets in place' } },
-        { offset: 2400000, sender: charlie, content: { text: '[Staging] We aim for 90% coverage minimum' } },
-        { offset: 2520000, sender: alice, content: { text: '[Staging] Thats a solid target. Edge cases are important' } },
-        { offset: 2640000, sender: bob, content: { text: '[Staging] Fuzzing is also really helpful for finding edge cases' } },
-        { offset: 2760000, sender: david, content: { text: '[Staging] Echidna is great for fuzzing Solidity' } },
-        { offset: 2880000, sender: charlie, content: { text: '[Staging] Will definitely check that out, thanks for the tips everyone!' } },
-        { offset: 3000000, sender: alice, content: { text: '[Staging] Anytime! Feel free to reach out if you hit any roadblocks' } },
-        { offset: 3120000, sender: bob, content: { text: '[Staging] Great discussion! Always love these tech talks' } },
-        { offset: 3240000, sender: david, content: { text: '[Staging] Same here. Its good to share knowledge' } },
-        { offset: 3360000, sender: charlie, content: { text: '[Staging] Definitely. This community is awesome' } },
-      ];
-
-      for (const msg of techMessages) {
-        const msgTime = new Date(techBaseTime.getTime() + msg.offset);
-        await pool.query(`
-          INSERT INTO group_messages (group_id, sender_id, type, content, blockchain_recorded, created_at)
-          VALUES ($1, $2, $3, $4, $5, $6)
-          ON CONFLICT DO NOTHING
-        `, [techGroupId, msg.sender, 'text', JSON.stringify(msg.content), false, msgTime]);
-      }
-
-      // Initialize read receipts for Tech group
-      for (const memberId of [charlie, alice, bob, david]) {
-        await pool.query(`
-          INSERT INTO group_read_receipts (user_id, group_id, last_read_at)
-          VALUES ($1, $2, NOW())
-          ON CONFLICT (user_id, group_id) DO NOTHING
-        `, [memberId, techGroupId]);
-      }
-
-      // Seed peer data with realistic peer IDs and foreground hours
-      const peerData = [
-        { peer_id: 'ut1staging-peer-001', foreground_hours: 5 },
-        { peer_id: 'ut1staging-peer-002', foreground_hours: 25 },
-        { peer_id: 'ut1staging-peer-003', foreground_hours: 100 },
-        { peer_id: 'ut1staging-peer-004', foreground_hours: 300 },
-        { peer_id: 'ut1staging-peer-005', foreground_hours: 15 },
-        { peer_id: 'ut1staging-peer-006', foreground_hours: 50 },
-        { peer_id: 'ut1staging-peer-007', foreground_hours: 75 },
-        { peer_id: 'ut1staging-peer-008', foreground_hours: 150 },
-        { peer_id: 'ut1staging-peer-009', foreground_hours: 200 },
-        { peer_id: 'ut1staging-peer-010', foreground_hours: 250 }
-      ];
-
-      for (const peer of peerData) {
-        await pool.query(`
-          INSERT INTO peers (peer_id, foreground_hours, created_at)
-          VALUES ($1, $2, NOW())
-          ON CONFLICT (peer_id) DO UPDATE SET
-            foreground_hours = EXCLUDED.foreground_hours
-        `, [peer.peer_id, peer.foreground_hours]);
-      }
-
-      // Seed user_peers relationships for staging test data
-      // Alice (user 1) connects to peers 001, 002, 003 (total 130 hours)
-      await pool.query(`
-        INSERT INTO user_peers (user_id, peer_id, connected_at, last_seen_at)
-        VALUES
-          ($1, 'ut1staging-peer-001', NOW(), NOW()),
-          ($1, 'ut1staging-peer-002', NOW(), NOW()),
-          ($1, 'ut1staging-peer-003', NOW(), NOW())
-        ON CONFLICT (user_id, peer_id) DO UPDATE SET
-          last_seen_at = NOW()
-      `, [alice]);
-
-      // Bob (user 2) connects to peers 004, 005, 006 (total 365 hours)
-      await pool.query(`
-        INSERT INTO user_peers (user_id, peer_id, connected_at, last_seen_at)
-        VALUES
-          ($1, 'ut1staging-peer-004', NOW(), NOW()),
-          ($1, 'ut1staging-peer-005', NOW(), NOW()),
-          ($1, 'ut1staging-peer-006', NOW(), NOW())
-        ON CONFLICT (user_id, peer_id) DO UPDATE SET
-          last_seen_at = NOW()
-      `, [bob]);
-
-      // Charlie (user 3) connects to peers 007, 008, 009, 010 (total 675 hours)
-      await pool.query(`
-        INSERT INTO user_peers (user_id, peer_id, connected_at, last_seen_at)
-        VALUES
-          ($1, 'ut1staging-peer-007', NOW(), NOW()),
-          ($1, 'ut1staging-peer-008', NOW(), NOW()),
-          ($1, 'ut1staging-peer-009', NOW(), NOW()),
-          ($1, 'ut1staging-peer-010', NOW(), NOW())
-        ON CONFLICT (user_id, peer_id) DO UPDATE SET
-          last_seen_at = NOW()
-      `, [charlie]);
-
-      // Seed additional test data for profile counter verification
-      // Create a conversation where Alice receives messages but doesn't send any
-      // This tests that the Messages counter counts participation, not sent messages
-      const [frankAliceA, frankAliceB] = [alice, frank].sort((x, y) => x - y);
-      const { rows: convFrankAliceRows } = await pool.query(`
-        SELECT id FROM conversations WHERE participant_a_id = $1 AND participant_b_id = $2
-      `, [frankAliceA, frankAliceB]);
-
-      let convFrankAliceId;
-      if (convFrankAliceRows.length === 0) {
-        const result = await pool.query(`
-          INSERT INTO conversations (participant_a_id, participant_b_id, status_a, status_b, created_at, updated_at)
-          VALUES ($1, $2, 'accepted', 'accepted', NOW(), NOW())
-          RETURNING id
-        `, [frankAliceA, frankAliceB]);
-        convFrankAliceId = result.rows[0].id;
-      } else {
-        convFrankAliceId = convFrankAliceRows[0].id;
-      }
-
-      // Add a message from Frank to Alice (Alice receives but doesn't send)
-      await pool.query(`
-        INSERT INTO messages (conversation_id, sender_id, type, content, created_at)
-        VALUES ($1, $2, 'text', '{"text": "[Staging] Hi Alice! Just wanted to check in."}', NOW())
-        ON CONFLICT DO NOTHING
-      `, [convFrankAliceId, frank]);
-
-      // Create a group where Alice is a member but doesn't send messages
-      // This also tests counter for group participation without sending
-      const { rows: testGroupRows } = await pool.query(`
-        SELECT id FROM groups WHERE creator_id = $1 AND name = 'Staging Test Group'
-      `, [david]);
-
-      let testGroupId;
-      if (testGroupRows.length === 0) {
-        const result = await pool.query(`
-          INSERT INTO groups (creator_id, name, description, created_at, updated_at)
-          VALUES ($1, 'Staging Test Group', '[Staging] Test group for counter verification', NOW(), NOW())
-          RETURNING id
-        `, [david]);
-        testGroupId = result.rows[0].id;
-      } else {
-        testGroupId = testGroupRows[0].id;
-      }
-
-      // Add Alice to the test group (but she won't send messages)
-      await pool.query(`
-        INSERT INTO group_members (group_id, user_id, role, joined_at)
-        VALUES ($1, $2, 'member', NOW()), ($1, $3, 'creator', NOW())
-        ON CONFLICT (group_id, user_id) DO NOTHING
-      `, [testGroupId, alice, david]);
-
-      // Add a message from David (Alice receives but doesn't send)
-      await pool.query(`
-        INSERT INTO group_messages (group_id, sender_id, type, content, created_at)
-        VALUES ($1, $2, 'text', '{"text": "[Staging] Welcome to the test group, Alice!"}', NOW())
-        ON CONFLICT DO NOTHING
-      `, [testGroupId, david]);
-
-      // Initialize read receipts
-      await pool.query(`
-        INSERT INTO group_read_receipts (user_id, group_id, last_read_at)
-        VALUES ($1, $2, NOW()), ($3, $2, NOW())
-        ON CONFLICT (user_id, group_id) DO NOTHING
-      `, [alice, testGroupId, david]);
-
-      // Seed network milestone posts for staging
-      const milestones = [
-        { key: 'active_nodes', label: 'Active Nodes', value: '42', unit: 'nodes', category: 'network' },
-        { key: 'network_throughput', label: 'Network Throughput', value: '2.5', unit: 'Gbps', category: 'network' },
-        { key: 'transactions_24h', label: 'Transactions (24h)', value: '187,432', unit: 'tx', category: 'activity' },
-        { key: 'avg_latency', label: 'Avg Latency', value: '125', unit: 'ms', category: 'performance' }
-      ];
-
-      for (const m of milestones) {
-        await pool.query(`
-          INSERT INTO network_milestones (key, label, value, unit, category, last_refreshed_at)
-          VALUES ($1, $2, $3, $4, $5, NOW())
-          ON CONFLICT (key) DO UPDATE SET
-            label = EXCLUDED.label,
-            value = EXCLUDED.value,
-            unit = EXCLUDED.unit,
-            category = EXCLUDED.category,
-            updated_at = NOW()
-        `, [m.key, m.label, m.value, m.unit, m.category]);
-      }
-    }
-
-    // Create reserved system user for network milestones (all environments)
-    await pool.query(`
-      INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at)
-      VALUES ($1, $2, $3, NOW(), NOW())
-      ON CONFLICT (id) DO UPDATE SET
-        username = EXCLUDED.username,
-        usernode_pubkey = EXCLUDED.usernode_pubkey
-    `, [-1, 'Usernode Network Updates', 'ut1-network-system']);
-
-    // Create GuardiAI bot account in all environments
-    try {
-      console.log('[GuardiAI Seed] Starting GuardiAI user account creation...');
-
-      const guardianResult = await pool.query(`
-        INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at, is_bot)
-        VALUES (100, 'GuardiAI 🤖', 'ut1-guardiAI-bot', NOW(), NOW(), true)
-        ON CONFLICT (id) DO UPDATE SET
-          username = EXCLUDED.username,
-          is_bot = EXCLUDED.is_bot
-      `);
-
-      console.log('[GuardiAI Seed] GuardiAI user insert/upsert completed', { rowCount: guardianResult.rowCount });
-
-      // Verify the user was created
-      const verifyResult = await pool.query(`
-        SELECT id, username, is_bot, usernode_pubkey, created_at
-        FROM users
-        WHERE id = 100
-      `);
-
-      if (verifyResult.rows.length > 0) {
-        const guardianUser = verifyResult.rows[0];
-        console.log('[GuardiAI Seed] ✅ GuardiAI user verified in database:', {
-          id: guardianUser.id,
-          username: guardianUser.username,
-          is_bot: guardianUser.is_bot,
-          usernode_pubkey: guardianUser.usernode_pubkey,
-          created_at: guardianUser.created_at
-        });
-      } else {
-        console.error('[GuardiAI Seed] ❌ ERROR: GuardiAI user NOT found in database after insert!');
-      }
-    } catch (err) {
-      console.error('[GuardiAI Seed] ❌ ERROR creating/upserting GuardiAI user:', err.message);
-      throw err;
-    }
-
-    // Seed GuardiAI bot demo data in staging
-    if (IS_STAGING) {
-      console.log('[GuardiAI Seed] Starting staging demo data seed...');
-
-      // Seed a crypto-mention post and demo replies
-      const cryptoPostRes = await pool.query(`
-        INSERT INTO feed_posts (user_id, content, created_at)
-        VALUES (1, $1, NOW() - INTERVAL '2 hours')
-        ON CONFLICT DO NOTHING
-        RETURNING id
-      `, [JSON.stringify({ text: 'Staging demo: Market analysis - checking BTC and ETH movements today' })]);
-
-      if (cryptoPostRes.rows.length > 0) {
-        const postId = cryptoPostRes.rows[0].id;
-        console.log('[GuardiAI Seed] Created staging crypto demo post:', { postId });
-
-        // Seed a comment with crypto mention
-        await pool.query(`
-          INSERT INTO feed_comments (post_id, user_id, content, created_at)
-          VALUES ($1, $2, $3, NOW() - INTERVAL '90 minutes')
-          ON CONFLICT DO NOTHING
-        `, [postId, 2, '@GuardiAI whats the price on BTC and ethereum right now?']);
-
-        // Seed bot replies with sample crypto data
-        const btcReply = await pool.query(`
-          INSERT INTO feed_comments (post_id, user_id, content, created_at)
-          VALUES ($1, $2, $3, NOW() - INTERVAL '89 minutes')
-          ON CONFLICT DO NOTHING
-          RETURNING id
-        `, [postId, 100, 'BTC: $45230.00 📈 +3.2% (24h) | Strong momentum here!']);
-
-        const ethReply = await pool.query(`
-          INSERT INTO feed_comments (post_id, user_id, content, created_at)
-          VALUES ($1, $2, $3, NOW() - INTERVAL '88 minutes')
-          ON CONFLICT DO NOTHING
-          RETURNING id
-        `, [postId, 100, 'ETH: $2340.00 📉 -1.8% (24h) | Could be interesting!']);
-
-        console.log('[GuardiAI Seed] Created staging crypto demo replies:', {
-          btcReplyId: btcReply.rows[0]?.id,
-          ethReplyId: ethReply.rows[0]?.id
-        });
-      }
-
-      // Seed a friendly-reply post (no crypto mention)
-      const friendlyPostRes = await pool.query(`
-        INSERT INTO feed_posts (user_id, content, created_at)
-        VALUES (1, $1, NOW() - INTERVAL '1 hour')
-        ON CONFLICT DO NOTHING
-        RETURNING id
-      `, [JSON.stringify({ text: 'Staging demo: Just shipped a major update to the protocol!' })]);
-
-      if (friendlyPostRes.rows.length > 0) {
-        const postId = friendlyPostRes.rows[0].id;
-        console.log('[GuardiAI Seed] Created staging friendly demo post:', { postId });
-
-        // Seed a comment with @GuardiAI mention but no crypto
-        await pool.query(`
-          INSERT INTO feed_comments (post_id, user_id, content, created_at)
-          VALUES ($1, $2, $3, NOW() - INTERVAL '50 minutes')
-          ON CONFLICT DO NOTHING
-        `, [postId, 3, '@GuardiAI what do you think of this update?']);
-
-        // Seed a friendly bot reply
-        const friendlyReply = await pool.query(`
-          INSERT INTO feed_comments (post_id, user_id, content, created_at)
-          VALUES ($1, $2, $3, NOW() - INTERVAL '49 minutes')
-          ON CONFLICT DO NOTHING
-          RETURNING id
-        `, [postId, 100, 'Yooo that\'s fire! 🔥 Love the energy! Can\'t wait to see what you build next.']);
-
-        console.log('[GuardiAI Seed] Created staging friendly demo reply:', {
-          friendlyReplyId: friendlyReply.rows[0]?.id
-        });
-      }
-
-      // Seed GuardiAI auto-post demo data
-      console.log('[GuardiAI Seed] Starting GuardiAI auto-post demo data seed...');
-
-      // Seed a recent GuardiAI friendly post
-      const guardiAIPost1Res = await pool.query(`
-        INSERT INTO feed_posts (user_id, content, created_at)
-        VALUES (100, $1, NOW())
-        ON CONFLICT DO NOTHING
-        RETURNING id
-      `, [JSON.stringify({ type: 'text', text: 'Hey everyone!' })]);
-
-      if (guardiAIPost1Res.rows.length > 0) {
-        const guardiAIPostId = guardiAIPost1Res.rows[0].id;
-        console.log('[GuardiAI Seed] Created GuardiAI demo post 1:', { postId: guardiAIPostId });
-
-        // Seed a demo comment to test auto-reply functionality
-        await pool.query(`
-          INSERT INTO feed_comments (post_id, user_id, content, created_at)
-          VALUES ($1, $2, $3, NOW() - INTERVAL '5 minutes')
-          ON CONFLICT DO NOTHING
-        `, [guardiAIPostId, 2, 'Great energy!']);
-
-        console.log('[GuardiAI Seed] Created demo comment for auto-reply testing');
-      }
-
-      // Seed an older GuardiAI friendly post (14 hours ago to trigger new post creation)
-      const guardiAIPost2Res = await pool.query(`
-        INSERT INTO feed_posts (user_id, content, created_at)
-        VALUES (100, $1, NOW() - INTERVAL '14 hours')
-        ON CONFLICT DO NOTHING
-        RETURNING id
-      `, [JSON.stringify({ type: 'text', text: 'What\'s up folks?' })]);
-
-      if (guardiAIPost2Res.rows.length > 0) {
-        console.log('[GuardiAI Seed] Created GuardiAI demo post 2:', { postId: guardiAIPost2Res.rows[0].id });
-      }
-
-      console.log('[GuardiAI Seed] ✅ Staging demo data seed completed');
-
-      // Seed channels for staging testing
-      console.log('[Channel Seed] Starting channel seed data...');
-
-      // Ensure channel categories exist
-      await pool.query(`
-        INSERT INTO channel_categories (name, description) VALUES
-        ('Updates', 'System and important updates'),
-        ('General', 'General discussion'),
-        ('Announcements', 'Official announcements')
-        ON CONFLICT (name) DO NOTHING
-      `);
-
-      // Seed demo channels
-      const channels = [
-        { name: 'Staging Demo Channel', description: 'A staging demo channel for testing the feed-like UI', owner_id: 1, category: 'General' },
-        { name: '[Staging] Owner\'s Channel', description: 'Test channel for owner composition - owned by user 1', owner_id: 1, category: 'General' },
-        { name: 'Updates & News', description: 'Latest updates and news from the team', owner_id: 2, category: 'Announcements' },
-        { name: 'Product Feedback', description: 'Share your feedback and suggestions', owner_id: 3, category: 'General' }
-      ];
-
-      for (const channel of channels) {
-        const result = await pool.query(`
-          INSERT INTO channels (name, description, owner_id, category, is_system, is_verified, is_featured, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, FALSE, FALSE, FALSE, NOW(), NOW())
-          ON CONFLICT DO NOTHING
-          RETURNING id
-        `, [channel.name, channel.description, channel.owner_id, channel.category]);
-
-        if (result.rows.length > 0) {
-          const channelId = result.rows[0].id;
-          console.log(`[Channel Seed] Created channel: ${channel.name} (id: ${channelId})`);
-
-          // Seed demo posts in the channel
-          let posts = [];
-
-          // Different posts for owner's channel vs other channels
-          if (channel.owner_id === 1 && channel.name === '[Staging] Owner\'s Channel') {
-            posts = [
-              { user_id: 1, content: 'This is my test channel! I can post here since I\'m the owner.', offset: 120, editedOffset: 100 },
-              { user_id: 1, content: 'The compose box at the top lets me create new posts quickly. Try clicking and typing!', offset: 60 }
-            ];
-          } else {
-            posts = [
-              { user_id: 1, content: 'Welcome to the Staging Demo Channel! This is a great place to test the new feed-like layout.', offset: 180 },
-              { user_id: 2, content: 'The channel detail view now has a sticky header with owner-specific controls. Try editing or deleting this channel if you are the owner!', offset: 120 },
-              { user_id: 3, content: 'Posts are displayed in a clean chronological feed. You can see the most recent posts first.', offset: 60 },
-              { user_id: 1, content: 'Load more posts at the bottom to see older messages. Try scrolling down to test pagination!', offset: 30 }
-            ];
-          }
-
-          for (const post of posts) {
-            const created = new Date(Date.now() - post.offset * 60000);
-            const updated = post.editedOffset ? new Date(Date.now() - post.editedOffset * 60000) : created;
-            await pool.query(`
-              INSERT INTO feed_posts (user_id, channel_id, content, created_at, updated_at)
-              VALUES ($1, $2, $3, $4, $5)
-              ON CONFLICT DO NOTHING
-            `, [post.user_id, channelId, JSON.stringify({ text: post.content }), created, updated]);
-          }
-          console.log(`[Channel Seed] Created ${posts.length} demo posts in channel: ${channel.name}`);
-        }
-      }
-
-      // Seed channel followers for demo user (user 1 follows all channels)
-      console.log('[Channel Seed] Adding follower relationships...');
-      const { rows: channelRows } = await pool.query(`SELECT id FROM channels ORDER BY created_at ASC`);
-      for (const ch of channelRows) {
-        await pool.query(`
-          INSERT INTO channel_followers (user_id, channel_id, followed_at)
-          VALUES ($1, $2, NOW())
-          ON CONFLICT (user_id, channel_id) DO NOTHING
-        `, [1, ch.id]);
-      }
-      console.log(`[Channel Seed] ✅ Added follower relationships (demo user follows ${channelRows.length} channels)`);
-
-      // Seed user contacts for demo user (user 1 has contacts with users 2, 3, 4)
-      console.log('[Channel Seed] Adding user contacts...');
-      const contacts = [
-        { contact_user_id: 2, nickname: 'Demo User Two' },
-        { contact_user_id: 3, nickname: 'Demo User Three' },
-        { contact_user_id: 4, nickname: 'Demo User Four' }
-      ];
-      for (const contact of contacts) {
-        await pool.query(`
-          INSERT INTO user_contacts (user_id, contact_user_id, nickname, created_at)
-          VALUES ($1, $2, $3, NOW())
-          ON CONFLICT (user_id, contact_user_id) DO NOTHING
-        `, [1, contact.contact_user_id, contact.nickname]);
-      }
-      console.log(`[Channel Seed] ✅ Added user contacts (demo user has ${contacts.length} contacts)`);
-
-      console.log('[Channel Seed] ✅ Channel seed data completed');
-
-      // FIX #8: Seed staging mock data for testing transaction polling without real blockchain
-      console.log('[Staging Mock Data] Seeding transaction test data for polling tests...');
-      try {
-        const userId = 1; // Staging demo user (Alice)
-
-        // Seed test transactions with various statuses to simulate polling scenarios
-        const testTransactions = [
-          {
-            status: 'confirmed',
-            offset: 120,
-            message: 'Staging test message - confirmed transaction',
-            txHashSuffix: 'test-confirmed-001'
-          },
-          {
-            status: 'pending',
-            offset: 60,
-            message: 'Staging test message - still pending (testing polling)',
-            txHashSuffix: 'test-pending-001'
-          },
-          {
-            status: 'failed',
-            offset: 30,
-            message: 'Staging test message - failed transaction',
-            txHashSuffix: 'test-failed-001',
-            error: 'RPC connection timeout'
-          }
-        ];
-
-        for (const tx of testTransactions) {
-          const msgTime = new Date(Date.now() - tx.offset * 60000);
-          const contentHash = computeContentHash(tx.message);
-          const txHash = `ut1staging-${tx.txHashSuffix}`;
-
-          // Create audit log for testing polling flow
-          const auditRes = await pool.query(`
-            INSERT INTO blockchain_audit_logs (
-              user_id, message_type, tx_hash, status, content_hash, user_pubkey,
-              action_timestamp, error_message, created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
-            ON CONFLICT (user_id, tx_hash) DO NOTHING
-            RETURNING id
-          `, [
-            userId,
-            'message',
-            txHash,
-            tx.status,
-            contentHash,
-            'ut1staging-alice-001',
-            msgTime,
-            tx.error || null,
-            msgTime
-          ]);
-
-          if (auditRes.rows.length > 0) {
-            console.log(`[Staging Mock Data] Created test transaction: ${tx.txHashSuffix} (status: ${tx.status})`);
-          }
-        }
-
-        console.log('[Staging Mock Data] ✅ Transaction test data seeded');
-      } catch (seedErr) {
-        console.warn('[Staging Mock Data] Warning: Could not seed transaction test data:', seedErr.message);
-      }
-    }
-
-        // Create reserved system user for Crypto Daily bot (all environments)
-        await pool.query(`
-          INSERT INTO users (id, username, usernode_pubkey, verified_at, created_at)
-          VALUES ($1, $2, $3, NOW(), NOW())
-          ON CONFLICT (id) DO UPDATE SET
-            username = EXCLUDED.username,
-            usernode_pubkey = EXCLUDED.usernode_pubkey
-        `, [-2, 'Crypto Daily', 'ut1-crypto-daily-system']);
-
-        // Seed network milestones in production (hardcoded values for now)
-        if (!IS_STAGING) {
-          const milestones = [
-            { key: 'active_nodes', label: 'Active Nodes', value: '42', unit: 'nodes', category: 'network' },
-            { key: 'network_throughput', label: 'Network Throughput', value: '2.5', unit: 'Gbps', category: 'network' },
-            { key: 'transactions_24h', label: 'Transactions (24h)', value: '187,432', unit: 'tx', category: 'activity' },
-            { key: 'avg_latency', label: 'Avg Latency', value: '125', unit: 'ms', category: 'performance' }
-          ];
-
-          for (const m of milestones) {
-            await pool.query(`
-              INSERT INTO network_milestones (key, label, value, unit, category, last_refreshed_at)
-              VALUES ($1, $2, $3, $4, $5, NOW())
-              ON CONFLICT (key) DO UPDATE SET
-                label = EXCLUDED.label,
-                value = EXCLUDED.value,
-                unit = EXCLUDED.unit,
-                category = EXCLUDED.category,
-                updated_at = NOW()
-            `, [m.key, m.label, m.value, m.unit, m.category]);
-          }
-        }
-      } catch (seedErr) {
-        console.warn('[SEED] Background seeding failed:', seedErr.message);
-      }
 
 
       // Initialize Usernode blockchain usernames cache for real-time search
