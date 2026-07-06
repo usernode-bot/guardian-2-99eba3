@@ -1745,26 +1745,40 @@
         const txHashFull = data.txHash || '';
 
         // Determine network origin label with icon
-        let networkOriginLabel = 'Unknown';
+        let networkOriginLabel = 'Not specified';
         let networkOriginIcon = '❓';
-        let networkOriginClass = 'text-yellow-600 dark:text-yellow-400';
+        let networkOriginClass = 'text-zinc-600 dark:text-zinc-400';
 
-        if (data.network_origin === 'blockchain') {
-          networkOriginLabel = 'Real Blockchain';
-          networkOriginIcon = '⛓️';
+        // Map network_origin values to display labels
+        // Supports both audit-log values (blockchain, demo, database, bridge) and Guardian network modes (testnet, devnet, mainnet)
+        if (data.network_origin === 'testnet') {
+          networkOriginLabel = 'Testnet';
+          networkOriginIcon = '🔗';
           networkOriginClass = 'text-green-600 dark:text-green-400';
-        } else if (data.network_origin === 'demo') {
-          networkOriginLabel = 'Demo Mode (Simulated)';
-          networkOriginIcon = '🎭';
-          networkOriginClass = 'text-amber-600 dark:text-amber-400';
-        } else if (data.network_origin === 'database') {
-          networkOriginLabel = 'Database Only (Devnet)';
+        } else if (data.network_origin === 'blockchain') {
+          networkOriginLabel = 'Testnet';
+          networkOriginIcon = '🔗';
+          networkOriginClass = 'text-green-600 dark:text-green-400';
+        } else if (data.network_origin === 'devnet') {
+          networkOriginLabel = 'Devnet';
           networkOriginIcon = '💾';
           networkOriginClass = 'text-blue-600 dark:text-blue-400';
-        } else if (data.network_origin === 'bridge') {
-          networkOriginLabel = 'Bridge Fallback';
-          networkOriginIcon = '🌉';
+        } else if (data.network_origin === 'database') {
+          networkOriginLabel = 'Devnet';
+          networkOriginIcon = '💾';
+          networkOriginClass = 'text-blue-600 dark:text-blue-400';
+        } else if (data.network_origin === 'mainnet') {
+          networkOriginLabel = 'Mainnet';
+          networkOriginIcon = '🌍';
+          networkOriginClass = 'text-amber-600 dark:text-amber-400';
+        } else if (data.network_origin === 'demo') {
+          networkOriginLabel = 'Demo';
+          networkOriginIcon = '🎭';
           networkOriginClass = 'text-purple-600 dark:text-purple-400';
+        } else if (data.network_origin === 'bridge') {
+          networkOriginLabel = 'Bridge';
+          networkOriginIcon = '🌉';
+          networkOriginClass = 'text-orange-600 dark:text-orange-400';
         }
 
         let txHashHtml = '';
@@ -9129,11 +9143,11 @@
 
           if (tx.messageType === 'message') {
             typeIcon = '💬';
-            const recipient = payload.recipientUsername || 'unknown';
+            const recipient = tx.recipientUsername || 'unknown';
             description = `Sent message to @${escapeHtml(recipient)}`;
           } else if (tx.messageType === 'token_transfer') {
             typeIcon = '💰';
-            const recipient = payload.recipientUsername || 'unknown';
+            const recipient = tx.recipientUsername || 'unknown';
             const amount = payload.amount || '?';
             description = `Transferred ${amount} tokens to @${escapeHtml(recipient)}`;
           } else if (tx.messageType === 'group_create') {
