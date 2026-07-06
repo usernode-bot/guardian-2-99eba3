@@ -511,7 +511,7 @@ function calculateRankData(foregroundHours) {
   const hoursBracket = foregroundHours < 10 ? '0-10'
     : foregroundHours < 50 ? '10-50'
     : foregroundHours < 200 ? '50-200'
-    : '200+';
+    : '200-1000+';
 
   return { rank, hoursBracket, contributionLevel };
 }
@@ -521,7 +521,7 @@ async function getForegroundHours(userId) {
   if (IS_STAGING) {
     // In staging, provide mock data based on user ID for consistency
     const numUserId = parseInt(userId, 10);
-    const mockDataSet = [5, 25, 100, 300, 15, 50, 75, 150, 200, 250];
+    const mockDataSet = [5, 25, 100, 300, 15, 50, 75, 150, 200, 250, 500, 750, 1000];
     // Use modulo to deterministically map user ID to a value
     return mockDataSet[numUserId % mockDataSet.length];
   } else {

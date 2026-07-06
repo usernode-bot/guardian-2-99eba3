@@ -8609,7 +8609,7 @@
     function createFallbackMockData() {
       // Create deterministic mock data based on user ID (matches backend mock pattern)
       const userId = currentUser?.id || 1;
-      const mockDataSet = [5, 25, 100, 300, 15, 50, 75, 150, 200, 250];
+      const mockDataSet = [5, 25, 100, 300, 15, 50, 75, 150, 200, 250, 500, 750, 1000];
       const foregroundHours = mockDataSet[userId % mockDataSet.length];
 
       // Calculate rank and contribution level based on hours (mirrors backend logic)
@@ -8631,7 +8631,7 @@
       let hoursBracket = foregroundHours < 10 ? '0-10'
         : foregroundHours < 50 ? '10-50'
         : foregroundHours < 200 ? '50-200'
-        : '200+';
+        : '200-1000+';
 
       return {
         foregroundHours,
@@ -8876,11 +8876,11 @@
 
         const foregroundHours = guardiansRes.foregroundHours || 0;
         const isVerified = userRes?.verified || false;
-        const isEligible = foregroundHours >= 200 && isVerified;
+        const isEligible = foregroundHours >= 1000 && isVerified;
 
         console.log('[GuardiaNFT] Loaded:', { foregroundHours, isVerified, isEligible });
 
-        const progressPercentage = Math.min((foregroundHours / 200) * 100, 100);
+        const progressPercentage = Math.min((foregroundHours / 1000) * 100, 100);
         const verifiedText = isVerified ? 'Verified' : 'Unverified';
         const verifiedColor = isVerified
           ? 'bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800'
@@ -8913,7 +8913,7 @@
                 <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3">Foreground Hours</div>
                 <div class="flex justify-between items-end mb-3">
                   <div class="text-3xl font-bold text-cyan-600 dark:text-cyan-400">${foregroundHours}</div>
-                  <div class="text-sm text-zinc-600 dark:text-zinc-400">/ 200</div>
+                  <div class="text-sm text-zinc-600 dark:text-zinc-400">/ 1000</div>
                 </div>
                 <div class="w-full bg-zinc-300 dark:bg-zinc-700 rounded-full h-2">
                   <div class="bg-cyan-600 dark:bg-cyan-500 h-2 rounded-full transition-all" style="width: ${progressPercentage}%"></div>
