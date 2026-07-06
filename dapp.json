@@ -45,10 +45,10 @@
     },
     {
       "key": "TRANSACTIONS_BASE_URL",
-      "description": "Base URL where the app is hosted for testnet mode wallet bridge integration. Must be the public URL where users access the app (e.g., https://guardian.example.com). Required for testnet transactions to work correctly.",
+      "description": "Transaction API endpoint for testnet mode wallet bridge integration. Must be the full transaction API URL including the chain suffix, e.g., https://testnet-explorer.usernodelabs.org/testnet or http://localhost:3000/explorer-api/testnet. The Usernode bridge appends '/transactions' to this URL to poll for on-chain inclusion. Required for testnet transactions.",
       "required": true,
       "private": false,
-      "staging_default": "http://localhost:3000"
+      "staging_default": "http://localhost:3000/explorer-api/testnet"
     }
   ],
   "tests": [
