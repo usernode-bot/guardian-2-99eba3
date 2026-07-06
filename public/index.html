@@ -9331,11 +9331,11 @@
 
           if (tx.messageType === 'message') {
             typeIcon = '💬';
-            const recipient = payload.recipientUsername || 'unknown';
+            const recipient = tx.recipientUsername || 'unknown';
             description = `Sent message to @${escapeHtml(recipient)}`;
           } else if (tx.messageType === 'token_transfer') {
             typeIcon = '💰';
-            const recipient = payload.recipientUsername || 'unknown';
+            const recipient = tx.recipientUsername || 'unknown';
             const amount = payload.amount || '?';
             description = `Transferred ${amount} tokens to @${escapeHtml(recipient)}`;
           } else if (tx.messageType === 'group_create') {
