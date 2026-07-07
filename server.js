@@ -1773,7 +1773,7 @@ app.get('/health', async (_req, res) => {
 });
 
 // Staging-only endpoint to generate test tokens for Accept/Decline testing
-app.get('/api/staging/test-token/:userId', (_req, res) => {
+app.get('/api/staging/test-token/:userId', (req, res) => {
   if (!IS_STAGING) {
     return res.status(403).json({ error: 'Only available in staging' });
   }

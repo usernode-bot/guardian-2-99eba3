@@ -13,7 +13,8 @@
       "description": "Guardian app's ED25519 public key address (ut1...) for blockchain transactions. Used for transaction signing and app identification on Usernode testnet.",
       "required": true,
       "private": false,
-      "default": "ut1Fww7onqF9LsRSb6d6BozgQWtjNYqQJghYxXmBc8foncb"
+      "default": "ut1Fww7onqF9LsRSb6d6BozgQWtjNYqQJghYxXmBc8foncb",
+      "staging_default": "ut1Fww7onqF9LsRSb6d6BozgQWtjNYqQJghYxXmBc8foncb"
     },
     {
       "key": "APP_SECRET_KEY",
