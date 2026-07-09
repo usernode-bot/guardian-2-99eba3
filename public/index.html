@@ -9723,16 +9723,22 @@
         unifiedList = [];
 
         if (convs && convs.conversations) {
-          convs.conversations.forEach(conv => {
+          // Handle conversations structure: { active, pending, archived }
+          const allConversations = [];
+          if (convs.conversations.active) allConversations.push(...convs.conversations.active);
+          if (convs.conversations.pending) allConversations.push(...convs.conversations.pending);
+          if (convs.conversations.archived) allConversations.push(...convs.conversations.archived);
+
+          allConversations.forEach(conv => {
             unifiedList.push({
               id: conv.id,
-              type: conv.type === 'group' ? 'group' : 'conversation',
-              name: conv.name || 'Unknown',
-              lastMessage: conv.last_message || '',
-              lastActivityTime: new Date(conv.updated_at || conv.created_at).getTime(),
-              unreadCount: conv.unread_count || 0,
-              isMuted: conv.is_muted || false,
-              isArchived: conv.is_archived || false
+              type: 'conversation',
+              name: conv.nickname || conv.username || 'Unknown',
+              lastMessage: conv.lastMessage || '',
+              lastActivityTime: new Date(conv.lastMessageAt || conv.created_at || Date.now()).getTime(),
+              unreadCount: conv.unreadCount || 0,
+              isMuted: conv.isMuted || false,
+              isArchived: false  // Archived conversations filtered in API response
             });
           });
         }
@@ -9744,8 +9750,8 @@
               type: 'channel',
               name: chan.name || 'Unknown',
               lastMessage: chan.description || '',
-              lastActivityTime: new Date(chan.updated_at || chan.created_at).getTime(),
-              unreadCount: 0,
+              lastActivityTime: new Date(chan.updatedAt || chan.createdAt || chan.updated_at || chan.created_at || Date.now()).getTime(),
+              unreadCount: chan.unreadCount || 0,
               isMuted: false,
               isArchived: false
             });
