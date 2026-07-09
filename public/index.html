@@ -9715,10 +9715,14 @@
 
     async function loadUnifiedConversationList() {
       try {
+        console.log('Starting loadUnifiedConversationList...');
+
         const [convs, chans] = await Promise.all([
           apiCall('/api/conversations', { method: 'GET' }),
           apiCall('/api/channels', { method: 'GET' })
         ]);
+
+        console.log('API responses received:', { convs, chans });
 
         unifiedList = [];
 
@@ -9728,6 +9732,8 @@
           if (convs.conversations.active) allConversations.push(...convs.conversations.active);
           if (convs.conversations.pending) allConversations.push(...convs.conversations.pending);
           if (convs.conversations.archived) allConversations.push(...convs.conversations.archived);
+
+          console.log('Total conversations to add:', allConversations.length);
 
           allConversations.forEach(conv => {
             unifiedList.push({
@@ -9744,6 +9750,8 @@
         }
 
         if (chans && chans.channels) {
+          console.log('Total channels to add:', chans.channels.length);
+
           chans.channels.forEach(chan => {
             unifiedList.push({
               id: chan.id,
@@ -9758,10 +9766,15 @@
           });
         }
 
+        console.log('Final unifiedList length:', unifiedList.length);
         unifiedList.sort((a, b) => b.lastActivityTime - a.lastActivityTime);
         renderConversationList(unifiedList);
       } catch (err) {
         console.error('Failed to load unified conversation list:', err);
+        const container = document.getElementById('conversationListContainer');
+        if (container) {
+          container.innerHTML = '<div class="p-4 text-center text-red-600 dark:text-red-400 text-sm">Error loading conversations</div>';
+        }
       }
     }
 
@@ -9776,7 +9789,12 @@
 
     function renderConversationList(items) {
       const container = document.getElementById('conversationListContainer');
-      if (!container) return;
+      if (!container) {
+        console.warn('conversationListContainer not found');
+        return;
+      }
+
+      console.log('Rendering conversation list with', items.length, 'items');
 
       if (items.length === 0) {
         container.innerHTML = '<div class="p-4 text-center text-zinc-600 dark:text-zinc-400 text-sm">No conversations</div>';
@@ -9791,7 +9809,8 @@
         const unreadBadge = item.unreadCount > 0 ? `<div class="unified-list-unread-badge">${item.unreadCount}</div>` : '';
         const lastActivityTime = formatRelativeTime(new Date(item.lastActivityTime).toISOString());
 
-        return `<div class="unified-list-item ${selectedConversationId === item.id && selectedItemType === item.type ? 'active' : ''} ${item.unreadCount > 0 ? 'unread' : ''}" onclick="selectConversationItem('${item.id}', '${item.type}')">
+        // Use dataset attributes for click data instead of relying on string interpolation in onclick
+        return `<div class="unified-list-item ${selectedConversationId === item.id && selectedItemType === item.type ? 'active' : ''} ${item.unreadCount > 0 ? 'unread' : ''}" data-item-id="${item.id}" data-item-type="${item.type}">
           <div class="item-type-indicator ${typeClass}">${typeIcon}</div>
           <div class="unified-list-item-content">
             <div class="unified-list-item-name">${escapeHtml(item.name)}</div>
@@ -9801,6 +9820,21 @@
           ${unreadBadge}
         </div>`;
       }).join('');
+
+      // Attach event listeners after rendering
+      attachConversationListeners();
+    }
+
+    function attachConversationListeners() {
+      document.querySelectorAll('.unified-list-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+          const itemId = item.getAttribute('data-item-id');
+          const itemType = item.getAttribute('data-item-type');
+          if (itemId && itemType) {
+            selectConversationItem(itemId, itemType);
+          }
+        });
+      });
     }
 
     function selectConversationItem(itemId, itemType) {
