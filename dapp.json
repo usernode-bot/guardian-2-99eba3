@@ -55,7 +55,7 @@
     {
       "name": "Home loads with unified conversation list",
       "path": "/",
-      "expectSelector": "#conversationListContainer"
+      "expectSelector": ".unified-list-item"
     },
     {
       "name": "Sidebar displays conversation list",

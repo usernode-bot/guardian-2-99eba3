@@ -2431,15 +2431,17 @@ app.get('/api/conversations', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
-    // Return empty conversations if database is not connected
+    // Return empty conversations if database is not connected and demo mode is off
     if (!dbConnected) {
+      if (ENABLE_DEMO_MODE) {
+        const mockConvs = mockData.getMockConversations(1, limit, offset);
+        return res.json({ conversations: mockConvs });
+      }
       return res.json({ conversations: { active: [], pending: [], archived: [] } });
     }
 
-    if (ENABLE_DEMO_MODE) {
-      const mockConvs = mockData.getMockConversations(1, limit, offset);
-      return res.json({ conversations: mockConvs });
-    }
+    // If database is connected but demo mode is on, still use real database data
+    // (not mock data) to preserve test data integrity
 
     // Optimized query using joins to eliminate N+1 lookups
     const convQuery = `
