@@ -150,188 +150,6 @@ const MOCK_GROUPS = [
   }
 ];
 
-const MOCK_CHANNELS = [
-  {
-    id: 300,
-    name: 'announcements',
-    description: 'Important updates and announcements',
-    is_system: true,
-    owner_id: null,
-    ownerUsername: 'system',
-    category: 'official',
-    is_verified: true,
-    is_featured: true,
-    verified_at: '2024-01-01T00:00:00Z',
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-06-28T10:00:00Z',
-    unreadCount: 3,
-    isPinned: true
-  },
-  {
-    id: 301,
-    name: 'general',
-    description: 'General discussion and off-topic chat',
-    is_system: true,
-    owner_id: null,
-    ownerUsername: 'system',
-    category: 'official',
-    is_verified: true,
-    is_featured: true,
-    verified_at: '2024-01-01T00:00:00Z',
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-06-28T14:30:00Z',
-    unreadCount: 5,
-    isPinned: true
-  },
-  {
-    id: 302,
-    name: 'showcase',
-    description: 'Share and discuss projects, ideas, and creations',
-    is_system: false,
-    owner_id: 1,
-    ownerUsername: 'alice',
-    category: 'community',
-    is_verified: false,
-    is_featured: false,
-    verified_at: null,
-    created_at: '2024-02-15T08:00:00Z',
-    updated_at: '2024-06-27T16:45:00Z',
-    unreadCount: 2,
-    isPinned: false
-  },
-  {
-    id: 303,
-    name: 'support',
-    description: 'Help and support for Guardian users',
-    is_system: true,
-    owner_id: null,
-    ownerUsername: 'system',
-    category: 'official',
-    is_verified: true,
-    is_featured: false,
-    verified_at: '2024-01-01T00:00:00Z',
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-06-28T11:20:00Z',
-    unreadCount: 0,
-    isPinned: false
-  },
-  {
-    id: 304,
-    name: 'random',
-    description: 'Fun and random discussions',
-    is_system: false,
-    owner_id: 2,
-    ownerUsername: 'bob',
-    category: 'community',
-    is_verified: false,
-    is_featured: false,
-    verified_at: null,
-    created_at: '2024-03-20T12:00:00Z',
-    updated_at: '2024-06-26T09:30:00Z',
-    unreadCount: 8,
-    isPinned: false
-  }
-];
-
-const MOCK_CHANNEL_POSTS = {
-  300: [ // announcements
-    {
-      id: 5000,
-      channel_id: 300,
-      author_id: 1,
-      authorUsername: 'alice',
-      content: 'Welcome to Guardian! We\'re excited to have you here. Check out the support channel if you have any questions.',
-      created_at: getTimeOffset(1440),
-      likeCount: 47,
-      commentCount: 12,
-      type: 'text'
-    },
-    {
-      id: 5001,
-      channel_id: 300,
-      author_id: 3,
-      authorUsername: 'charlie',
-      content: 'Demo mode is now live! Test the app with mock data without worrying about real blockchain transactions.',
-      created_at: getTimeOffset(360),
-      likeCount: 28,
-      commentCount: 8,
-      type: 'text'
-    }
-  ],
-  301: [ // general
-    {
-      id: 5010,
-      channel_id: 301,
-      author_id: 2,
-      authorUsername: 'bob',
-      content: 'Anyone working on interesting projects lately? I\'d love to hear about them!',
-      created_at: getTimeOffset(480),
-      likeCount: 15,
-      commentCount: 9,
-      type: 'text'
-    },
-    {
-      id: 5011,
-      channel_id: 301,
-      author_id: 4,
-      authorUsername: 'diana',
-      content: 'Just finished my latest piece! Check it out in the showcase channel.',
-      created_at: getTimeOffset(240),
-      likeCount: 34,
-      commentCount: 6,
-      type: 'text'
-    },
-    {
-      id: 5012,
-      channel_id: 301,
-      author_id: 1,
-      authorUsername: 'alice',
-      content: 'The new UI feels so much smoother. Great work team!',
-      created_at: getTimeOffset(120),
-      likeCount: 22,
-      commentCount: 4,
-      type: 'text'
-    }
-  ],
-  302: [ // showcase
-    {
-      id: 5020,
-      channel_id: 302,
-      author_id: 3,
-      authorUsername: 'charlie',
-      content: 'Built a real-time data visualization tool. Open source on GitHub!',
-      created_at: getTimeOffset(1800),
-      likeCount: 56,
-      commentCount: 14,
-      type: 'text'
-    },
-    {
-      id: 5021,
-      channel_id: 302,
-      author_id: 4,
-      authorUsername: 'diana',
-      content: 'My digital art collection is finally complete. 50 pieces across different styles.',
-      created_at: getTimeOffset(720),
-      likeCount: 89,
-      commentCount: 23,
-      type: 'text'
-    }
-  ],
-  303: [], // support
-  304: [ // random
-    {
-      id: 5030,
-      channel_id: 304,
-      author_id: 5,
-      authorUsername: 'eve',
-      content: 'What\'s everyone\'s favorite feature so far?',
-      created_at: getTimeOffset(600),
-      likeCount: 11,
-      commentCount: 19,
-      type: 'text'
-    }
-  ]
-};
 
 const MOCK_USER_STATS = {
   foregroundHours: 45,
@@ -397,52 +215,6 @@ function getMockGroups(userId, limit = 50, offset = 0) {
   };
 }
 
-function getMockChannels(userId, category = null, featured = false) {
-  let channels = MOCK_CHANNELS.map(c => ({
-    id: c.id,
-    name: c.name,
-    description: c.description,
-    ownerId: c.owner_id,
-    ownerUsername: c.ownerUsername,
-    category: c.category,
-    isVerified: c.is_verified,
-    verifiedAt: c.verified_at,
-    isFeatured: c.is_featured,
-    isSystem: c.is_system,
-    createdAt: c.created_at,
-    updatedAt: c.updated_at,
-    unreadCount: c.unreadCount,
-    isPinned: c.isPinned
-  }));
-
-  if (featured) {
-    channels = channels.filter(c => c.isFeatured);
-  }
-  if (category) {
-    channels = channels.filter(c => c.category === category);
-  }
-
-  return { channels };
-}
-
-function getMockChannelPosts(channelId, limit = 50, offset = 0) {
-  const posts = (MOCK_CHANNEL_POSTS[channelId] || []).map(p => ({
-    id: p.id,
-    channelId: p.channel_id,
-    authorId: p.author_id,
-    authorUsername: p.authorUsername,
-    content: p.content,
-    createdAt: p.created_at,
-    likeCount: p.likeCount,
-    commentCount: p.commentCount,
-    liked: false
-  }));
-
-  return {
-    posts: posts.slice(offset, offset + limit),
-    total: posts.length
-  };
-}
 
 function getMockGroupMessages(groupId, limit = 50, offset = 0) {
   const mockMessages = [
@@ -630,8 +402,6 @@ function getMockTransactionsByUser(userId, limit = 20, offset = 0) {
 module.exports = {
   getMockConversations,
   getMockGroups,
-  getMockChannels,
-  getMockChannelPosts,
   getMockGroupMessages,
   getMockGroupMembers,
   getMockGroupById,
@@ -643,6 +413,5 @@ module.exports = {
   MOCK_USER_STATS,
   MOCK_USERS,
   MOCK_CONVERSATIONS,
-  MOCK_GROUPS,
-  MOCK_CHANNELS
+  MOCK_GROUPS
 };
