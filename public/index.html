@@ -492,6 +492,191 @@
     #splashScreen.dark .splash-tagline {
       color: rgb(161, 161, 170);
     }
+
+    /* Two-panel layout for conversation-centric design */
+    #sidebar {
+      display: none;
+    }
+
+    /* Show sidebar on desktop */
+    @media (min-width: 768px) {
+      #sidebar {
+        display: flex !important;
+        position: static !important;
+        width: 16rem !important;
+        height: auto !important;
+        border-radius: 0 !important;
+        z-index: 30 !important;
+      }
+    }
+
+    /* Mobile sidebar overlay */
+    body.layout-mobile #sidebar {
+      display: none;
+    }
+
+    body.layout-mobile #sidebar.sidebar-enter {
+      display: flex;
+      position: fixed;
+      animation: slideInLeft 0.25s ease-out forwards;
+    }
+
+    /* Content area for two-panel layout */
+    #content {
+      display: flex;
+      flex-direction: column;
+    }
+
+    @media (min-width: 768px) {
+      #content {
+        flex-direction: row;
+      }
+      #content > div:not(#sidebar):not(#sidebarOverlay):not(#devStatusBanner) {
+        flex: 1;
+        overflow: hidden;
+      }
+    }
+
+    /* Hide old views */
+    #messagesView,
+    #conversationsView {
+      display: none !important;
+    }
+
+    /* Detail views */
+    #chatView.visible,
+    #channelChatView.visible {
+      display: flex !important;
+    }
+
+    /* Unified list item styling */
+    .unified-list-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid;
+      border-color: rgb(229, 229, 229);
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .dark .unified-list-item {
+      border-color: rgb(39, 39, 42);
+    }
+
+    .unified-list-item:hover {
+      background-color: rgb(244, 244, 245);
+    }
+
+    .dark .unified-list-item:hover {
+      background-color: rgb(39, 39, 42);
+    }
+
+    .unified-list-item.active {
+      background-color: rgb(229, 229, 229);
+      border-left: 3px solid rgb(34, 197, 238);
+      padding-left: calc(1rem - 3px);
+    }
+
+    .dark .unified-list-item.active {
+      background-color: rgb(39, 39, 42);
+    }
+
+    .unified-list-item.unread {
+      font-weight: 600;
+      background-color: rgb(240, 249, 255);
+    }
+
+    .dark .unified-list-item.unread {
+      background-color: rgba(34, 197, 238, 0.1);
+    }
+
+    .item-type-indicator {
+      flex-shrink: 0;
+      width: 1.5rem;
+      height: 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 0.375rem;
+      background-color: rgb(244, 244, 245);
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .dark .item-type-indicator {
+      background-color: rgb(39, 39, 42);
+    }
+
+    .unified-list-item-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .unified-list-item-name {
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: rgb(24, 24, 27);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .dark .unified-list-item-name {
+      color: rgb(244, 244, 245);
+    }
+
+    .unified-list-item-preview {
+      font-size: 0.75rem;
+      color: rgb(113, 113, 122);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 0.125rem;
+    }
+
+    .dark .unified-list-item-preview {
+      color: rgb(113, 113, 122);
+    }
+
+    .unified-list-item-time {
+      flex-shrink: 0;
+      font-size: 0.75rem;
+      color: rgb(161, 161, 170);
+    }
+
+    .dark .unified-list-item-time {
+      color: rgb(113, 113, 122);
+    }
+
+    .unified-list-unread-badge {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 1.25rem;
+      height: 1.25rem;
+      padding: 0 0.375rem;
+      background-color: rgb(239, 68, 68);
+      color: white;
+      border-radius: 9999px;
+      font-size: 0.625rem;
+      font-weight: 700;
+    }
+
+    /* Navigation menu dropdown */
+    #navMenuDropdown {
+      min-width: 12rem;
+      top: calc(100% + 0.5rem);
+    }
+
+    /* Sidebar responsive */
+    @media (max-width: 767px) {
+      #sidebar {
+        width: 100% !important;
+      }
+    }
   </style>
 </head>
 <body class="bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100 min-h-screen flex flex-col">
@@ -529,6 +714,21 @@
         <div id="headerPageLabel" class="text-sm text-zinc-600 dark:text-zinc-500 leading-tight truncate">Messages</div>
       </div>
       <div id="headerRight" class="text-sm text-zinc-600 dark:text-zinc-500 relative flex flex-1 justify-end items-center gap-2">
+        <!-- Header Navigation Menu -->
+        <button id="navMenuBtn" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition" title="Navigation menu">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M5 12h.01M19 12h.01" />
+          </svg>
+        </button>
+        <div id="navMenuDropdown" class="hidden absolute right-0 top-full mt-2 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg shadow-lg z-50 min-w-48">
+          <button onclick="showContactsView()" class="w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition">👥 Contacts</button>
+          <button onclick="showFeedView()" class="w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition"># Channels/Discovery</button>
+          <button onclick="showProfileView()" class="w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition">👤 Profile</button>
+          <div class="border-t border-zinc-200 dark:border-zinc-700"></div>
+          <button onclick="openSettingsPanel()" class="w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition">⚙️ Settings</button>
+        </div>
+
+        <!-- Conversation Menu (shown when viewing a conversation) -->
         <button id="postBtn" class="hidden text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition font-medium" title="Create a post" onclick="openPostModal()">✎ Post</button>
         <button id="messageHistoryBtn" class="hidden text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare mr-3" title="Message history" onclick="openMessageHistory()">📜</button>
         <button id="conversationMenuBtn" class="hidden text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare" title="Conversation options" onclick="toggleConversationMenu(event)">⋯</button>
@@ -543,12 +743,13 @@
     <!-- Sidebar Overlay -->
     <div id="sidebarOverlay" class="hidden fixed inset-0 bg-black/50 z-40 sidebar-overlay-hidden" onclick="if (event.target === this) toggleSidebar()"></div>
 
-    <!-- Sidebar -->
-    <div id="sidebar" class="hidden fixed left-0 top-0 w-64 h-full bg-zinc-50 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 z-50 flex flex-col overflow-y-auto">
-      <div class="p-4 border-b border-zinc-200 dark:border-zinc-800">
+    <!-- Sidebar (Unified Conversation List) -->
+    <div id="sidebar" class="fixed left-0 top-16 w-64 bg-zinc-50 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 z-40 flex flex-col overflow-hidden" style="height: calc(100vh - 4rem)">
+      <!-- Sidebar Header -->
+      <div class="p-3 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0">
         <div class="flex items-center justify-between">
           <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Guardian</h2>
-          <button onclick="toggleSidebar()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition">
+          <button onclick="toggleSidebar()" class="md:hidden text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -556,32 +757,16 @@
         </div>
       </div>
 
-      <nav class="flex-1 px-2 py-4 space-y-2">
-        <button id="navMessagesBtn" onclick="showConversationsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300">
-          <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-          </svg>
-          Messages
-        </button>
-        <button id="navContactsBtn" onclick="showContactsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
-          <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          Contacts
-        </button>
-        <button id="navChannelsBtn" onclick="showFeedView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
-          <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v.756a3.5 3.5 0 015.618 1.401M12 8v8m-4-4h8" />
-          </svg>
-          Channels
-        </button>
-        <button id="navProfileBtn" onclick="showProfileView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
-          <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-          </svg>
-          Profile
-        </button>
-      </nav>
+      <!-- Search Box -->
+      <div class="px-3 py-2 flex-shrink-0">
+        <input id="conversationSearchInput" type="text" placeholder="Search..." class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition text-sm" oninput="filterConversationList(this.value)">
+      </div>
+
+      <!-- Unified Conversation List -->
+      <div id="conversationListContainer" class="flex-1 overflow-y-auto">
+        <!-- List items will be rendered here -->
+        <div class="p-4 text-center text-zinc-600 dark:text-zinc-400">Loading conversations...</div>
+      </div>
 
       <div id="sidebarUser" class="p-4 border-t border-zinc-200 dark:border-zinc-800">
         <div class="flex items-start justify-between gap-2 mb-3">
@@ -777,10 +962,10 @@
       </div>
     </div>
 
-    <!-- Main content -->
-    <div id="content" class="flex-1 overflow-hidden flex flex-col pt-16">
+    <!-- Main content (Two-Panel Layout) -->
+    <div id="content" class="flex-1 overflow-hidden flex pt-16 md:flex-row flex-col">
       <!-- Development Status Banner (dismiss: session-based) -->
-      <div id="devStatusBanner" class="mt-2 bg-blue-100 dark:bg-blue-950 border-b border-blue-300 dark:border-blue-800 px-3 py-2 sm:px-4 sm:py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
+      <div id="devStatusBanner" class="absolute top-16 left-0 right-0 bg-blue-100 dark:bg-blue-950 border-b border-blue-300 dark:border-blue-800 px-3 py-2 sm:px-4 sm:py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 z-30">
         <div class="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
           <span class="text-blue-700 dark:text-blue-300 flex-shrink-0 mt-0.5">ℹ️</span>
           <p class="text-xs sm:text-sm text-blue-900 dark:text-blue-100 leading-snug break-words font-medium">
@@ -3662,8 +3847,8 @@
       if (networkStatusIntervalId) clearInterval(networkStatusIntervalId);
       networkStatusIntervalId = setInterval(pollNetworkStatus, 2000);
 
-      // Ensure currentUser is set before showing conversations view (which may load groups)
-      await showConversationsView();
+      // Load unified conversation list (Telegram-style layout)
+      await loadUnifiedConversationList();
       setupEventListeners();
     }
 
@@ -9510,6 +9695,191 @@
     });
 
     // ===== WELCOME SCREEN FUNCTIONS =====
+
+    // ===== UNIFIED CONVERSATION LIST (TELEGRAM-STYLE) =====
+
+    let unifiedList = [];
+    let selectedItemType = null;
+
+    async function loadChatMessages(convId) {
+      // Fetch conversation data to get otherId and username
+      try {
+        const data = await apiCall(`/api/conversations/${convId}`);
+        if (data && data.conversation) {
+          await openConversation(convId, data.conversation.otherId || data.conversation.id, data.conversation.username || data.conversation.name);
+        }
+      } catch (err) {
+        console.error('Failed to load chat messages:', err);
+      }
+    }
+
+    async function loadUnifiedConversationList() {
+      try {
+        const [convs, chans] = await Promise.all([
+          apiCall('/api/conversations', { method: 'GET' }),
+          apiCall('/api/channels', { method: 'GET' })
+        ]);
+
+        unifiedList = [];
+
+        if (convs && convs.conversations) {
+          convs.conversations.forEach(conv => {
+            unifiedList.push({
+              id: conv.id,
+              type: conv.type === 'group' ? 'group' : 'conversation',
+              name: conv.name || 'Unknown',
+              lastMessage: conv.last_message || '',
+              lastActivityTime: new Date(conv.updated_at || conv.created_at).getTime(),
+              unreadCount: conv.unread_count || 0,
+              isMuted: conv.is_muted || false,
+              isArchived: conv.is_archived || false
+            });
+          });
+        }
+
+        if (chans && chans.channels) {
+          chans.channels.forEach(chan => {
+            unifiedList.push({
+              id: chan.id,
+              type: 'channel',
+              name: chan.name || 'Unknown',
+              lastMessage: chan.description || '',
+              lastActivityTime: new Date(chan.updated_at || chan.created_at).getTime(),
+              unreadCount: 0,
+              isMuted: false,
+              isArchived: false
+            });
+          });
+        }
+
+        unifiedList.sort((a, b) => b.lastActivityTime - a.lastActivityTime);
+        renderConversationList(unifiedList);
+      } catch (err) {
+        console.error('Failed to load unified conversation list:', err);
+      }
+    }
+
+    function filterConversationList(searchText) {
+      const filtered = unifiedList.filter(item => {
+        const lowerSearch = searchText.toLowerCase();
+        return item.name.toLowerCase().includes(lowerSearch) ||
+               item.lastMessage.toLowerCase().includes(lowerSearch);
+      });
+      renderConversationList(filtered);
+    }
+
+    function renderConversationList(items) {
+      const container = document.getElementById('conversationListContainer');
+      if (!container) return;
+
+      if (items.length === 0) {
+        container.innerHTML = '<div class="p-4 text-center text-zinc-600 dark:text-zinc-400 text-sm">No conversations</div>';
+        return;
+      }
+
+      container.innerHTML = items.map(item => {
+        const typeIcon = item.type === 'channel' ? '#' : item.type === 'group' ? '☐' : '👤';
+        const typeClass = item.type === 'channel' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' :
+                         item.type === 'group' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300' :
+                         'bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300';
+        const unreadBadge = item.unreadCount > 0 ? `<div class="unified-list-unread-badge">${item.unreadCount}</div>` : '';
+        const lastActivityTime = formatRelativeTime(new Date(item.lastActivityTime).toISOString());
+
+        return `<div class="unified-list-item ${selectedConversationId === item.id && selectedItemType === item.type ? 'active' : ''} ${item.unreadCount > 0 ? 'unread' : ''}" onclick="selectConversationItem('${item.id}', '${item.type}')">
+          <div class="item-type-indicator ${typeClass}">${typeIcon}</div>
+          <div class="unified-list-item-content">
+            <div class="unified-list-item-name">${escapeHtml(item.name)}</div>
+            <div class="unified-list-item-preview">${escapeHtml(item.lastMessage || '(no messages)')}</div>
+          </div>
+          <div class="unified-list-item-time">${lastActivityTime}</div>
+          ${unreadBadge}
+        </div>`;
+      }).join('');
+    }
+
+    function selectConversationItem(itemId, itemType) {
+      selectedConversationId = itemId;
+      selectedItemType = itemType;
+
+      // Re-render to show active state
+      const filtered = unifiedList.filter(item => {
+        const searchText = document.getElementById('conversationSearchInput')?.value || '';
+        const lowerSearch = searchText.toLowerCase();
+        return item.name.toLowerCase().includes(lowerSearch) ||
+               item.lastMessage.toLowerCase().includes(lowerSearch);
+      });
+      renderConversationList(filtered);
+
+      // Show detail view based on type
+      if (itemType === 'channel') {
+        hideAllDetailViews();
+        const view = document.getElementById('channelChatView');
+        if (view) {
+          view.classList.remove('hidden');
+          view.classList.add('visible');
+        }
+        loadChannelPosts(itemId);
+      } else {
+        hideAllDetailViews();
+        const view = document.getElementById('chatView');
+        if (view) {
+          view.classList.remove('hidden');
+          view.classList.add('visible');
+        }
+        loadChatMessages(itemId);
+      }
+
+      // Hide sidebar on mobile
+      if (body.classList.contains('layout-mobile')) {
+        toggleSidebar();
+      }
+    }
+
+    function hideAllDetailViews() {
+      document.getElementById('chatView')?.classList.add('hidden');
+      document.getElementById('chatView')?.classList.remove('visible');
+      document.getElementById('channelChatView')?.classList.add('hidden');
+      document.getElementById('channelChatView')?.classList.remove('visible');
+      document.getElementById('contactsView')?.classList.add('hidden');
+      document.getElementById('feedView')?.classList.add('hidden');
+      document.getElementById('profileView')?.classList.add('hidden');
+    }
+
+    function updateUnifiedListOnNewMessage(convId) {
+      const item = unifiedList.find(i => i.id === convId);
+      if (item) {
+        item.lastActivityTime = Date.now();
+        unifiedList.sort((a, b) => b.lastActivityTime - a.lastActivityTime);
+        renderConversationList(unifiedList);
+      }
+    }
+
+    // Navigation menu
+    document.addEventListener('click', (e) => {
+      const navMenuBtn = document.getElementById('navMenuBtn');
+      const navMenuDropdown = document.getElementById('navMenuDropdown');
+
+      if (navMenuBtn && navMenuBtn.contains(e.target)) {
+        navMenuDropdown?.classList.toggle('hidden');
+      } else if (navMenuDropdown && !navMenuDropdown.contains(e.target)) {
+        navMenuDropdown?.classList.add('hidden');
+      }
+    });
+
+    // Sidebar toggle
+    function toggleSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      const overlay = document.getElementById('sidebarOverlay');
+
+      if (sidebar) {
+        sidebar.classList.toggle('hidden');
+        sidebar.classList.toggle('sidebar-enter');
+      }
+      if (overlay) {
+        overlay.classList.toggle('hidden');
+        overlay.classList.toggle('sidebar-overlay-visible');
+      }
+    }
 
     init();
   </script>
