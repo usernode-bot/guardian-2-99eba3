@@ -240,7 +240,7 @@ async function getRpcEndpointFromDatabase() {
 }
 
 // Explorer API configuration and validation
-let EXPLORER_URL = process.env.EXPLORER_URL || 'https://testnet-explorer.usernodelabs.org';
+let EXPLORER_URL = process.env.EXPLORER_URL || 'https://explorer.testnet.usernodelabs.org';
 let EXPLORER_FORMAT = null; // Will be set to 'api/tx' or 'api/transaction' after boot validation
 let EXPLORER_HEALTHY = false; // True if boot validation succeeded
 
@@ -397,7 +397,7 @@ async function initializeRpcUrl() {
 const CHAIN_CONFIG = {
   testnet: {
     chainId: 'testnet',
-    explorerUrl: 'https://testnet-explorer.usernodelabs.org',
+    explorerUrl: 'https://explorer.testnet.usernodelabs.org',
     rpcUrl: NODE_RPC_URL
   },
   mainnet: {
