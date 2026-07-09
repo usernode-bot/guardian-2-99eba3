@@ -7300,9 +7300,6 @@ async function start() {
       )
     `);
 
-    // Create channels table (public - for organizing feed posts by channel)
-    await pool.query(`
-
     // Create feed_posts table (public - feed posts are shared with all users)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS feed_posts (
