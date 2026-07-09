@@ -53,29 +53,34 @@
   ],
   "tests": [
     {
-      "name": "Home loads",
+      "name": "Home loads with unified conversation list",
       "path": "/",
-      "expectSelector": "#conversationsView"
+      "expectSelector": "#conversationListContainer"
     },
     {
-      "name": "Chat thread loads",
-      "path": "/",
-      "expectSelector": "#messageList"
-    },
-    {
-      "name": "Discover contacts via sidebar",
-      "path": "/",
-      "expectSelector": "#contactsView"
-    },
-    {
-      "name": "Sidebar toggles",
+      "name": "Sidebar displays conversation list",
       "path": "/",
       "expectSelector": "#sidebar"
+    },
+    {
+      "name": "Search box available",
+      "path": "/",
+      "expectSelector": "#conversationSearchInput"
+    },
+    {
+      "name": "Chat detail view loads",
+      "path": "/",
+      "expectSelector": "#chatView"
     },
     {
       "name": "Share contact modal works",
       "path": "/",
       "expectSelector": "#shareContactModal"
+    },
+    {
+      "name": "Header navigation menu present",
+      "path": "/",
+      "expectSelector": "#navMenuBtn"
     },
     {
       "name": "Settings panel opens",
@@ -86,11 +91,6 @@
       "name": "Network Mode selector in settings",
       "path": "/",
       "expectSelector": "#networkModeSelect"
-    },
-    {
-      "name": "Profile Guardian's tab loads",
-      "path": "/",
-      "expectSelector": "#profileTabGuardians"
     }
   ],
   "visibility": {
