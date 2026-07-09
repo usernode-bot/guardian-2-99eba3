@@ -2714,9 +2714,6 @@
       document.getElementById('chatView').classList.remove('active-chat');
       document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('feedView').classList.add('hidden');
-      document.getElementById('channelChatView').classList.add('hidden');
-      currentChannelId = null;
-      currentChannel = null;
       document.getElementById('sidebar').classList.add('hidden');
       document.getElementById('settingsPanel').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
@@ -3800,7 +3797,6 @@
       // Clear cross-context state (direct messages and channels)
       currentConvId = null;
       currentOtherId = null;
-      currentChannelId = null;
       currentGroupId = groupId;
 
       // Fetch group name for header (groups use two-line layout with "Group" label)
@@ -5363,9 +5359,8 @@
     }
 
     async function openConversation(convId, otherId, username) {
-      // Clear cross-context state (groups and channels)
+      // Clear cross-context state (groups)
       currentGroupId = null;
-      currentChannelId = null;
       currentConvId = convId;
       currentOtherId = otherId;
       currentContactName = username;
@@ -5941,9 +5936,6 @@
       document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('feedView').classList.add('hidden');
       document.getElementById('feedView').classList.add('hidden');
-      document.getElementById('channelChatView').classList.add('hidden');
-      currentChannelId = null;
-      currentChannel = null;
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('footer-in-view');
       document.getElementById('header').classList.remove('header-chat-fixed');
@@ -5965,7 +5957,6 @@
       // Clear modals/menus when returning to messages view
       closeManageGroupMembersModal();
       document.getElementById('groupContextMenu').classList.add('hidden');
-      document.getElementById('channelDetailHeader').classList.add('hidden');
 
       // Initialize tabs
       await switchMessagesTab(activeMessagesTab);
@@ -6617,7 +6608,6 @@
       document.getElementById('profileView').classList.add('hidden');
       document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('feedView').classList.add('hidden');
-      document.getElementById('channelChatView').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('footer-in-view');
       document.getElementById('header').classList.add('header-chat-fixed');
@@ -6634,9 +6624,6 @@
       document.getElementById('profileView').classList.add('hidden');
       document.getElementById('contactsView').classList.remove('hidden');
       document.getElementById('feedView').classList.add('hidden');
-      document.getElementById('channelChatView').classList.add('hidden');
-      currentChannelId = null;
-      currentChannel = null;
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('footer-in-view');
       document.getElementById('header').classList.remove('header-chat-fixed');
@@ -6649,55 +6636,11 @@
       document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
       document.getElementById('postBtn').classList.add('hidden');
-      document.getElementById('channelDetailHeader').classList.add('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
       if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
       document.getElementById('contactsSearchInput').value = '';
       loadContactsList();
     }
-
-    async function showFeedView() {
-      updateMenuHighlight('channels');
-      const viewsToHide = ['messagesView', 'conversationsView', 'chatView', 'contactsView', 'profileView'];
-      viewsToHide.forEach(viewId => {
-        const element = document.getElementById(viewId);
-        if (element) {
-          element.classList.add('hidden');
-          if (viewId === 'chatView') {
-            element.classList.remove('active-chat');
-          }
-        }
-      });
-      document.getElementById('feedView').classList.remove('hidden');
-      document.getElementById('inputFooter').classList.add('hidden');
-      document.getElementById('inputFooter').classList.remove('footer-in-view');
-      document.getElementById('header').classList.remove('header-chat-fixed');
-      document.getElementById('headerTitle').textContent = 'Channels';
-      document.getElementById('backBtnContainer').classList.add('hidden');
-      document.getElementById('headerContent').classList.remove('hidden');
-      document.getElementById('headerBranding').textContent = 'Guardian';
-      document.getElementById('headerPageLabel').textContent = 'Channels';
-      document.getElementById('menuBtn').classList.remove('hidden');
-      document.getElementById('conversationMenuBtn').classList.add('hidden');
-      document.getElementById('postBtn').classList.remove('hidden');
-      if (conversationsPollInterval) clearInterval(conversationsPollInterval);
-      if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
-      // Clear channel polling when switching away from channel view
-      if (pollInterval) clearInterval(pollInterval);
-      currentChannelId = null;
-      currentChannel = null;
-
-      // Reset search state
-      currentSearchQuery = '';
-      const searchInput = document.getElementById('searchChannelsInput');
-      if (searchInput) searchInput.value = '';
-
-      // Load channels list for Discover
-      await loadChannels();
-      // Load Home tab by default (posts from followed channels)
-      await switchFeedTab('home');
-    }
-
 
 
 
@@ -6860,9 +6803,6 @@
       document.getElementById('chatView').classList.remove('active-chat');
       document.getElementById('contactsView').classList.add('hidden');
       document.getElementById('feedView').classList.add('hidden');
-      document.getElementById('channelChatView').classList.add('hidden');
-      currentChannelId = null;
-      currentChannel = null;
       document.getElementById('profileView').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('inputFooter').classList.remove('footer-in-view');
