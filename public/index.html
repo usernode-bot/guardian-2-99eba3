@@ -9718,15 +9718,22 @@
         console.log('Starting loadUnifiedConversationList...');
 
         const [convs, chans] = await Promise.all([
-          apiCall('/api/conversations', { method: 'GET' }),
-          apiCall('/api/channels', { method: 'GET' })
+          apiCall('/api/conversations', { method: 'GET' }).catch(e => {
+            console.error('conversations API call failed:', e);
+            return null;
+          }),
+          apiCall('/api/channels', { method: 'GET' }).catch(e => {
+            console.error('channels API call failed:', e);
+            return null;
+          })
         ]);
 
         console.log('API responses received:', { convs, chans });
 
         unifiedList = [];
 
-        if (convs && convs.conversations) {
+        // Handle conversations
+        if (convs && !convs.error && convs.conversations) {
           // Handle conversations structure: { active, pending, archived }
           const allConversations = [];
           if (convs.conversations.active) allConversations.push(...convs.conversations.active);
@@ -9747,9 +9754,12 @@
               isArchived: false  // Archived conversations filtered in API response
             });
           });
+        } else if (convs && convs.error) {
+          console.warn('Conversations API error:', convs.error);
         }
 
-        if (chans && chans.channels) {
+        // Handle channels
+        if (chans && !chans.error && chans.channels) {
           console.log('Total channels to add:', chans.channels.length);
 
           chans.channels.forEach(chan => {
@@ -9764,6 +9774,8 @@
               isArchived: false
             });
           });
+        } else if (chans && chans.error) {
+          console.warn('Channels API error:', chans.error);
         }
 
         console.log('Final unifiedList length:', unifiedList.length);
