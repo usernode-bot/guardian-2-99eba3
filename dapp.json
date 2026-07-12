@@ -3,7 +3,7 @@
   "secrets": [
     {
       "key": "DATABASE_URL",
-      "description": "PostgreSQL connection string for Guardian's database. Format: postgresql://user:password@host:port/database. Required for persistent storage of users, messages, and channels.",
+      "description": "PostgreSQL connection string for Guardian's database. Format: postgresql://user:password@host:port/database. Required for persistent storage of users and messages.",
       "required": false,
       "private": true,
       "staging_default": "postgresql://localhost/guardian_staging"

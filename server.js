@@ -3634,10 +3634,6 @@ app.get('/api/activity', async (req, res) => {
 
 // ===== EXPLORER API PROXY =====
 
-// ===== CHANNEL ENDPOINTS =====
-
-// GET /api/channels - List all channels
-
 // ===== FEED ENDPOINTS =====
 
 // Helper function to fetch link preview metadata
@@ -3670,8 +3666,7 @@ async function fetchLinkPreview(url) {
   }
 }
 
-// GET /api/feed/posts - Fetch paginated posts from followed channels
-// When no channel_id is provided, fetches posts from followed channels only
+// GET /api/feed/posts - Fetch paginated posts from the feed
 app.get('/api/feed/posts', async (req, res) => {
   try {
     if (!req.user) {
@@ -3681,7 +3676,7 @@ app.get('/api/feed/posts', async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
     const offset = parseInt(req.query.offset || 0);
 
-    // Fetch all posts (channels have been removed)
+    // Fetch all posts
     const { rows: posts } = await pool.query(`
       SELECT
         fp.id,
