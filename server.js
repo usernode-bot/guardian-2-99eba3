@@ -2245,12 +2245,11 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
     }
 
     const { rows } = await pool.query(`
-      SELECT bal.id, bal.user_id, bal.message_id, bal.group_id, bal.message_type, bal.tx_hash, bal.status,
-             bal.error_message, bal.confirmed_at, bal.on_chain_group_id, bal.on_chain_message_id,
+      SELECT bal.id, bal.user_id, bal.message_id, bal.message_type, bal.tx_hash, bal.status,
+             bal.error_message, bal.confirmed_at, bal.on_chain_message_id,
              bal.content_hash, bal.user_pubkey, bal.action_timestamp, bal.network_origin,
-             bal.created_at, bal.transaction_payload, g.name AS group_name
+             bal.created_at, bal.transaction_payload
       FROM blockchain_audit_logs bal
-      LEFT JOIN groups g ON g.id = bal.group_id
       WHERE bal.id = $1 AND bal.user_id = $2
     `, [auditLogId, userId]);
 
@@ -2262,14 +2261,11 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
     res.json({
       id: row.id,
       messageId: row.message_id,
-      groupId: row.group_id || null,
-      groupName: row.group_name || null,
       messageType: row.message_type,
       txHash: row.tx_hash,
       status: row.status,
       errorMessage: row.error_message || null,
       confirmedAt: row.confirmed_at || null,
-      onChainGroupId: row.on_chain_group_id || null,
       onChainMessageId: row.on_chain_message_id || null,
       contentHash: row.content_hash || null,
       userPubkey: row.user_pubkey || null,
@@ -2482,7 +2478,6 @@ app.get('/api/transactions-by-user', async (req, res) => {
       SELECT
         bal.id,
         bal.message_id,
-        bal.group_id,
         bal.message_type,
         bal.tx_hash,
         bal.status,
@@ -2491,11 +2486,9 @@ app.get('/api/transactions-by-user', async (req, res) => {
         bal.created_at,
         bal.transaction_payload,
         bal.network_origin,
-        g.name as group_name,
         u.username as recipient_username_from_pubkey,
         u_msg_recipient.username as message_recipient_username
       FROM blockchain_audit_logs bal
-      LEFT JOIN groups g ON g.id = bal.group_id
       LEFT JOIN users u ON u.usernode_pubkey = (bal.transaction_payload->>'recipient')
       LEFT JOIN messages m ON m.id = bal.message_id
       LEFT JOIN conversations c ON c.id = m.conversation_id
@@ -2530,7 +2523,6 @@ app.get('/api/transactions-by-user', async (req, res) => {
       })
       .map(r => {
         let recipientUsername = null;
-        let groupName = r.group_name || null;
 
         if (r.message_id && r.message_type === 'message') {
           // For message transactions, use the username resolved from the conversation/users JOINs
@@ -2543,14 +2535,12 @@ app.get('/api/transactions-by-user', async (req, res) => {
         return {
           id: r.id,
           messageId: r.message_id,
-          groupId: r.group_id,
           messageType: r.message_type,
           txHash: r.tx_hash,
           status: r.status,
           errorMessage: r.error_message || null,
           confirmedAt: r.confirmed_at || null,
           createdAt: r.created_at,
-          groupName: groupName,
           recipientUsername: recipientUsername,
           networkOrigin: r.network_origin || null,
           transactionPayload: r.transaction_payload
