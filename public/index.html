@@ -2702,7 +2702,6 @@
       const buttons = {
         'messages': document.getElementById('navMessagesBtn'),
         'contacts': document.getElementById('navContactsBtn'),
-        'channels': document.getElementById('navChannelsBtn'),
         'settings': document.getElementById('navSettingsBtn'),
         'profile': document.getElementById('navProfileBtn')
       };
@@ -3773,7 +3772,6 @@
       const directTab = document.getElementById('directTab');
       const groupsTab = document.getElementById('groupsTab');
       const directList = document.getElementById('directList');
-      const groupsList = document.getElementById('groupsList');
 
       if (tab === 'direct') {
         directTab.classList.add('text-cyan-600', 'dark:text-cyan-400');
@@ -3781,14 +3779,12 @@
         groupsTab.classList.remove('text-cyan-600', 'dark:text-cyan-400');
         groupsTab.classList.add('text-zinc-600', 'dark:text-zinc-500');
         directList.classList.remove('hidden');
-        groupsList.classList.add('hidden');
         await loadConversations();
       } else {
         groupsTab.classList.add('text-cyan-600', 'dark:text-cyan-400');
         groupsTab.classList.remove('text-zinc-600', 'dark:text-zinc-500');
         directTab.classList.remove('text-cyan-600', 'dark:text-cyan-400');
         directTab.classList.add('text-zinc-600', 'dark:text-zinc-500');
-        groupsList.classList.remove('hidden');
         directList.classList.add('hidden');
       }
     }
@@ -3799,7 +3795,6 @@
       }
 
       const data = await apiCall('/api/groups');
-      const list = document.getElementById('groupsList');
       if (!list) return;
 
       if (data && data.error) {
