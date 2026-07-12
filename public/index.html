@@ -601,25 +601,21 @@
 
       <!-- Bottom tab navigation -->
       <div class="border-t border-zinc-200 dark:border-zinc-800 p-2 flex gap-1 flex-shrink-0">
-        <button id="tabChat" onclick="switchRightPanel('chat')" class="flex-1 flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-cyan-600 dark:text-cyan-400 text-xs font-medium" title="Messages">
-          <span class="text-lg">💬</span>
-          <span class="hidden sm:inline">Chat</span>
+        <button id="tabProfile" onclick="switchRightPanel('profile')" class="flex-1 flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-600 dark:text-zinc-400 text-xs font-medium" title="Profile">
+          <span class="text-lg">👤</span>
+          <span class="hidden sm:inline">Profile</span>
         </button>
         <button id="tabContacts" onclick="switchRightPanel('contacts')" class="flex-1 flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-600 dark:text-zinc-400 text-xs font-medium" title="Contacts">
-          <span class="text-lg">👤</span>
-          <span class="hidden sm:inline">Contacts</span>
-        </button>
-        <button id="tabChannels" onclick="switchRightPanel('feed')" class="flex-1 flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-600 dark:text-zinc-400 text-xs font-medium" title="Channels">
-          <span class="text-lg">📢</span>
-          <span class="hidden sm:inline">Channels</span>
-        </button>
-        <button id="tabProfile" onclick="switchRightPanel('profile')" class="flex-1 flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-600 dark:text-zinc-400 text-xs font-medium" title="Profile">
           <span class="text-lg">👥</span>
-          <span class="hidden sm:inline">Profile</span>
+          <span class="hidden sm:inline">Contacts</span>
         </button>
         <button id="tabSettings" onclick="switchRightPanel('settings')" class="flex-1 flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-600 dark:text-zinc-400 text-xs font-medium" title="Settings">
           <span class="text-lg">⚙️</span>
           <span class="hidden sm:inline">Settings</span>
+        </button>
+        <button id="tabSignOut" onclick="signOut()" class="flex-1 flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-600 dark:text-zinc-400 text-xs font-medium" title="Sign Out">
+          <span class="text-lg">🚪</span>
+          <span class="hidden sm:inline">Sign Out</span>
         </button>
       </div>
     </div>
@@ -808,49 +804,13 @@
         </button>
       </div>
 
-      <!-- Messages View with Sticky Footer Toggle -->
-      <div id="messagesView" class="hidden flex flex-col flex-1 overflow-hidden">
-        <!-- Direct Messages List -->
-        <div id="directList" class="flex-1 overflow-y-auto">
-          <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading conversations...</div>
-        </div>
-
-        <!-- Groups List -->
-        <div id="groupsList" class="hidden flex-1 overflow-y-auto relative">
-          <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading groups...</div>
-        </div>
-
-        <!-- Sticky Footer Toggle -->
-        <div class="sticky bottom-0 bg-zinc-100 dark:bg-zinc-800 border-t border-zinc-200 dark:border-zinc-700 flex gap-2 px-4 py-3">
-          <button id="directTab" onclick="switchMessagesTab('direct')" class="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition rounded-lg">
-            <span>👤</span>
-            <span>Direct</span>
-          </button>
-          <button id="groupsTab" onclick="switchMessagesTab('groups')" class="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition rounded-lg">
-            <span>👥</span>
-            <span>Groups</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- Conversations List (initial view) - DEPRECATED, kept for backward compatibility -->
-      <div id="conversationsView" class="flex flex-col flex-1 overflow-hidden">
-        <div id="convList" class="flex-1 overflow-y-auto">
-          <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading conversations...</div>
-        </div>
-      </div>
 
       <!-- Chat View -->
       <div id="chatView" class="hidden flex flex-col flex-1 overflow-hidden">
         <div id="messageList" class="flex-1 overflow-y-auto space-y-1 p-4 pb-28 pt-20"></div>
       </div>
 
-      <!-- Channel Chat View (dedicated container for channel posts) -->
-      <div id="channelChatView" class="hidden flex flex-col flex-1 overflow-hidden">
-        <div id="channelChatList" class="flex-1 overflow-y-auto space-y-1 p-4 pt-20 pb-28"></div>
-      </div>
-
-      <!-- Channels View -->
+      <!-- Channels View (REMOVED for v1) -->
       <div id="feedView" class="hidden flex flex-col flex-1 overflow-hidden relative">
         <!-- Channel List or Posts Container (now contains sticky headers) -->
         <div id="feedMainContent" class="flex-1 overflow-y-auto flex flex-col">
@@ -1252,16 +1212,7 @@
 
 
   <!-- Group Context Menu -->
-  <div id="groupContextMenu" class="hidden fixed z-50 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg shadow-lg min-w-40">
-    <button onclick="event.stopPropagation(); viewGroupInfo()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">View Group Info</button>
-    <button id="manageGroupMembersBtn" onclick="event.stopPropagation(); manageGroupMembers()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">Manage Members</button>
-    <button id="renameGroupBtn" onclick="event.stopPropagation(); renameGroup()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">Rename Group</button>
-    <button id="archiveGroupBtn" onclick="event.stopPropagation(); archiveGroup()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">Archive Group</button>
-    <button id="unarchiveGroupBtn" onclick="event.stopPropagation(); unarchiveGroup()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 hidden">Unarchive Group</button>
-    <button onclick="event.stopPropagation(); deleteAllGroupMessages()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">Delete All Messages</button>
-    <button onclick="event.stopPropagation(); leaveGroup()" class="menu-item w-full text-left px-4 py-2 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700">Leave Group</button>
-    <button id="deleteGroupBtn" onclick="event.stopPropagation(); deleteGroup()" class="menu-item w-full text-left px-4 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">Delete Group</button>
-  </div>
+  <!-- Group context menu REMOVED FOR GUARDIAN V1 -->
 
   <!-- Contact Options Menu -->
   <div id="contactContextMenu" class="hidden fixed z-50 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg shadow-lg min-w-40">
@@ -1295,49 +1246,7 @@
   </div>
 
   <!-- Create Group Modal -->
-  <div id="createGroupModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
-    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
-      <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Create Group</h2>
-      <input id="groupNameInput" type="text" placeholder="Group name" maxlength="255" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
-      <textarea id="groupDescInput" placeholder="Description (optional)" maxlength="1000" rows="3" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"></textarea>
-      <div class="flex gap-2">
-        <button onclick="closeCreateGroupModal()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
-        <button onclick="createGroup()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Create</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Create Channel Modal -->
-  <div id="createChannelModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
-    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-sm">
-      <!-- Header section -->
-      <div class="p-6 border-b border-zinc-300 dark:border-zinc-700">
-        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Create Channel</h2>
-      </div>
-      <!-- Content section -->
-      <div class="p-6 space-y-3">
-        <div>
-          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300 block mb-1">Channel Name</label>
-          <input id="channelNameInput" type="text" placeholder="Channel name" maxlength="255" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
-        </div>
-        <div>
-          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300 block mb-1">Description (Optional)</label>
-          <textarea id="channelDescInput" placeholder="Description (optional)" maxlength="1000" rows="3" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"></textarea>
-        </div>
-        <div>
-          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300 block mb-1">Category</label>
-          <select id="channelCategoryInput" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
-            <option value="">Select a category...</option>
-          </select>
-        </div>
-      </div>
-      <!-- Footer section -->
-      <div class="p-6 border-t border-zinc-300 dark:border-zinc-700 flex gap-2">
-        <button onclick="closeCreateChannelModal()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
-        <button onclick="createChannel()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Create</button>
-      </div>
-    </div>
-  </div>
+  <!-- Group and Channel modals REMOVED FOR GUARDIAN V1 -->
 
   <!-- Post Modal -->
   <div id="postModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
@@ -1379,11 +1288,9 @@
   </div>
 
   <!-- Welcome Screen Modal -->
-  <!-- Manage Group Members Modal -->
-  <div id="manageGroupMembersModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
-    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-2xl max-h-[90vh] flex flex-col">
-      <div class="p-6 border-b border-zinc-300 dark:border-zinc-700 flex justify-between items-center">
-        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Manage Group Members</h2>
+  <!-- Group modals REMOVED FOR GUARDIAN V1 -->
+
+  <!-- Channel Compose Modal -->
         <button onclick="closeManageGroupMembersModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
       </div>
       <div class="flex-1 overflow-hidden flex flex-col">
@@ -1877,8 +1784,6 @@
 
     // Messages tab state
     let activeMessagesTab = 'direct';
-    let currentGroupId = null;
-    let currentGroupContextMenuId = null;
 
     // Message history state
     let messageHistoryOldestTimestamp = null;
@@ -3540,58 +3445,36 @@
       currentRightPanel = panelName;
 
       // Hide all view divs in right panel
-      document.getElementById('messagesView').classList.add('hidden');
-      document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.add('hidden');
-      document.getElementById('channelChatView').classList.add('hidden');
       document.getElementById('contactsView').classList.add('hidden');
-      document.getElementById('feedView').classList.add('hidden');
       document.getElementById('profileView').classList.add('hidden');
       document.getElementById('settingsPanel').classList.add('hidden');
+      document.getElementById('feedView').classList.add('hidden');
 
-      // Update tab highlights
-      document.getElementById('tabChat').classList.remove('text-cyan-600', 'dark:text-cyan-400');
-      document.getElementById('tabChat').classList.add('text-zinc-600', 'dark:text-zinc-400');
-      document.getElementById('tabContacts').classList.remove('text-cyan-600', 'dark:text-cyan-400');
-      document.getElementById('tabContacts').classList.add('text-zinc-600', 'dark:text-zinc-400');
-      document.getElementById('tabChannels').classList.remove('text-cyan-600', 'dark:text-cyan-400');
-      document.getElementById('tabChannels').classList.add('text-zinc-600', 'dark:text-zinc-400');
+      // Reset all tab highlights
       document.getElementById('tabProfile').classList.remove('text-cyan-600', 'dark:text-cyan-400');
       document.getElementById('tabProfile').classList.add('text-zinc-600', 'dark:text-zinc-400');
+      document.getElementById('tabContacts').classList.remove('text-cyan-600', 'dark:text-cyan-400');
+      document.getElementById('tabContacts').classList.add('text-zinc-600', 'dark:text-zinc-400');
       document.getElementById('tabSettings').classList.remove('text-cyan-600', 'dark:text-cyan-400');
       document.getElementById('tabSettings').classList.add('text-zinc-600', 'dark:text-zinc-400');
 
       // Show the appropriate panel and highlight its tab
       switch(panelName) {
-        case 'chat':
-          showConversationsView();
-          document.getElementById('tabChat').classList.remove('text-zinc-600', 'dark:text-zinc-400');
-          document.getElementById('tabChat').classList.add('text-cyan-600', 'dark:text-cyan-400');
-          closeSidebar();
+        case 'profile':
+          showProfileView();
+          document.getElementById('tabProfile').classList.remove('text-zinc-600', 'dark:text-zinc-400');
+          document.getElementById('tabProfile').classList.add('text-cyan-600', 'dark:text-cyan-400');
           break;
         case 'contacts':
           showContactsView();
           document.getElementById('tabContacts').classList.remove('text-zinc-600', 'dark:text-zinc-400');
           document.getElementById('tabContacts').classList.add('text-cyan-600', 'dark:text-cyan-400');
-          closeSidebar();
-          break;
-        case 'feed':
-          showFeedView();
-          document.getElementById('tabChannels').classList.remove('text-zinc-600', 'dark:text-zinc-400');
-          document.getElementById('tabChannels').classList.add('text-cyan-600', 'dark:text-cyan-400');
-          closeSidebar();
-          break;
-        case 'profile':
-          showProfileView();
-          document.getElementById('tabProfile').classList.remove('text-zinc-600', 'dark:text-zinc-400');
-          document.getElementById('tabProfile').classList.add('text-cyan-600', 'dark:text-cyan-400');
-          closeSidebar();
           break;
         case 'settings':
           document.getElementById('settingsPanel').classList.remove('hidden');
           document.getElementById('tabSettings').classList.remove('text-zinc-600', 'dark:text-zinc-400');
           document.getElementById('tabSettings').classList.add('text-cyan-600', 'dark:text-cyan-400');
-          closeSidebar();
           break;
       }
     }
@@ -3620,6 +3503,13 @@
           conv.style.display = 'none';
         }
       });
+    }
+
+    function signOut() {
+      localStorage.removeItem('token');
+      localStorage.removeItem('username');
+      localStorage.removeItem('userId');
+      window.location.href = '/';
     }
 
     async function init() {
@@ -3752,7 +3642,6 @@
       document.getElementById('menuBtn').addEventListener('click', toggleSidebar);
       document.getElementById('backBtn').addEventListener('click', () => {
         currentConvId = null;
-        currentGroupId = null;
         showConversationsView();
       });
 
@@ -3919,306 +3808,7 @@
     }
 
     // Tab switching for Messages view
-    async function switchMessagesTab(tab) {
-      if (!currentUser) {
-        console.warn('switchMessagesTab called before currentUser initialized');
-        return;
-      }
-      activeMessagesTab = tab;
-      localStorage.setItem(`guardian_messages_tab_${currentUser.id}`, tab);
-
-      // Clear any open modals/menus when switching tabs
-      closeManageGroupMembersModal();
-      document.getElementById('groupContextMenu').classList.add('hidden');
-
-      const directTab = document.getElementById('directTab');
-      const groupsTab = document.getElementById('groupsTab');
-      const directList = document.getElementById('directList');
-      const groupsList = document.getElementById('groupsList');
-
-      if (tab === 'direct') {
-        directTab.classList.add('text-cyan-600', 'dark:text-cyan-400');
-        directTab.classList.remove('text-zinc-600', 'dark:text-zinc-500');
-        groupsTab.classList.remove('text-cyan-600', 'dark:text-cyan-400');
-        groupsTab.classList.add('text-zinc-600', 'dark:text-zinc-500');
-        directList.classList.remove('hidden');
-        groupsList.classList.add('hidden');
-        await loadConversations();
-      } else {
-        groupsTab.classList.add('text-cyan-600', 'dark:text-cyan-400');
-        groupsTab.classList.remove('text-zinc-600', 'dark:text-zinc-500');
-        directTab.classList.remove('text-cyan-600', 'dark:text-cyan-400');
-        directTab.classList.add('text-zinc-600', 'dark:text-zinc-500');
-        groupsList.classList.remove('hidden');
-        directList.classList.add('hidden');
-        await loadGroups();
-      }
-    }
-
-    // Load groups list
-    async function loadGroups() {
-      if (!currentUser) {
-        console.warn('loadGroups called before currentUser initialized');
-        return;
-      }
-
-      const data = await apiCall('/api/groups');
-      const list = document.getElementById('groupsList');
-      if (!list) return;
-
-      if (data && data.error) {
-        let errorMsg = 'Failed to load groups';
-        if (data.status === 401) {
-          errorMsg = 'Authentication required - please log in';
-        } else if (data.error && data.error !== 'Request failed' && typeof data.error === 'string') {
-          errorMsg = data.error;
-        }
-        console.error('Error loading groups:', data.error);
-        list.innerHTML = '<div class="text-center py-8 text-red-600 dark:text-red-400"><div class="text-sm mb-3">' + String(errorMsg) + '</div><button onclick="loadGroups()" class="px-3 py-1 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded text-xs hover:bg-red-200 dark:hover:bg-red-800 transition">Retry</button></div>';
-        return;
-      }
-
-      if (!data || !data.groups) {
-        console.error('Invalid groups response:', data);
-        list.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Failed to load groups</div>';
-        return;
-      }
-
-      const createGroupButtonHtml = '<button onclick="openCreateGroupModal()" class="w-full px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium text-sm">+ Create Group</button>';
-
-      const { active = [], archived = [] } = data.groups;
-
-      const renderGroupsList = (groups) => {
-        return groups.map(group => {
-          const isActive = currentGroupId === group.id;
-          const activeClass = isActive ? 'border-l-4 border-cyan-600 bg-cyan-50 dark:bg-cyan-900/20' : '';
-          const lastMessage = group.lastMessage || 'No messages';
-          const lastTime = group.lastMessageAt ? formatTime(new Date(group.lastMessageAt)) : '';
-
-          return `
-            <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer transition border-b border-zinc-300 dark:border-zinc-800 ${activeClass}" onclick="openGroup(${group.id})" oncontextmenu="openGroupContextMenu(event, ${group.id})">
-              <div class="flex justify-between items-start gap-2">
-                <div class="flex-1 min-w-0">
-                  <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${group.name}</div>
-                  <div class="text-xs text-zinc-600 dark:text-zinc-400">${group.memberCount} members</div>
-                  <div class="text-xs text-zinc-600 dark:text-zinc-400 truncate">${lastMessage}</div>
-                </div>
-                <div class="text-xs text-zinc-600 dark:text-zinc-500 text-right flex-shrink-0 flex items-center gap-1">
-                  <span>${lastTime}</span>
-                  <button onclick="event.stopPropagation(); openGroupContextMenu(event, ${group.id})" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare" title="Group options">⋯</button>
-                  ${group.unreadCount > 0 ? `<div class="px-2 py-0.5 bg-cyan-600 rounded-full text-white text-xs">${group.unreadCount}</div>` : ''}
-                </div>
-              </div>
-            </div>
-          `;
-        }).join('');
-      };
-
-      const createButtonHtml = '<div class="sticky top-0 z-10 bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 p-4">' + createGroupButtonHtml + '</div>';
-
-      let html = createButtonHtml;
-
-      if (active.length === 0 && archived.length === 0) {
-        html += '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No groups yet.</div>';
-        list.innerHTML = html;
-        return;
-      }
-
-      // Render active groups
-      if (active.length > 0) {
-        html += renderGroupsList(active);
-      }
-
-      // Render archived section
-      if (archived.length > 0) {
-        const archivedOpen = currentUser && localStorage.getItem(`guardian_archived_groups_open_${currentUser.id}`) === 'true';
-        const listHiddenClass = archivedOpen ? '' : 'hidden';
-        const arrowChar = archivedOpen ? '▲' : '▼';
-        html += `
-          <div class="sticky top-0 z-10 bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 p-4">
-            <button onclick="event.stopPropagation(); toggleArchivedGroupsSection()" class="w-full text-left flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
-              <span>Archived</span>
-              <span id="archivedGroupsSectionArrow" class="text-zinc-500 text-sm">${arrowChar}</span>
-            </button>
-          </div>
-          <div id="archivedGroupsSectionList" class="${listHiddenClass}">
-            ${renderGroupsList(archived)}
-          </div>
-        `;
-      }
-
-      list.innerHTML = html;
-    }
-
-    function toggleArchivedGroupsSection() {
-      const list = document.getElementById('archivedGroupsSectionList');
-      const arrow = document.getElementById('archivedGroupsSectionArrow');
-      if (!list) return;
-      const isHidden = list.classList.toggle('hidden');
-      if (arrow) arrow.textContent = isHidden ? '▼' : '▲';
-      if (currentUser) {
-        localStorage.setItem(`guardian_archived_groups_open_${currentUser.id}`, isHidden ? 'false' : 'true');
-      }
-    }
-
-    // Open a group
-    async function openGroup(groupId) {
-      // Clear cross-context state (direct messages and channels)
-      currentConvId = null;
-      currentOtherId = null;
-      currentChannelId = null;
-      currentGroupId = groupId;
-
-      // Fetch group name for header (groups use two-line layout with "Group" label)
-      document.getElementById('headerContent').classList.remove('hidden');
-      document.getElementById('headerBranding').textContent = 'Group';
-      const groupData = await apiCall(`/api/groups/${groupId}`);
-      if (groupData) {
-        document.getElementById('headerPageLabel').textContent = groupData.name + ' ✓';
-      }
-
-      document.getElementById('backBtnContainer').classList.remove('hidden');
-      document.getElementById('menuBtn').classList.add('hidden');
-      document.getElementById('conversationMenuBtn').classList.add('hidden');
-
-      showChatView();
-      loadGroupMessages(groupId);
-
-      if (pollInterval) clearInterval(pollInterval);
-      pollInterval = setInterval(() => loadGroupMessages(groupId), 2000);
-
-      loadGroups();
-    }
-
-    // Load group messages
-    async function loadGroupMessages(groupId) {
-      if (!currentGroupId) return;
-      if (!groupId || isNaN(groupId)) {
-        console.error('[loadGroupMessages] Invalid groupId:', groupId);
-        return;
-      }
-
-      const list = document.getElementById('messageList');
-      const endpoint = `/api/groups/${groupId}/messages?limit=50`;
-
-      console.log('[loadGroupMessages] Fetching:', {
-        groupId,
-        currentUserId: currentUser?.id,
-        currentUsername: currentUser?.username,
-        userWallet: currentUser?.usernode_pubkey,
-        timestamp: new Date().toISOString(),
-        endpoint
-      });
-
-      const data = await apiCall(endpoint);
-      if (!data) {
-        console.error('[loadGroupMessages] No response from API');
-        return;
-      }
-
-      console.log('[loadGroupMessages] API response:', {
-        hasError: !!data.error,
-        messageCount: data.messages?.length || 0,
-        responseBody: data
-      });
-
-      if (data.error) {
-        console.error('[loadGroupMessages] API error:', {
-          error: data.error,
-          status: data.status,
-          groupId,
-          endpoint
-        });
-        list.innerHTML = `
-          <div class="text-center py-8 flex flex-col items-center justify-center h-full">
-            <div class="text-red-600 dark:text-red-400">
-              <div class="text-sm font-medium mb-2">Failed to load messages</div>
-              <div class="text-xs text-zinc-600 dark:text-zinc-400 mb-4">${escapeHtml(data.error)}</div>
-            </div>
-            <button onclick="loadGroupMessages(${groupId})" class="px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded text-xs font-medium transition">
-              Retry
-            </button>
-          </div>
-        `;
-        return;
-      }
-
-      if (data.messages.length === 0) {
-        list.innerHTML = '<div class="text-center text-zinc-600 dark:text-zinc-500 py-4">No messages yet</div>';
-        return;
-      }
-
-      // Check if this is an initial load (empty list) or an update
-      const isInitialLoad = list.children.length === 0;
-      const wasAtBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 500;
-      list.innerHTML = data.messages.map(msg => renderMessage(msg, 'group')).join('');
-
-      // Auto-scroll to bottom on initial load or if user was already at bottom (within 500px)
-      if (isInitialLoad || wasAtBottom) {
-        setTimeout(() => {
-          list.scrollTop = list.scrollHeight - list.clientHeight;
-        }, 100);
-      }
-
-      console.log('[loadGroupMessages] Rendered messages:', {
-        count: data.messages.length,
-        groupId
-      });
-
-      // Mark as read
-      await apiCall(`/api/groups/${groupId}/read`, {
-        method: 'PUT',
-        body: JSON.stringify({ readUpTo: new Date().toISOString() })
-      });
-    }
-
-    // Open group context menu
-    async function openGroupContextMenu(event, groupId) {
-      event.preventDefault();
-      currentGroupContextMenuId = groupId;
-
-      // Fetch group to check if user is creator BEFORE showing menu
-      const groupData = await apiCall(`/api/groups/${groupId}`);
-      if (!groupData || groupData.error) {
-        console.error('Failed to fetch group data:', groupData?.error);
-        return;
-      }
-
-      const menu = document.getElementById('groupContextMenu');
-      const renameBtn = document.getElementById('renameGroupBtn');
-      const deleteBtn = document.getElementById('deleteGroupBtn');
-      const manageBtn = document.getElementById('manageGroupMembersBtn');
-      const archiveBtn = document.getElementById('archiveGroupBtn');
-      const unarchiveBtn = document.getElementById('unarchiveGroupBtn');
-      const isCreator = groupData && parseInt(groupData.creatorId, 10) === parseInt(currentUser.id, 10);
-      const isArchived = groupData.archived_by && groupData.archived_by.includes(parseInt(currentUser.id, 10));
-
-      // Pre-configure button visibility before showing menu
-      manageBtn.style.display = isCreator ? 'block' : 'none';
-      renameBtn.style.display = isCreator ? 'block' : 'none';
-      deleteBtn.style.display = isCreator ? 'block' : 'none';
-      archiveBtn.style.display = isArchived ? 'none' : 'block';
-      unarchiveBtn.style.display = isArchived ? 'block' : 'none';
-
-      // Position menu, accounting for viewport
-      let x = event.clientX;
-      let y = event.clientY;
-
-      menu.classList.remove('hidden');
-      menu.style.left = x + 'px';
-      menu.style.top = y + 'px';
-
-      // Check if menu goes off-screen and adjust
-      setTimeout(() => {
-        const rect = menu.getBoundingClientRect();
-        if (rect.right > window.innerWidth) {
-          menu.style.left = (x - rect.width) + 'px';
-        }
-        if (rect.bottom > window.innerHeight) {
-          menu.style.top = (y - rect.height) + 'px';
-        }
-      }, 0);
-    }
+    // Open group context menu - REMOVED FOR GUARDIAN V1
 
     // Helper: Create a pending audit log (Phase 1)
     async function createPendingAuditLog() {
@@ -4256,183 +3846,6 @@
     }
 
     // Create group
-    async function createGroup() {
-      const name = document.getElementById('groupNameInput').value.trim();
-      const desc = document.getElementById('groupDescInput').value.trim();
-
-      if (!name) return alert('Group name is required');
-
-      try {
-        // Phase 1: Create pending audit log
-        const auditLogId = await createPendingAuditLog();
-
-        // Phase 2: Request wallet signature and register txHash
-        const txHash = await requestWalletSignature('Create Group', { name, description: desc || '(none)' }, auditLogId);
-
-        const data = await apiCall('/api/groups', {
-          method: 'POST',
-          body: JSON.stringify({
-            name,
-            description: desc || null,
-            txHash: txHash,
-            auditLogId: auditLogId
-          })
-        });
-
-        if (data && !data.error) {
-          // Show action-specific toast with status
-          const statusMsg = isStaging ? 'Group created—simulated signature confirmed' : 'Group created—awaiting blockchain confirmation';
-          showToast(`✓ ${statusMsg}`, 'success');
-
-          if (data.blockchainRecordingId) {
-            showPersistentNotification('group_create', {
-              blockchainRecordingId: data.blockchainRecordingId,
-              groupName: name,
-              memberCount: data.members ? data.members.length : 0
-            });
-          }
-          closeCreateGroupModal();
-          loadGroups();
-        } else if (data && data.error) {
-          showToast(`Failed to create group: ${data.error}`, 'error');
-          throw new Error(data.error);
-        }
-      } catch (err) {
-        // Handle errors from createGroup
-        const isCancelledError = err.message && (err.message.includes('User cancelled') || err.message.includes('cancelled'));
-        if (!isCancelledError) {
-          console.error('Create group error:', err);
-          showToast(`Error: ${err.message}`, 'error');
-        }
-      }
-    }
-
-    // Open create group modal
-    function openCreateGroupModal() {
-      document.getElementById('createGroupModal').classList.remove('hidden');
-      document.getElementById('groupNameInput').value = '';
-      document.getElementById('groupDescInput').value = '';
-    }
-
-    // Close create group modal
-    function closeCreateGroupModal() {
-      document.getElementById('createGroupModal').classList.add('hidden');
-      document.getElementById('groupNameInput').value = '';
-      document.getElementById('groupDescInput').value = '';
-    }
-
-    // Open create channel modal
-    async function openCreateChannelModal() {
-      const modal = document.getElementById('createChannelModal');
-      modal.classList.remove('hidden');
-      document.getElementById('channelNameInput').value = '';
-      document.getElementById('channelDescInput').value = '';
-
-      // Populate category dropdown
-      try {
-        const data = await apiCall('/api/channels/categories');
-        const select = document.getElementById('channelCategoryInput');
-        select.innerHTML = '<option value="">Select a category...</option>';
-        if (data && data.categories) {
-          data.categories.forEach(cat => {
-            const option = document.createElement('option');
-            option.value = cat.name;
-            option.textContent = cat.name;
-            select.appendChild(option);
-          });
-        }
-      } catch (err) {
-        console.error('Error loading categories:', err);
-        showToast('Error loading categories', 'error');
-      }
-    }
-
-    // Close create channel modal
-    function closeCreateChannelModal() {
-      document.getElementById('createChannelModal').classList.add('hidden');
-      document.getElementById('channelNameInput').value = '';
-      document.getElementById('channelDescInput').value = '';
-      document.getElementById('channelCategoryInput').value = '';
-    }
-
-    // Create channel with wallet signature
-    async function createChannel() {
-      const name = document.getElementById('channelNameInput').value.trim();
-      const desc = document.getElementById('channelDescInput').value.trim();
-      const category = document.getElementById('channelCategoryInput').value.trim();
-
-      if (!name) return alert('Channel name is required');
-      if (!category) return alert('Category is required');
-
-      // Disable form inputs and button to prevent duplicate submissions
-      const createBtn = document.querySelector('#createChannelModal button[onclick="createChannel()"]');
-      const nameInput = document.getElementById('channelNameInput');
-      const descInput = document.getElementById('channelDescInput');
-      const categorySelect = document.getElementById('channelCategoryInput');
-
-      const originalBtnText = createBtn.textContent;
-      createBtn.disabled = true;
-      createBtn.textContent = 'Creating...';
-      nameInput.disabled = true;
-      descInput.disabled = true;
-      categorySelect.disabled = true;
-
-      try {
-        // Phase 1: Create pending audit log
-        const auditLogId = await createPendingAuditLog();
-
-        // Phase 2: Request wallet signature and register txHash
-        const txHash = await requestWalletSignature('Create Channel', { name, category, description: desc || '(none)' }, auditLogId);
-
-        const data = await apiCall('/api/channels', {
-          method: 'POST',
-          body: JSON.stringify({
-            name,
-            description: desc || null,
-            category,
-            txHash: txHash,
-            auditLogId: auditLogId
-          })
-        });
-
-        if (data && !data.error) {
-          // Show action-specific toast with status
-          const statusMsg = isStaging ? 'Channel created—simulated signature confirmed' : 'Channel created—awaiting blockchain confirmation';
-          showToast(`✓ ${statusMsg}`, 'success');
-
-          if (data.blockchainRecordingId) {
-            showPersistentNotification('channel_create', {
-              blockchainRecordingId: data.blockchainRecordingId,
-              channelName: name,
-              category: category
-            });
-          }
-          closeCreateChannelModal();
-          // Channel created but Feed view has been removed
-          // Show the newly created channel detail view if possible
-          if (data && data.id) {
-            await showChannelPosts(data.id);
-          }
-        } else if (data && data.error) {
-          showToast(`Failed to create channel: ${data.error}`, 'error');
-          throw new Error(data.error);
-        }
-      } catch (err) {
-        // Handle errors from createChannel
-        const isCancelledError = err.message && (err.message.includes('User cancelled') || err.message.includes('cancelled'));
-        if (!isCancelledError) {
-          console.error('Create channel error:', err);
-          showToast(`Error: ${err.message}`, 'error');
-        }
-      } finally {
-        // Re-enable form inputs and button
-        createBtn.disabled = false;
-        createBtn.textContent = originalBtnText;
-        nameInput.disabled = false;
-        descInput.disabled = false;
-        categorySelect.disabled = false;
-      }
-    }
 
     // Poll transaction confirmation status on blockchain with exponential backoff matching server
     async function pollTransactionConfirmation(notificationId, auditLogId, maxPollAttempts = 600) {
@@ -5191,11 +4604,7 @@
     }
 
     // Centralized helper to refresh groups UI after mutations
-    async function refreshGroupsUI() {
-      await loadGroups();
-      closeManageGroupMembersModal();
-      document.getElementById('groupContextMenu').classList.add('hidden');
-    }
+    // refreshGroupsUI - REMOVED FOR GUARDIAN V1
 
     // Rename group
     async function renameGroup() {
@@ -6034,10 +5443,9 @@
       const text = input.value.trim();
       if (!text) return;
 
-      if (!currentConvId && !currentGroupId) return;
+      if (!currentConvId) return;
 
-      // Prevent duplicate submission while message is being sent
-      const convKey = currentGroupId ? `group-${currentGroupId}` : `conv-${currentConvId}`;
+      const convKey = `conv-${currentConvId}`;
       if (sendingMessageForConversation.has(convKey)) {
         console.warn('[MESSAGE] Message already being sent for this conversation, skipping duplicate');
         return;
@@ -6047,11 +5455,9 @@
       input.value = '';
 
       try {
-        const endpoint = currentGroupId ? `/api/groups/${currentGroupId}/messages` : `/api/conversations/${currentConvId}/messages`;
+        const endpoint = `/api/conversations/${currentConvId}/messages`;
 
-        // Phase 1: Create pending audit log
         const auditLogId = await createPendingAuditLog();
-
         const txDetails = { message: text.substring(0, 50) + (text.length > 50 ? '...' : '') };
         const txHash = await requestWalletSignature('Send Message', txDetails, auditLogId);
 
@@ -6066,7 +5472,6 @@
         });
 
         if (data && !data.error) {
-          // Log duplicate detection
           if (data.isDuplicate) {
             console.log('[MESSAGE] Duplicate detected! Reusing existing auditLogId:', data.blockchainRecordingId, 'isDuplicate:', data.isDuplicate);
             showToast(`✓ Message already sent—reusing existing transaction`, 'info');
@@ -6077,36 +5482,30 @@
           if (data.blockchainRecordingId) {
             showPersistentNotification('message', {
               blockchainRecordingId: data.blockchainRecordingId,
-              recipient: currentGroupId ? 'group' : currentContactName,
+              recipient: currentContactName,
               isDuplicate: data.isDuplicate
             });
           }
-          if (currentGroupId) {
-            loadGroupMessages(currentGroupId);
-          } else {
-            loadMessages();
-          }
+          loadMessages();
         } else {
           throw new Error(data?.error || 'Failed to send message');
         }
       } catch (err) {
-        // Handle errors from sendMessage
         const isCancelledError = err.message && (err.message.includes('User cancelled') || err.message.includes('cancelled'));
         if (!isCancelledError) {
           console.error('Send message error:', err);
           showToast(`Error: ${err.message}`, 'error');
-          document.getElementById('msgInput').value = text; // Restore input on error
+          document.getElementById('msgInput').value = text;
         }
       } finally {
-        // Remove lock after send attempt (success or failure)
-        const convKey = currentGroupId ? `group-${currentGroupId}` : `conv-${currentConvId}`;
+        const convKey = `conv-${currentConvId}`;
         sendingMessageForConversation.delete(convKey);
       }
     }
 
     async function handleImageUpload(file) {
       if (!file) return;
-      if (!currentConvId && !currentGroupId) return;
+      if (!currentConvId) return;
 
       const reader = new FileReader();
       reader.onload = async (e) => {
@@ -6114,11 +5513,9 @@
         const imageSizeKb = Math.round(dataUri.length / 1024);
 
         try {
-          const endpoint = currentGroupId ? `/api/groups/${currentGroupId}/messages` : `/api/conversations/${currentConvId}/messages`;
+          const endpoint = `/api/conversations/${currentConvId}/messages`;
 
-          // Phase 1: Create pending audit log
           const auditLogId = await createPendingAuditLog();
-
           const txHash = await requestWalletSignature('Send Image', { imageSize: imageSizeKb + ' KB' }, auditLogId);
           const data = await apiCall(endpoint, {
             method: 'POST',
@@ -6131,19 +5528,14 @@
             if (data.blockchainRecordingId) {
               showPersistentNotification('image', {
                 blockchainRecordingId: data.blockchainRecordingId,
-                recipient: currentGroupId ? 'group' : currentContactName
+                recipient: currentContactName
               });
             }
-            if (currentGroupId) {
-              loadGroupMessages(currentGroupId);
-            } else {
-              loadMessages();
-            }
+            loadMessages();
           } else {
             throw new Error(data?.error || 'Failed to send image');
           }
         } catch (err) {
-          // Handle errors from handleImageUpload
           const isCancelledError = err.message && (err.message.includes('User cancelled') || err.message.includes('cancelled'));
           if (!isCancelledError) {
             console.error('Image upload error:', err);
@@ -7091,122 +6483,11 @@
       loadContactsList();
     }
 
-    async function showFeedView() {
-      updateMenuHighlight('channels');
-      const viewsToHide = ['messagesView', 'conversationsView', 'chatView', 'contactsView', 'profileView', 'channelChatView'];
-      viewsToHide.forEach(viewId => {
-        const element = document.getElementById(viewId);
-        if (element) {
-          element.classList.add('hidden');
-          if (viewId === 'chatView') {
-            element.classList.remove('active-chat');
-          }
-        }
-      });
-      document.getElementById('feedView').classList.remove('hidden');
-      document.getElementById('inputFooter').classList.add('hidden');
-      document.getElementById('inputFooter').classList.remove('footer-in-view');
-      document.getElementById('header').classList.remove('header-chat-fixed');
-      document.getElementById('headerTitle').textContent = 'Channels';
-      document.getElementById('backBtnContainer').classList.add('hidden');
-      document.getElementById('headerContent').classList.remove('hidden');
-      document.getElementById('headerBranding').textContent = 'Guardian';
-      document.getElementById('headerPageLabel').textContent = 'Channels';
-      document.getElementById('menuBtn').classList.remove('hidden');
-      document.getElementById('conversationMenuBtn').classList.add('hidden');
-      document.getElementById('postBtn').classList.remove('hidden');
-      if (conversationsPollInterval) clearInterval(conversationsPollInterval);
-      if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
-      // Clear channel polling when switching away from channel view
-      if (pollInterval) clearInterval(pollInterval);
-      currentChannelId = null;
-      currentChannel = null;
+    // showFeedView REMOVED FOR GUARDIAN V1
 
-      // Reset search state
-      currentSearchQuery = '';
-      const searchInput = document.getElementById('searchChannelsInput');
-      if (searchInput) searchInput.value = '';
+    // Channel/feed functions REMOVED FOR GUARDIAN V1
 
-      // Load channels list for Discover
-      await loadChannels();
-      // Load Home tab by default (posts from followed channels)
-      await switchFeedTab('home');
-    }
-
-    async function loadChannels() {
-      try {
-        const data = await apiCall('/api/channels');
-        if (!data) {
-          console.error('loadChannels: API returned null');
-          channelsList = [];
-          filteredChannelsList = [];
-          return;
-        }
-
-        if (data.error) {
-          console.error('loadChannels: API returned error', data.error);
-          showToast('Failed to load channels', 'error');
-          return;
-        }
-
-        if (!Array.isArray(data.channels)) {
-          console.error('loadChannels: channels is not an array', data);
-          channelsList = [];
-          filteredChannelsList = [];
-          return;
-        }
-
-        // Validate and filter out invalid channel objects
-        channelsList = data.channels.filter(ch => ch && typeof ch === 'object' && ch.id && ch.name);
-        filteredChannelsList = channelsList;
-      } catch (err) {
-        console.error('loadChannels: fetch error', err);
-        showToast('Error loading channels', 'error');
-        channelsList = [];
-        filteredChannelsList = [];
-      }
-    }
-
-    function handleChannelSearch(query) {
-      currentSearchQuery = query.trim().toLowerCase();
-      if (currentSearchQuery === '') {
-        filteredChannelsList = channelsList;
-      } else {
-        filteredChannelsList = channelsList.filter(ch =>
-          ch.name.toLowerCase().includes(currentSearchQuery) ||
-          (ch.description && ch.description.toLowerCase().includes(currentSearchQuery))
-        );
-      }
-      // Refresh the channel list display
-      if (currentChannelId === null) {
-        showChannelList();
-      }
-    }
-
-    function showChannelList() {
-      currentChannelId = null;
-      document.getElementById('feedHeader').style.display = 'block';
-      document.getElementById('channelDetailHeader').classList.add('hidden');
-
-      let html = '';
-      if (filteredChannelsList.length === 0) {
-        html = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">No channels found</div>';
-      } else {
-        html = '<div class="divide-y divide-zinc-200 dark:divide-zinc-800">';
-        filteredChannelsList.forEach(channel => {
-          html += `
-            <div class="p-4 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 cursor-pointer transition" onclick="showChannelPosts(${channel.id})">
-              <h3 class="font-semibold text-zinc-900 dark:text-zinc-100">${escapeHtml(channel.name)}</h3>
-              ${channel.description ? `<p class="text-sm text-zinc-600 dark:text-zinc-400 mt-1">${escapeHtml(channel.description)}</p>` : ''}
-              ${channel.ownerUsername ? `<p class="text-xs text-zinc-500 dark:text-zinc-500 mt-1">by ${escapeHtml(channel.ownerUsername)}</p>` : (channel.ownerId ? `<p class="text-xs text-zinc-500 dark:text-zinc-500 mt-1">by user-${channel.ownerId}</p>` : '')}
-            </div>
-          `;
-        });
-        html += '</div>';
-      }
-      document.getElementById('feedContentWrapper').innerHTML = html;
-    }
-
+    // All channel/feed functions REMOVED FOR GUARDIAN V1
     async function showChannelPosts(channelId) {
       // Parse and validate channelId (may come as string from onclick)
       const parsedChannelId = parseInt(channelId, 10);
@@ -9388,14 +8669,6 @@
 
     let userLikedPostIds = new Set();
 
-    // Channel-based variables
-    let currentChannelId = null;
-    let currentChannel = null;
-    let channelsList = [];
-    let filteredChannelsList = [];
-    let channelPostsOffset = 0;
-    let channelPostsHasMore = false;
-    let isLoadingChannelPosts = false;
 
 
 
