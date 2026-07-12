@@ -492,6 +492,34 @@
     #splashScreen.dark .splash-tagline {
       color: rgb(161, 161, 170);
     }
+
+    /* Status Bar Styles */
+    #statusBar {
+      pointer-events: none;
+    }
+
+    #statusBar #statusIndicator {
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.7;
+      }
+    }
+
+    /* Adjust main app container to account for status bar height */
+    #app {
+      padding-bottom: 32px;
+    }
+
+    /* Adjust modal container to not be blocked by status bar */
+    #toastContainer {
+      bottom: 2.5rem;
+    }
   </style>
 </head>
 <body class="bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100 min-h-screen flex flex-col">
@@ -598,8 +626,11 @@
             <span class="absolute bottom-full right-0 mb-1 px-2 py-1 bg-zinc-900 dark:bg-zinc-700 text-white dark:text-zinc-100 text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">Settings</span>
           </button>
         </div>
-        <button onclick="showShareContactModal()" class="w-full px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-sm text-zinc-900 dark:text-zinc-100">
+        <button onclick="showShareContactModal()" class="w-full px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-sm text-zinc-900 dark:text-zinc-100 mb-3">
           📤 Share Contact
+        </button>
+        <button id="logoutBtn" onclick="logout()" class="w-full px-3 py-2 bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 rounded-lg transition text-sm text-red-700 dark:text-red-400 font-medium">
+          🚪 Logout
         </button>
       </div>
     </div>
@@ -1133,6 +1164,14 @@
             <span>Send Token</span>
           </div>
         </button>
+      </div>
+    </div>
+
+    <!-- Status Bar -->
+    <div id="statusBar" class="fixed bottom-0 left-0 right-0 h-8 bg-zinc-100 dark:bg-zinc-900 border-t border-zinc-300 dark:border-zinc-800 flex items-center justify-end px-4 text-xs text-zinc-600 dark:text-zinc-400 z-30">
+      <div class="flex items-center gap-2">
+        <span id="statusIndicator" class="inline-block w-2 h-2 rounded-full bg-green-500"></span>
+        <span id="statusText">Connected</span>
       </div>
     </div>
 
@@ -3541,6 +3580,34 @@
       }
     }
 
+    // ===== STATUS BAR FUNCTIONS =====
+
+    function updateStatusBar(connected) {
+      const statusIndicator = document.getElementById('statusIndicator');
+      const statusText = document.getElementById('statusText');
+      if (connected) {
+        statusIndicator.classList.remove('bg-red-500');
+        statusIndicator.classList.add('bg-green-500');
+        statusText.textContent = 'Connected';
+      } else {
+        statusIndicator.classList.remove('bg-green-500');
+        statusIndicator.classList.add('bg-red-500');
+        statusText.textContent = 'Disconnected';
+      }
+    }
+
+    // ===== LOGOUT FUNCTION =====
+
+    function logout() {
+      if (confirm('Are you sure you want to logout?')) {
+        // Clear local storage and session data
+        localStorage.clear();
+        sessionStorage.clear();
+        // Redirect to home or login page
+        window.location.href = '/';
+      }
+    }
+
     async function init() {
       // Run comprehensive bridge diagnostics
       console.log('=== Guardian 2 Initialization ===');
@@ -3661,6 +3728,9 @@
       pollNetworkStatus();
       if (networkStatusIntervalId) clearInterval(networkStatusIntervalId);
       networkStatusIntervalId = setInterval(pollNetworkStatus, 2000);
+
+      // Initialize status bar - set to connected on load
+      updateStatusBar(true);
 
       // Ensure currentUser is set before showing conversations view (which may load groups)
       await showConversationsView();
