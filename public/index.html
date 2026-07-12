@@ -826,6 +826,9 @@
       </div>
       <!-- Messages View with Sticky Footer Toggle -->
       <div id="messagesView" class="hidden flex flex-col flex-1 overflow-hidden">
+        <!-- Search Input -->
+        <input type="text" id="conversationSearch" placeholder="Search conversations..." class="w-full px-4 py-2 bg-zinc-50 dark:bg-zinc-800 border-b border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 placeholder-zinc-500 dark:placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 sticky top-0 z-10" oninput="filterConversations(this.value)">
+
         <!-- Direct Messages List -->
         <div id="directList" class="flex-1 overflow-y-auto">
           <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading conversations...</div>
@@ -3847,7 +3850,7 @@
             : `<div class="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center text-white text-sm font-semibold flex-shrink-0 cursor-pointer hover:opacity-80 transition" onclick="event.stopPropagation(); showUserProfileModal(${conv.otherId})">${avatarInitial}</div>`;
 
           return `
-            <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer transition border-b border-zinc-300 dark:border-zinc-800" onclick="openConversation(${conv.id}, ${conv.otherId}, '${(conv.nickname || conv.username).replace(/'/g, "\\'")}')">
+            <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer transition border-b border-zinc-300 dark:border-zinc-800" data-conversation-username="${conv.username}" data-conversation-id="${conv.id}" onclick="openConversation(${conv.id}, ${conv.otherId}, '${(conv.nickname || conv.username).replace(/'/g, "\\'")}')">
               <div class="flex justify-between items-start gap-3">
                 ${avatarHtml}
                 <div class="flex-1 min-w-0">
@@ -6332,10 +6335,60 @@
       }
     }
 
+    function filterConversations(searchTerm) {
+      const list = document.getElementById('directList');
+      if (!list) return;
+
+      const lowercaseSearch = searchTerm.toLowerCase();
+      const conversationItems = list.querySelectorAll('[data-conversation-username]');
+      let visibleCount = 0;
+
+      conversationItems.forEach(item => {
+        const username = item.getAttribute('data-conversation-username') || '';
+        const convId = item.getAttribute('data-conversation-id') || '';
+
+        // Match against username or conversation ID
+        const matches = username.toLowerCase().includes(lowercaseSearch) ||
+                       convId.includes(lowercaseSearch);
+
+        if (matches || !lowercaseSearch) {
+          item.style.display = '';
+          visibleCount++;
+        } else {
+          item.style.display = 'none';
+        }
+      });
+
+      // Show "no results" message if search term exists but no matches
+      if (lowercaseSearch && visibleCount === 0) {
+        // Check if no-results message already exists
+        let noResults = list.querySelector('[data-no-search-results]');
+        if (!noResults) {
+          noResults = document.createElement('div');
+          noResults.setAttribute('data-no-search-results', 'true');
+          noResults.className = 'text-center py-8 text-zinc-600 dark:text-zinc-500';
+          noResults.textContent = 'No conversations match your search';
+          list.appendChild(noResults);
+        }
+        noResults.style.display = '';
+      } else {
+        const noResults = list.querySelector('[data-no-search-results]');
+        if (noResults) {
+          noResults.style.display = 'none';
+        }
+      }
+    }
+
     async function showConversationsView() {
       updateMenuHighlight('messages');
       // Load persisted tab preference
       activeMessagesTab = localStorage.getItem(`guardian_messages_tab_${currentUser?.id}`) || 'direct';
+
+      // Clear search input
+      const searchInput = document.getElementById('conversationSearch');
+      if (searchInput) {
+        searchInput.value = '';
+      }
 
       document.getElementById('messagesView').classList.remove('hidden');
       document.getElementById('conversationsView').classList.add('hidden');
