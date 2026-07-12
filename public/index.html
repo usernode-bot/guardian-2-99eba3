@@ -68,47 +68,21 @@
   <!-- Main Content Area -->
   <div class="flex flex-1 overflow-hidden">
 
-    <!-- Left Sidebar -->
+    <!-- Left Sidebar (Minimal) -->
     <aside id="leftSidebar" class="flex-shrink-0 w-80 bg-zinc-50 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex flex-col transition-transform duration-300 absolute md:relative h-full md:h-auto z-40 md:z-auto">
 
-      <!-- Search Bar -->
-      <div class="flex-shrink-0 p-4 border-b border-zinc-200 dark:border-zinc-800">
-        <input id="conversationSearch" type="text" placeholder="Search conversations..." class="w-full px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-500 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+      <!-- Sidebar Header -->
+      <div class="flex-shrink-0 p-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+        <div class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Guardian</div>
       </div>
 
-      <!-- New Chat Button -->
-      <div class="flex-shrink-0 px-4 py-2">
-        <button id="newChatBtn" class="w-full px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg text-sm font-medium transition active:scale-95">+ New Chat</button>
-      </div>
-
-      <!-- Conversations List -->
-      <div class="flex-1 overflow-y-auto min-h-0">
-        <div id="convList" class="divide-y divide-zinc-200 dark:divide-zinc-800">
-          <!-- Conversations rendered here -->
-          <div class="text-center py-8 text-zinc-500 dark:text-zinc-400 text-sm">No conversations yet</div>
-        </div>
-      </div>
-
-      <!-- Archived Section -->
-      <div class="flex-shrink-0 border-t border-zinc-200 dark:border-zinc-800">
-        <button id="toggleArchived" class="w-full px-4 py-2 text-left text-xs font-semibold text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition flex items-center justify-between">
-          <span>Archived</span>
-          <span id="archivedArrow" class="text-zinc-500">▼</span>
-        </button>
-        <div id="archivedList" class="hidden divide-y divide-zinc-200 dark:divide-zinc-800">
-          <!-- Archived conversations rendered here -->
-        </div>
-      </div>
-
-      <!-- User Info Footer -->
-      <div class="flex-shrink-0 border-t border-zinc-200 dark:border-zinc-800 p-3 text-xs">
-        <div id="userInfo" class="text-zinc-700 dark:text-zinc-300 truncate font-medium">—</div>
-        <div id="userWallet" class="text-zinc-500 dark:text-zinc-500 truncate text-xs mt-1">—</div>
-      </div>
+      <!-- Spacer to push tabs to bottom -->
+      <div class="flex-1"></div>
 
       <!-- Tab Navigation -->
       <div class="flex-shrink-0 border-t border-zinc-200 dark:border-zinc-800 flex">
-        <button id="tabProfile" onclick="switchRightPanel('profile')" class="flex-1 py-3 text-center text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition text-lg" title="Profile">👤</button>
+        <button id="tabChats" onclick="switchRightPanel('chats')" class="flex-1 py-3 text-center text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition text-lg" title="Chats">💬</button>
+        <button id="tabProfile" onclick="switchRightPanel('profile')" class="flex-1 py-3 text-center text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition text-lg border-l border-zinc-200 dark:border-zinc-800" title="Profile">👤</button>
         <button id="tabContacts" onclick="switchRightPanel('contacts')" class="flex-1 py-3 text-center text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition text-lg border-l border-zinc-200 dark:border-zinc-800" title="Contacts">👥</button>
         <button id="tabSettings" onclick="switchRightPanel('settings')" class="flex-1 py-3 text-center text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition text-lg border-l border-zinc-200 dark:border-zinc-800" title="Settings">⚙️</button>
         <button id="tabSignOut" onclick="signOut()" class="flex-1 py-3 text-center text-zinc-600 dark:text-zinc-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition text-lg border-l border-zinc-200 dark:border-zinc-800" title="Sign Out">🚪</button>
@@ -121,12 +95,48 @@
     <!-- Right Panel -->
     <main class="flex-1 flex flex-col overflow-hidden bg-white dark:bg-zinc-950">
 
-      <!-- Chat View -->
-      <div id="chatView" class="hidden flex flex-col flex-1 overflow-hidden">
-        <!-- Chat Header -->
+      <!-- Chats View (Default) -->
+      <div id="chatsView" class="hidden flex flex-col flex-1 overflow-hidden">
+        <!-- Chats Header -->
+        <div class="flex-shrink-0 h-14 bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between px-4 gap-3">
+          <div class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Chats</div>
+          <div class="flex items-center gap-2">
+            <button id="chatsSearchBtn" class="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition">🔍</button>
+            <button id="newChatBtn" class="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition">➕</button>
+          </div>
+        </div>
+
+        <!-- Search Bar (Hidden by default) -->
+        <div id="chatsSearchContainer" class="hidden flex-shrink-0 px-4 py-2 border-b border-zinc-200 dark:border-zinc-800">
+          <input id="conversationSearch" type="text" placeholder="Search conversations..." class="w-full px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-500 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+        </div>
+
+        <!-- Conversations List -->
+        <div class="flex-1 overflow-y-auto min-h-0">
+          <div id="convList" class="divide-y divide-zinc-200 dark:divide-zinc-800">
+            <!-- Conversations rendered here -->
+            <div class="text-center py-8 text-zinc-500 dark:text-zinc-400 text-sm">No conversations yet</div>
+          </div>
+        </div>
+
+        <!-- Archived Section -->
+        <div class="flex-shrink-0 border-t border-zinc-200 dark:border-zinc-800">
+          <button id="toggleArchived" class="w-full px-4 py-2 text-left text-xs font-semibold text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition flex items-center justify-between">
+            <span>Archived</span>
+            <span id="archivedArrow" class="text-zinc-500">▼</span>
+          </button>
+          <div id="archivedList" class="hidden divide-y divide-zinc-200 dark:divide-zinc-800">
+            <!-- Archived conversations rendered here -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Conversation Detail View -->
+      <div id="conversationDetailView" class="hidden flex flex-col flex-1 overflow-hidden">
+        <!-- Conversation Header -->
         <div class="flex-shrink-0 h-14 bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between px-4 gap-3">
           <div class="flex items-center gap-3 flex-1 min-w-0">
-            <button id="backBtn" class="md:hidden text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition text-xl">←</button>
+            <button id="backBtn" class="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition text-xl">←</button>
             <div class="min-w-0 flex-1">
               <div id="chatHeaderName" class="font-semibold text-zinc-900 dark:text-zinc-100 truncate">—</div>
               <div id="chatHeaderStatus" class="text-xs text-zinc-500 dark:text-zinc-500">offline</div>
@@ -329,14 +339,6 @@
           </div>
         </div>
       </div>
-
-      <!-- Empty State -->
-      <div id="emptyState" class="hidden flex flex-col items-center justify-center flex-1 text-center p-8">
-        <div class="text-4xl mb-4">💬</div>
-        <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mb-2">No Conversation Selected</h2>
-        <p class="text-sm text-zinc-600 dark:text-zinc-400 mb-6">Select a conversation from the list or start a new chat</p>
-        <button id="emptyNewChatBtn" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg text-sm font-medium transition active:scale-95">+ New Chat</button>
-      </div>
     </main>
   </div>
 </div>
@@ -364,7 +366,6 @@
 <!-- Dev Console Forwarder -->
 <script>
   (function () {
-    // usernode-dev-console@1
     var orig = console.log;
     var messages = [];
     var relayLog = function () {
@@ -403,7 +404,7 @@
   let currentConvId = null;
   let currentOtherId = null;
   let currentContactName = null;
-  let currentRightPanel = 'profile';
+  let currentRightPanel = 'chats';
 
   // Utility Functions
   function escapeHtml(text) {
@@ -464,13 +465,15 @@
     currentRightPanel = panelName;
 
     // Hide all panels
-    document.getElementById('chatView').classList.add('hidden');
+    document.getElementById('chatsView').classList.add('hidden');
+    document.getElementById('conversationDetailView').classList.add('hidden');
     document.getElementById('profileView').classList.add('hidden');
     document.getElementById('contactsView').classList.add('hidden');
     document.getElementById('settingsPanel').classList.add('hidden');
-    document.getElementById('emptyState').classList.add('hidden');
 
     // Reset tab styles
+    document.getElementById('tabChats').classList.remove('text-cyan-600', 'dark:text-cyan-400');
+    document.getElementById('tabChats').classList.add('text-zinc-600', 'dark:text-zinc-400');
     document.getElementById('tabProfile').classList.remove('text-cyan-600', 'dark:text-cyan-400');
     document.getElementById('tabProfile').classList.add('text-zinc-600', 'dark:text-zinc-400');
     document.getElementById('tabContacts').classList.remove('text-cyan-600', 'dark:text-cyan-400');
@@ -480,6 +483,11 @@
 
     // Show selected panel
     switch(panelName) {
+      case 'chats':
+        showChatsView();
+        document.getElementById('tabChats').classList.remove('text-zinc-600', 'dark:text-zinc-400');
+        document.getElementById('tabChats').classList.add('text-cyan-600', 'dark:text-cyan-400');
+        break;
       case 'profile':
         showProfileView();
         document.getElementById('tabProfile').classList.remove('text-zinc-600', 'dark:text-zinc-400');
@@ -495,6 +503,9 @@
         document.getElementById('tabSettings').classList.remove('text-zinc-600', 'dark:text-zinc-400');
         document.getElementById('tabSettings').classList.add('text-cyan-600', 'dark:text-cyan-400');
         break;
+      case 'conversation-detail':
+        showConversationDetailView();
+        break;
     }
     closeSidebar();
   }
@@ -508,10 +519,16 @@
   }
 
   function signOut() {
+    closeSidebar();
     localStorage.removeItem('token');
     localStorage.removeItem('username');
     localStorage.removeItem('userId');
     window.location.href = '/';
+  }
+
+  function showChatsView() {
+    document.getElementById('chatsView').classList.remove('hidden');
+    document.getElementById('chatsSearchContainer').classList.add('hidden');
   }
 
   function showProfileView() {
@@ -527,9 +544,8 @@
     document.getElementById('contactsView').classList.remove('hidden');
   }
 
-  function showChatView() {
-    document.getElementById('emptyState').classList.add('hidden');
-    document.getElementById('chatView').classList.remove('hidden');
+  function showConversationDetailView() {
+    document.getElementById('conversationDetailView').classList.remove('hidden');
   }
 
   // Initialize
@@ -557,14 +573,19 @@
     }
 
     currentUser = userData;
-    document.getElementById('userInfo').textContent = userData.username || '—';
-    document.getElementById('userWallet').textContent = (userData.usernode_pubkey || '').slice(0, 10) + '...';
 
     // Load conversations
     await loadConversations();
 
     // Setup event listeners
     document.getElementById('conversationSearch').addEventListener('input', e => filterConversations(e.target.value));
+    document.getElementById('chatsSearchBtn').addEventListener('click', () => {
+      const container = document.getElementById('chatsSearchContainer');
+      container.classList.toggle('hidden');
+      if (!container.classList.contains('hidden')) {
+        document.getElementById('conversationSearch').focus();
+      }
+    });
     document.getElementById('newChatBtn').addEventListener('click', () => {
       document.getElementById('newChatModal').classList.remove('hidden');
       document.getElementById('newChatRecipient').focus();
@@ -589,10 +610,12 @@
       document.getElementById('leftSidebar').classList.toggle('active');
       document.getElementById('sidebarOverlay').classList.toggle('active');
     });
-    document.getElementById('backBtn').addEventListener('click', closeSidebar);
+    document.getElementById('backBtn').addEventListener('click', () => {
+      switchRightPanel('chats');
+    });
 
-    // Show empty state initially
-    document.getElementById('emptyState').classList.remove('hidden');
+    // Show chats view initially
+    switchRightPanel('chats');
   }
 
   async function loadConversations() {
@@ -640,8 +663,8 @@
     // Load messages
     await loadMessages();
 
-    // Show chat
-    showChatView();
+    // Show conversation detail
+    switchRightPanel('conversation-detail');
   }
 
   async function loadMessages() {
