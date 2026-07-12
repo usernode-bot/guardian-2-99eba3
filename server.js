@@ -2569,7 +2569,7 @@ app.get('/api/transactions-by-user', async (req, res) => {
   }
 });
 
-// GET /api/user/messages - Authenticated user's sent messages (direct + group)
+// GET /api/user/messages - Authenticated user's sent direct messages
 app.get('/api/user/messages', async (req, res) => {
   try {
     if (!req.user) {
@@ -2596,27 +2596,12 @@ app.get('/api/user/messages', async (req, res) => {
         ELSE c.participant_a_id
       END
       WHERE m.sender_id = $1
-      UNION ALL
-      SELECT
-        gm.id,
-        gm.created_at,
-        gm.content,
-        'group' as message_type,
-        NULL::TEXT as recipient_username,
-        g.name as group_name
-      FROM group_messages gm
-      JOIN groups g ON g.id = gm.group_id
-      WHERE gm.sender_id = $1
       ORDER BY created_at DESC
-      LIMIT $2 OFFSET $3
-    `, [userId, limit, offset]);
+      LIMIT $1 OFFSET $2
+    `, [limit, offset]);
 
     const { rows: countResult } = await pool.query(`
-      SELECT COUNT(*) as total FROM (
-        SELECT m.id FROM messages m WHERE m.sender_id = $1
-        UNION ALL
-        SELECT gm.id FROM group_messages gm WHERE gm.sender_id = $1
-      ) combined
+      SELECT COUNT(*) as total FROM messages m WHERE m.sender_id = $1
     `, [userId]);
 
     const total = parseInt(countResult[0].total);
@@ -3611,18 +3596,18 @@ app.get('/api/activity', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
-    // Get blockchain audit logs for this user (token transfers and group operations)
+    // Get blockchain audit logs for this user (token transfers)
     const { rows } = await pool.query(`
       SELECT id, user_id, message_type, tx_hash, status, error_message, confirmed_at, created_at, transaction_payload
       FROM blockchain_audit_logs
-      WHERE user_id = $1 AND message_type IN ('token_transfer', 'group_create', 'group_add_members', 'group_remove_member', 'group_update', 'group_delete', 'group_leave')
+      WHERE user_id = $1 AND message_type = 'token_transfer'
       ORDER BY created_at DESC
       LIMIT $2 OFFSET $3
     `, [userId, limit, offset]);
 
     const { rows: countRows } = await pool.query(`
       SELECT COUNT(*) as total FROM blockchain_audit_logs
-      WHERE user_id = $1 AND message_type IN ('token_transfer', 'group_create', 'group_add_members', 'group_remove_member', 'group_update', 'group_delete', 'group_leave')
+      WHERE user_id = $1 AND message_type = 'token_transfer'
     `, [userId]);
 
     const activities = rows.map(r => {
@@ -4885,10 +4870,6 @@ async function start() {
     await pool.query(`COMMENT ON TABLE read_receipts IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE user_contacts IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE blockchain_audit_logs IS 'staging:private'`);
-    await pool.query(`COMMENT ON TABLE groups IS 'staging:private'`);
-    await pool.query(`COMMENT ON TABLE group_members IS 'staging:private'`);
-    await pool.query(`COMMENT ON TABLE group_messages IS 'staging:private'`);
-    await pool.query(`COMMENT ON TABLE group_read_receipts IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE user_peers IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE user_foreground_sessions IS 'staging:private'`);
 
@@ -5317,463 +5298,6 @@ async function start() {
         `, [alice, JSON.stringify({ text: `[Staging] Demo feed post #${i+1}` }), postTimes[i]]);
       }
 
-      // Create sample groups
-      const { rows: designGroupRows } = await pool.query(`
-        SELECT id FROM groups WHERE creator_id = $1 AND name = 'Staging Design Feedback'
-      `, [alice]);
-
-      let designGroupId;
-      if (designGroupRows.length === 0) {
-        const result = await pool.query(`
-          INSERT INTO groups (creator_id, name, description, created_at, updated_at)
-          VALUES ($1, 'Staging Design Feedback', '[Staging] Share design ideas and feedback', NOW(), NOW())
-          RETURNING id
-        `, [alice]);
-        designGroupId = result.rows[0].id;
-      } else {
-        designGroupId = designGroupRows[0].id;
-      }
-
-      // Add members to Design Feedback group
-      for (const memberId of [alice, bob, charlie]) {
-        await pool.query(`
-          INSERT INTO group_members (group_id, user_id, role, joined_at)
-          VALUES ($1, $2, $3, NOW())
-          ON CONFLICT (group_id, user_id) DO NOTHING
-        `, [designGroupId, memberId, memberId === alice ? 'creator' : 'member']);
-      }
-
-      // Add messages to Design Feedback group
-      const designBaseTime = new Date(Date.now() - 1800000);
-      const designMessages = [
-        { offset: 0, sender: alice, type: 'text', content: { text: '[Staging] Hey team! Check out this new design' }, blockchain: true },
-        { offset: 600000, sender: bob, type: 'text', content: { text: '[Staging] Looks great! Love the color scheme' }, blockchain: false },
-        { offset: 1200000, sender: charlie, type: 'text', content: { text: '[Staging] Really nice work, Alice!' }, blockchain: false },
-      ];
-
-      // Fetch user pubkeys for seeding
-      const { rows: userPubkeyRows } = await pool.query(`
-        SELECT id, usernode_pubkey FROM users WHERE id IN ($1, $2, $3)
-      `, [alice, bob, charlie]);
-      const userPubkeyMap = {};
-      userPubkeyRows.forEach(row => {
-        userPubkeyMap[row.id] = row.usernode_pubkey;
-      });
-
-      // Create audit log entries for group creation
-      const { rows: designGroupCheckRows } = await pool.query(`
-        SELECT id, creator_id, created_at FROM groups WHERE id = $1
-      `, [designGroupId]);
-      if (designGroupCheckRows.length > 0 && designGroupCheckRows[0].creator_id === alice) {
-        const groupCreateTime = designGroupCheckRows[0].created_at;
-        const groupCreateTxHash = 'ut1staging-testnet-group-create-' + designGroupId + '-' + new Date(groupCreateTime).getTime();
-        const groupCreatePayload = {
-          type: 'group_create',
-          groupId: designGroupId,
-          groupName: 'Staging Design Feedback',
-          creatorPubkey: userPubkeyMap[alice],
-          memberPubkeys: [userPubkeyMap[alice], userPubkeyMap[bob], userPubkeyMap[charlie]],
-          timestamp: groupCreateTime ? new Date(groupCreateTime).toISOString() : new Date().toISOString()
-        };
-        await pool.query(`
-          INSERT INTO blockchain_audit_logs (user_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
-          VALUES ($1, $2, 'group_create', $3, $4, 'confirmed', $5, $6, $7, $8, $9, $9)
-          ON CONFLICT DO NOTHING
-        `, [alice, designGroupId, groupCreateTxHash, JSON.stringify(groupCreatePayload), groupCreateTime, null, userPubkeyMap[alice], groupCreateTime || new Date(), groupCreateTime || new Date()]);
-      }
-
-      for (const msg of designMessages) {
-        const msgTime = new Date(designBaseTime.getTime() + msg.offset);
-        const result = await pool.query(`
-          INSERT INTO group_messages (group_id, sender_id, type, content, blockchain_recorded, created_at)
-          VALUES ($1, $2, $3, $4, $5, $6)
-          ON CONFLICT DO NOTHING
-          RETURNING id
-        `, [designGroupId, msg.sender, msg.type, JSON.stringify(msg.content), msg.blockchain, msgTime]);
-
-        if (msg.blockchain && result.rows.length > 0) {
-          const messageId = result.rows[0].id;
-          const contentHash = computeContentHash(msg.content);
-          const txHash = 'ut1staging-testnet-message-' + messageId + '-' + msgTime.getTime();
-          const transactionPayload = {
-            type: 'message',
-            messageId: messageId,
-            groupId: designGroupId,
-            senderPubkey: userPubkeyMap[msg.sender],
-            contentHash: contentHash,
-            timestamp: msgTime.toISOString()
-          };
-
-          const auditResult = await pool.query(`
-            INSERT INTO blockchain_audit_logs (user_id, message_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, 'confirmed', $7, $8, $9, $10, $11, $11)
-            ON CONFLICT DO NOTHING
-            RETURNING id
-          `, [msg.sender, messageId, designGroupId, 'message', txHash, JSON.stringify(transactionPayload), msgTime, contentHash, userPubkeyMap[msg.sender], msgTime, msgTime]);
-
-          if (auditResult.rows.length > 0) {
-            await pool.query(`
-              UPDATE group_messages SET blockchain_audit_log_id = $1 WHERE id = $2
-            `, [auditResult.rows[0].id, messageId]);
-          }
-        }
-      }
-
-      // Initialize read receipts for Design Feedback group
-      for (const memberId of [alice, bob, charlie]) {
-        await pool.query(`
-          INSERT INTO group_read_receipts (user_id, group_id, last_read_at)
-          VALUES ($1, $2, NOW())
-          ON CONFLICT (user_id, group_id) DO NOTHING
-        `, [memberId, designGroupId]);
-      }
-
-      // Create General Chat group
-      const { rows: generalGroupRows } = await pool.query(`
-        SELECT id FROM groups WHERE creator_id = $1 AND name = 'Staging General Chat'
-      `, [bob]);
-
-      let generalGroupId;
-      if (generalGroupRows.length === 0) {
-        const result = await pool.query(`
-          INSERT INTO groups (creator_id, name, description, created_at, updated_at)
-          VALUES ($1, 'Staging General Chat', '[Staging] General discussion and updates', NOW(), NOW())
-          RETURNING id
-        `, [bob]);
-        generalGroupId = result.rows[0].id;
-      } else {
-        generalGroupId = generalGroupRows[0].id;
-      }
-
-      // Add members to General Chat group
-      for (const memberId of [bob, alice, david, emma]) {
-        await pool.query(`
-          INSERT INTO group_members (group_id, user_id, role, joined_at)
-          VALUES ($1, $2, $3, NOW())
-          ON CONFLICT (group_id, user_id) DO NOTHING
-        `, [generalGroupId, memberId, memberId === bob ? 'creator' : 'member']);
-      }
-
-      // Add messages to General Chat group
-      const generalBaseTime = new Date(Date.now() - 1800000);
-      const generalMessages = [
-        { offset: 0, sender: bob, type: 'text', content: { text: '[Staging] Welcome to the group! Looking forward to great discussions' }, blockchain: false },
-        { offset: 600000, sender: alice, type: 'text', content: { text: '[Staging] Thanks for creating this! Already excited about the energy' }, blockchain: false },
-        { offset: 900000, sender: david, type: 'image', content: { imageUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mP8z8DwHwMxxGAIwAAADkkBkMTjF4UAAAAASUVORK5CYII=' }, blockchain: false },
-        { offset: 1200000, sender: emma, type: 'token', content: { recipientId: bob, amount: 50, memo: '[Staging] Thanks for the invite!', txHash: 'staging-gp-tx-001', status: 'confirmed' }, blockchain: true },
-      ];
-
-      // Fetch additional user pubkeys for General Chat
-      const { rows: generalUserRows } = await pool.query(`
-        SELECT id, usernode_pubkey FROM users WHERE id IN ($1, $2, $3, $4)
-      `, [bob, alice, david, emma]);
-      const generalUserPubkeyMap = {};
-      generalUserRows.forEach(row => {
-        generalUserPubkeyMap[row.id] = row.usernode_pubkey;
-      });
-
-      // Create audit log entry for General Chat group creation
-      const { rows: generalGroupCheckRows } = await pool.query(`
-        SELECT id, creator_id, created_at FROM groups WHERE id = $1
-      `, [generalGroupId]);
-      if (generalGroupCheckRows.length > 0 && generalGroupCheckRows[0].creator_id === bob) {
-        const genGroupCreateTime = generalGroupCheckRows[0].created_at;
-        const genGroupCreateTxHash = 'ut1staging-testnet-group-create-' + generalGroupId + '-' + new Date(genGroupCreateTime).getTime();
-        const genGroupCreatePayload = {
-          type: 'group_create',
-          groupId: generalGroupId,
-          groupName: 'Staging General Chat',
-          creatorId: bob,
-          memberIds: [bob, alice, david, emma],
-          userPubkey: generalUserPubkeyMap[bob],
-          timestamp: genGroupCreateTime ? new Date(genGroupCreateTime).toISOString() : new Date().toISOString()
-        };
-        await pool.query(`
-          INSERT INTO blockchain_audit_logs (user_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
-          VALUES ($1, $2, 'group_create', $3, $4, 'confirmed', $5, $6, $7, $8, $9, $9)
-          ON CONFLICT DO NOTHING
-        `, [bob, generalGroupId, genGroupCreateTxHash, JSON.stringify(genGroupCreatePayload), genGroupCreateTime, null, generalUserPubkeyMap[bob], genGroupCreateTime || new Date(), genGroupCreateTime || new Date()]);
-      }
-
-      for (const msg of generalMessages) {
-        const msgTime = new Date(generalBaseTime.getTime() + msg.offset);
-        const result = await pool.query(`
-          INSERT INTO group_messages (group_id, sender_id, type, content, blockchain_recorded, created_at)
-          VALUES ($1, $2, $3, $4, $5, $6)
-          ON CONFLICT DO NOTHING
-          RETURNING id
-        `, [generalGroupId, msg.sender, msg.type, JSON.stringify(msg.content), msg.blockchain, msgTime]);
-
-        if (msg.blockchain && result.rows.length > 0) {
-          const messageId = result.rows[0].id;
-          const contentHash = computeContentHash(msg.content);
-          const txHash = 'ut1staging-testnet-message-' + messageId + '-' + msgTime.getTime();
-          const messageType = msg.type === 'token' ? 'token_transfer' : 'message';
-          const transactionPayload = msg.type === 'token'
-            ? {
-                type: 'token_transfer',
-                messageId: messageId,
-                groupId: generalGroupId,
-                sender: msg.sender,
-                recipient: msg.content.recipientId,
-                amount: msg.content.amount,
-                memo: msg.content.memo,
-                userPubkey: generalUserPubkeyMap[msg.sender],
-                contentHash: contentHash,
-                timestamp: msgTime.toISOString()
-              }
-            : {
-                type: 'message',
-                messageId: messageId,
-                groupId: generalGroupId,
-                senderId: msg.sender,
-                userPubkey: generalUserPubkeyMap[msg.sender],
-                contentHash: contentHash,
-                timestamp: msgTime.toISOString()
-              };
-
-          const auditResult = await pool.query(`
-            INSERT INTO blockchain_audit_logs (user_id, message_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, 'confirmed', $7, $8, $9, $10, $11, $11)
-            ON CONFLICT DO NOTHING
-            RETURNING id
-          `, [msg.sender, messageId, generalGroupId, messageType, txHash, JSON.stringify(transactionPayload), msgTime, contentHash, generalUserPubkeyMap[msg.sender], msgTime, msgTime]);
-
-          if (auditResult.rows.length > 0) {
-            await pool.query(`
-              UPDATE group_messages SET blockchain_audit_log_id = $1 WHERE id = $2
-            `, [auditResult.rows[0].id, messageId]);
-          }
-        }
-      }
-
-      // Initialize read receipts for General Chat group
-      for (const memberId of [bob, alice, david, emma]) {
-        await pool.query(`
-          INSERT INTO group_read_receipts (user_id, group_id, last_read_at)
-          VALUES ($1, $2, NOW())
-          ON CONFLICT (user_id, group_id) DO NOTHING
-        `, [memberId, generalGroupId]);
-      }
-
-      // Seed feed posts
-      const feedBaseTime = new Date();
-      const feedPosts = [
-        {
-          userId: alice,
-          content: { text: '[Staging demo] Hello Guardian community! 👋' },
-          offset: 7200000
-        },
-        {
-          userId: bob,
-          content: {
-            text: '[Staging demo] Just deployed v2.0 of my dapp',
-            link: 'https://example.com/dapp',
-            linkTitle: 'My Cool Dapp',
-            linkImage: 'https://via.placeholder.com/200'
-          },
-          offset: 3600000
-        },
-        {
-          userId: david,
-          content: { text: '[Staging demo] Anyone interested in discussing Web3 standards?' },
-          offset: 1800000
-        },
-        {
-          userId: alice,
-          content: {
-            text: '[Staging demo] Check out this article on blockchain security',
-            link: 'https://example.com/article',
-            linkTitle: 'Blockchain Security Best Practices',
-            linkImage: 'https://via.placeholder.com/200'
-          },
-          offset: 900000
-        },
-        {
-          userId: emma,
-          content: { text: '[Staging demo] Excited about the new Guardian features!' },
-          offset: 600000
-        },
-        {
-          userId: david,
-          content: {
-            text: '[Staging demo] Check out this resource',
-            link: 'https://example.com/resource'
-          },
-          offset: 300000
-        },
-        {
-          userId: alice,
-          content: { text: '[Staging demo] Hey @staging-demo-bob, loved your new dapp! 🚀' },
-          offset: 120000
-        },
-        {
-          userId: emma,
-          content: { text: '[Staging demo] @staging-demo-david and @staging-demo-alice — anyone joining the Web3 standards discussion?' },
-          offset: 60000
-        }
-      ];
-
-      for (const post of feedPosts) {
-        const createdAt = new Date(feedBaseTime.getTime() - post.offset);
-        const isOnChain = Math.random() > 0.5;
-        await pool.query(`
-          INSERT INTO feed_posts (user_id, content, on_chain, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, $4)
-          ON CONFLICT DO NOTHING
-        `, [post.userId, JSON.stringify(post.content), isOnChain, createdAt]);
-      }
-
-      // Seed feed likes on posts
-      const { rows: allPosts } = await pool.query(`
-        SELECT id, user_id FROM feed_posts LIMIT 10
-      `);
-
-      for (const post of allPosts) {
-        const likers = [alice, bob, charlie, david, emma].filter(id => id !== post.user_id);
-        const likeCount = Math.floor(Math.random() * likers.length) + 1;
-        const selectedLikers = likers.sort(() => Math.random() - 0.5).slice(0, likeCount);
-
-        for (const likerId of selectedLikers) {
-          const likeTime = new Date(feedBaseTime.getTime() - Math.random() * 3600000);
-          await pool.query(`
-            INSERT INTO feed_likes (post_id, user_id, created_at)
-            VALUES ($1, $2, $3)
-            ON CONFLICT DO NOTHING
-          `, [post.id, likerId, likeTime]);
-        }
-      }
-
-      // Seed feed comments
-      // Get post IDs for seeding comments
-      const { rows: bobDeployPostRows } = await pool.query(`
-        SELECT id FROM feed_posts WHERE user_id = $1 AND content->>'text' LIKE '%v2.0%' LIMIT 1
-      `, [bob]);
-
-      const { rows: aliceArticlePostRows } = await pool.query(`
-        SELECT id FROM feed_posts WHERE user_id = $1 AND content->>'text' LIKE '%blockchain security%' LIMIT 1
-      `, [alice]);
-
-      const { rows: davidWeb3PostRows } = await pool.query(`
-        SELECT id FROM feed_posts WHERE user_id = $1 AND content->>'text' LIKE '%Web3 standards%' LIMIT 1
-      `, [david]);
-
-      // Seed comments on Bob's deployment post
-      if (bobDeployPostRows.length > 0) {
-        const bobPostId = bobDeployPostRows[0].id;
-        const commentTime1 = new Date(feedBaseTime.getTime() - 2400000);
-        const commentTime2 = new Date(feedBaseTime.getTime() - 2100000);
-
-        await pool.query(`
-          INSERT INTO feed_comments (post_id, user_id, content, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, $4), ($1, $5, $6, $7, $7)
-          ON CONFLICT DO NOTHING
-        `, [bobPostId, alice, '[Staging demo] That sounds amazing! Congrats on the release!', commentTime1, charlie, '[Staging demo] Would love to check it out!', commentTime2]);
-      }
-
-      // Seed comments on Alice's article post
-      if (aliceArticlePostRows.length > 0) {
-        const alicePostId = aliceArticlePostRows[0].id;
-        const commentTime = new Date(feedBaseTime.getTime() - 300000);
-        const commentTime2 = new Date(feedBaseTime.getTime() - 200000);
-
-        await pool.query(`
-          INSERT INTO feed_comments (post_id, user_id, content, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, $4), ($1, $5, $6, $7, $7)
-          ON CONFLICT DO NOTHING
-        `, [alicePostId, bob, '[Staging demo] Great read! Security is so important in Web3.', commentTime, charlie, '[Staging demo] @staging-demo-alice nice one! 👏', commentTime2]);
-      }
-
-      // Seed comments on David's Web3 standards post
-      if (davidWeb3PostRows.length > 0) {
-        const davidPostId = davidWeb3PostRows[0].id;
-        const commentTime1 = new Date(feedBaseTime.getTime() - 1200000);
-        const commentTime2 = new Date(feedBaseTime.getTime() - 600000);
-
-        await pool.query(`
-          INSERT INTO feed_comments (post_id, user_id, content, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, $4), ($1, $5, $6, $7, $7)
-          ON CONFLICT DO NOTHING
-        `, [davidPostId, alice, '[Staging demo] Count me in! We should organize a discussion thread.', commentTime1, emma, '[Staging demo] This is an important topic for the ecosystem!', commentTime2]);
-      }
-
-      // Create additional test group with many messages for archive/delete testing
-      const { rows: techGroupRows } = await pool.query(`
-        SELECT id FROM groups WHERE creator_id = $1 AND name = 'Staging Tech Discussions'
-      `, [charlie]);
-
-      let techGroupId;
-      if (techGroupRows.length === 0) {
-        const result = await pool.query(`
-          INSERT INTO groups (creator_id, name, description, created_at, updated_at)
-          VALUES ($1, 'Staging Tech Discussions', '[Staging] Technical discussions and Q&A', NOW(), NOW())
-          RETURNING id
-        `, [charlie]);
-        techGroupId = result.rows[0].id;
-      } else {
-        techGroupId = techGroupRows[0].id;
-      }
-
-      // Add members to Tech Discussions group
-      for (const memberId of [charlie, alice, bob, david]) {
-        await pool.query(`
-          INSERT INTO group_members (group_id, user_id, role, joined_at)
-          VALUES ($1, $2, $3, NOW())
-          ON CONFLICT (group_id, user_id) DO NOTHING
-        `, [techGroupId, memberId, memberId === charlie ? 'creator' : 'member']);
-      }
-
-      // Add many messages to Tech group (30+ for testing bulk delete)
-      const techBaseTime = new Date(Date.now() - 3600000);
-      const techMessages = [
-        { offset: 0, sender: charlie, content: { text: '[Staging] Anyone here familiar with smart contract optimization?' } },
-        { offset: 120000, sender: alice, content: { text: '[Staging] Yes, I work with Solidity regularly. What are you trying to optimize?' } },
-        { offset: 240000, sender: bob, content: { text: '[Staging] Gas optimization is always the tricky part' } },
-        { offset: 360000, sender: david, content: { text: '[Staging] Have you considered using assembly? Sometimes thats the answer' } },
-        { offset: 480000, sender: charlie, content: { text: '[Staging] We are already using some assembly, but thanks for the tip!' } },
-        { offset: 600000, sender: alice, content: { text: '[Staging] What patterns are you using for state management?' } },
-        { offset: 720000, sender: bob, content: { text: '[Staging] Mapping with enumerable sets is usually my go-to' } },
-        { offset: 840000, sender: david, content: { text: '[Staging] Just be careful with array iteration performance' } },
-        { offset: 960000, sender: charlie, content: { text: '[Staging] Good point! We had issues with that before' } },
-        { offset: 1080000, sender: alice, content: { text: '[Staging] Have you looked at OpenZeppelin libraries?' } },
-        { offset: 1200000, sender: bob, content: { text: '[Staging] Their upgradeable patterns are really solid' } },
-        { offset: 1320000, sender: david, content: { text: '[Staging] Just make sure to audit thoroughly if using upgrades' } },
-        { offset: 1440000, sender: charlie, content: { text: '[Staging] Security is always the priority for us' } },
-        { offset: 1560000, sender: alice, content: { text: '[Staging] What testing frameworks do you use?' } },
-        { offset: 1680000, sender: bob, content: { text: '[Staging] Hardhat and Foundry are my favorites currently' } },
-        { offset: 1800000, sender: david, content: { text: '[Staging] Foundry is getting really good. Love the speed' } },
-        { offset: 1920000, sender: charlie, content: { text: '[Staging] Were migrating to Foundry soon actually' } },
-        { offset: 2040000, sender: alice, content: { text: '[Staging] Excellent choice. The developer experience is much better' } },
-        { offset: 2160000, sender: bob, content: { text: '[Staging] Agreed. Cheatcodes are super useful for testing' } },
-        { offset: 2280000, sender: david, content: { text: '[Staging] Make sure you have good coverage targets in place' } },
-        { offset: 2400000, sender: charlie, content: { text: '[Staging] We aim for 90% coverage minimum' } },
-        { offset: 2520000, sender: alice, content: { text: '[Staging] Thats a solid target. Edge cases are important' } },
-        { offset: 2640000, sender: bob, content: { text: '[Staging] Fuzzing is also really helpful for finding edge cases' } },
-        { offset: 2760000, sender: david, content: { text: '[Staging] Echidna is great for fuzzing Solidity' } },
-        { offset: 2880000, sender: charlie, content: { text: '[Staging] Will definitely check that out, thanks for the tips everyone!' } },
-        { offset: 3000000, sender: alice, content: { text: '[Staging] Anytime! Feel free to reach out if you hit any roadblocks' } },
-        { offset: 3120000, sender: bob, content: { text: '[Staging] Great discussion! Always love these tech talks' } },
-        { offset: 3240000, sender: david, content: { text: '[Staging] Same here. Its good to share knowledge' } },
-        { offset: 3360000, sender: charlie, content: { text: '[Staging] Definitely. This community is awesome' } },
-      ];
-
-      for (const msg of techMessages) {
-        const msgTime = new Date(techBaseTime.getTime() + msg.offset);
-        await pool.query(`
-          INSERT INTO group_messages (group_id, sender_id, type, content, blockchain_recorded, created_at)
-          VALUES ($1, $2, $3, $4, $5, $6)
-          ON CONFLICT DO NOTHING
-        `, [techGroupId, msg.sender, 'text', JSON.stringify(msg.content), false, msgTime]);
-      }
-
-      // Initialize read receipts for Tech group
-      for (const memberId of [charlie, alice, bob, david]) {
-        await pool.query(`
-          INSERT INTO group_read_receipts (user_id, group_id, last_read_at)
-          VALUES ($1, $2, NOW())
-          ON CONFLICT (user_id, group_id) DO NOTHING
-        `, [memberId, techGroupId]);
-      }
 
       // Seed peer data with realistic peer IDs and foreground hours
       const peerData = [
@@ -5860,44 +5384,6 @@ async function start() {
         ON CONFLICT DO NOTHING
       `, [convFrankAliceId, frank]);
 
-      // Create a group where Alice is a member but doesn't send messages
-      // This also tests counter for group participation without sending
-      const { rows: testGroupRows } = await pool.query(`
-        SELECT id FROM groups WHERE creator_id = $1 AND name = 'Staging Test Group'
-      `, [david]);
-
-      let testGroupId;
-      if (testGroupRows.length === 0) {
-        const result = await pool.query(`
-          INSERT INTO groups (creator_id, name, description, created_at, updated_at)
-          VALUES ($1, 'Staging Test Group', '[Staging] Test group for counter verification', NOW(), NOW())
-          RETURNING id
-        `, [david]);
-        testGroupId = result.rows[0].id;
-      } else {
-        testGroupId = testGroupRows[0].id;
-      }
-
-      // Add Alice to the test group (but she won't send messages)
-      await pool.query(`
-        INSERT INTO group_members (group_id, user_id, role, joined_at)
-        VALUES ($1, $2, 'member', NOW()), ($1, $3, 'creator', NOW())
-        ON CONFLICT (group_id, user_id) DO NOTHING
-      `, [testGroupId, alice, david]);
-
-      // Add a message from David (Alice receives but doesn't send)
-      await pool.query(`
-        INSERT INTO group_messages (group_id, sender_id, type, content, created_at)
-        VALUES ($1, $2, 'text', '{"text": "[Staging] Welcome to the test group, Alice!"}', NOW())
-        ON CONFLICT DO NOTHING
-      `, [testGroupId, david]);
-
-      // Initialize read receipts
-      await pool.query(`
-        INSERT INTO group_read_receipts (user_id, group_id, last_read_at)
-        VALUES ($1, $2, NOW()), ($3, $2, NOW())
-        ON CONFLICT (user_id, group_id) DO NOTHING
-      `, [alice, testGroupId, david]);
 
       // Seed network milestone posts for staging
       const milestones = [
