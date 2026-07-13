@@ -9208,7 +9208,7 @@
             }
 
             if (badge.explorerUrl) {
-              badgeHtml = `<a href="${escapeHtml(badge.explorerUrl)}" target="_blank" class="inline-block px-2 py-1 ${badgeBgColor} ${badgeTextColor} rounded text-xs font-medium cursor-pointer hover:opacity-80 transition" title="${escapeHtml(badge.txHash || '')}">
+              badgeHtml = `<a href="${escapeHtml(badge.explorerUrl)}" target="_blank" onclick="event.stopPropagation()" class="inline-block px-2 py-1 ${badgeBgColor} ${badgeTextColor} rounded text-xs font-medium cursor-pointer hover:opacity-80 transition" title="${escapeHtml(badge.txHash || '')}">
                 ${badgeIcon} ${badgeLabel}
                 <span class="font-mono text-xs ml-1">${txHashShort}</span>
               </a>`;
