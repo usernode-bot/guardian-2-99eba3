@@ -788,7 +788,7 @@
         </button>
       </div>
       <!-- Messages View with Sticky Footer Toggle -->
-      <div id="messagesView" class="hidden flex flex-col flex-1 overflow-hidden">
+      <div id="messagesView" class="hidden flex flex-col flex-1 overflow-hidden relative">
         <!-- Direct Messages List -->
         <div id="directList" class="flex-1 overflow-y-auto">
           <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading conversations...</div>
@@ -810,6 +810,9 @@
             <span>Groups</span>
           </button>
         </div>
+
+        <!-- Floating Action Button for New Chat -->
+        <button id="newChatFAB" class="hidden fixed bottom-6 right-6 w-12 h-12 rounded-full bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white flex items-center justify-center shadow-lg z-40 transition active:scale-95 font-bold text-xl" onclick="openNewChatModal()" title="Start new chat">+</button>
       </div>
 
       <!-- Conversations List (initial view) - DEPRECATED, kept for backward compatibility -->
@@ -1281,6 +1284,29 @@
       <div class="flex gap-2">
         <button onclick="closeCreateGroupModal()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
         <button onclick="createGroup()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- New Chat Modal -->
+  <div id="newChatModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4" onclick="if(event.target===this) closeNewChatModal()">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-sm max-h-[90vh] flex flex-col">
+      <!-- Header -->
+      <div class="flex justify-between items-center p-6 border-b border-zinc-300 dark:border-zinc-700 flex-shrink-0">
+        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Start a new chat</h2>
+        <button onclick="closeNewChatModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition text-xl">✕</button>
+      </div>
+
+      <!-- Search Input -->
+      <div class="p-4 border-b border-zinc-300 dark:border-zinc-700 flex-shrink-0">
+        <input id="newChatSearchInput" type="text" placeholder="Search contacts" oninput="handleNewChatSearch(event)" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition text-sm">
+      </div>
+
+      <!-- Contacts List -->
+      <div id="newChatContactList" class="flex-1 overflow-y-auto">
+        <div class="text-center py-8 text-zinc-600 dark:text-zinc-400">
+          <p class="text-sm">No contacts yet. Start a conversation to build your contact list.</p>
+        </div>
       </div>
     </div>
   </div>
@@ -3865,6 +3891,8 @@
         directList.classList.add('hidden');
         await loadGroups();
       }
+
+      updateNewChatFABVisibility();
     }
 
     // Load groups list
@@ -4231,6 +4259,76 @@
       document.getElementById('createGroupModal').classList.add('hidden');
       document.getElementById('groupNameInput').value = '';
       document.getElementById('groupDescInput').value = '';
+    }
+
+    // New chat modal functions
+    function openNewChatModal() {
+      document.getElementById('newChatModal').classList.remove('hidden');
+      document.getElementById('newChatSearchInput').value = '';
+      populateNewChatContactList('');
+    }
+
+    function closeNewChatModal() {
+      document.getElementById('newChatModal').classList.add('hidden');
+      document.getElementById('newChatSearchInput').value = '';
+    }
+
+    function handleNewChatSearch(event) {
+      const query = event.target.value.trim().toLowerCase();
+      populateNewChatContactList(query);
+    }
+
+    function populateNewChatContactList(query) {
+      const list = document.getElementById('newChatContactList');
+
+      if (!allContacts || allContacts.length === 0) {
+        list.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400"><p class="text-sm">No contacts yet. Start a conversation to build your contact list.</p></div>';
+        return;
+      }
+
+      let filtered = allContacts;
+      if (query) {
+        filtered = allContacts.filter(contact => {
+          const username = (contact.username || '').toLowerCase();
+          const nickname = (contact.nickname || '').toLowerCase();
+          const pubkey = (contact.usernode_pubkey || '').toLowerCase();
+          return username.includes(query) || nickname.includes(query) || pubkey.includes(query);
+        });
+      }
+
+      if (filtered.length === 0) {
+        list.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400"><p class="text-sm">No contacts found</p></div>';
+        return;
+      }
+
+      list.innerHTML = filtered.map(contact => {
+        const displayName = contact.nickname || contact.username;
+        const userId = contact.userId || contact.id;
+        return `
+          <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer border-b border-zinc-300 dark:border-zinc-800" onclick="selectNewChatContact(${userId}, '${displayName.replace(/'/g, "\\'")}')">
+            <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${displayName}</div>
+            <div class="text-xs text-zinc-600 dark:text-zinc-400 truncate">${contact.usernode_pubkey || 'No wallet'}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function selectNewChatContact(userId, username) {
+      startConversationWithContact(userId, username);
+      closeNewChatModal();
+    }
+
+    // Update FAB visibility based on messagesView state
+    function updateNewChatFABVisibility() {
+      const messagesView = document.getElementById('messagesView');
+      const fab = document.getElementById('newChatFAB');
+      if (!messagesView || !fab) return;
+
+      if (messagesView.classList.contains('hidden')) {
+        fab.classList.add('hidden');
+      } else {
+        fab.classList.remove('hidden');
+      }
     }
 
     // Open create channel modal
@@ -6296,6 +6394,7 @@
 
       // Initialize tabs
       await switchMessagesTab(activeMessagesTab);
+      updateNewChatFABVisibility();
 
       // Start polling for both tabs, but only if messages view is visible
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
@@ -6949,6 +7048,7 @@
       document.getElementById('inputFooter').classList.add('footer-in-view');
       document.getElementById('header').classList.add('header-chat-fixed');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
+      updateNewChatFABVisibility();
     }
 
     function showChannelChatView() {
@@ -6965,6 +7065,7 @@
       document.getElementById('inputFooter').classList.remove('footer-in-view');
       document.getElementById('header').classList.add('header-chat-fixed');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
+      updateNewChatFABVisibility();
     }
 
     function showContactsView() {
@@ -6995,6 +7096,7 @@
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
       if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
       document.getElementById('contactsSearchInput').value = '';
+      updateNewChatFABVisibility();
       loadContactsList();
     }
 
