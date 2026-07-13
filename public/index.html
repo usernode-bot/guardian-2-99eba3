@@ -31,28 +31,14 @@
     }
 
     function restoreViewModeEarly() {
-      const allKeys = Object.keys(localStorage);
-      let viewMode = 'web';
-      for (const key of allKeys) {
-        if (key.startsWith('guardian_settings_')) {
-          try {
-            const settings = JSON.parse(localStorage.getItem(key));
-            viewMode = settings.view_mode || 'web';
-            break;
-          } catch (_) {}
-        }
-      }
-
       const body = document.body;
       if (body) {
-        body.classList.toggle('layout-mobile', viewMode === 'mobile');
-        body.classList.toggle('layout-web', viewMode === 'web');
+        body.classList.add('layout-web');
       } else {
         document.addEventListener('DOMContentLoaded', function() {
           const body = document.body;
           if (body) {
-            body.classList.toggle('layout-mobile', viewMode === 'mobile');
-            body.classList.toggle('layout-web', viewMode === 'web');
+            body.classList.add('layout-web');
           }
         });
       }
@@ -637,49 +623,6 @@
                 <button id="layoutCompact" onclick="applyLayout('compact')" class="flex-1 px-2 py-2 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-transparent hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Compact</button>
               </div>
             </div>
-            <!-- Mode Subsection -->
-            <div class="space-y-1">
-              <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400">Mode</label>
-              <div class="flex gap-2">
-                <button id="viewModeWeb" onclick="applyViewMode('web')" class="flex-1 px-2 py-2 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-cyan-600 dark:border-cyan-500 hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Web/Desktop</button>
-                <button id="viewModeMobile" onclick="applyViewMode('mobile')" class="flex-1 px-2 py-2 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-transparent hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Mobile</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- System (Parent Accordion) -->
-        <div id="systemAccordion" class="space-y-1 border-t border-zinc-200 dark:border-zinc-700 pt-1.5 mt-1.5">
-          <button id="systemToggle" onclick="toggleSystemAccordion()" class="w-full flex items-center justify-between px-0 py-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
-            <div class="flex items-center gap-2">
-              <span>System</span>
-              <span id="systemHeaderDot" class="inline-block w-2.5 h-2.5 rounded-full bg-gray-400 transition-colors"></span>
-            </div>
-            <svg id="systemArrow" class="w-5 h-5 transition-transform duration-200 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-            </svg>
-          </button>
-          <div id="systemContent" class="hidden pt-2 space-y-2">
-
-            <!-- On-Chain Activity (Sub-Accordion) -->
-            <div id="transactionHistoryAccordion" class="space-y-1">
-              <button id="transactionToggle" onclick="toggleTransactionAccordion()" class="w-full flex items-center justify-between px-0 py-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
-                <div class="flex items-center gap-2">
-                  <span>On-Chain Activity</span>
-                  <span id="transactionHeaderDot" class="inline-block w-2.5 h-2.5 rounded-full bg-gray-400 transition-colors"></span>
-                </div>
-                <svg id="transactionArrow" class="w-5 h-5 transition-transform duration-200 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                </svg>
-              </button>
-              <div id="transactionContent" class="hidden pt-2 space-y-2">
-                <!-- Transaction History List -->
-                <div id="transactionHistoryList" class="max-h-64 overflow-y-auto space-y-1 text-xs">
-                  <div class="text-center py-4 text-zinc-500 dark:text-zinc-400">Loading...</div>
-                </div>
-              </div>
-            </div>
-
             <!-- Network Mode (Sub-Accordion) -->
             <div id="networkModeAccordion" class="space-y-1">
               <button id="networkModeToggle" onclick="toggleNetworkModeAccordion()" class="w-full flex items-center justify-between px-0 py-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
@@ -733,6 +676,40 @@
                       <p class="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">When enabled, transactions will broadcast immediately without wallet confirmation.</p>
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- System (Parent Accordion) -->
+        <div id="systemAccordion" class="space-y-1 border-t border-zinc-200 dark:border-zinc-700 pt-1.5 mt-1.5">
+          <button id="systemToggle" onclick="toggleSystemAccordion()" class="w-full flex items-center justify-between px-0 py-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
+            <div class="flex items-center gap-2">
+              <span>System</span>
+              <span id="systemHeaderDot" class="inline-block w-2.5 h-2.5 rounded-full bg-gray-400 transition-colors"></span>
+            </div>
+            <svg id="systemArrow" class="w-5 h-5 transition-transform duration-200 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+            </svg>
+          </button>
+          <div id="systemContent" class="hidden pt-2 space-y-2">
+
+            <!-- On-Chain Activity (Sub-Accordion) -->
+            <div id="transactionHistoryAccordion" class="space-y-1">
+              <button id="transactionToggle" onclick="toggleTransactionAccordion()" class="w-full flex items-center justify-between px-0 py-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
+                <div class="flex items-center gap-2">
+                  <span>On-Chain Activity</span>
+                  <span id="transactionHeaderDot" class="inline-block w-2.5 h-2.5 rounded-full bg-gray-400 transition-colors"></span>
+                </div>
+                <svg id="transactionArrow" class="w-5 h-5 transition-transform duration-200 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                </svg>
+              </button>
+              <div id="transactionContent" class="hidden pt-2 space-y-2">
+                <!-- Transaction History List -->
+                <div id="transactionHistoryList" class="max-h-64 overflow-y-auto space-y-1 text-xs">
+                  <div class="text-center py-4 text-zinc-500 dark:text-zinc-400">Loading...</div>
                 </div>
               </div>
             </div>
@@ -2166,10 +2143,8 @@
       const settings = loadSettings();
       applyTheme(settings.theme);
       applyLayout(settings.layout);
-      applyViewMode(settings.view_mode);
       document.getElementById('themeSelect').value = settings.theme;
       updateLayoutButtons(settings.layout);
-      updateViewModeButtons(settings.view_mode);
 
       // Initialize development status banner
       initDevStatusBanner();
@@ -2828,57 +2803,6 @@
         compact.classList.remove('border-transparent');
         comfortable.classList.remove('border-cyan-600', 'dark:border-cyan-500');
         comfortable.classList.add('border-transparent');
-      }
-    }
-
-    async function applyViewMode(mode) {
-      if (!['web', 'mobile'].includes(mode)) {
-        console.error('Invalid view mode:', mode);
-        return;
-      }
-
-      const previousMode = loadSettings().view_mode;
-      try {
-        const response = await apiCall('/api/user/view-mode', {
-          method: 'PUT',
-          body: JSON.stringify({ viewMode: mode })
-        });
-
-        if (response && response.error) {
-          console.error('Failed to update view mode:', response.error);
-          updateViewModeButtons(previousMode);
-          return;
-        }
-
-        renderViewMode(mode);
-        const settings = loadSettings();
-        settings.view_mode = mode;
-        saveSettings(settings);
-        updateViewModeButtons(mode);
-      } catch (err) {
-        console.error('Error applying view mode:', err);
-        updateViewModeButtons(previousMode);
-      }
-    }
-
-    function renderViewMode(mode) {
-      document.body.classList.toggle('layout-mobile', mode === 'mobile');
-      document.body.classList.toggle('layout-web', mode === 'web');
-    }
-
-    function updateViewModeButtons(mode) {
-      const webBtn = document.getElementById('viewModeWeb');
-      const mobileBtn = document.getElementById('viewModeMobile');
-      if (mode === 'web') {
-        webBtn.classList.add('border-cyan-600', 'dark:border-cyan-500');
-        webBtn.classList.remove('border-transparent');
-        mobileBtn.classList.remove('border-cyan-600', 'dark:border-cyan-500');
-        mobileBtn.classList.add('border-transparent');
-      } else {
-        mobileBtn.classList.add('border-cyan-600', 'dark:border-cyan-500');
-        mobileBtn.classList.remove('border-transparent');
-        webBtn.classList.remove('border-cyan-600', 'dark:border-cyan-500');
-        webBtn.classList.add('border-transparent');
       }
     }
 
