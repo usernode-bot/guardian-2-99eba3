@@ -42,7 +42,7 @@ pool.on('error', (err) => {
 const JWT_SECRET = process.env.JWT_SECRET;
 const IS_STAGING = process.env.USERNODE_ENV === 'staging';
 
-// Initialize network mode with priority: NETWORK_MODE env var > ENABLE_DEMO_MODE env var (legacy) > default 'devnet'
+// Initialize network mode with priority: NETWORK_MODE env var > ENABLE_DEMO_MODE env var (legacy) > default 'testnet'
 // Canonical values: 'testnet' (real blockchain), 'devnet' (database-only), 'mainnet' (future)
 // Normalize 'real_testnet' to 'testnet' for backward compatibility
 let NETWORK_MODE = process.env.NETWORK_MODE && ['testnet', 'real_testnet', 'devnet', 'demo'].includes(process.env.NETWORK_MODE)
@@ -51,7 +51,7 @@ let NETWORK_MODE = process.env.NETWORK_MODE && ['testnet', 'real_testnet', 'devn
     ? 'demo'
     : IS_STAGING
       ? 'demo'
-      : 'devnet';
+      : 'testnet';
 
 // Derive ENABLE_DEMO_MODE for backward compatibility with existing transaction code
 const getEnableDemoMode = () => NETWORK_MODE === 'demo';
@@ -994,12 +994,21 @@ async function startChainPoller(chainId, txHash, auditLogId) {
     return;
   }
 
-  // Poll up to 20 times with exponential backoff (starting at 5s, capping at 60s).
-  // Single setTimeout chain: pollCount and backoffMs carry forward across ticks,
-  // so the max-polls failed state is actually reachable.
-  const maxPolls = 20;
+  // Poll up to 60 times with hardcoded backoff schedule for consistency:
+  // - Polls 1-10: 3s interval
+  // - Polls 11-30: 10s interval
+  // - Polls 31-60: 20s interval
+  // After poll 60: Synthetic hash → fallback lookup; real hash → mark failed
+  const maxPolls = 60;
 
-  const scheduleNextPoll = (pollCount, backoffMs) => {
+  const getBackoffMs = (pollCount) => {
+    if (pollCount <= 10) return 3000;
+    if (pollCount <= 30) return 10000;
+    return 20000;
+  };
+
+  const scheduleNextPoll = (pollCount) => {
+    const backoffMs = getBackoffMs(pollCount);
     const timer = setTimeout(async () => {
       try {
         const poller = chainPollers.get(pollerId);
@@ -1088,7 +1097,7 @@ async function startChainPoller(chainId, txHash, auditLogId) {
         }
 
         console.log(`[Chain Poller] Poll ${pollCount}/${maxPolls} for ${txHash}: not confirmed yet (${poller.auditLogIds.size} logs), retrying in ${Math.round(backoffMs / 1000)}s`);
-        scheduleNextPoll(pollCount + 1, Math.min(backoffMs * 1.5, 60000));
+        scheduleNextPoll(pollCount + 1);
       } catch (err) {
         console.error(`[Chain Poller] Unexpected error:`, err);
         chainPollers.delete(pollerId);
@@ -1103,7 +1112,7 @@ async function startChainPoller(chainId, txHash, auditLogId) {
     }
   };
 
-  scheduleNextPoll(1, 5000);
+  scheduleNextPoll(1);
 }
 
 // Sign transaction memo following Last One Wins pattern
@@ -3577,6 +3586,23 @@ app.get('/api/transactions-by-user', async (req, res) => {
           recipientUsername = r.recipient_username_from_pubkey;
         }
 
+        const explorerUrl = NETWORK_MODE === 'testnet' && r.tx_hash
+          ? `${EXPLORER_URL}/tx/${r.tx_hash}`
+          : null;
+
+        let badgeLabel = null;
+        if (r.tx_hash && r.status === 'confirmed') {
+          if (r.network_origin === 'testnet') {
+            badgeLabel = 'Verified on Testnet';
+          } else if (r.network_origin === 'devnet') {
+            badgeLabel = 'Local Record';
+          }
+        } else if (r.status === 'pending') {
+          badgeLabel = 'Pending verification';
+        } else if (r.status === 'failed') {
+          badgeLabel = 'Verification failed';
+        }
+
         return {
           id: r.id,
           messageId: r.message_id,
@@ -3590,7 +3616,15 @@ app.get('/api/transactions-by-user', async (req, res) => {
           groupName: groupName,
           recipientUsername: recipientUsername,
           networkOrigin: r.network_origin || null,
-          transactionPayload: r.transaction_payload
+          transactionPayload: r.transaction_payload,
+          blockchainStatus: {
+            txHash: r.tx_hash || null,
+            status: r.status,
+            confirmedAt: r.confirmed_at || null,
+            explorerUrl: explorerUrl,
+            networkOrigin: r.network_origin || 'devnet',
+            badge: badgeLabel
+          }
         };
       });
 
