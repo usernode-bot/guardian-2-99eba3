@@ -1879,7 +1879,7 @@ app.get('/api/user', async (req, res) => {
     const created_at = userRes.rows[0]?.created_at || null;
     const bio = userRes.rows[0]?.bio || null;
     const skip_signature_in_devnet = userRes.rows[0]?.skip_signature_in_devnet || false;
-    const network_mode = userRes.rows[0]?.network_mode || 'devnet';
+    const network_mode = userRes.rows[0]?.network_mode || 'testnet';
     res.json({
       id: req.user.id,
       username: req.user.username,
@@ -2327,7 +2327,7 @@ app.get('/api/active_chain', async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const networkMode = userRes.rows[0].network_mode || 'devnet';
+    const networkMode = userRes.rows[0].network_mode || 'testnet';
 
     // Map network modes to chainIds: devnet→devnet, testnet→testnet, mainnet→mainnet
     let chainId = networkMode;
@@ -8036,7 +8036,7 @@ async function start() {
     try {
       console.log('[Migration] Adding network_mode column to users table...');
       await pool.query(`
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS network_mode VARCHAR(50) DEFAULT 'devnet'
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS network_mode VARCHAR(50) DEFAULT 'testnet'
       `);
       console.log('[Migration] ✅ network_mode column migration completed');
     } catch (err) {
@@ -8056,6 +8056,18 @@ async function start() {
       console.log('[Migration] ✅ network_mode value normalization completed');
     } catch (err) {
       console.error('[Migration] ❌ ERROR normalizing network_mode values:', err.message);
+      throw err;
+    }
+
+    // Migrate existing users with NULL network_mode to testnet default (idempotent migration)
+    try {
+      console.log('[Migration] Migrating NULL network_mode values to testnet...');
+      await pool.query(`
+        UPDATE users SET network_mode = 'testnet' WHERE network_mode IS NULL
+      `);
+      console.log('[Migration] ✅ network_mode NULL value migration completed');
+    } catch (err) {
+      console.error('[Migration] ❌ ERROR migrating network_mode NULL values:', err.message);
       throw err;
     }
 
