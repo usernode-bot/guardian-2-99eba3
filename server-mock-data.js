@@ -589,35 +589,99 @@ function getMockFeedPosts(userId, limit = 20, offset = 0) {
 
 function getMockTransactionsByUser(userId, limit = 20, offset = 0) {
   const mockTxs = [
+    // Confirmed testnet messages
     {
       id: 9000,
       user_id: userId,
-      tx_hash: 'demo-tx-hash-001',
+      tx_hash: 'ut1abc123def456ghi789jkl',
       message_type: 'message',
       status: 'confirmed',
-      confirmed_at: getTimeOffset(30),
-      created_at: getTimeOffset(45),
-      recipientUsername: 'bob'
-    },
-    {
-      id: 9002,
-      user_id: userId,
-      tx_hash: 'demo-tx-hash-token-001',
-      message_type: 'token_transfer',
-      status: 'confirmed',
-      confirmed_at: getTimeOffset(60),
-      created_at: getTimeOffset(75),
-      recipientUsername: 'alice'
+      confirmed_at: getTimeOffset(5),
+      created_at: getTimeOffset(10),
+      recipientUsername: 'bob',
+      network_origin: 'testnet'
     },
     {
       id: 9001,
       user_id: userId,
-      tx_hash: 'demo-tx-hash-002',
+      tx_hash: 'ut1def456ghi789jkl012mno',
+      message_type: 'message',
+      status: 'confirmed',
+      confirmed_at: getTimeOffset(30),
+      created_at: getTimeOffset(35),
+      recipientUsername: 'charlie',
+      network_origin: 'testnet'
+    },
+    {
+      id: 9002,
+      user_id: userId,
+      tx_hash: 'ut1ghi789jkl012mno345pqr',
+      message_type: 'message',
+      status: 'confirmed',
+      confirmed_at: getTimeOffset(60),
+      created_at: getTimeOffset(65),
+      recipientUsername: 'diana',
+      network_origin: 'testnet'
+    },
+    // Pending testnet transaction
+    {
+      id: 9003,
+      user_id: userId,
+      tx_hash: null,
+      message_type: 'message',
+      status: 'pending',
+      confirmed_at: null,
+      created_at: getTimeOffset(1),
+      recipientUsername: 'eve',
+      network_origin: 'testnet'
+    },
+    // Failed testnet transaction
+    {
+      id: 9004,
+      user_id: userId,
+      tx_hash: 'ut1jkl012mno345pqr678stu',
+      message_type: 'message',
+      status: 'failed',
+      confirmed_at: null,
+      created_at: getTimeOffset(120),
+      recipientUsername: 'alice',
+      network_origin: 'testnet'
+    },
+    // Confirmed testnet token transfer
+    {
+      id: 9005,
+      user_id: userId,
+      tx_hash: 'ut1mno345pqr678stu901vwx',
+      message_type: 'token_transfer',
+      status: 'confirmed',
+      confirmed_at: getTimeOffset(90),
+      created_at: getTimeOffset(95),
+      recipientUsername: 'bob',
+      network_origin: 'testnet'
+    },
+    // Confirmed testnet group creation
+    {
+      id: 9006,
+      user_id: userId,
+      tx_hash: 'ut1pqr678stu901vwx234yza',
       message_type: 'group_create',
       status: 'confirmed',
-      confirmed_at: getTimeOffset(120),
-      created_at: getTimeOffset(135),
-      groupName: 'Project Alpha'
+      confirmed_at: getTimeOffset(150),
+      created_at: getTimeOffset(155),
+      groupName: 'Project Alpha',
+      network_origin: 'testnet'
+    },
+    // Devnet transaction
+    {
+      id: 9007,
+      user_id: userId,
+      tx_hash: 'devnet-message-9007-1720000000',
+      message_type: 'message',
+      status: 'confirmed',
+      confirmed_at: getTimeOffset(300),
+      created_at: getTimeOffset(305),
+      recipientUsername: 'charlie',
+      network_origin: 'devnet'
     }
   ];
 

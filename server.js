@@ -42,7 +42,7 @@ pool.on('error', (err) => {
 const JWT_SECRET = process.env.JWT_SECRET;
 const IS_STAGING = process.env.USERNODE_ENV === 'staging';
 
-// Initialize network mode with priority: NETWORK_MODE env var > ENABLE_DEMO_MODE env var (legacy) > default 'devnet'
+// Initialize network mode with priority: NETWORK_MODE env var > ENABLE_DEMO_MODE env var (legacy) > default 'testnet'
 // Canonical values: 'testnet' (real blockchain), 'devnet' (database-only), 'mainnet' (future)
 // Normalize 'real_testnet' to 'testnet' for backward compatibility
 let NETWORK_MODE = process.env.NETWORK_MODE && ['testnet', 'real_testnet', 'devnet', 'demo'].includes(process.env.NETWORK_MODE)
@@ -51,7 +51,7 @@ let NETWORK_MODE = process.env.NETWORK_MODE && ['testnet', 'real_testnet', 'devn
     ? 'demo'
     : IS_STAGING
       ? 'demo'
-      : 'devnet';
+      : 'testnet';
 
 // Derive ENABLE_DEMO_MODE for backward compatibility with existing transaction code
 const getEnableDemoMode = () => NETWORK_MODE === 'demo';
@@ -994,12 +994,21 @@ async function startChainPoller(chainId, txHash, auditLogId) {
     return;
   }
 
-  // Poll up to 20 times with exponential backoff (starting at 5s, capping at 60s).
-  // Single setTimeout chain: pollCount and backoffMs carry forward across ticks,
-  // so the max-polls failed state is actually reachable.
-  const maxPolls = 20;
+  // Poll up to 60 times with hardcoded backoff schedule for consistency:
+  // - Polls 1-10: 3s interval
+  // - Polls 11-30: 10s interval
+  // - Polls 31-60: 20s interval
+  // After poll 60: Synthetic hash → fallback lookup; real hash → mark failed
+  const maxPolls = 60;
 
-  const scheduleNextPoll = (pollCount, backoffMs) => {
+  const getBackoffMs = (pollCount) => {
+    if (pollCount <= 10) return 3000;
+    if (pollCount <= 30) return 10000;
+    return 20000;
+  };
+
+  const scheduleNextPoll = (pollCount) => {
+    const backoffMs = getBackoffMs(pollCount);
     const timer = setTimeout(async () => {
       try {
         const poller = chainPollers.get(pollerId);
@@ -1088,7 +1097,7 @@ async function startChainPoller(chainId, txHash, auditLogId) {
         }
 
         console.log(`[Chain Poller] Poll ${pollCount}/${maxPolls} for ${txHash}: not confirmed yet (${poller.auditLogIds.size} logs), retrying in ${Math.round(backoffMs / 1000)}s`);
-        scheduleNextPoll(pollCount + 1, Math.min(backoffMs * 1.5, 60000));
+        scheduleNextPoll(pollCount + 1);
       } catch (err) {
         console.error(`[Chain Poller] Unexpected error:`, err);
         chainPollers.delete(pollerId);
@@ -1103,7 +1112,7 @@ async function startChainPoller(chainId, txHash, auditLogId) {
     }
   };
 
-  scheduleNextPoll(1, 5000);
+  scheduleNextPoll(1);
 }
 
 // Sign transaction memo following Last One Wins pattern
@@ -1870,7 +1879,7 @@ app.get('/api/user', async (req, res) => {
     const created_at = userRes.rows[0]?.created_at || null;
     const bio = userRes.rows[0]?.bio || null;
     const skip_signature_in_devnet = userRes.rows[0]?.skip_signature_in_devnet || false;
-    const network_mode = userRes.rows[0]?.network_mode || 'devnet';
+    const network_mode = userRes.rows[0]?.network_mode || 'testnet';
     res.json({
       id: req.user.id,
       username: req.user.username,
@@ -2318,7 +2327,7 @@ app.get('/api/active_chain', async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const networkMode = userRes.rows[0].network_mode || 'devnet';
+    const networkMode = userRes.rows[0].network_mode || 'testnet';
 
     // Map network modes to chainIds: devnet→devnet, testnet→testnet, mainnet→mainnet
     let chainId = networkMode;
@@ -2775,36 +2784,44 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
         throw new Error('Failed to create valid transaction payload');
       }
 
-      // Use real tx hash from frontend if provided, otherwise generate placeholder
-      let actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-message-' + messageId + '-' + Date.now() : 'ut1-' + network + '-tx-msg-' + Math.random().toString(36).substr(2, 9));
-
-      // Defensive fallback: ensure tx_hash is never null before INSERT
-      if (!actualTxHash) {
-        actualTxHash = `guardian-pending-msg-${messageId}-${Date.now()}-${crypto.randomUUID()}`;
-        console.warn(`[MESSAGE] Fallback tx_hash generated: ${actualTxHash}`);
-      }
-
       // Determine audit status and network origin based on mode
       let auditStatus = 'pending';
       let networkOriginValue = null;
+      let actualTxHash = null;
 
-      if (txHash) {
+      // For testnet mode with RPC: submit real transaction, store null tx_hash initially
+      // For demo/devnet: generate synthetic hash, mark confirmed
+      // For testnet without RPC: will be set later via fallback
+      if (NETWORK_MODE === 'testnet' && NODE_RPC_URL && !txHash) {
+        // Real testnet mode: insert with null tx_hash, will be updated after RPC submission
+        auditStatus = 'pending';
+        networkOriginValue = 'testnet';
+        actualTxHash = null;
+      } else if (txHash) {
+        // Frontend provided a real tx hash
+        actualTxHash = txHash;
         auditStatus = 'pending';
         networkOriginValue = 'blockchain';
       } else if (NETWORK_MODE === 'devnet') {
+        // Devnet mode: generate synthetic hash, confirm immediately
+        actualTxHash = 'ut1devnet-message-' + messageId + '-' + Date.now();
         auditStatus = 'confirmed';
         networkOriginValue = 'database';
       } else if (ENABLE_DEMO_MODE) {
+        // Demo mode: generate synthetic hash, confirm immediately
+        actualTxHash = 'ut1staging-' + network + '-message-' + messageId + '-' + Date.now();
         auditStatus = 'confirmed';
         networkOriginValue = 'demo';
       } else {
+        // Testnet mode without RPC or other modes: store null, will be populated later
+        actualTxHash = null;
         auditStatus = 'pending';
         networkOriginValue = 'bridge';
       }
 
       // Log audit creation with all critical fields
-      console.log(`[AUDIT LOG] MESSAGE: txHash=${actualTxHash}, messageId=${messageId}, status=${auditStatus}, contentHash=${contentHash}`);
-      console.log(`[MESSAGE] Recording blockchain audit log: messageId=${messageId}, txHash=${actualTxHash}, status=${auditStatus}, contentHash=${contentHash}`);
+      console.log(`[AUDIT LOG] MESSAGE: txHash=${actualTxHash || 'pending'}, messageId=${messageId}, status=${auditStatus}, contentHash=${contentHash}`);
+      console.log(`[MESSAGE] Recording blockchain audit log: messageId=${messageId}, txHash=${actualTxHash || 'pending'}, status=${auditStatus}, contentHash=${contentHash}`);
 
       let blockchainRecordingId;
       if (auditLogId) {
@@ -2819,11 +2836,7 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
         console.log(`[MESSAGE] Updated existing audit log: id=${blockchainRecordingId}`);
       } else {
         // Single-phase flow: create new audit log
-        // Defensive validation: ensure tx_hash is present before INSERT
-        if (!actualTxHash) {
-          throw new Error('Missing tx_hash before audit log creation');
-        }
-
+        // For testnet with RPC, actualTxHash may be null initially; will be updated after RPC submission
         const auditRes = await client.query(`
           INSERT INTO blockchain_audit_logs (user_id, message_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, network_origin, created_at, updated_at)
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
@@ -2831,7 +2844,7 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
         `, [userId, messageId, 'message', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, userPubkey, now, networkOriginValue, now]);
         blockchainRecordingId = auditRes.rows[0].id;
 
-        console.log(`[MESSAGE] Blockchain audit log created: auditLogId=${blockchainRecordingId}`);
+        console.log(`[MESSAGE] Blockchain audit log created: auditLogId=${blockchainRecordingId}, txHash=${actualTxHash || 'pending'}`);
       }
 
       // Update message with audit log reference (ATOMIC with INSERT)
@@ -2864,23 +2877,25 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       // Async polling starts AFTER response is sent
       // This ensures frontend gets auditLogId immediately
       if (txHash && NETWORK_MODE !== 'devnet') {
+        // Real txHash from frontend - start chain poller
         console.log(`[MESSAGE] Real txHash from frontend - starting chain poller for txHash=${txHash}, auditLogId=${blockchainRecordingId}`);
         startChainPoller(network, txHash, blockchainRecordingId).catch(err => {
           console.error('Error starting chain poller:', err);
         });
-      } else if (!ENABLE_DEMO_MODE && NETWORK_MODE !== 'devnet') {
-        // Async: submit to blockchain in the background (production only, no frontend tx hash)
+      } else if (NETWORK_MODE === 'testnet' && NODE_RPC_URL && !txHash && !ENABLE_DEMO_MODE) {
+        // Testnet with RPC: submit real transaction
         (async () => {
           try {
-            // Validate memo before calling RPC (signTransactionMemo can return null)
             if (!memo) {
               throw new Error('Failed to sign transaction memo');
             }
+            console.log(`[MESSAGE-RPC] Submitting message to testnet RPC for auditLogId=${blockchainRecordingId}`);
             const result = await sendMessageToBlockchain(transactionPayload, memo, network);
 
             // Update audit log with real txHash from RPC
+            console.log(`[MESSAGE-RPC] Received real txHash=${result.transactionHash}, updating auditLogId=${blockchainRecordingId}`);
             await pool.query(`
-              UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
+              UPDATE blockchain_audit_logs SET tx_hash = $1, network_origin = 'testnet', updated_at = NOW() WHERE id = $2
             `, [result.transactionHash, blockchainRecordingId]);
 
             // Start polling with real txHash against blockchain explorer
@@ -2897,13 +2912,12 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
 
               // Update audit log with placeholder hash from bridge
               await pool.query(`
-                UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
+                UPDATE blockchain_audit_logs SET tx_hash = $1, network_origin = 'bridge', updated_at = NOW() WHERE id = $2
               `, [bridgeResult.txHash, blockchainRecordingId]);
 
               console.log(`[BLOCKCHAIN-FALLBACK] Updated audit log with bridge tx hash: txHash=${bridgeResult.txHash}, auditLogId=${blockchainRecordingId}`);
 
-              // Start polling with placeholder (will timeout after 20 attempts)
-              // This allows audit log to be marked as 'failed' after max polls
+              // Start polling with placeholder (will timeout after max polls)
               startChainPoller(network, bridgeResult.txHash, blockchainRecordingId).catch(pollerErr => {
                 console.error('Error starting fallback chain poller:', pollerErr);
               });
@@ -3157,28 +3171,39 @@ app.post('/api/tokens/send', async (req, res) => {
       return;
     }
 
-    // Use real tx hash from frontend if provided, otherwise generate placeholder
-    const actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-token-' + Date.now() : 'ut1-' + network + '-tx-token-' + Math.random().toString(36).substr(2, 9));
-
     // Determine audit status and network origin based on mode
+    let actualTxHash = null;
     let auditStatus = 'pending';
     let networkOriginValue = null;
 
     if (txHash) {
+      // Frontend provided a real tx hash
+      actualTxHash = txHash;
       auditStatus = 'pending';
       networkOriginValue = 'blockchain';
+    } else if (NETWORK_MODE === 'testnet' && NODE_RPC_URL && !txHash) {
+      // Real testnet mode: insert with null tx_hash, will be updated after RPC submission
+      actualTxHash = null;
+      auditStatus = 'pending';
+      networkOriginValue = 'testnet';
     } else if (NETWORK_MODE === 'devnet') {
+      // Devnet mode: generate synthetic hash, confirm immediately
+      actualTxHash = 'ut1devnet-token-' + Date.now();
       auditStatus = 'confirmed';
       networkOriginValue = 'database';
     } else if (ENABLE_DEMO_MODE) {
+      // Demo mode: generate synthetic hash, confirm immediately
+      actualTxHash = 'ut1staging-' + network + '-token-' + Date.now();
       auditStatus = 'confirmed';
       networkOriginValue = 'demo';
     } else {
+      // Testnet mode without RPC or other modes: store null, will be populated later
+      actualTxHash = null;
       auditStatus = 'pending';
       networkOriginValue = 'bridge';
     }
 
-    console.log(`[TOKEN] Recording blockchain audit log: txHash=${actualTxHash}, status=${auditStatus}, contentHash=${contentHash}`);
+    console.log(`[TOKEN] Recording blockchain audit log: txHash=${actualTxHash || 'pending'}, status=${auditStatus}, contentHash=${contentHash}`);
 
     let blockchainRecordingId;
     if (auditLogId) {
@@ -3577,6 +3602,23 @@ app.get('/api/transactions-by-user', async (req, res) => {
           recipientUsername = r.recipient_username_from_pubkey;
         }
 
+        const explorerUrl = NETWORK_MODE === 'testnet' && r.tx_hash
+          ? `${EXPLORER_URL}/tx/${r.tx_hash}`
+          : null;
+
+        let badgeLabel = null;
+        if (r.tx_hash && r.status === 'confirmed') {
+          if (r.network_origin === 'testnet') {
+            badgeLabel = 'Verified on Testnet';
+          } else if (r.network_origin === 'devnet') {
+            badgeLabel = 'Local Record';
+          }
+        } else if (r.status === 'pending') {
+          badgeLabel = 'Pending verification';
+        } else if (r.status === 'failed') {
+          badgeLabel = 'Verification failed';
+        }
+
         return {
           id: r.id,
           messageId: r.message_id,
@@ -3590,7 +3632,15 @@ app.get('/api/transactions-by-user', async (req, res) => {
           groupName: groupName,
           recipientUsername: recipientUsername,
           networkOrigin: r.network_origin || null,
-          transactionPayload: r.transaction_payload
+          transactionPayload: r.transaction_payload,
+          blockchainStatus: {
+            txHash: r.tx_hash || null,
+            status: r.status,
+            confirmedAt: r.confirmed_at || null,
+            explorerUrl: explorerUrl,
+            networkOrigin: r.network_origin || 'devnet',
+            badge: badgeLabel
+          }
         };
       });
 
@@ -4638,36 +4688,38 @@ app.post('/api/groups', async (req, res) => {
     const memo = signTransactionMemo(transactionPayload);
 
     // Blockchain: Use existing audit log if provided, otherwise create new one
+    // Determine audit status and network origin based on mode
+    let auditStatus = 'pending';
+    let networkOriginValue = null;
+    let actualTxHash = null;
+
+    // For testnet mode with RPC: submit real transaction, store null tx_hash initially
+    if (NETWORK_MODE === 'testnet' && NODE_RPC_URL && !txHash) {
+      auditStatus = 'pending';
+      networkOriginValue = 'testnet';
+      actualTxHash = null;
+    } else if (txHash) {
+      actualTxHash = txHash;
+      auditStatus = 'pending';
+      networkOriginValue = 'blockchain';
+    } else if (NETWORK_MODE === 'devnet') {
+      actualTxHash = 'ut1devnet-group-' + groupId + '-' + Date.now();
+      auditStatus = 'confirmed';
+      networkOriginValue = 'database';
+    } else if (ENABLE_DEMO_MODE) {
+      actualTxHash = 'ut1staging-' + network + '-group-create-' + groupId + '-' + Date.now();
+      auditStatus = 'confirmed';
+      networkOriginValue = 'demo';
+    } else {
+      actualTxHash = `guardian-pending-group-${groupId}-${Date.now()}-${crypto.randomUUID()}`;
+      auditStatus = 'pending';
+      networkOriginValue = 'bridge';
+    }
+
     let blockchainRecordingId;
     if (auditLogId) {
       // Two-phase flow: audit log already exists from wallet signature, just update it
       console.log(`[POST /api/groups::BLOCKCHAIN] Using existing audit log: id=${auditLogId}`);
-      let actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-group-create-' + groupId + '-' + Date.now() : 'ut1-' + network + '-tx-group-' + Math.random().toString(36).substr(2, 9));
-
-      // Defensive fallback: ensure tx_hash is never null before UPDATE
-      if (!actualTxHash) {
-        actualTxHash = `guardian-pending-group-${groupId}-${Date.now()}-${crypto.randomUUID()}`;
-        console.warn(`[POST /api/groups::BLOCKCHAIN] Fallback tx_hash generated: ${actualTxHash}`);
-      }
-
-      // Determine audit status and network origin based on mode
-      let auditStatus = 'pending';
-      let networkOriginValue = null;
-
-      if (txHash) {
-        auditStatus = 'pending';
-        networkOriginValue = 'blockchain';
-      } else if (NETWORK_MODE === 'devnet') {
-        auditStatus = 'confirmed';
-        networkOriginValue = 'database';
-      } else if (ENABLE_DEMO_MODE) {
-        auditStatus = 'confirmed';
-        networkOriginValue = 'demo';
-      } else {
-        auditStatus = 'pending';
-        networkOriginValue = 'bridge';
-      }
-
       await pool.query(`
         UPDATE blockchain_audit_logs
         SET group_id = $1, message_type = $2, tx_hash = $3, transaction_payload = $4, status = $5, confirmed_at = $6, content_hash = $7, user_pubkey = $8, action_timestamp = $9, network_origin = $10, updated_at = NOW()
@@ -4677,39 +4729,8 @@ app.post('/api/groups', async (req, res) => {
       console.log(`[POST /api/groups::BLOCKCHAIN] Updated existing audit log: id=${blockchainRecordingId}`);
     } else {
       // Single-phase flow: create new audit log
-      let actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-group-create-' + groupId + '-' + Date.now() : 'ut1-' + network + '-tx-group-' + Math.random().toString(36).substr(2, 9));
-
-      // Defensive fallback: ensure tx_hash is never null before INSERT
-      if (!actualTxHash) {
-        actualTxHash = `guardian-pending-group-${groupId}-${Date.now()}-${crypto.randomUUID()}`;
-        console.warn(`[POST /api/groups::BLOCKCHAIN] Fallback tx_hash generated: ${actualTxHash}`);
-      }
-
-      // Determine audit status and network origin based on mode
-      let auditStatus = 'pending';
-      let networkOriginValue = null;
-
-      if (txHash) {
-        auditStatus = 'pending';
-        networkOriginValue = 'blockchain';
-      } else if (NETWORK_MODE === 'devnet') {
-        auditStatus = 'confirmed';
-        networkOriginValue = 'database';
-      } else if (ENABLE_DEMO_MODE) {
-        auditStatus = 'confirmed';
-        networkOriginValue = 'demo';
-      } else {
-        auditStatus = 'pending';
-        networkOriginValue = 'bridge';
-      }
-
-      console.log(`[AUDIT LOG] GROUP_CREATE: txHash=${actualTxHash}, groupId=${groupId}, status=${auditStatus}, memberCount=${memberPubkeys.length}`);
-      console.log(`[POST /api/groups::BLOCKCHAIN] Creating new audit log: txHash=${actualTxHash}, status=${auditStatus}, env=${IS_STAGING ? 'staging' : 'production'}, demoMode=${ENABLE_DEMO_MODE}`);
-
-      // Defensive validation: ensure tx_hash is present before INSERT
-      if (!actualTxHash) {
-        throw new Error('Missing tx_hash before audit log creation');
-      }
+      console.log(`[AUDIT LOG] GROUP_CREATE: txHash=${actualTxHash || 'pending'}, groupId=${groupId}, status=${auditStatus}, memberCount=${memberPubkeys.length}`);
+      console.log(`[POST /api/groups::BLOCKCHAIN] Creating new audit log: txHash=${actualTxHash || 'pending'}, status=${auditStatus}, env=${IS_STAGING ? 'staging' : 'production'}, demoMode=${ENABLE_DEMO_MODE}`);
 
       const auditRes = await pool.query(`
         INSERT INTO blockchain_audit_logs (user_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, network_origin, created_at, updated_at)
@@ -4735,8 +4756,59 @@ app.post('/api/groups', async (req, res) => {
           console.error('Error polling transaction status:', err);
         }
       })();
-    } else if (!ENABLE_DEMO_MODE && NETWORK_MODE !== 'devnet') {
-      console.log(`[POST /api/groups::BLOCKCHAIN] Spawning background blockchain submission task (production only)`);
+    } else if (NETWORK_MODE === 'testnet' && NODE_RPC_URL && !txHash && !ENABLE_DEMO_MODE) {
+      // Testnet with RPC: submit real transaction
+      console.log(`[POST /api/groups::BLOCKCHAIN] Spawning background blockchain submission task (testnet RPC)`);
+      (async () => {
+        try {
+          console.log(`[POST /api/groups::BLOCKCHAIN::ASYNC] Background task started for auditId=${blockchainRecordingId}`);
+
+          // Validate memo before calling RPC
+          if (!memo) {
+            throw new Error('Failed to sign transaction memo');
+          }
+
+          const result = await sendGroupToBlockchain(transactionPayload, memo, memberPubkeys, network);
+          console.log(`[POST /api/groups::BLOCKCHAIN::ASYNC] RPC returned txHash=${result.transactionHash}`);
+
+          const updateRes = await pool.query(`
+            UPDATE blockchain_audit_logs SET tx_hash = $1, network_origin = 'testnet', updated_at = NOW() WHERE id = $2
+          `, [result.transactionHash, blockchainRecordingId]);
+          console.log(`[POST /api/groups::BLOCKCHAIN::ASYNC] Audit log updated with real txHash, rowCount=${updateRes.rowCount}`);
+
+          console.log(`[POST /api/groups::BLOCKCHAIN::ASYNC] Starting chain polling`);
+          startChainPoller(network, result.transactionHash, blockchainRecordingId).catch(err => {
+            console.error(`[POST /api/groups::BLOCKCHAIN::ASYNC] Error starting chain poller: ${err.message}`, err);
+          });
+        } catch (err) {
+          const errorClass = classifyRPCError(err);
+          console.error(`[BLOCKCHAIN-FALLBACK] RPC failed (${errorClass.type}), using bridge fallback for groupId=${groupId}: ${err.message}`);
+
+          // Fallback: try bridge approach
+          try {
+            const bridgeResult = await sendTransactionToBridge(transactionPayload, null, network);
+
+            await pool.query(`
+              UPDATE blockchain_audit_logs SET tx_hash = $1, network_origin = 'bridge', updated_at = NOW() WHERE id = $2
+            `, [bridgeResult.txHash, blockchainRecordingId]);
+
+            console.log(`[BLOCKCHAIN-FALLBACK] Updated audit log with bridge tx hash: txHash=${bridgeResult.txHash}, auditLogId=${blockchainRecordingId}`);
+
+            // Start polling with placeholder so it eventually marks as 'failed'
+            startChainPoller(network, bridgeResult.txHash, blockchainRecordingId).catch(pollerErr => {
+              console.error(`[POST /api/groups::BLOCKCHAIN::ASYNC] Error starting fallback chain poller: ${pollerErr.message}`, pollerErr);
+            });
+          } catch (bridgeErr) {
+            console.error(`[BLOCKCHAIN-FALLBACK] Bridge fallback also failed: ${bridgeErr.message}`);
+            await pool.query(`
+              UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
+            `, [bridgeErr.message, blockchainRecordingId]);
+          }
+        }
+      })();
+    } else if (!ENABLE_DEMO_MODE && NETWORK_MODE !== 'devnet' && NETWORK_MODE !== 'testnet') {
+      // Non-testnet production: use bridge fallback
+      console.log(`[POST /api/groups::BLOCKCHAIN] Spawning background blockchain submission task (bridge fallback)`);
       (async () => {
         try {
           console.log(`[POST /api/groups::BLOCKCHAIN::ASYNC] Background task started for auditId=${blockchainRecordingId}`);
@@ -5139,27 +5211,33 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
       network: network
     };
 
-    // Use real tx hash from frontend if provided, otherwise generate placeholder
-    let actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-message-' + messageId + '-' + Date.now() : 'ut1-' + network + '-tx-msg-' + Math.random().toString(36).substr(2, 9));
-
-    // Defensive fallback: ensure tx_hash is never null before INSERT
-    if (!actualTxHash) {
-      actualTxHash = `guardian-pending-msg-${messageId}-${Date.now()}-${crypto.randomUUID()}`;
-      console.warn(`[GROUP-MSG] Fallback tx_hash generated: ${actualTxHash}`);
-    }
-
-    const auditStatus = txHash ? 'pending' : (ENABLE_DEMO_MODE ? 'confirmed' : 'pending');
-
-    // Determine network_origin based on Guardian's canonical network modes
+    // Determine audit status and network origin based on mode
+    let auditStatus = 'pending';
     let networkOriginValue = null;
-    if (NETWORK_MODE === 'testnet') {
+    let actualTxHash = null;
+
+    // For testnet mode with RPC: submit real transaction, store null tx_hash initially
+    if (NETWORK_MODE === 'testnet' && NODE_RPC_URL && !txHash) {
+      auditStatus = 'pending';
+      networkOriginValue = 'testnet';
+      actualTxHash = null;
+    } else if (txHash) {
+      actualTxHash = txHash;
+      auditStatus = 'pending';
       networkOriginValue = 'testnet';
     } else if (NETWORK_MODE === 'devnet') {
-      networkOriginValue = 'devnet';
-    } else if (NETWORK_MODE === 'mainnet') {
-      networkOriginValue = 'mainnet';
-    } else if (NETWORK_MODE === 'demo') {
-      networkOriginValue = 'devnet';
+      actualTxHash = 'ut1devnet-message-' + messageId + '-' + Date.now();
+      auditStatus = 'confirmed';
+      networkOriginValue = 'database';
+    } else if (ENABLE_DEMO_MODE) {
+      actualTxHash = 'ut1staging-' + network + '-message-' + messageId + '-' + Date.now();
+      auditStatus = 'confirmed';
+      networkOriginValue = 'demo';
+    } else {
+      // Testnet mode without RPC or other modes: store null, will be populated later
+      actualTxHash = null;
+      auditStatus = 'pending';
+      networkOriginValue = 'bridge';
     }
 
     let blockchainRecordingId;
@@ -5179,11 +5257,7 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
       console.log(`[GROUP-MSG] Updated existing audit log: id=${blockchainRecordingId}`);
     } else {
       // Single-phase flow: create new audit log
-      // Defensive validation: ensure tx_hash is present before INSERT
-      if (!actualTxHash) {
-        throw new Error('Missing tx_hash before audit log creation');
-      }
-
+      // For testnet with RPC, actualTxHash may be null initially; will be updated after RPC submission
       const auditRes = await client.query(`
         INSERT INTO blockchain_audit_logs (user_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, network_origin, created_at, updated_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
@@ -5228,8 +5302,42 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
       startChainPoller(network, txHash, blockchainRecordingId).catch(err => {
         console.error('Error starting chain poller:', err);
       });
-    } else if (!ENABLE_DEMO_MODE) {
-      // Async: submit to blockchain in the background (production only)
+    } else if (NETWORK_MODE === 'testnet' && NODE_RPC_URL && !ENABLE_DEMO_MODE) {
+      // Testnet with RPC: submit real transaction
+      (async () => {
+        try {
+          console.log(`[GROUP-MSG-RPC] Submitting group message to testnet RPC for auditLogId=${blockchainRecordingId}`);
+          const result = await sendMessageToBlockchain(transactionPayload, signTransactionMemo(transactionPayload), network);
+          // Update audit log with real tx hash
+          console.log(`[GROUP-MSG-RPC] Received real txHash=${result.transactionHash}, updating auditLogId=${blockchainRecordingId}`);
+          await pool.query(`
+            UPDATE blockchain_audit_logs SET tx_hash = $1, network_origin = 'testnet', updated_at = NOW() WHERE id = $2
+          `, [result.transactionHash, blockchainRecordingId]);
+          // Start polling
+          startChainPoller(network, result.transactionHash, blockchainRecordingId).catch(err => {
+            console.error('Error starting chain poller:', err);
+          });
+        } catch (err) {
+          const errorClass = classifyRPCError(err);
+          console.error(`[GROUP-MSG-RPC] RPC failed (${errorClass.type}), using bridge fallback: ${err.message}`);
+          try {
+            const bridgeResult = await sendTransactionToBridge(transactionPayload, null, network);
+            await pool.query(`
+              UPDATE blockchain_audit_logs SET tx_hash = $1, network_origin = 'bridge', updated_at = NOW() WHERE id = $2
+            `, [bridgeResult.txHash, blockchainRecordingId]);
+            startChainPoller(network, bridgeResult.txHash, blockchainRecordingId).catch(pollerErr => {
+              console.error('Error starting fallback chain poller:', pollerErr);
+            });
+          } catch (bridgeErr) {
+            console.error(`[GROUP-MSG-RPC] Bridge fallback failed: ${bridgeErr.message}`);
+            await pool.query(`
+              UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
+            `, [bridgeErr.message, blockchainRecordingId]);
+          }
+        }
+      })();
+    } else if (!ENABLE_DEMO_MODE && NETWORK_MODE !== 'devnet') {
+      // Non-testnet production: use bridge fallback
       (async () => {
         try {
           const result = await sendTransactionToBridge(transactionPayload, null, network);
@@ -8002,7 +8110,7 @@ async function start() {
     try {
       console.log('[Migration] Adding network_mode column to users table...');
       await pool.query(`
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS network_mode VARCHAR(50) DEFAULT 'devnet'
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS network_mode VARCHAR(50) DEFAULT 'testnet'
       `);
       console.log('[Migration] ✅ network_mode column migration completed');
     } catch (err) {
@@ -8022,6 +8130,18 @@ async function start() {
       console.log('[Migration] ✅ network_mode value normalization completed');
     } catch (err) {
       console.error('[Migration] ❌ ERROR normalizing network_mode values:', err.message);
+      throw err;
+    }
+
+    // Migrate existing users with NULL network_mode to testnet default (idempotent migration)
+    try {
+      console.log('[Migration] Migrating NULL network_mode values to testnet...');
+      await pool.query(`
+        UPDATE users SET network_mode = 'testnet' WHERE network_mode IS NULL
+      `);
+      console.log('[Migration] ✅ network_mode NULL value migration completed');
+    } catch (err) {
+      console.error('[Migration] ❌ ERROR migrating network_mode NULL values:', err.message);
       throw err;
     }
 
