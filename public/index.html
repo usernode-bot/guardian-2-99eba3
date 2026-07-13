@@ -512,7 +512,7 @@
             </div>
           </div>
         </div>
-        <div id="headerPageLabel" class="text-sm text-zinc-600 dark:text-zinc-500 leading-tight truncate">Messages</div>
+        <div id="headerPageLabel" class="text-sm text-zinc-600 dark:text-zinc-500 leading-tight truncate">Chat</div>
       </div>
       <div id="headerRight" class="text-sm text-zinc-600 dark:text-zinc-500 relative flex flex-1 justify-end items-center gap-2">
         <button id="postBtn" class="hidden text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition font-medium" title="Create a post" onclick="openPostModal()">✎ Post</button>
@@ -547,7 +547,7 @@
           <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
           </svg>
-          Messages
+          Chat
         </button>
         <button id="navContactsBtn" onclick="showContactsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
           <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -6173,7 +6173,7 @@
       document.getElementById('backBtnContainer').classList.add('hidden');
       document.getElementById('headerContent').classList.remove('hidden');
       document.getElementById('headerBranding').textContent = 'Guardian';
-      document.getElementById('headerPageLabel').textContent = 'Messages';
+      document.getElementById('headerPageLabel').textContent = 'Chat';
       document.getElementById('backBtnContainer').classList.add('hidden');
       document.getElementById('menuBtn').classList.remove('hidden');
       document.getElementById('conversationMenuBtn').classList.add('hidden');
