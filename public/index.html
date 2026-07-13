@@ -193,11 +193,6 @@
       pointer-events: none;
     }
 
-    /* On non-mobile (web/desktop), overlay should never block interactions */
-    body:not(.layout-mobile) #sidebarOverlay {
-      pointer-events: none !important;
-    }
-
     .message-bubble {
       word-wrap: break-word;
       overflow-wrap: break-word;
@@ -3621,6 +3616,7 @@
 
       document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
+          if (sidebarOpen) toggleSidebar();
           closeAttachmentSheet();
           hideDeleteContactModal();
           closeChannelSettingsModal();
