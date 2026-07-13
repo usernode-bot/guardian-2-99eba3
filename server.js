@@ -2813,15 +2813,15 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
         auditStatus = 'confirmed';
         networkOriginValue = 'demo';
       } else {
-        // Fallback for unknown modes
-        actualTxHash = `guardian-pending-msg-${messageId}-${Date.now()}-${crypto.randomUUID()}`;
+        // Testnet mode without RPC or other modes: store null, will be populated later
+        actualTxHash = null;
         auditStatus = 'pending';
         networkOriginValue = 'bridge';
       }
 
       // Log audit creation with all critical fields
-      console.log(`[AUDIT LOG] MESSAGE: txHash=${actualTxHash}, messageId=${messageId}, status=${auditStatus}, contentHash=${contentHash}`);
-      console.log(`[MESSAGE] Recording blockchain audit log: messageId=${messageId}, txHash=${actualTxHash}, status=${auditStatus}, contentHash=${contentHash}`);
+      console.log(`[AUDIT LOG] MESSAGE: txHash=${actualTxHash || 'pending'}, messageId=${messageId}, status=${auditStatus}, contentHash=${contentHash}`);
+      console.log(`[MESSAGE] Recording blockchain audit log: messageId=${messageId}, txHash=${actualTxHash || 'pending'}, status=${auditStatus}, contentHash=${contentHash}`);
 
       let blockchainRecordingId;
       if (auditLogId) {
@@ -3171,28 +3171,39 @@ app.post('/api/tokens/send', async (req, res) => {
       return;
     }
 
-    // Use real tx hash from frontend if provided, otherwise generate placeholder
-    const actualTxHash = txHash || (ENABLE_DEMO_MODE ? 'ut1staging-' + network + '-token-' + Date.now() : 'ut1-' + network + '-tx-token-' + Math.random().toString(36).substr(2, 9));
-
     // Determine audit status and network origin based on mode
+    let actualTxHash = null;
     let auditStatus = 'pending';
     let networkOriginValue = null;
 
     if (txHash) {
+      // Frontend provided a real tx hash
+      actualTxHash = txHash;
       auditStatus = 'pending';
       networkOriginValue = 'blockchain';
+    } else if (NETWORK_MODE === 'testnet' && NODE_RPC_URL && !txHash) {
+      // Real testnet mode: insert with null tx_hash, will be updated after RPC submission
+      actualTxHash = null;
+      auditStatus = 'pending';
+      networkOriginValue = 'testnet';
     } else if (NETWORK_MODE === 'devnet') {
+      // Devnet mode: generate synthetic hash, confirm immediately
+      actualTxHash = 'ut1devnet-token-' + Date.now();
       auditStatus = 'confirmed';
       networkOriginValue = 'database';
     } else if (ENABLE_DEMO_MODE) {
+      // Demo mode: generate synthetic hash, confirm immediately
+      actualTxHash = 'ut1staging-' + network + '-token-' + Date.now();
       auditStatus = 'confirmed';
       networkOriginValue = 'demo';
     } else {
+      // Testnet mode without RPC or other modes: store null, will be populated later
+      actualTxHash = null;
       auditStatus = 'pending';
       networkOriginValue = 'bridge';
     }
 
-    console.log(`[TOKEN] Recording blockchain audit log: txHash=${actualTxHash}, status=${auditStatus}, contentHash=${contentHash}`);
+    console.log(`[TOKEN] Recording blockchain audit log: txHash=${actualTxHash || 'pending'}, status=${auditStatus}, contentHash=${contentHash}`);
 
     let blockchainRecordingId;
     if (auditLogId) {
@@ -5223,7 +5234,8 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
       auditStatus = 'confirmed';
       networkOriginValue = 'demo';
     } else {
-      actualTxHash = `guardian-pending-msg-${messageId}-${Date.now()}-${crypto.randomUUID()}`;
+      // Testnet mode without RPC or other modes: store null, will be populated later
+      actualTxHash = null;
       auditStatus = 'pending';
       networkOriginValue = 'bridge';
     }
