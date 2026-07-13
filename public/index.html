@@ -6235,35 +6235,10 @@
       // Load and render pending requests from conversations
       loadPendingRequests();
 
-      // Render the main list (used for search results)
-      const list = document.getElementById('contactsList');
-      if (!allContacts || allContacts.length === 0) {
-        list.innerHTML = '<div class="flex flex-col items-center justify-center h-full text-center space-y-4"><div class="text-zinc-600 dark:text-zinc-400"><p class="text-sm">No contacts yet. Start a conversation to build your contact list.</p></div></div>';
-      } else {
-        // Clear the main list when not searching (submenu is the primary view)
-        list.innerHTML = '<div class="text-center py-8 text-zinc-500 dark:text-zinc-400 text-sm">Type to search for more contacts</div>';
-      }
+      // Note: Search results rendering removed (moved to Find/Search modal)
     }
 
-    function renderContactsList(contacts) {
-      const list = document.getElementById('contactsList');
-
-      if (!contacts || contacts.length === 0) {
-        list.innerHTML = '<div class="flex items-center justify-center h-full text-center space-y-4"><div class="text-zinc-600 dark:text-zinc-400"><p class="text-sm">No results found.</p></div></div>';
-        return;
-      }
-
-      list.innerHTML = contacts.map(contact => `
-        <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer" onclick="startConversationWithContact(${contact.userId}, '${contact.username}')">
-          <div class="flex justify-between items-start gap-2">
-            <div class="flex-1 min-w-0">
-              <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${contact.nickname || contact.username} ${contact.verified ? '<span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
-              <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${contact.usernode_pubkey || 'No wallet'}</div>
-            </div>
-          </div>
-        </div>
-      `).join('');
-    }
+    // Deprecated: renderContactsList - no longer used (moved to Find/Search modal)
 
     function filterContacts(query) {
       if (!query) return allContacts;
@@ -6883,7 +6858,6 @@
       document.getElementById('channelDetailHeader').classList.add('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
       if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
-      document.getElementById('contactsSearchInput').value = '';
       loadContactsList();
     }
 
