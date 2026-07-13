@@ -569,6 +569,12 @@
           </svg>
           Contacts
         </button>
+        <button id="navGroupsBtn" onclick="showGroupsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
+          <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.856-1.687M15 7a3 3 0 11-6 0 3 3 0 016 0zM16 16a5 5 0 01-10 0" />
+          </svg>
+          Group
+        </button>
         <button id="navProfileBtn" onclick="showProfileView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
           <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -787,28 +793,19 @@
           </svg>
         </button>
       </div>
-      <!-- Messages View with Sticky Footer Toggle -->
+      <!-- Messages View (Direct Messages only) -->
       <div id="messagesView" class="hidden flex flex-col flex-1 overflow-hidden">
         <!-- Direct Messages List -->
         <div id="directList" class="flex-1 overflow-y-auto">
           <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading conversations...</div>
         </div>
+      </div>
 
+      <!-- Groups View -->
+      <div id="groupsView" class="hidden flex flex-col flex-1 overflow-hidden">
         <!-- Groups List -->
-        <div id="groupsList" class="hidden flex-1 overflow-y-auto relative">
+        <div id="groupsList" class="flex-1 overflow-y-auto relative">
           <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading groups...</div>
-        </div>
-
-        <!-- Sticky Footer Toggle -->
-        <div class="sticky bottom-0 bg-zinc-100 dark:bg-zinc-800 border-t border-zinc-200 dark:border-zinc-700 flex gap-2 px-4 py-3">
-          <button id="directTab" onclick="switchMessagesTab('direct')" class="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition rounded-lg">
-            <span>👤</span>
-            <span>Direct</span>
-          </button>
-          <button id="groupsTab" onclick="switchMessagesTab('groups')" class="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition rounded-lg">
-            <span>👥</span>
-            <span>Groups</span>
-          </button>
         </div>
       </div>
 
@@ -2776,6 +2773,7 @@
       const buttons = {
         'messages': document.getElementById('navMessagesBtn'),
         'contacts': document.getElementById('navContactsBtn'),
+        'groups': document.getElementById('navGroupsBtn'),
         'settings': document.getElementById('navSettingsBtn'),
         'profile': document.getElementById('navProfileBtn')
       };
@@ -3836,35 +3834,9 @@
         console.warn('switchMessagesTab called before currentUser initialized');
         return;
       }
-      activeMessagesTab = tab;
-      localStorage.setItem(`guardian_messages_tab_${currentUser.id}`, tab);
-
-      // Clear any open modals/menus when switching tabs
-      closeManageGroupMembersModal();
-      document.getElementById('groupContextMenu').classList.add('hidden');
-
-      const directTab = document.getElementById('directTab');
-      const groupsTab = document.getElementById('groupsTab');
-      const directList = document.getElementById('directList');
-      const groupsList = document.getElementById('groupsList');
-
-      if (tab === 'direct') {
-        directTab.classList.add('text-cyan-600', 'dark:text-cyan-400');
-        directTab.classList.remove('text-zinc-600', 'dark:text-zinc-500');
-        groupsTab.classList.remove('text-cyan-600', 'dark:text-cyan-400');
-        groupsTab.classList.add('text-zinc-600', 'dark:text-zinc-500');
-        directList.classList.remove('hidden');
-        groupsList.classList.add('hidden');
-        await loadConversations();
-      } else {
-        groupsTab.classList.add('text-cyan-600', 'dark:text-cyan-400');
-        groupsTab.classList.remove('text-zinc-600', 'dark:text-zinc-500');
-        directTab.classList.remove('text-cyan-600', 'dark:text-cyan-400');
-        directTab.classList.add('text-zinc-600', 'dark:text-zinc-500');
-        groupsList.classList.remove('hidden');
-        directList.classList.add('hidden');
-        await loadGroups();
-      }
+      // Only direct messages in Messages view now; groups have moved to their own menu item
+      activeMessagesTab = 'direct';
+      await loadConversations();
     }
 
     // Load groups list
@@ -6257,8 +6229,6 @@
 
     async function showConversationsView() {
       updateMenuHighlight('messages');
-      // Load persisted tab preference
-      activeMessagesTab = localStorage.getItem(`guardian_messages_tab_${currentUser?.id}`) || 'direct';
 
       document.getElementById('messagesView').classList.remove('hidden');
       document.getElementById('conversationsView').classList.add('hidden');
@@ -6266,6 +6236,7 @@
       document.getElementById('chatView').classList.remove('active-chat');
       document.getElementById('profileView').classList.add('hidden');
       document.getElementById('contactsView').classList.add('hidden');
+      document.getElementById('groupsView').classList.add('hidden');
       document.getElementById('feedView').classList.add('hidden');
       document.getElementById('feedView').classList.add('hidden');
       document.getElementById('channelChatView').classList.add('hidden');
@@ -6294,20 +6265,15 @@
       document.getElementById('groupContextMenu').classList.add('hidden');
       document.getElementById('channelDetailHeader').classList.add('hidden');
 
-      // Initialize tabs
-      await switchMessagesTab(activeMessagesTab);
+      // Load direct conversations
+      await loadConversations();
 
-      // Start polling for both tabs, but only if messages view is visible
+      // Start polling for direct messages, but only if messages view is visible
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
       conversationsPollInterval = setInterval(() => {
         const messagesView = document.getElementById('messagesView');
         if (messagesView.classList.contains('hidden')) return;
-
-        if (activeMessagesTab === 'direct') {
-          loadConversations();
-        } else {
-          loadGroups();
-        }
+        loadConversations();
       }, 2000);
     }
 
@@ -6975,6 +6941,7 @@
       document.getElementById('chatView').classList.remove('active-chat');
       document.getElementById('profileView').classList.add('hidden');
       document.getElementById('contactsView').classList.remove('hidden');
+      document.getElementById('groupsView').classList.add('hidden');
       document.getElementById('feedView').classList.add('hidden');
       document.getElementById('channelChatView').classList.add('hidden');
       currentChannelId = null;
@@ -6998,9 +6965,53 @@
       loadContactsList();
     }
 
+    async function showGroupsView() {
+      updateMenuHighlight('groups');
+      document.getElementById('messagesView').classList.add('hidden');
+      document.getElementById('conversationsView').classList.add('hidden');
+      document.getElementById('chatView').classList.add('hidden');
+      document.getElementById('chatView').classList.remove('active-chat');
+      document.getElementById('profileView').classList.add('hidden');
+      document.getElementById('contactsView').classList.add('hidden');
+      document.getElementById('groupsView').classList.remove('hidden');
+      document.getElementById('feedView').classList.add('hidden');
+      document.getElementById('channelChatView').classList.add('hidden');
+      currentChannelId = null;
+      currentChannel = null;
+      document.getElementById('inputFooter').classList.add('hidden');
+      document.getElementById('inputFooter').classList.remove('footer-in-view');
+      document.getElementById('header').classList.remove('header-chat-fixed');
+      document.getElementById('headerTitle').textContent = 'Guardian';
+      document.getElementById('backBtnContainer').classList.add('hidden');
+      document.getElementById('headerContent').classList.remove('hidden');
+      document.getElementById('headerBranding').textContent = 'Guardian';
+      document.getElementById('headerPageLabel').textContent = 'Group';
+      document.getElementById('backBtnContainer').classList.add('hidden');
+      document.getElementById('menuBtn').classList.remove('hidden');
+      document.getElementById('conversationMenuBtn').classList.add('hidden');
+      document.getElementById('postBtn').classList.add('hidden');
+      document.getElementById('channelDetailHeader').classList.add('hidden');
+
+      // Clear polling intervals
+      if (conversationsPollInterval) clearInterval(conversationsPollInterval);
+      if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
+      if (pollInterval) clearInterval(pollInterval);
+
+      // Load groups data
+      await loadGroups();
+
+      // Start polling for groups
+      if (conversationsPollInterval) clearInterval(conversationsPollInterval);
+      conversationsPollInterval = setInterval(() => {
+        const groupsView = document.getElementById('groupsView');
+        if (groupsView.classList.contains('hidden')) return;
+        loadGroups();
+      }, 2000);
+    }
+
     async function showFeedView() {
       updateMenuHighlight('channels');
-      const viewsToHide = ['messagesView', 'conversationsView', 'chatView', 'contactsView', 'profileView', 'channelChatView'];
+      const viewsToHide = ['messagesView', 'conversationsView', 'chatView', 'contactsView', 'profileView', 'groupsView', 'channelChatView'];
       viewsToHide.forEach(viewId => {
         const element = document.getElementById(viewId);
         if (element) {
@@ -8339,6 +8350,7 @@
       document.getElementById('chatView').classList.add('hidden');
       document.getElementById('chatView').classList.remove('active-chat');
       document.getElementById('contactsView').classList.add('hidden');
+      document.getElementById('groupsView').classList.add('hidden');
       document.getElementById('feedView').classList.add('hidden');
       document.getElementById('channelChatView').classList.add('hidden');
       currentChannelId = null;
