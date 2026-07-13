@@ -1256,17 +1256,6 @@
     </div>
   </div>
 
-
-  <!-- Channel Compose Modal -->
-      <input id="groupNameInput" type="text" placeholder="Group name" maxlength="255" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
-      <textarea id="groupDescInput" placeholder="Description (optional)" maxlength="1000" rows="3" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"></textarea>
-      <div class="flex gap-2">
-        <button onclick="closeCreateGroupModal()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
-        <button onclick="createGroup()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Create</button>
-      </div>
-    </div>
-  </div>
-
   <!-- Create Channel Modal -->
   <div id="createChannelModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-sm">
@@ -4505,8 +4494,6 @@
       if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
 
       // Clear modals/menus when returning to messages view
-      closeManageGroupMembersModal();
-      document.getElementById('groupContextMenu').classList.add('hidden');
       document.getElementById('channelDetailHeader').classList.add('hidden');
 
       // Initialize tabs
@@ -4518,11 +4505,7 @@
         const messagesView = document.getElementById('messagesView');
         if (messagesView.classList.contains('hidden')) return;
 
-        if (activeMessagesTab === 'direct') {
-          loadConversations();
-        } else {
-          loadGroups();
-        }
+        loadConversations();
       }, 2000);
     }
 
