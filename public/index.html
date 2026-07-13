@@ -9179,24 +9179,57 @@
             description = `Left '${escapeHtml(groupName)}'`;
           }
 
-          // Render transaction hash link
-          let txHashHtml = '';
-          if (tx.txHash) {
-            const txHashShort = tx.txHash.substring(0, 12);
-            txHashHtml = `<a href="https://explorer.usernodelabs.org/tx/${escapeHtml(tx.txHash)}" target="_blank" class="text-cyan-600 dark:text-cyan-400 hover:underline">Tx: ${txHashShort}...</a>`;
+          // Render blockchain status badge
+          let badgeHtml = '';
+          if (tx.blockchainStatus) {
+            const badge = tx.blockchainStatus;
+            const txHashShort = badge.txHash ? badge.txHash.substring(0, 12) : '';
+
+            let badgeBgColor = 'bg-zinc-100 dark:bg-zinc-700';
+            let badgeTextColor = 'text-zinc-700 dark:text-zinc-300';
+            let badgeLabel = 'Local Record';
+            let badgeIcon = '📝';
+
+            if (badge.status === 'confirmed' && badge.networkOrigin === 'testnet') {
+              badgeBgColor = 'bg-green-100 dark:bg-green-900/30';
+              badgeTextColor = 'text-green-700 dark:text-green-300';
+              badgeLabel = 'Verified on Testnet';
+              badgeIcon = '✓';
+            } else if (badge.status === 'pending') {
+              badgeBgColor = 'bg-gray-100 dark:bg-gray-700';
+              badgeTextColor = 'text-gray-700 dark:text-gray-300';
+              badgeLabel = 'Pending verification';
+              badgeIcon = '⏳';
+            } else if (badge.status === 'failed') {
+              badgeBgColor = 'bg-red-100 dark:bg-red-900/30';
+              badgeTextColor = 'text-red-700 dark:text-red-300';
+              badgeLabel = 'Verification failed';
+              badgeIcon = '✗';
+            }
+
+            if (badge.explorerUrl) {
+              badgeHtml = `<a href="${escapeHtml(badge.explorerUrl)}" target="_blank" class="inline-block px-2 py-1 ${badgeBgColor} ${badgeTextColor} rounded text-xs font-medium cursor-pointer hover:opacity-80 transition" title="${escapeHtml(badge.txHash || '')}">
+                ${badgeIcon} ${badgeLabel}
+                <span class="font-mono text-xs ml-1">${txHashShort}</span>
+              </a>`;
+            } else {
+              badgeHtml = `<div class="inline-block px-2 py-1 ${badgeBgColor} ${badgeTextColor} rounded text-xs font-medium" title="${escapeHtml(badge.txHash || '')}">
+                ${badgeIcon} ${badgeLabel}
+                ${txHashShort ? `<span class="font-mono text-xs ml-1">${txHashShort}</span>` : ''}
+              </div>`;
+            }
           } else {
-            txHashHtml = '<span class="text-zinc-500 dark:text-zinc-500">Pending verification</span>';
+            badgeHtml = '<span class="text-zinc-500 dark:text-zinc-500 text-xs">No blockchain data</span>';
           }
 
           html += `
-            <div class="h-14 px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded border border-zinc-200 dark:border-zinc-700 cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-700 transition flex flex-col justify-between" onclick="openTransactionDetailsModal(${tx.id})">
-              <div class="flex justify-between items-center">
+            <div class="px-3 py-3 bg-zinc-100 dark:bg-zinc-800 rounded border border-zinc-200 dark:border-zinc-700 cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-700 transition" onclick="openTransactionDetailsModal(${tx.id})">
+              <div class="flex justify-between items-center gap-2 mb-2">
                 <div class="text-xs font-medium text-zinc-900 dark:text-zinc-100 truncate flex-1">${typeIcon} ${description}</div>
-                <div class="text-sm font-medium ${statusClass} ml-2">${statusIcon}</div>
               </div>
-              <div class="flex justify-between items-center text-xs text-zinc-600 dark:text-zinc-400">
-                <div class="truncate flex-1">${txHashHtml}</div>
-                <div class="ml-2 whitespace-nowrap">${timestamp}</div>
+              <div class="flex justify-between items-center gap-2">
+                <div class="truncate flex-1">${badgeHtml}</div>
+                <div class="ml-2 whitespace-nowrap text-xs text-zinc-600 dark:text-zinc-400">${timestamp}</div>
               </div>
             </div>
           `;
