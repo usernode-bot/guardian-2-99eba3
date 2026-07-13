@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <link rel="icon" type="image/svg+xml" href="/guardian-logo.svg" />
+    <title>Guardian</title>
+    <meta name="theme-color" content="#242424" id="theme-color-meta" />
+    <script>
+      // Restore theme early to avoid flash
+      (function () {
+        const allKeys = Object.keys(localStorage);
+        let theme = 'dark';
+        for (const key of allKeys) {
+          if (key.startsWith('guardian_settings_')) {
+            try {
+              const settings = JSON.parse(localStorage.getItem(key));
+              theme = settings.theme || 'dark';
+              break;
+            } catch (_) {}
+          }
+        }
+        if (theme === 'dark') {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        } else {
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      })();
+
+      // Set keyboard height CSS variable
+      (function () {
+        const setKb = () => {
+          const kb = Math.max(
+            0,
+            window.innerHeight -
+              (window.visualViewport?.height ?? window.innerHeight)
+          );
+          document.documentElement.style.setProperty('--kb', kb + 'px');
+        };
+        window.visualViewport?.addEventListener('resize', setKb);
+        window.visualViewport?.addEventListener('scroll', setKb);
+        window.addEventListener('orientationchange', setKb);
+        setKb();
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script src="https://social-vibecoding.usernodelabs.org/usernode-bridge/v1/bridge.js"></script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

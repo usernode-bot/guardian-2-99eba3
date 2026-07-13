@@ -1,0 +1,6 @@
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { Menu, Settings } from 'lucide-react';
+export const Header = ({ isWalletReady, walletAddress, onMenuClick, onSettingsClick, }) => {
+    return (_jsxs("header", { className: "bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-300 dark:border-zinc-800 px-4 py-3 flex items-center gap-3 fixed top-0 left-0 right-0 z-40 w-full h-16", children: [_jsx("button", { onClick: onMenuClick, className: "text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition p-2", title: "Toggle sidebar", children: _jsx(Menu, { size: 20 }) }), _jsxs("div", { className: "flex-1 flex flex-col items-start", children: [_jsx("div", { className: "text-lg font-semibold text-zinc-900 dark:text-zinc-100", children: "Guardian" }), isWalletReady && walletAddress && (_jsx("div", { className: "text-xs text-zinc-600 dark:text-zinc-500 truncate", children: walletAddress }))] }), _jsx("button", { onClick: onSettingsClick, className: "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-300 transition p-2", title: "Settings", children: _jsx(Settings, { size: 20 }) })] }));
+};
+//# sourceMappingURL=Header.js.map

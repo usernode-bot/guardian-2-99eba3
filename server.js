@@ -7835,7 +7835,11 @@ app.get('/api/test/production-simulation', async (req, res) => {
 
 // ===== STATIC & FALLBACK =====
 
-app.use(express.static(path.join(__dirname, 'public')));
+// Serve static assets from dist/
+app.use(express.static(path.join(__dirname, 'dist'), { maxAge: '1d', etag: false }));
+
+// Serve legacy public assets (if any exist)
+app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1d', etag: false }));
 
 app.get('*', (req, res) => {
   if (!req.user) {
@@ -7866,7 +7870,7 @@ app.get('*', (req, res) => {
   // Read the HTML file and inject configuration
   const fs = require('fs');
   try {
-    const html = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
+    const html = fs.readFileSync(path.join(__dirname, 'dist', 'index.html'), 'utf8');
 
     // Inject configuration script into the HTML head
     const configScript = `<script>
