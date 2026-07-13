@@ -105,51 +105,6 @@ const MOCK_CONVERSATIONS = [
   }
 ];
 
-const MOCK_GROUPS = [
-  {
-    id: 200,
-    creator_id: 1,
-    name: 'Project Alpha',
-    description: 'Team collaboration space for our latest project',
-    avatar_url: 'https://api.dicebear.com/7.x/shapes/svg?seed=alpha',
-    creatorId: 1,
-    memberCount: 4,
-    lastMessage: 'Finished the API documentation updates',
-    lastMessageAt: getTimeOffset(90),
-    unreadCount: 1,
-    archived_by: [],
-    isArchived: false
-  },
-  {
-    id: 201,
-    creator_id: 3,
-    name: 'Design Discussion',
-    description: 'UI/UX design feedback and iterations',
-    avatar_url: 'https://api.dicebear.com/7.x/shapes/svg?seed=design',
-    creatorId: 3,
-    memberCount: 5,
-    lastMessage: 'The new mockups look great! Ready for implementation.',
-    lastMessageAt: getTimeOffset(240),
-    unreadCount: 0,
-    archived_by: [],
-    isArchived: false
-  },
-  {
-    id: 202,
-    creator_id: 2,
-    name: 'Testing Roadmap',
-    description: 'QA and testing strategy discussion',
-    avatar_url: 'https://api.dicebear.com/7.x/shapes/svg?seed=testing',
-    creatorId: 2,
-    memberCount: 3,
-    lastMessage: 'We need more coverage on edge cases',
-    lastMessageAt: getTimeOffset(600),
-    unreadCount: 0,
-    archived_by: [],
-    isArchived: false
-  }
-];
-
 const MOCK_CHANNELS = [
   {
     id: 300,
@@ -339,7 +294,6 @@ const MOCK_USER_STATS = {
   rank: 'Active Guardian',
   hoursBracket: '10-50',
   totalMessagesCount: 128,
-  totalGroupsCount: 7,
   blockchainTransactionsCount: 23
 };
 
@@ -369,31 +323,6 @@ function getMockConversations(userId, limit = 50, offset = 0) {
     active: active.slice(offset, offset + limit),
     pending: pending.slice(offset, offset + limit),
     archived: []
-  };
-}
-
-function getMockGroups(userId, limit = 50, offset = 0) {
-  const groups = MOCK_GROUPS.map(g => ({
-    id: g.id,
-    name: g.name,
-    description: g.description || null,
-    avatar_url: g.avatar_url || null,
-    creatorId: g.creator_id,
-    memberCount: g.memberCount,
-    lastMessage: g.lastMessage,
-    lastMessageAt: g.lastMessageAt,
-    unreadCount: g.unreadCount,
-    archived_by: g.archived_by || []
-  }));
-
-  const active = groups.filter(g => !g.archived_by.includes(userId));
-  const archived = groups.filter(g => g.archived_by.includes(userId));
-
-  return {
-    groups: {
-      active: active.slice(offset, offset + limit),
-      archived: archived.slice(offset, offset + limit)
-    }
   };
 }
 
@@ -441,58 +370,6 @@ function getMockChannelPosts(channelId, limit = 50, offset = 0) {
   return {
     posts: posts.slice(offset, offset + limit),
     total: posts.length
-  };
-}
-
-function getMockGroupMessages(groupId, limit = 50, offset = 0) {
-  const mockMessages = [
-    { id: 1, sender_id: 1, content: { text: 'Hey team! Let\'s sync up on the project goals.' }, type: 'text', created_at: getTimeOffset(360) },
-    { id: 2, sender_id: 3, content: { text: 'Sounds good! I have some ideas to discuss.' }, type: 'text', created_at: getTimeOffset(300) },
-    { id: 3, sender_id: 2, content: { text: 'Count me in!' }, type: 'text', created_at: getTimeOffset(240) },
-    { id: 4, sender_id: 1, content: { text: 'Great, let\'s meet tomorrow at 2pm.' }, type: 'text', created_at: getTimeOffset(180) }
-  ];
-
-  return {
-    messages: mockMessages.slice(offset, offset + limit),
-    total: mockMessages.length
-  };
-}
-
-function getMockGroupMembers(groupId) {
-  // Return different member sets based on group
-  const memberSets = {
-    200: [1, 2, 3, 4],
-    201: [1, 2, 3, 4, 5],
-    202: [1, 3, 2]
-  };
-
-  const memberIds = memberSets[groupId] || [1, 2, 3];
-  return {
-    members: memberIds.map(id => {
-      const user = MOCK_USERS.find(u => u.id === id);
-      return {
-        id: user.id,
-        username: user.username,
-        verified: !!user.verified_at,
-        avatar_url: user.avatar_url
-      };
-    })
-  };
-}
-
-function getMockGroupById(groupId) {
-  const group = MOCK_GROUPS.find(g => g.id === groupId);
-  if (!group) return null;
-
-  return {
-    id: group.id,
-    name: group.name,
-    description: group.description,
-    avatar_url: group.avatar_url,
-    creatorId: group.creator_id,
-    memberCount: group.memberCount,
-    createdAt: group.created_at || new Date().toISOString(),
-    updatedAt: group.updated_at || new Date().toISOString()
   };
 }
 
@@ -629,12 +506,8 @@ function getMockTransactionsByUser(userId, limit = 20, offset = 0) {
 
 module.exports = {
   getMockConversations,
-  getMockGroups,
   getMockChannels,
   getMockChannelPosts,
-  getMockGroupMessages,
-  getMockGroupMembers,
-  getMockGroupById,
   getMockUserProfile,
   getMockSearchUsers,
   getMockUserMessages,
@@ -643,6 +516,5 @@ module.exports = {
   MOCK_USER_STATS,
   MOCK_USERS,
   MOCK_CONVERSATIONS,
-  MOCK_GROUPS,
   MOCK_CHANNELS
 };
