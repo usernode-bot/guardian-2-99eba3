@@ -1857,7 +1857,7 @@
       </div>
       <div class="flex items-center gap-2 px-6 py-4 border-t border-zinc-200 dark:border-zinc-800">
         <button onclick="closeTransactionDetailsModal()" class="flex-1 px-4 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 rounded-lg transition font-medium">Close</button>
-        <a id="txExplorerLink" href="#" target="_blank" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium text-center">[ View Explorer ]</a>
+        <a id="txExplorerLink" href="#" target="_blank" class="hidden flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium text-center">[ View Explorer ]</a>
       </div>
     </div>
   </div>
@@ -2336,6 +2336,7 @@
 
     // Environment and app state
     let isStaging = false;
+    let networkMode = 'testnet'; // testnet, devnet, demo, mainnet
 
     // Bridge load state tracking
     let bridgeLoadState = {
@@ -4800,7 +4801,7 @@
 
         if (data && !data.error) {
           // Show action-specific toast with status
-          const statusMsg = isStaging ? 'Group created—simulated signature confirmed' : 'Group created—awaiting blockchain confirmation';
+          const statusMsg = networkMode === 'demo' ? 'Group created—simulated signature confirmed' : 'Group created—awaiting blockchain confirmation';
           showToast(`✓ ${statusMsg}`, 'success');
 
           if (data.blockchainRecordingId) {
@@ -4986,7 +4987,7 @@
 
         if (data && !data.error) {
           // Show action-specific toast with status
-          const statusMsg = isStaging ? 'Channel created—simulated signature confirmed' : 'Channel created—awaiting blockchain confirmation';
+          const statusMsg = networkMode === 'demo' ? 'Channel created—simulated signature confirmed' : 'Channel created—awaiting blockchain confirmation';
           showToast(`✓ ${statusMsg}`, 'success');
 
           if (data.blockchainRecordingId) {
@@ -5269,6 +5270,10 @@
             badge.textContent = 'STAGING';
             document.body.appendChild(badge);
           }
+        }
+        if (healthResponse && healthResponse.networkMode) {
+          networkMode = healthResponse.networkMode;
+          console.log('[APP] Network mode:', networkMode);
         }
       } catch (err) {
         console.log('[APP] Could not determine environment:', err.message);
@@ -6715,7 +6720,7 @@
             console.log('[MESSAGE] Duplicate detected! Reusing existing auditLogId:', data.blockchainRecordingId, 'isDuplicate:', data.isDuplicate);
             showToast(`✓ Message already sent—reusing existing transaction`, 'info');
           } else {
-            const statusMsg = isStaging ? 'Message sent—simulated signature confirmed' : 'Message sent—confirming on-chain';
+            const statusMsg = networkMode === 'demo' ? 'Message sent—simulated signature confirmed' : 'Message sent—confirming on-chain';
             showToast(`✓ ${statusMsg}`, 'success');
           }
           if (data.blockchainRecordingId) {
@@ -6770,7 +6775,7 @@
           });
 
           if (data && !data.error) {
-            const statusMsg = isStaging ? 'Image sent—simulated signature confirmed' : 'Image sent—confirming on-chain';
+            const statusMsg = networkMode === 'demo' ? 'Image sent—simulated signature confirmed' : 'Image sent—confirming on-chain';
             showToast(`✓ ${statusMsg}`, 'success');
             if (data.blockchainRecordingId) {
               showPersistentNotification('image', {
@@ -6843,7 +6848,7 @@
           });
 
           if (data && !data.error) {
-            const statusMsg = isStaging ? 'Tokens sent—simulated signature confirmed' : 'Tokens sent—confirming on-chain';
+            const statusMsg = networkMode === 'demo' ? 'Tokens sent—simulated signature confirmed' : 'Tokens sent—confirming on-chain';
             showToast(`✓ ${statusMsg}`, 'success');
             if (data.blockchainRecordingId) {
               showPersistentNotification('token_transfer', {
