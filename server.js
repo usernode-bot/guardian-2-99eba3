@@ -3318,6 +3318,10 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
     }
 
     const row = rows[0];
+    const explorerUrl = (row.tx_hash && row.network_origin === 'testnet')
+      ? `${EXPLORER_URL}/tx/${row.tx_hash}`
+      : null;
+
     res.json({
       id: row.id,
       messageId: row.message_id,
@@ -3336,6 +3340,7 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
       network_origin: row.network_origin || null,
       createdAt: row.created_at || null,
       transactionPayload: row.transaction_payload || null,
+      explorerUrl: explorerUrl,
     });
   } catch (err) {
     console.error(err);
