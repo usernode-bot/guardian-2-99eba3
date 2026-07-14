@@ -6465,25 +6465,30 @@
               <div class="font-medium text-sm text-zinc-900 dark:text-zinc-100">${displayName}${verifiedBadge}</div>
               <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${wallet}</div>
             </div>
-            <button onclick="addContactFromFindModal(${userId})" class="flex-shrink-0 text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 text-sm transition">➕ Add</button>
+            <button onclick="chatWithUserFromFindModal(${userId}, '${displayName.replace(/'/g, "\\'")}'); return false;" class="flex-shrink-0 text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 text-sm transition">💬 Chat</button>
           </div>
         `;
       }).join('');
     }
 
-    async function addContactFromFindModal(userId) {
-      const data = await apiCall('/api/contacts/by-id', {
-        method: 'POST',
-        body: JSON.stringify({ user_id: userId, nickname: null })
-      });
+    async function chatWithUserFromFindModal(userId, username) {
+      try {
+        const data = await apiCall('/api/conversations', {
+          method: 'POST',
+          body: JSON.stringify({ participantId: userId })
+        });
 
-      if (data && !data.error) {
-        closeFindContactsModal();
-        await loadContactsList();
-        // Optionally show a toast or alert
-        console.log('Contact added successfully');
-      } else {
-        alert('Failed to add contact: ' + (data?.error || 'Unknown error'));
+        if (data && !data.error) {
+          closeFindContactsModal();
+          await loadConversations();
+          openConversation(data.id, userId, username);
+          console.log('Conversation opened successfully');
+        } else {
+          alert('Failed to create conversation: ' + (data?.error || 'Unknown error'));
+        }
+      } catch (error) {
+        console.error('Error creating conversation:', error);
+        alert('Failed to create conversation');
       }
     }
 
