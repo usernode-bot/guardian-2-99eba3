@@ -478,6 +478,270 @@
     #splashScreen.dark .splash-tagline {
       color: rgb(161, 161, 170);
     }
+
+    /* Connection Hub Styles */
+    #connectionHub {
+      position: fixed;
+      inset: 0;
+      z-index: 45;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: white;
+      padding: 20px;
+    }
+
+    #connectionHub.dark {
+      background: rgb(3, 7, 18);
+    }
+
+    #connectionHub.hidden {
+      display: none !important;
+    }
+
+    .connection-hub-container {
+      max-width: 450px;
+      width: 100%;
+      padding: 40px 30px;
+      background: white;
+      dark:background: rgb(24, 24, 27);
+      border-radius: 12px;
+    }
+
+    #connectionHub.dark .connection-hub-container {
+      background: rgb(24, 24, 27);
+    }
+
+    .connection-hub-title {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      text-align: center;
+      color: rgb(31, 41, 55);
+    }
+
+    #connectionHub.dark .connection-hub-title {
+      color: rgb(244, 244, 245);
+    }
+
+    .connection-hub-subtitle {
+      font-size: 14px;
+      color: rgb(107, 114, 128);
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    #connectionHub.dark .connection-hub-subtitle {
+      color: rgb(161, 161, 170);
+    }
+
+    .connection-hub-section {
+      margin-bottom: 28px;
+    }
+
+    .connection-hub-section-title {
+      font-weight: 600;
+      font-size: 14px;
+      margin-bottom: 12px;
+      color: rgb(31, 41, 55);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    #connectionHub.dark .connection-hub-section-title {
+      color: rgb(209, 213, 219);
+    }
+
+    .network-option {
+      display: flex;
+      align-items: center;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      border: 2px solid rgb(229, 231, 235);
+      border-radius: 8px;
+      cursor: pointer;
+      background: white;
+      transition: all 0.2s;
+    }
+
+    #connectionHub.dark .network-option {
+      border-color: rgb(63, 63, 70);
+      background: rgb(39, 39, 42);
+    }
+
+    .network-option:hover {
+      border-color: rgb(96, 165, 250);
+      background: rgb(242, 251, 255);
+    }
+
+    #connectionHub.dark .network-option:hover {
+      border-color: rgb(96, 165, 250);
+      background: rgb(55, 65, 81);
+    }
+
+    .network-option.selected {
+      border-color: rgb(96, 165, 250);
+      background: rgb(224, 242, 254);
+    }
+
+    #connectionHub.dark .network-option.selected {
+      border-color: rgb(96, 165, 250);
+      background: rgb(55, 65, 81);
+    }
+
+    .network-radio {
+      width: 20px;
+      height: 20px;
+      border: 2px solid rgb(209, 213, 219);
+      border-radius: 50%;
+      margin-right: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      background: white;
+      transition: all 0.2s;
+    }
+
+    #connectionHub.dark .network-radio {
+      border-color: rgb(107, 114, 128);
+      background: rgb(39, 39, 42);
+    }
+
+    .network-option.selected .network-radio {
+      border-color: rgb(96, 165, 250);
+      background: rgb(96, 165, 250);
+    }
+
+    .network-radio::after {
+      content: '';
+      width: 0;
+      height: 0;
+      background: white;
+      border-radius: 50%;
+      transition: all 0.2s;
+    }
+
+    .network-option.selected .network-radio::after {
+      width: 6px;
+      height: 6px;
+    }
+
+    .network-label-group {
+      flex: 1;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .network-label-text {
+      font-weight: 500;
+      color: rgb(31, 41, 55);
+    }
+
+    #connectionHub.dark .network-label-text {
+      color: rgb(229, 231, 235);
+    }
+
+    .network-status-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgb(209, 213, 219);
+      transition: all 0.2s;
+    }
+
+    .network-status-indicator.connected {
+      background: rgb(34, 197, 94);
+    }
+
+    .wallet-status-box {
+      padding: 14px;
+      background: rgb(249, 250, 251);
+      border: 1px solid rgb(229, 231, 235);
+      border-radius: 8px;
+      margin-bottom: 12px;
+      font-size: 14px;
+    }
+
+    #connectionHub.dark .wallet-status-box {
+      background: rgb(39, 39, 42);
+      border-color: rgb(63, 63, 70);
+    }
+
+    .wallet-status-label {
+      color: rgb(107, 114, 128);
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+
+    #connectionHub.dark .wallet-status-label {
+      color: rgb(161, 161, 170);
+    }
+
+    .wallet-status-text {
+      color: rgb(31, 41, 55);
+      font-weight: 500;
+      word-break: break-all;
+    }
+
+    #connectionHub.dark .wallet-status-text {
+      color: rgb(229, 231, 235);
+    }
+
+    .wallet-status-text.not-connected {
+      color: rgb(107, 114, 128);
+    }
+
+    #connectionHub.dark .wallet-status-text.not-connected {
+      color: rgb(161, 161, 170);
+    }
+
+    .connect-wallet-btn {
+      width: 100%;
+      padding: 12px 16px;
+      background: rgb(96, 165, 250);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-bottom: 16px;
+    }
+
+    .connect-wallet-btn:hover:not(:disabled) {
+      background: rgb(59, 130, 246);
+    }
+
+    .connect-wallet-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .continue-btn {
+      width: 100%;
+      padding: 14px 16px;
+      background: rgb(96, 165, 250);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 16px;
+    }
+
+    .continue-btn:hover:not(:disabled) {
+      background: rgb(59, 130, 246);
+    }
+
+    .continue-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
   </style>
 </head>
 <body class="bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100 min-h-screen flex flex-col">
@@ -486,6 +750,53 @@
     <div class="splash-heading">GUARDIAN</div>
     <div class="splash-subtitle">Decentralized Social Communication</div>
     <div class="splash-tagline">Built on UserNode</div>
+  </div>
+
+  <!-- Connection Hub Screen -->
+  <div id="connectionHub" class="hidden">
+    <div class="connection-hub-container">
+      <div class="connection-hub-title">Guardian</div>
+      <div class="connection-hub-subtitle">Connect to get started</div>
+
+      <!-- Network Selection Section -->
+      <div class="connection-hub-section">
+        <div class="connection-hub-section-title">Select Network</div>
+        <div onclick="selectNetwork('devnet')" class="network-option" data-network="devnet">
+          <div class="network-radio"></div>
+          <div class="network-label-group">
+            <span class="network-label-text">Devnet</span>
+            <div id="networkStatusDot-devnet" class="network-status-indicator"></div>
+          </div>
+        </div>
+        <div onclick="selectNetwork('testnet')" class="network-option" data-network="testnet">
+          <div class="network-radio"></div>
+          <div class="network-label-group">
+            <span class="network-label-text">Testnet</span>
+            <div id="networkStatusDot-testnet" class="network-status-indicator"></div>
+          </div>
+        </div>
+        <div class="network-option" data-network="mainnet" style="opacity: 0.5; cursor: not-allowed;">
+          <div class="network-radio"></div>
+          <div class="network-label-group">
+            <span class="network-label-text">Mainnet Coming Soon</span>
+            <div class="network-status-indicator"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Wallet Connection Section -->
+      <div class="connection-hub-section">
+        <div class="connection-hub-section-title">Connect Wallet</div>
+        <div class="wallet-status-box">
+          <div class="wallet-status-label">Current Status</div>
+          <div id="walletStatusText" class="wallet-status-text not-connected">Not connected</div>
+        </div>
+        <button id="connectWalletBtn" class="connect-wallet-btn" onclick="showConnectWalletFlow()">Connect Wallet</button>
+      </div>
+
+      <!-- Continue Button -->
+      <button id="connectionHubContinueBtn" class="continue-btn" onclick="proceedFromConnectionHub()" disabled>Continue</button>
+    </div>
   </div>
 
   <div id="app" class="flex flex-col flex-1 h-screen overflow-hidden">
@@ -2268,6 +2579,26 @@
           headerTooltip.textContent = 'Disconnected';
         }
       }
+
+      // Also update Connection Hub network status indicators
+      const devnetDot = document.getElementById('networkStatusDot-devnet');
+      const testnetDot = document.getElementById('networkStatusDot-testnet');
+
+      if (devnetDot) {
+        if (isConnected) {
+          devnetDot.className = 'network-status-indicator connected';
+        } else {
+          devnetDot.className = 'network-status-indicator';
+        }
+      }
+
+      if (testnetDot) {
+        if (isConnected) {
+          testnetDot.className = 'network-status-indicator connected';
+        } else {
+          testnetDot.className = 'network-status-indicator';
+        }
+      }
     }
 
     function updateSettingsFooter() {
@@ -3534,6 +3865,148 @@
       }
     }
 
+    // Connection Hub Functions
+    let connectionHubSelectedNetwork = null;
+
+    function selectNetwork(network) {
+      // Don't allow mainnet selection
+      if (network === 'mainnet') {
+        return;
+      }
+
+      connectionHubSelectedNetwork = network;
+
+      // Update UI
+      const options = document.querySelectorAll('.network-option[data-network]');
+      options.forEach(option => {
+        const opt = option.getAttribute('data-network');
+        if (opt === network && network !== 'mainnet') {
+          option.classList.add('selected');
+        } else {
+          option.classList.remove('selected');
+        }
+      });
+
+      // Update current user network mode
+      if (currentUser) {
+        currentUser.networkMode = network;
+      }
+
+      validateConnectionHubContinueBtn();
+    }
+
+    function showConnectWalletFlow() {
+      // For now, just show a message that wallet is connected
+      // In a real implementation, this would trigger the bridge wallet connection
+      console.log('[Connection Hub] Connect wallet flow triggered');
+
+      // Simulate wallet connection for demo (in real usage, bridge would handle this)
+      // For testing purposes, we'll just show a placeholder
+      showToast('Wallet connection would be triggered here', 'info');
+    }
+
+    function updateConnectionHubWalletStatus() {
+      const walletStatusText = document.getElementById('walletStatusText');
+      if (!walletStatusText) return;
+
+      if (currentUser && currentUser.usernode_pubkey) {
+        const walletAddr = currentUser.usernode_pubkey;
+        const truncated = walletAddr.substring(0, 14) + '…';
+        walletStatusText.textContent = 'Connected as ' + truncated;
+        walletStatusText.classList.remove('not-connected');
+      } else {
+        walletStatusText.textContent = 'Not connected';
+        walletStatusText.classList.add('not-connected');
+      }
+
+      validateConnectionHubContinueBtn();
+    }
+
+    function validateConnectionHubContinueBtn() {
+      const continueBtn = document.getElementById('connectionHubContinueBtn');
+      if (!continueBtn) return;
+
+      const networkSelected = connectionHubSelectedNetwork && connectionHubSelectedNetwork !== 'mainnet';
+      const walletConnected = currentUser && currentUser.usernode_pubkey;
+
+      continueBtn.disabled = !(networkSelected && walletConnected);
+    }
+
+    function showConnectionHub() {
+      const hub = document.getElementById('connectionHub');
+      const app = document.getElementById('app');
+      if (hub) {
+        hub.classList.remove('hidden');
+        if (app) app.classList.add('hidden');
+      }
+
+      // Apply dark theme if needed
+      const isDark = document.documentElement.classList.contains('dark');
+      if (isDark) {
+        hub.classList.add('dark');
+      } else {
+        hub.classList.remove('dark');
+      }
+
+      // Initialize wallet status
+      updateConnectionHubWalletStatus();
+
+      // Initialize network status dots
+      updateConnectionHubNetworkIndicators();
+    }
+
+    function hideConnectionHub() {
+      const hub = document.getElementById('connectionHub');
+      const app = document.getElementById('app');
+      if (hub) {
+        hub.classList.add('hidden');
+      }
+      if (app) {
+        app.classList.remove('hidden');
+      }
+    }
+
+    function updateConnectionHubNetworkIndicators() {
+      pollNetworkStatus();
+    }
+
+    async function proceedFromConnectionHub() {
+      if (!connectionHubSelectedNetwork || !currentUser?.usernode_pubkey) {
+        showToast('Please select a network and connect a wallet', 'warning');
+        return;
+      }
+
+      // Update network mode on backend
+      if (currentUser.networkMode !== connectionHubSelectedNetwork) {
+        try {
+          const result = await apiCall('/api/user/network-mode', {
+            method: 'PUT',
+            body: JSON.stringify({ networkMode: connectionHubSelectedNetwork })
+          });
+
+          if (result && !result.error) {
+            const settings = loadSettings();
+            settings.networkMode = result.networkMode || connectionHubSelectedNetwork;
+            saveSettings(settings);
+            if (currentUser) {
+              currentUser.networkMode = result.networkMode || connectionHubSelectedNetwork;
+            }
+            console.log('[Connection Hub] Network mode updated to:', result.networkMode);
+          } else {
+            showToast('Failed to update network mode', 'error');
+            return;
+          }
+        } catch (err) {
+          console.error('[Connection Hub] Error updating network mode:', err);
+          showToast('Error updating network mode', 'error');
+          return;
+        }
+      }
+
+      hideConnectionHub();
+      await showConversationsView();
+    }
+
     async function init() {
       // Run comprehensive bridge diagnostics
       console.log('=== Guardian 2 Initialization ===');
@@ -3655,8 +4128,8 @@
       if (networkStatusIntervalId) clearInterval(networkStatusIntervalId);
       networkStatusIntervalId = setInterval(pollNetworkStatus, 2000);
 
-      // Ensure currentUser is set before showing conversations view (which may load groups)
-      await showConversationsView();
+      // Show Connection Hub instead of immediately showing conversations view
+      showConnectionHub();
       setupEventListeners();
     }
 
