@@ -2025,107 +2025,90 @@
       return notificationId;
     }
 
-    function closeTransactionDetailsModal() {
-      document.getElementById('transactionDetailsModal').classList.add('hidden');
-    }
+    // Helper: Render transaction details HTML
+    function renderTransactionDetailsHTML(data) {
+      const timestamp = new Date(data.createdAt).toLocaleString();
+      const payload = typeof data.transactionPayload === 'string' ? JSON.parse(data.transactionPayload || '{}') : (data.transactionPayload || {});
 
-    async function openTransactionDetailsModal(auditLogId) {
-      const modal = document.getElementById('transactionDetailsModal');
-      const content = document.getElementById('transactionDetailsContent');
+      let typeIcon = '🔄';
+      let typeLabel = 'Transaction';
+      let details = '';
 
-      modal.classList.remove('hidden');
-      content.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Loading transaction details...</div>';
+      if (data.messageType === 'message') {
+        typeIcon = '💬';
+        typeLabel = 'Message Sent';
+        details = `<div class="text-sm text-zinc-600 dark:text-zinc-400">Message transaction recorded</div>`;
+      } else if (data.messageType === 'token_transfer') {
+        typeIcon = '💰';
+        typeLabel = 'Token Transfer';
+        details = `<div class="text-sm text-zinc-600 dark:text-zinc-400">
+          <div>Amount: <span class="font-medium text-zinc-900 dark:text-zinc-100">${escapeHtml(String(payload.amount || '?'))} tokens</span></div>
+        </div>`;
+      } else if (data.messageType === 'group_create') {
+        typeIcon = '👥';
+        typeLabel = 'Group Created';
+        details = `<div class="text-sm text-zinc-600 dark:text-zinc-400">
+          <div>Group: <span class="font-medium text-zinc-900 dark:text-zinc-100">${escapeHtml(data.groupName || 'Unknown')}</span></div>
+        </div>`;
+      }
 
-      try {
-        const data = await apiCall(`/api/blockchain-audit/${auditLogId}`);
-        if (!data) {
-          content.innerHTML = '<div class="text-center py-8 text-red-600 dark:text-red-400">Failed to load transaction details</div>';
-          return;
-        }
+      let statusClass = 'text-gray-600 dark:text-gray-400';
+      let statusIcon = '⏳';
+      if (data.status === 'confirmed') {
+        statusClass = 'text-green-600 dark:text-green-400';
+        statusIcon = '✓';
+      } else if (data.status === 'failed') {
+        statusClass = 'text-red-600 dark:text-red-400';
+        statusIcon = '✗';
+      }
 
-        const timestamp = new Date(data.createdAt).toLocaleString();
-        const payload = typeof data.transactionPayload === 'string' ? JSON.parse(data.transactionPayload || '{}') : (data.transactionPayload || {});
+      const txHashShort = data.txHash ? data.txHash.substring(0, 12) : 'N/A';
 
-        let typeIcon = '🔄';
-        let typeLabel = 'Transaction';
-        let details = '';
+      // Determine network origin label with icon
+      let networkOriginLabel = 'Not specified';
+      let networkOriginIcon = '❓';
+      let networkOriginClass = 'text-zinc-600 dark:text-zinc-400';
 
-        if (data.messageType === 'message') {
-          typeIcon = '💬';
-          typeLabel = 'Message Sent';
-          details = `<div class="text-sm text-zinc-600 dark:text-zinc-400">Message transaction recorded</div>`;
-        } else if (data.messageType === 'token_transfer') {
-          typeIcon = '💰';
-          typeLabel = 'Token Transfer';
-          details = `<div class="text-sm text-zinc-600 dark:text-zinc-400">
-            <div>Amount: <span class="font-medium text-zinc-900 dark:text-zinc-100">${escapeHtml(String(payload.amount || '?'))} tokens</span></div>
-          </div>`;
-        } else if (data.messageType === 'group_create') {
-          typeIcon = '👥';
-          typeLabel = 'Group Created';
-          details = `<div class="text-sm text-zinc-600 dark:text-zinc-400">
-            <div>Group: <span class="font-medium text-zinc-900 dark:text-zinc-100">${escapeHtml(data.groupName || 'Unknown')}</span></div>
-          </div>`;
-        }
+      // Map network_origin values to display labels
+      if (data.network_origin === 'testnet') {
+        networkOriginLabel = 'Testnet';
+        networkOriginIcon = '🔗';
+        networkOriginClass = 'text-green-600 dark:text-green-400';
+      } else if (data.network_origin === 'blockchain') {
+        networkOriginLabel = 'Testnet';
+        networkOriginIcon = '🔗';
+        networkOriginClass = 'text-green-600 dark:text-green-400';
+      } else if (data.network_origin === 'devnet') {
+        networkOriginLabel = 'Devnet';
+        networkOriginIcon = '💾';
+        networkOriginClass = 'text-blue-600 dark:text-blue-400';
+      } else if (data.network_origin === 'database') {
+        networkOriginLabel = 'Devnet';
+        networkOriginIcon = '💾';
+        networkOriginClass = 'text-blue-600 dark:text-blue-400';
+      } else if (data.network_origin === 'mainnet') {
+        networkOriginLabel = 'Mainnet';
+        networkOriginIcon = '🌍';
+        networkOriginClass = 'text-amber-600 dark:text-amber-400';
+      } else if (data.network_origin === 'demo') {
+        networkOriginLabel = 'Demo';
+        networkOriginIcon = '🎭';
+        networkOriginClass = 'text-purple-600 dark:text-purple-400';
+      } else if (data.network_origin === 'bridge') {
+        networkOriginLabel = 'Bridge';
+        networkOriginIcon = '🌉';
+        networkOriginClass = 'text-orange-600 dark:text-orange-400';
+      }
 
-        let statusClass = 'text-gray-600 dark:text-gray-400';
-        let statusIcon = '⏳';
-        if (data.status === 'confirmed') {
-          statusClass = 'text-green-600 dark:text-green-400';
-          statusIcon = '✓';
-        } else if (data.status === 'failed') {
-          statusClass = 'text-red-600 dark:text-red-400';
-          statusIcon = '✗';
-        }
+      let txHashHtml = '';
+      if (data.txHash && !data.txHash.includes('staging')) {
+        txHashHtml = `<div class="text-sm"><span class="text-zinc-600 dark:text-zinc-400">Hash:</span> <span class="font-mono text-xs text-cyan-600 dark:text-cyan-400 break-all">${escapeHtml(data.txHash)}</span></div>`;
+      } else if (data.txHash) {
+        txHashHtml = `<div class="text-sm"><span class="text-zinc-600 dark:text-zinc-400">Hash:</span> <span class="font-mono text-xs text-zinc-500">${escapeHtml(txHashShort)}...</span></div>`;
+      }
 
-        const txHashShort = data.txHash ? data.txHash.substring(0, 12) : 'N/A';
-        const txHashFull = data.txHash || '';
-
-        // Determine network origin label with icon
-        let networkOriginLabel = 'Not specified';
-        let networkOriginIcon = '❓';
-        let networkOriginClass = 'text-zinc-600 dark:text-zinc-400';
-
-        // Map network_origin values to display labels
-        // Supports both audit-log values (blockchain, demo, database, bridge) and Guardian network modes (testnet, devnet, mainnet)
-        if (data.network_origin === 'testnet') {
-          networkOriginLabel = 'Testnet';
-          networkOriginIcon = '🔗';
-          networkOriginClass = 'text-green-600 dark:text-green-400';
-        } else if (data.network_origin === 'blockchain') {
-          networkOriginLabel = 'Testnet';
-          networkOriginIcon = '🔗';
-          networkOriginClass = 'text-green-600 dark:text-green-400';
-        } else if (data.network_origin === 'devnet') {
-          networkOriginLabel = 'Devnet';
-          networkOriginIcon = '💾';
-          networkOriginClass = 'text-blue-600 dark:text-blue-400';
-        } else if (data.network_origin === 'database') {
-          networkOriginLabel = 'Devnet';
-          networkOriginIcon = '💾';
-          networkOriginClass = 'text-blue-600 dark:text-blue-400';
-        } else if (data.network_origin === 'mainnet') {
-          networkOriginLabel = 'Mainnet';
-          networkOriginIcon = '🌍';
-          networkOriginClass = 'text-amber-600 dark:text-amber-400';
-        } else if (data.network_origin === 'demo') {
-          networkOriginLabel = 'Demo';
-          networkOriginIcon = '🎭';
-          networkOriginClass = 'text-purple-600 dark:text-purple-400';
-        } else if (data.network_origin === 'bridge') {
-          networkOriginLabel = 'Bridge';
-          networkOriginIcon = '🌉';
-          networkOriginClass = 'text-orange-600 dark:text-orange-400';
-        }
-
-        let txHashHtml = '';
-        if (data.txHash && !data.txHash.includes('staging')) {
-          txHashHtml = `<div class="text-sm"><span class="text-zinc-600 dark:text-zinc-400">Hash:</span> <span class="font-mono text-xs text-cyan-600 dark:text-cyan-400 break-all">${escapeHtml(data.txHash)}</span></div>`;
-        } else if (data.txHash) {
-          txHashHtml = `<div class="text-sm"><span class="text-zinc-600 dark:text-zinc-400">Hash:</span> <span class="font-mono text-xs text-zinc-500">${escapeHtml(txHashShort)}...</span></div>`;
-        }
-
-        content.innerHTML = `
+      return {
+        html: `
           <div class="space-y-4">
             <div>
               <div class="text-lg font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
@@ -2153,18 +2136,113 @@
               <div class="text-sm"><span class="text-zinc-600 dark:text-zinc-400">Timestamp:</span> <span class="text-zinc-900 dark:text-zinc-100">${timestamp}</span></div>
             </div>
           </div>
-        `;
+        `,
+        explorerUrl: data.explorerUrl
+      };
+    }
 
-        const explorerLink = document.getElementById('txExplorerLink');
-        if (data.explorerUrl) {
-          explorerLink.href = data.explorerUrl;
-          explorerLink.classList.remove('hidden');
-        } else {
-          explorerLink.classList.add('hidden');
+    // Track active modal polling sessions
+    if (!window.modalPollingTimers) {
+      window.modalPollingTimers = {};
+    }
+
+    function closeTransactionDetailsModal() {
+      const modal = document.getElementById('transactionDetailsModal');
+      const auditLogId = modal.dataset.currentAuditLogId;
+
+      // Stop polling when modal is closed
+      if (auditLogId && window.modalPollingTimers[auditLogId]) {
+        clearInterval(window.modalPollingTimers[auditLogId]);
+        delete window.modalPollingTimers[auditLogId];
+      }
+
+      modal.classList.add('hidden');
+    }
+
+    async function openTransactionDetailsModal(auditLogId) {
+      const modal = document.getElementById('transactionDetailsModal');
+      const content = document.getElementById('transactionDetailsContent');
+
+      modal.classList.remove('hidden');
+      modal.dataset.currentAuditLogId = auditLogId;
+      content.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Loading transaction details...</div>';
+
+      // Stop any existing polling for this modal
+      if (window.modalPollingTimers[auditLogId]) {
+        clearInterval(window.modalPollingTimers[auditLogId]);
+      }
+
+      let lastStatus = null;
+      let pollingAttempts = 0;
+      const maxPollingAttempts = 600; // ~30 min with exponential backoff
+
+      const pollModal = async () => {
+        try {
+          const data = await apiCall(`/api/blockchain-audit/${auditLogId}`);
+          if (!data) {
+            content.innerHTML = '<div class="text-center py-8 text-red-600 dark:text-red-400">Failed to load transaction details</div>';
+            return;
+          }
+
+          // Render the details
+          const rendered = renderTransactionDetailsHTML(data);
+          content.innerHTML = rendered.html;
+
+          // Update explorer link
+          const explorerLink = document.getElementById('txExplorerLink');
+          if (rendered.explorerUrl) {
+            explorerLink.href = rendered.explorerUrl;
+            explorerLink.classList.remove('hidden');
+          } else {
+            explorerLink.classList.add('hidden');
+          }
+
+          // Track status changes for logging
+          if (data.status !== lastStatus) {
+            console.log(`[MODAL] Transaction ${auditLogId} status: ${data.status}${data.txHash ? ` (hash: ${data.txHash.substring(0, 16)}...)` : ' (no hash yet)'}`);
+            lastStatus = data.status;
+          }
+
+          // Stop polling if transaction is confirmed or failed
+          if (data.status === 'confirmed' || data.status === 'failed') {
+            console.log(`[MODAL] Stopping polling for ${auditLogId} - status is ${data.status}`);
+            if (window.modalPollingTimers[auditLogId]) {
+              clearInterval(window.modalPollingTimers[auditLogId]);
+              delete window.modalPollingTimers[auditLogId];
+            }
+            return;
+          }
+
+          pollingAttempts++;
+          if (pollingAttempts > maxPollingAttempts) {
+            console.log(`[MODAL] Max polling attempts (${maxPollingAttempts}) reached for ${auditLogId}`);
+            if (window.modalPollingTimers[auditLogId]) {
+              clearInterval(window.modalPollingTimers[auditLogId]);
+              delete window.modalPollingTimers[auditLogId];
+            }
+          }
+        } catch (err) {
+          console.error(`[MODAL] Error polling transaction details for ${auditLogId}:`, err.message);
         }
-      } catch (err) {
-        console.error('Error loading transaction details:', err);
-        content.innerHTML = '<div class="text-center py-8 text-red-600 dark:text-red-400">Error loading transaction details</div>';
+      };
+
+      // Initial load
+      await pollModal();
+
+      // Only start polling if status is pending
+      const initialData = await apiCall(`/api/blockchain-audit/${auditLogId}`).catch(() => null);
+      if (initialData && initialData.status === 'pending') {
+        console.log(`[MODAL] Starting auto-refresh polling for ${auditLogId}`);
+        // Poll every 3-5 seconds with slight randomization
+        window.modalPollingTimers[auditLogId] = setInterval(() => {
+          if (document.getElementById('transactionDetailsModal').classList.contains('hidden')) {
+            // Modal is closed, stop polling
+            clearInterval(window.modalPollingTimers[auditLogId]);
+            delete window.modalPollingTimers[auditLogId];
+          } else {
+            pollModal();
+          }
+        }, 3000 + Math.random() * 2000);
       }
     }
 
