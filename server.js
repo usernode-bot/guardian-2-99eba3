@@ -1180,7 +1180,7 @@ async function sendOutgoingPayment(recipient, amount, memo) {
     // In demo mode or without RPC URL in testnet, use bridge/fallback
     if (NETWORK_MODE === 'demo' || !NODE_RPC_URL) {
       console.log(`[BLOCKCHAIN-SUBMIT] Bridge/fallback mode: would send ${amount} to ${recipient}`);
-      return { success: true, transactionHash: 'ut1staging-token-demo-' + Date.now() };
+      return { success: true, transactionHash: null };
     }
 
     // In testnet mode with RPC: POST to NODE_RPC_URL /wallet/send
@@ -1296,7 +1296,7 @@ async function sendMessageToBlockchain(messagePayload, memo, network = 'testnet'
     // In demo mode or without RPC URL in testnet, use bridge/fallback
     if (NETWORK_MODE === 'demo' || !NODE_RPC_URL) {
       console.log(`[BLOCKCHAIN-SUBMIT] Bridge/fallback mode: would submit message ${messagePayload.messageId} to network ${network}`);
-      return { transactionHash: 'ut1staging-' + network + '-message-' + Date.now() };
+      return { transactionHash: null };
     }
 
     // In testnet mode with RPC: POST to NODE_RPC_URL /transaction/submit
@@ -1398,7 +1398,7 @@ async function sendGroupToBlockchain(groupPayload, memo, memberPubkeys, network 
     // In demo mode or without RPC URL in testnet, use bridge/fallback
     if (NETWORK_MODE === 'demo' || !NODE_RPC_URL) {
       console.log(`[BLOCKCHAIN-SUBMIT] Bridge/fallback mode: would create group ${groupPayload.groupId} to network ${network}`);
-      return { transactionHash: 'ut1staging-' + network + '-group-' + Date.now() };
+      return { transactionHash: null };
     }
 
     // In testnet mode with RPC: POST to NODE_RPC_URL /transaction/submit
@@ -2804,16 +2804,11 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
         actualTxHash = 'ut1devnet-message-' + messageId + '-' + Date.now();
         auditStatus = 'confirmed';
         networkOriginValue = 'database';
-      } else if (ENABLE_DEMO_MODE) {
-        // Demo mode: generate synthetic hash, confirm immediately
-        actualTxHash = 'ut1staging-' + network + '-message-' + messageId + '-' + Date.now();
-        auditStatus = 'confirmed';
-        networkOriginValue = 'demo';
       } else {
-        // Testnet mode without RPC or other modes: store null, will be populated later
+        // Demo mode or testnet without RPC: store null, will be populated later
         actualTxHash = null;
-        auditStatus = 'pending';
-        networkOriginValue = 'bridge';
+        auditStatus = ENABLE_DEMO_MODE ? 'confirmed' : 'pending';
+        networkOriginValue = ENABLE_DEMO_MODE ? 'demo' : 'bridge';
       }
 
       // Log audit creation with all critical fields
@@ -3188,16 +3183,11 @@ app.post('/api/tokens/send', async (req, res) => {
       actualTxHash = 'ut1devnet-token-' + Date.now();
       auditStatus = 'confirmed';
       networkOriginValue = 'database';
-    } else if (ENABLE_DEMO_MODE) {
-      // Demo mode: generate synthetic hash, confirm immediately
-      actualTxHash = 'ut1staging-' + network + '-token-' + Date.now();
-      auditStatus = 'confirmed';
-      networkOriginValue = 'demo';
     } else {
-      // Testnet mode without RPC or other modes: store null, will be populated later
+      // Demo mode or testnet without RPC: store null, will be populated later
       actualTxHash = null;
-      auditStatus = 'pending';
-      networkOriginValue = 'bridge';
+      auditStatus = ENABLE_DEMO_MODE ? 'confirmed' : 'pending';
+      networkOriginValue = ENABLE_DEMO_MODE ? 'demo' : 'bridge';
     }
 
     console.log(`[TOKEN] Recording blockchain audit log: txHash=${actualTxHash || 'pending'}, status=${auditStatus}, contentHash=${contentHash}`);
@@ -4738,14 +4728,11 @@ app.post('/api/groups', async (req, res) => {
       actualTxHash = 'ut1devnet-group-' + groupId + '-' + Date.now();
       auditStatus = 'confirmed';
       networkOriginValue = 'database';
-    } else if (ENABLE_DEMO_MODE) {
-      actualTxHash = 'ut1staging-' + network + '-group-create-' + groupId + '-' + Date.now();
-      auditStatus = 'confirmed';
-      networkOriginValue = 'demo';
     } else {
-      actualTxHash = `guardian-pending-group-${groupId}-${Date.now()}-${crypto.randomUUID()}`;
-      auditStatus = 'pending';
-      networkOriginValue = 'bridge';
+      // Demo mode or testnet without RPC: store null, will be populated later
+      actualTxHash = null;
+      auditStatus = ENABLE_DEMO_MODE ? 'confirmed' : 'pending';
+      networkOriginValue = ENABLE_DEMO_MODE ? 'demo' : 'bridge';
     }
 
     let blockchainRecordingId;
@@ -5261,15 +5248,11 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
       actualTxHash = 'ut1devnet-message-' + messageId + '-' + Date.now();
       auditStatus = 'confirmed';
       networkOriginValue = 'database';
-    } else if (ENABLE_DEMO_MODE) {
-      actualTxHash = 'ut1staging-' + network + '-message-' + messageId + '-' + Date.now();
-      auditStatus = 'confirmed';
-      networkOriginValue = 'demo';
     } else {
-      // Testnet mode without RPC or other modes: store null, will be populated later
+      // Demo mode or testnet without RPC: store null, will be populated later
       actualTxHash = null;
-      auditStatus = 'pending';
-      networkOriginValue = 'bridge';
+      auditStatus = ENABLE_DEMO_MODE ? 'confirmed' : 'pending';
+      networkOriginValue = ENABLE_DEMO_MODE ? 'demo' : 'bridge';
     }
 
     let blockchainRecordingId;
