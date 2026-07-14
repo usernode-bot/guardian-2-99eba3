@@ -2156,8 +2156,8 @@
         `;
 
         const explorerLink = document.getElementById('txExplorerLink');
-        if (data.txHash && !data.txHash.includes('staging')) {
-          explorerLink.href = `https://explorer.usernodelabs.org/tx/${escapeHtml(data.txHash)}`;
+        if (data.explorerUrl) {
+          explorerLink.href = data.explorerUrl;
           explorerLink.classList.remove('hidden');
         } else {
           explorerLink.classList.add('hidden');
