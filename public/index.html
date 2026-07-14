@@ -2473,6 +2473,13 @@
       const splashScreen = document.getElementById('splashScreen');
       if (!splashScreen) return;
 
+      // Check if splash has already been shown this session
+      if (sessionStorage.getItem('guardian_splash_shown') === 'true') {
+        splashScreen.style.display = 'none';
+        splashScreen.style.pointerEvents = 'none';
+        return;
+      }
+
       // Apply dark mode class if needed
       const isDarkMode = document.documentElement.classList.contains('dark');
       if (isDarkMode) {
@@ -2486,6 +2493,8 @@
         setTimeout(() => {
           splashScreen.style.display = 'none';
           splashScreen.style.pointerEvents = 'none';
+          // Mark splash screen as shown for this session
+          sessionStorage.setItem('guardian_splash_shown', 'true');
         }, 1000);
       }, 1500);
     }
@@ -4072,6 +4081,8 @@
       if (hub) {
         hub.classList.remove('hidden');
         if (app) app.classList.add('hidden');
+        // Mark connection hub as shown for this session
+        sessionStorage.setItem('guardian_connection_hub_shown', 'true');
       }
 
       // Apply dark theme if needed
@@ -4237,8 +4248,22 @@
       if (networkStatusIntervalId) clearInterval(networkStatusIntervalId);
       networkStatusIntervalId = setInterval(pollNetworkStatus, 2000);
 
-      // Show Connection Hub instead of immediately showing conversations view
-      showConnectionHub();
+      // Check if Connection Hub has already been shown this session
+      if (sessionStorage.getItem('guardian_connection_hub_shown') === 'true') {
+        // Connection hub already shown, skip directly to main app
+        const app = document.getElementById('app');
+        if (app) {
+          app.classList.remove('hidden');
+        }
+        const hub = document.getElementById('connectionHub');
+        if (hub) {
+          hub.classList.add('hidden');
+        }
+        await showConversationsView();
+      } else {
+        // Show Connection Hub for first time this session
+        showConnectionHub();
+      }
       setupEventListeners();
     }
 
