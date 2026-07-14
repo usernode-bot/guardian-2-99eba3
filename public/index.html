@@ -421,6 +421,37 @@
       }
     }
 
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.6;
+      }
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .syncing-text {
+      animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+
+    .connecting-spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
     #splashScreen {
       position: fixed;
       inset: 0;
@@ -3819,6 +3850,8 @@
 
     // Connection Hub Functions
     let connectionHubSelectedNetwork = null;
+    let connectionHubNetworkSyncing = null;
+    let connectionHubWalletConnecting = false;
 
     function selectNetwork(network) {
       // Don't allow mainnet selection
@@ -3844,24 +3877,78 @@
         currentUser.networkMode = network;
       }
 
+      // Show syncing status for the selected network
+      updateConnectionHubNetworkSyncStatus(network);
       validateConnectionHubContinueBtn();
     }
 
+    function updateConnectionHubNetworkSyncStatus(network) {
+      connectionHubNetworkSyncing = network;
+      const networkLabelText = document.querySelector(`.network-option[data-network="${network}"] .network-label-text`);
+      if (networkLabelText) {
+        const originalText = network.charAt(0).toUpperCase() + network.slice(1);
+        networkLabelText.textContent = originalText + ' - Syncing...';
+        networkLabelText.style.color = 'rgb(96, 165, 250)';
+        networkLabelText.classList.add('syncing-text');
+      }
+    }
+
+    function clearConnectionHubNetworkSyncStatus(network) {
+      connectionHubNetworkSyncing = null;
+      const networkLabelText = document.querySelector(`.network-option[data-network="${network}"] .network-label-text`);
+      if (networkLabelText) {
+        const originalText = network.charAt(0).toUpperCase() + network.slice(1);
+        networkLabelText.textContent = originalText;
+        networkLabelText.style.color = '';
+        networkLabelText.classList.remove('syncing-text');
+      }
+    }
+
     function showConnectWalletFlow() {
-      // For now, just show a message that wallet is connected
+      connectionHubWalletConnecting = true;
+
+      const connectBtn = document.getElementById('connectWalletBtn');
+      const walletStatusText = document.getElementById('walletStatusText');
+
+      if (connectBtn) {
+        connectBtn.disabled = true;
+        connectBtn.innerHTML = '<span class="connecting-spinner"></span>Connecting...';
+      }
+
+      if (walletStatusText) {
+        walletStatusText.textContent = 'Connecting...';
+        walletStatusText.classList.add('not-connected');
+      }
+
+      // Simulate wallet connection delay
       // In a real implementation, this would trigger the bridge wallet connection
       console.log('[Connection Hub] Connect wallet flow triggered');
 
-      // Simulate wallet connection for demo (in real usage, bridge would handle this)
-      // For testing purposes, we'll just show a placeholder
-      showToast('Wallet connection would be triggered here', 'info');
+      // Show a connecting indicator
+      showToast('Initiating wallet connection...', 'info');
+
+      // Simulate async wallet connection completion after short delay
+      setTimeout(() => {
+        connectionHubWalletConnecting = false;
+        updateConnectionHubWalletStatus();
+
+        const connectBtn = document.getElementById('connectWalletBtn');
+        if (connectBtn) {
+          connectBtn.disabled = false;
+          connectBtn.textContent = 'Connect Wallet';
+        }
+      }, 2000);
     }
 
     function updateConnectionHubWalletStatus() {
       const walletStatusText = document.getElementById('walletStatusText');
       if (!walletStatusText) return;
 
-      if (currentUser && currentUser.usernode_pubkey) {
+      // If wallet is currently connecting, show connecting state
+      if (connectionHubWalletConnecting) {
+        walletStatusText.textContent = 'Connecting...';
+        walletStatusText.classList.add('not-connected');
+      } else if (currentUser && currentUser.usernode_pubkey) {
         const walletAddr = currentUser.usernode_pubkey;
         const truncated = walletAddr.substring(0, 14) + '…';
         walletStatusText.textContent = 'Connected as ' + truncated;
@@ -3880,8 +3967,9 @@
 
       const networkSelected = connectionHubSelectedNetwork && connectionHubSelectedNetwork !== 'mainnet';
       const walletConnected = currentUser && currentUser.usernode_pubkey;
+      const isSyncing = connectionHubNetworkSyncing || connectionHubWalletConnecting;
 
-      continueBtn.disabled = !(networkSelected && walletConnected);
+      continueBtn.disabled = !(networkSelected && walletConnected) || isSyncing;
     }
 
     function showConnectionHub() {
@@ -3928,6 +4016,16 @@
         return;
       }
 
+      // Show syncing state
+      const continueBtn = document.getElementById('connectionHubContinueBtn');
+      const originalBtnText = continueBtn ? continueBtn.textContent : 'Continue';
+      if (continueBtn) {
+        continueBtn.disabled = true;
+        continueBtn.textContent = 'Syncing...';
+      }
+
+      updateConnectionHubNetworkSyncStatus(connectionHubSelectedNetwork);
+
       // Update network mode on backend
       if (currentUser.networkMode !== connectionHubSelectedNetwork) {
         try {
@@ -3944,19 +4042,40 @@
               currentUser.networkMode = result.networkMode || connectionHubSelectedNetwork;
             }
             console.log('[Connection Hub] Network mode updated to:', result.networkMode);
+
+            // Clear syncing status
+            clearConnectionHubNetworkSyncStatus(connectionHubSelectedNetwork);
+
+            // Show success
+            showToast('Network mode synchronized', 'success');
+
+            hideConnectionHub();
+            await showConversationsView();
           } else {
+            clearConnectionHubNetworkSyncStatus(connectionHubSelectedNetwork);
+            if (continueBtn) {
+              continueBtn.disabled = false;
+              continueBtn.textContent = originalBtnText;
+            }
             showToast('Failed to update network mode', 'error');
             return;
           }
         } catch (err) {
           console.error('[Connection Hub] Error updating network mode:', err);
+          clearConnectionHubNetworkSyncStatus(connectionHubSelectedNetwork);
+          if (continueBtn) {
+            continueBtn.disabled = false;
+            continueBtn.textContent = originalBtnText;
+          }
           showToast('Error updating network mode', 'error');
           return;
         }
+      } else {
+        // Network mode already matches, just proceed
+        clearConnectionHubNetworkSyncStatus(connectionHubSelectedNetwork);
+        hideConnectionHub();
+        await showConversationsView();
       }
-
-      hideConnectionHub();
-      await showConversationsView();
     }
 
     async function init() {
