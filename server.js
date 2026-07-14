@@ -42,20 +42,12 @@ pool.on('error', (err) => {
 const JWT_SECRET = process.env.JWT_SECRET;
 const IS_STAGING = process.env.USERNODE_ENV === 'staging';
 
-// Initialize network mode with priority: NETWORK_MODE env var > ENABLE_DEMO_MODE env var (legacy) > default 'testnet'
+// Initialize network mode with priority: NETWORK_MODE env var > default 'testnet'
 // Canonical values: 'testnet' (real blockchain), 'devnet' (database-only), 'mainnet' (future)
 // Normalize 'real_testnet' to 'testnet' for backward compatibility
-let NETWORK_MODE = process.env.NETWORK_MODE && ['testnet', 'real_testnet', 'devnet', 'demo'].includes(process.env.NETWORK_MODE)
+let NETWORK_MODE = process.env.NETWORK_MODE && ['testnet', 'real_testnet', 'devnet', 'mainnet'].includes(process.env.NETWORK_MODE)
   ? (process.env.NETWORK_MODE === 'real_testnet' ? 'testnet' : process.env.NETWORK_MODE)
-  : process.env.ENABLE_DEMO_MODE === 'true'
-    ? 'demo'
-    : IS_STAGING
-      ? 'demo'
-      : 'testnet';
-
-// Derive ENABLE_DEMO_MODE for backward compatibility with existing transaction code
-const getEnableDemoMode = () => NETWORK_MODE === 'demo';
-let ENABLE_DEMO_MODE = getEnableDemoMode();
+  : 'testnet';
 
 // Usernode blockchain configuration
 const APP_PUBKEY = process.env.APP_PUBKEY || 'ut1Fww7onqF9LsRSb6d6BozgQWtjNYqQJghYxXmBc8foncb';
@@ -103,8 +95,8 @@ function validateAndConfigureRPC() {
     }
   }
 
-  // In demo mode, return null to skip RPC entirely
-  if (NETWORK_MODE === 'demo') {
+  // In devnet, return null to skip RPC entirely
+  if (NETWORK_MODE === 'devnet') {
     return null;
   }
 
@@ -128,7 +120,7 @@ let peerSyncPromises = new Map(); // Map<userId, Promise> for concurrent request
 async function checkRPCHealth() {
   // RPC health checks only in testnet mode
   if (NETWORK_MODE !== 'testnet') {
-    return { rpcUrl: null, reachable: false, error: 'Demo or devnet mode - RPC not used' };
+    return { rpcUrl: null, reachable: false, error: 'Devnet or mainnet mode - RPC not used' };
   }
 
   if (!NODE_RPC_URL) {
@@ -356,10 +348,12 @@ async function validateAndConfigureExplorer() {
 // NETWORK_MODE env var still wins over the persisted value.
 async function initializeNetworkMode() {
   const envMode = process.env.NETWORK_MODE;
-  if (envMode && ['testnet', 'real_testnet', 'devnet', 'demo'].includes(envMode)) {
+  if (envMode && ['testnet', 'real_testnet', 'devnet', 'mainnet'].includes(envMode)) {
     // Normalize 'real_testnet' to 'testnet' for consistency
     if (envMode === 'real_testnet') {
       NETWORK_MODE = 'testnet';
+    } else {
+      NETWORK_MODE = envMode;
     }
     console.log(`[CONFIG] NETWORK_MODE set via environment (${envMode}), normalized to ${NETWORK_MODE}, ignoring persisted value`);
     return;
@@ -369,10 +363,9 @@ async function initializeNetworkMode() {
       SELECT value FROM config_state WHERE key = 'NETWORK_MODE' LIMIT 1
     `);
     const dbMode = result.rows[0]?.value;
-    if (dbMode && ['testnet', 'real_testnet', 'devnet', 'demo'].includes(dbMode)) {
+    if (dbMode && ['testnet', 'real_testnet', 'devnet', 'mainnet'].includes(dbMode)) {
       // Normalize 'real_testnet' to 'testnet' for consistency
       NETWORK_MODE = dbMode === 'real_testnet' ? 'testnet' : dbMode;
-      ENABLE_DEMO_MODE = getEnableDemoMode();
       console.log(`[CONFIG] Network mode restored from database: ${NETWORK_MODE}`);
     }
   } catch (err) {
@@ -422,15 +415,16 @@ function checkRateLimit(key, limit, windowMs) {
 
 // Centralized wallet validation for transaction endpoints
 // Returns { valid: boolean, error: string | null }
-// Only requires wallet for testnet mode; devnet and demo can proceed without it
+// Wallet required for testnet & devnet; optional for mainnet
 async function validateWalletForMode(networkMode, userId, userWalletPubkey) {
-  // Demo mode: no wallet required
-  if (networkMode === 'demo') {
-    return { valid: true, error: null };
-  }
-
-  // Devnet mode: no wallet required (database-only transactions)
+  // Devnet mode: wallet required
   if (networkMode === 'devnet') {
+    if (!userWalletPubkey) {
+      return {
+        valid: false,
+        error: 'Wallet not linked to user account. Connect your Usernode wallet in Settings to use devnet.'
+      };
+    }
     return { valid: true, error: null };
   }
 
@@ -466,12 +460,9 @@ async function validateWalletForMode(networkMode, userId, userWalletPubkey) {
     return { valid: true, error: null };
   }
 
-  // Mainnet: not yet supported
+  // Mainnet: wallet optional (future support)
   if (networkMode === 'mainnet') {
-    return {
-      valid: false,
-      error: 'Mainnet support is not yet available.'
-    };
+    return { valid: true, error: null };
   }
 
   return {
@@ -1178,7 +1169,7 @@ async function sendOutgoingPayment(recipient, amount, memo) {
     }
 
     // In demo mode or without RPC URL in testnet, use bridge/fallback
-    if (NETWORK_MODE === 'demo' || !NODE_RPC_URL) {
+    if (NETWORK_MODE !== 'testnet' || !NODE_RPC_URL) {
       console.log(`[BLOCKCHAIN-SUBMIT] Bridge/fallback mode: would send ${amount} to ${recipient}`);
       return { success: true, transactionHash: null };
     }
@@ -1294,7 +1285,7 @@ async function sendMessageToBlockchain(messagePayload, memo, network = 'testnet'
     }
 
     // In demo mode or without RPC URL in testnet, use bridge/fallback
-    if (NETWORK_MODE === 'demo' || !NODE_RPC_URL) {
+    if (NETWORK_MODE !== 'testnet' || !NODE_RPC_URL) {
       console.log(`[BLOCKCHAIN-SUBMIT] Bridge/fallback mode: would submit message ${messagePayload.messageId} to network ${network}`);
       return { transactionHash: null };
     }
@@ -1396,7 +1387,7 @@ async function sendGroupToBlockchain(groupPayload, memo, memberPubkeys, network 
     }
 
     // In demo mode or without RPC URL in testnet, use bridge/fallback
-    if (NETWORK_MODE === 'demo' || !NODE_RPC_URL) {
+    if (NETWORK_MODE !== 'testnet' || !NODE_RPC_URL) {
       console.log(`[BLOCKCHAIN-SUBMIT] Bridge/fallback mode: would create group ${groupPayload.groupId} to network ${network}`);
       return { transactionHash: null };
     }
@@ -1859,22 +1850,6 @@ app.get('/api/user', async (req, res) => {
     return res.status(401).json({ error: 'Not authenticated' });
   }
   try {
-    if (ENABLE_DEMO_MODE) {
-      const mockUser = mockData.getMockUserProfile(1);
-      return res.json({
-        id: 1,
-        username: mockUser.username,
-        usernode_pubkey: mockUser.usernode_pubkey,
-        verified: !!mockUser.verified_at,
-        network: 'testnet',
-        view_mode: 'web',
-        avatar_url: mockUser.avatar_url,
-        created_at: mockUser.created_at,
-        bio: mockUser.bio,
-        isDemoMode: ENABLE_DEMO_MODE,
-        appPubkey: APP_PUBKEY,
-      });
-    }
     const userRes = await pool.query(`SELECT view_mode, avatar_url, created_at, bio, skip_signature_in_devnet, network_mode FROM users WHERE id = $1`, [req.user.id]);
     const view_mode = userRes.rows[0]?.view_mode || 'web';
     const avatar_url = userRes.rows[0]?.avatar_url || null;
@@ -1894,7 +1869,6 @@ app.get('/api/user', async (req, res) => {
       bio: bio,
       skipSignatureInDevnet: skip_signature_in_devnet,
       networkMode: network_mode,
-      isDemoMode: ENABLE_DEMO_MODE,
       appPubkey: APP_PUBKEY,
     });
   } catch (err) {
@@ -1988,14 +1962,6 @@ app.get('/api/user/stats', async (req, res) => {
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
       return res.status(400).json({ error: 'Invalid user ID' });
-    }
-
-    if (ENABLE_DEMO_MODE) {
-      return res.json({
-        contactsCount: 12,
-        groupCount: mockData.MOCK_USER_STATS.totalGroupsCount,
-        messagesCount: mockData.MOCK_USER_STATS.totalGroupsCount + 4
-      });
     }
 
     // Query contacts count (contacts added BY this user)
@@ -2184,11 +2150,10 @@ app.get('/api/config', async (req, res) => {
 
     res.json({
       networkMode: NETWORK_MODE,
-      isDemoMode: ENABLE_DEMO_MODE,
       rpcEndpoint: NODE_RPC_URL,
       canEdit: canEdit,
       canEditRpc: canEdit,
-      description: 'Devnet: database-only transactions with immediate confirmation; no blockchain or RPC required. Demo: simulated transactions with fake hashes. Real Testnet: live blockchain transactions requiring wallet confirmation.',
+      description: 'Devnet: database-only transactions with immediate confirmation; no blockchain or RPC required. Testnet: live blockchain transactions requiring wallet confirmation.',
       secrets: [
         {
           key: 'APP_PUBKEY',
@@ -2223,12 +2188,12 @@ app.put('/api/config/network-mode', async (req, res) => {
     }
 
     const { networkMode } = req.body;
-    if (!['demo', 'real_testnet', 'devnet'].includes(networkMode)) {
-      return res.status(400).json({ error: 'Invalid input: networkMode must be "demo", "real_testnet", or "devnet"' });
+    if (!['testnet', 'devnet', 'mainnet'].includes(networkMode)) {
+      return res.status(400).json({ error: 'Invalid input: networkMode must be "testnet", "devnet", or "mainnet"' });
     }
 
-    // Check authorization: devnet is available to all authenticated users; demo/real_testnet require first user OR group creator
-    const canEdit = networkMode === 'devnet' || userId === 1 || (await userHasCreatedGroup(userId));
+    // Check authorization: all modes require first user OR group creator
+    const canEdit = userId === 1 || (await userHasCreatedGroup(userId));
     if (!canEdit) {
       return res.status(403).json({ error: 'Not authorized to modify configuration' });
     }
@@ -2244,57 +2209,9 @@ app.put('/api/config/network-mode', async (req, res) => {
 
     // Update in-memory state
     NETWORK_MODE = networkMode;
-    ENABLE_DEMO_MODE = getEnableDemoMode();
     console.log(`[CONFIG] Network mode updated and persisted: ${networkMode} (by user ${userId})`);
 
     res.json({
-      networkMode: NETWORK_MODE,
-      isDemoMode: ENABLE_DEMO_MODE,
-      status: 'updated'
-    });
-  } catch (err) {
-    console.error('Error updating config:', err);
-    res.status(500).json({ error: 'Failed to update configuration' });
-  }
-});
-
-// Backward compatibility: legacy demo-mode endpoint
-app.put('/api/config/demo-mode', async (req, res) => {
-  try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const userId = parseInt(req.user.id, 10);
-    if (isNaN(userId)) {
-      return res.status(401).json({ error: 'Invalid user ID' });
-    }
-
-    const { enabled } = req.body;
-    if (typeof enabled !== 'boolean') {
-      return res.status(400).json({ error: 'Invalid input: enabled must be a boolean' });
-    }
-
-    // Check authorization (first user OR has created a group)
-    const canEdit = userId === 1 || (await userHasCreatedGroup(userId));
-    if (!canEdit) {
-      return res.status(403).json({ error: 'Not authorized to modify configuration' });
-    }
-
-    // Update in-memory state via network mode, and persist across restarts
-    NETWORK_MODE = enabled ? 'demo' : 'real_testnet';
-    ENABLE_DEMO_MODE = getEnableDemoMode();
-    await pool.query(`
-      INSERT INTO config_state (key, value, created_at, updated_at)
-      VALUES ($1, $2, NOW(), NOW())
-      ON CONFLICT (key) DO UPDATE SET
-        value = EXCLUDED.value,
-        updated_at = NOW()
-    `, ['NETWORK_MODE', NETWORK_MODE]);
-    console.log(`[CONFIG] Demo mode updated (legacy endpoint): ${enabled} (by user ${userId})`);
-
-    res.json({
-      isDemoMode: ENABLE_DEMO_MODE,
       networkMode: NETWORK_MODE,
       status: 'updated'
     });
@@ -2442,11 +2359,6 @@ app.get('/api/conversations', async (req, res) => {
     // Return empty conversations if database is not connected
     if (!dbConnected) {
       return res.json({ conversations: { active: [], pending: [], archived: [] } });
-    }
-
-    if (ENABLE_DEMO_MODE) {
-      const mockConvs = mockData.getMockConversations(1, limit, offset);
-      return res.json({ conversations: mockConvs });
     }
 
     // Optimized query using joins to eliminate N+1 lookups
@@ -2669,7 +2581,6 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
     console.log(`[MESSAGE] POST /api/conversations/${convId}/messages by user ${userId}`);
     console.log(`[MESSAGE] txHash provided: ${txHash ? 'yes - ' + txHash : 'no'}`);
     console.log(`[MESSAGE] Frontend content hash: ${frontendContentHash || 'none'}`);
-    console.log(`[MESSAGE] Demo mode: ${ENABLE_DEMO_MODE}`);
 
     // Validate wallet connection before proceeding with message transaction
     const walletValidation = await validateWalletForMode(NETWORK_MODE, userId, req.user.usernode_pubkey);
@@ -2708,8 +2619,8 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       return res.status(403).json({ error: 'You have been blocked by this user' });
     }
 
-    // Fetch user's pubkey (mock in demo mode)
-    const userPubkey = req.user.usernode_pubkey || (ENABLE_DEMO_MODE ? 'ut1demo-user-' + userId : null);
+    // Fetch user's pubkey
+    const userPubkey = req.user.usernode_pubkey || null;
     const network = 'testnet';
 
     // Use frontend-provided content hash or compute it
@@ -2789,7 +2700,7 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       let actualTxHash = null;
 
       // For testnet mode with RPC: submit real transaction, store null tx_hash initially
-      // For demo/devnet: generate synthetic hash, mark confirmed
+      // For devnet: generate synthetic hash, mark confirmed
       // For testnet without RPC: will be set later via fallback
       if (NETWORK_MODE === 'testnet' && NODE_RPC_URL && !txHash) {
         // Real testnet mode: insert with null tx_hash, will be updated after RPC submission
@@ -2807,10 +2718,10 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
         auditStatus = 'confirmed';
         networkOriginValue = 'database';
       } else {
-        // Demo mode or testnet without RPC: store null, will be populated later
+        // Testnet without RPC: store null, will be populated later
         actualTxHash = null;
-        auditStatus = ENABLE_DEMO_MODE ? 'confirmed' : 'pending';
-        networkOriginValue = ENABLE_DEMO_MODE ? 'demo' : 'bridge';
+        auditStatus = 'pending';
+        networkOriginValue = 'bridge';
       }
 
       // Log audit creation with all critical fields
@@ -2876,7 +2787,7 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
         startChainPoller(network, txHash, blockchainRecordingId).catch(err => {
           console.error('Error starting chain poller:', err);
         });
-      } else if (NETWORK_MODE === 'testnet' && NODE_RPC_URL && !txHash && !ENABLE_DEMO_MODE) {
+      } else if (NETWORK_MODE === 'testnet' && NODE_RPC_URL && !txHash) {
         // Testnet with RPC: submit real transaction
         (async () => {
           try {
@@ -3186,10 +3097,10 @@ app.post('/api/tokens/send', async (req, res) => {
       auditStatus = 'confirmed';
       networkOriginValue = 'database';
     } else {
-      // Demo mode or testnet without RPC: store null, will be populated later
+      // Testnet without RPC: store null, will be populated later
       actualTxHash = null;
-      auditStatus = ENABLE_DEMO_MODE ? 'confirmed' : 'pending';
-      networkOriginValue = ENABLE_DEMO_MODE ? 'demo' : 'bridge';
+      auditStatus = 'pending';
+      networkOriginValue = 'bridge';
     }
 
     console.log(`[TOKEN] Recording blockchain audit log: txHash=${actualTxHash || 'pending'}, status=${auditStatus}, contentHash=${contentHash}`);
@@ -3223,8 +3134,8 @@ app.post('/api/tokens/send', async (req, res) => {
       startChainPoller(network, txHash, blockchainRecordingId).catch(err => {
         console.error('Error starting chain poller:', err);
       });
-    } else if (!ENABLE_DEMO_MODE && NETWORK_MODE !== 'devnet') {
-      // Async: try to call sidecar for real token transfer (production only)
+    } else if (NETWORK_MODE !== 'devnet' && NETWORK_MODE !== 'testnet') {
+      // Async: try to call sidecar for real token transfer (mainnet only)
       (async () => {
         try {
           // First try sidecar RPC for actual token transfer
@@ -3534,25 +3445,6 @@ app.get('/api/transactions-by-user', async (req, res) => {
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
-    }
-
-    if (ENABLE_DEMO_MODE) {
-      const mockResult = mockData.getMockTransactionsByUser(1, limit, offset);
-      const transactions = mockResult.transactions.map(tx => ({
-        id: tx.id,
-        messageId: null,
-        groupId: null,
-        messageType: tx.message_type,
-        txHash: tx.tx_hash,
-        status: tx.status,
-        errorMessage: null,
-        confirmedAt: tx.confirmed_at,
-        createdAt: tx.created_at,
-        recipientUsername: tx.recipientUsername || null,
-        groupName: tx.groupName || null,
-        transactionPayload: null
-      }));
-      return res.json({ transactions, total: mockResult.total, limit, offset });
     }
 
     let whereClause = 'bal.user_id = $1';
@@ -4291,19 +4183,6 @@ app.get('/api/search/users', async (req, res) => {
 
     const q = req.query.q || '';
 
-    if (ENABLE_DEMO_MODE) {
-      const mockResult = mockData.getMockSearchUsers(q, 20);
-      return res.json({
-        users: mockResult.results.map(u => ({
-          id: u.id,
-          username: u.username,
-          usernode_pubkey: u.usernode_pubkey || null,
-          verified: u.verified,
-          mutualCount: 0
-        }))
-      });
-    }
-
     let rows;
 
     // Query local database
@@ -4511,10 +4390,6 @@ app.get('/api/groups', async (req, res) => {
     }
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
     const offset = parseInt(req.query.offset || 0);
-
-    if (ENABLE_DEMO_MODE) {
-      return res.json(mockData.getMockGroups(1, limit, offset));
-    }
 
     // Get groups where user is a member
     const { rows: groupRows } = await pool.query(`
@@ -4731,10 +4606,10 @@ app.post('/api/groups', async (req, res) => {
       auditStatus = 'confirmed';
       networkOriginValue = 'database';
     } else {
-      // Demo mode or testnet without RPC: store null, will be populated later
+      // Testnet without RPC: store null, will be populated later
       actualTxHash = null;
-      auditStatus = ENABLE_DEMO_MODE ? 'confirmed' : 'pending';
-      networkOriginValue = ENABLE_DEMO_MODE ? 'demo' : 'bridge';
+      auditStatus = 'pending';
+      networkOriginValue = 'bridge';
     }
 
     let blockchainRecordingId;
@@ -4751,7 +4626,7 @@ app.post('/api/groups', async (req, res) => {
     } else {
       // Single-phase flow: create new audit log
       console.log(`[AUDIT LOG] GROUP_CREATE: txHash=${actualTxHash || 'pending'}, groupId=${groupId}, status=${auditStatus}, memberCount=${memberPubkeys.length}`);
-      console.log(`[POST /api/groups::BLOCKCHAIN] Creating new audit log: txHash=${actualTxHash || 'pending'}, status=${auditStatus}, env=${IS_STAGING ? 'staging' : 'production'}, demoMode=${ENABLE_DEMO_MODE}`);
+      console.log(`[POST /api/groups::BLOCKCHAIN] Creating new audit log: txHash=${actualTxHash || 'pending'}, status=${auditStatus}, env=${IS_STAGING ? 'staging' : 'production'}`);
 
       const auditRes = await pool.query(`
         INSERT INTO blockchain_audit_logs (user_id, group_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, network_origin, created_at, updated_at)
@@ -4777,7 +4652,7 @@ app.post('/api/groups', async (req, res) => {
           console.error('Error polling transaction status:', err);
         }
       })();
-    } else if (NETWORK_MODE === 'testnet' && NODE_RPC_URL && !txHash && !ENABLE_DEMO_MODE) {
+    } else if (NETWORK_MODE === 'testnet' && NODE_RPC_URL && !txHash) {
       // Testnet with RPC: submit real transaction
       console.log(`[POST /api/groups::BLOCKCHAIN] Spawning background blockchain submission task (testnet RPC)`);
       (async () => {
@@ -4827,8 +4702,8 @@ app.post('/api/groups', async (req, res) => {
           }
         }
       })();
-    } else if (!ENABLE_DEMO_MODE && NETWORK_MODE !== 'devnet' && NETWORK_MODE !== 'testnet') {
-      // Non-testnet production: use bridge fallback
+    } else if (NETWORK_MODE === 'mainnet') {
+      // Mainnet: use bridge fallback
       console.log(`[POST /api/groups::BLOCKCHAIN] Spawning background blockchain submission task (bridge fallback)`);
       (async () => {
         try {
@@ -4877,8 +4752,6 @@ app.post('/api/groups', async (req, res) => {
           }
         }
       })();
-    } else {
-      console.log(`[POST /api/groups::BLOCKCHAIN] Background blockchain submission skipped (demo mode enabled)`);
     }
 
     // Database: Get members for response
@@ -4933,19 +4806,6 @@ app.get('/api/groups/:groupId', async (req, res) => {
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
-    }
-
-    if (ENABLE_DEMO_MODE) {
-      const groupIdInt = parseInt(groupId);
-      const mockGroup = mockData.getMockGroupById(groupIdInt);
-      if (!mockGroup) {
-        return res.status(404).json({ error: 'Group not found' });
-      }
-      const mockMembers = mockData.getMockGroupMembers(groupIdInt);
-      return res.json({
-        ...mockGroup,
-        members: mockMembers.members
-      });
     }
 
     // Verify user is a member
@@ -5056,8 +4916,8 @@ app.put('/api/groups/:groupId', async (req, res) => {
 
     // Create audit log entry for group update
     const networkPrefix = network === 'mainnet' ? 'mainnet-' : 'testnet-';
-    const placeholderTxHash = ENABLE_DEMO_MODE ? 'ut1staging-' + networkPrefix + 'tx-update-' + Date.now() : 'ut1-' + networkPrefix + 'tx-update-' + Math.random().toString(36).substr(2, 9);
-    const auditStatus = ENABLE_DEMO_MODE ? 'confirmed' : 'pending';
+    const placeholderTxHash = 'ut1-' + networkPrefix + 'tx-update-' + Math.random().toString(36).substr(2, 9);
+    const auditStatus = 'pending';
     const auditRes = await pool.query(`
       INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $6)
@@ -5105,22 +4965,6 @@ app.get('/api/groups/:groupId/messages', async (req, res) => {
     }
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
     const offset = parseInt(req.query.offset || 0);
-
-    if (ENABLE_DEMO_MODE) {
-      const groupIdInt = parseInt(groupId);
-      const mockResult = mockData.getMockGroupMessages(groupIdInt, limit, offset);
-      const msgList = mockResult.messages.map(m => ({
-        id: m.id,
-        senderId: m.sender_id,
-        senderUsername: mockData.MOCK_USERS.find(u => u.id === m.sender_id)?.username || 'Unknown',
-        type: m.type,
-        content: m.content,
-        createdAt: m.created_at,
-        blockchainRecorded: false,
-        blockchainAuditLogId: null
-      }));
-      return res.json({ messages: msgList, hasMore: offset + limit < mockResult.total });
-    }
 
     const before = req.query.before ? new Date(req.query.before) : new Date();
 
@@ -5207,8 +5051,8 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
     // Start a database transaction for atomic INSERT + UPDATE
     await client.query('BEGIN');
 
-    // Fetch user's pubkey (mock in demo mode)
-    const userPubkey = req.user.usernode_pubkey || (ENABLE_DEMO_MODE ? 'ut1demo-user-' + userId : null);
+    // Fetch user's pubkey
+    const userPubkey = req.user.usernode_pubkey || null;
     const network = 'testnet';
 
     // Create message with blockchain recording enabled
@@ -5251,10 +5095,10 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
       auditStatus = 'confirmed';
       networkOriginValue = 'database';
     } else {
-      // Demo mode or testnet without RPC: store null, will be populated later
+      // Testnet without RPC: store null, will be populated later
       actualTxHash = null;
-      auditStatus = ENABLE_DEMO_MODE ? 'confirmed' : 'pending';
-      networkOriginValue = ENABLE_DEMO_MODE ? 'demo' : 'bridge';
+      auditStatus = 'pending';
+      networkOriginValue = 'bridge';
     }
 
     let blockchainRecordingId;
@@ -5319,7 +5163,7 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
       startChainPoller(network, txHash, blockchainRecordingId).catch(err => {
         console.error('Error starting chain poller:', err);
       });
-    } else if (NETWORK_MODE === 'testnet' && NODE_RPC_URL && !ENABLE_DEMO_MODE) {
+    } else if (NETWORK_MODE === 'testnet' && NODE_RPC_URL) {
       // Testnet with RPC: submit real transaction
       (async () => {
         try {
@@ -5353,8 +5197,8 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
           }
         }
       })();
-    } else if (!ENABLE_DEMO_MODE && NETWORK_MODE !== 'devnet') {
-      // Non-testnet production: use bridge fallback
+    } else if (NETWORK_MODE === 'mainnet') {
+      // Mainnet: use bridge fallback
       (async () => {
         try {
           const result = await sendTransactionToBridge(transactionPayload, null, network);
@@ -5555,7 +5399,7 @@ app.post('/api/groups/:groupId/members', async (req, res) => {
 
     // Create audit log entry for adding members
     const networkPrefix = network === 'mainnet' ? 'mainnet-' : 'testnet-';
-    const placeholderTxHash = ENABLE_DEMO_MODE ? 'ut1staging-' + networkPrefix + 'tx-addmem-' + Date.now() : 'ut1-' + networkPrefix + 'tx-addmem-' + Math.random().toString(36).substr(2, 9);
+    const placeholderTxHash = 'ut1-' + networkPrefix + 'tx-addmem-' + Math.random().toString(36).substr(2, 9);
     const auditRes = await pool.query(`
       INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $6)
@@ -5650,7 +5494,7 @@ app.delete('/api/groups/:groupId/members/:userId', async (req, res) => {
 
     // Create audit log entry for removing member
     const networkPrefix = network === 'mainnet' ? 'mainnet-' : 'testnet-';
-    const placeholderTxHash = ENABLE_DEMO_MODE ? 'ut1staging-' + networkPrefix + 'tx-remmem-' + Date.now() : 'ut1-' + networkPrefix + 'tx-remmem-' + Math.random().toString(36).substr(2, 9);
+    const placeholderTxHash = 'ut1-' + networkPrefix + 'tx-remmem-' + Math.random().toString(36).substr(2, 9);
     const auditRes = await pool.query(`
       INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $6)
@@ -5725,7 +5569,7 @@ app.post('/api/groups/:groupId/leave', async (req, res) => {
 
     // Create audit log entry for leaving group
     const networkPrefix = network === 'mainnet' ? 'mainnet-' : 'testnet-';
-    const placeholderTxHash = ENABLE_DEMO_MODE ? 'ut1staging-' + networkPrefix + 'tx-leave-' + Date.now() : 'ut1-' + networkPrefix + 'tx-leave-' + Math.random().toString(36).substr(2, 9);
+    const placeholderTxHash = 'ut1-' + networkPrefix + 'tx-leave-' + Math.random().toString(36).substr(2, 9);
     const auditRes = await pool.query(`
       INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $6)
@@ -5803,7 +5647,7 @@ app.delete('/api/groups/:groupId', async (req, res) => {
 
     // Create audit log entry for group deletion
     const networkPrefix = network === 'mainnet' ? 'mainnet-' : 'testnet-';
-    const placeholderTxHash = ENABLE_DEMO_MODE ? 'ut1staging-' + networkPrefix + 'tx-delete-' + Date.now() : 'ut1-' + networkPrefix + 'tx-delete-' + Math.random().toString(36).substr(2, 9);
+    const placeholderTxHash = 'ut1-' + networkPrefix + 'tx-delete-' + Math.random().toString(36).substr(2, 9);
     const auditRes = await pool.query(`
       INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $6)
@@ -6206,10 +6050,6 @@ app.get('/api/channels', async (req, res) => {
     const category = req.query.category || null;
     const featured = req.query.featured === 'true';
 
-    if (ENABLE_DEMO_MODE) {
-      return res.json(mockData.getMockChannels(1, category, featured));
-    }
-
     let query = `
       SELECT c.id, c.name, c.description, c.is_system, c.owner_id, c.category, c.is_verified, c.verified_at, c.is_featured, c.created_at, c.updated_at,
              u.username as ownerUsername,
@@ -6273,26 +6113,6 @@ app.get('/api/channels/:channelId/posts', async (req, res) => {
     const channelId = parseInt(req.params.channelId);
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
     const offset = parseInt(req.query.offset || 0);
-
-    if (ENABLE_DEMO_MODE) {
-      const mockResult = mockData.getMockChannelPosts(channelId, limit, offset);
-      return res.json({
-        posts: mockResult.posts.map(p => ({
-          id: p.id,
-          userId: p.authorId,
-          username: p.authorUsername,
-          verified: false,
-          avatarUrl: p.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.authorUsername}`,
-          content: p.content,
-          imageUrls: p.imageUrls || [],
-          createdAt: p.createdAt,
-          updatedAt: p.createdAt,
-          isEdited: false,
-          onChain: false
-        })),
-        hasMore: offset + limit < mockResult.total
-      });
-    }
 
     // Verify channel exists
     const { rows: channelCheck } = await pool.query(`
@@ -6389,39 +6209,7 @@ app.post('/api/channels/:channelId/posts', async (req, res) => {
       return res.status(400).json({ error: 'Maximum 4 images per post' });
     }
 
-    // Demo mode: validate against mock data
-    if (ENABLE_DEMO_MODE) {
-      const mockChannels = mockData.MOCK_CHANNELS || [];
-      const mockChannel = mockChannels.find(ch => ch.id === channelId);
-
-      if (!mockChannel) {
-        return res.status(404).json({ error: 'Channel not found' });
-      }
-
-      const isOwner = mockChannel.owner_id === userId;
-      const mockFollowers = mockData.MOCK_CHANNEL_FOLLOWERS || [];
-      const isFollower = mockFollowers.some(f => f.user_id === userId && f.channel_id === channelId);
-
-      if (!isOwner && !isFollower) {
-        return res.status(403).json({ error: 'You must follow this channel to post in it' });
-      }
-
-      // Return mock success response
-      const mockPostId = 9001 + Math.floor(Math.random() * 1000);
-      const mockUsername = req.user.username || 'user' + userId;
-      return res.status(201).json({
-        id: mockPostId,
-        userId: userId,
-        username: mockUsername,
-        content: { text: trimmedContent },
-        imageUrls: images,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        onChain: false
-      });
-    }
-
-    // Production: check channel exists and user is owner or follower
+    // Check channel exists and user is owner or follower
     const { rows: channelCheck } = await pool.query(`
       SELECT id, owner_id FROM channels WHERE id = $1
     `, [channelId]);
@@ -6512,28 +6300,6 @@ app.post('/api/channels/:channelId/posts/:postId', async (req, res) => {
       return res.status(400).json({ error: 'Post is too long (exceeds 2000 characters)' });
     }
 
-    // Demo mode: validate against mock data
-    if (ENABLE_DEMO_MODE) {
-      const mockChannels = mockData.MOCK_CHANNELS || [];
-      const mockChannel = mockChannels.find(ch => ch.id === channelId);
-
-      if (!mockChannel) {
-        return res.status(404).json({ error: 'Channel not found' });
-      }
-
-      // Return mock success response
-      return res.status(200).json({
-        id: postId,
-        userId: userId,
-        username: req.user.username || 'user' + userId,
-        content: { text: trimmedContent },
-        createdAt: new Date(Date.now() - 3600000).toISOString(),
-        updatedAt: new Date().toISOString(),
-        isEdited: true,
-        onChain: false
-      });
-    }
-
     // Get channel and post information
     const { rows: channelCheck } = await pool.query(`
       SELECT owner_id FROM channels WHERE id = $1
@@ -6614,17 +6380,6 @@ app.delete('/api/channels/:channelId/posts/:postId', async (req, res) => {
     }
 
     // Demo mode: return mock success
-    if (ENABLE_DEMO_MODE) {
-      const mockChannels = mockData.MOCK_CHANNELS || [];
-      const mockChannel = mockChannels.find(ch => ch.id === channelId);
-
-      if (!mockChannel) {
-        return res.status(404).json({ error: 'Channel not found' });
-      }
-
-      return res.status(200).json({ success: true, message: 'Post deleted' });
-    }
-
     // Get channel and post information
     const { rows: channelCheck } = await pool.query(`
       SELECT owner_id FROM channels WHERE id = $1
@@ -6667,17 +6422,6 @@ app.delete('/api/channels/:channelId/posts/:postId', async (req, res) => {
 // GET /api/channels/categories - List all available categories
 app.get('/api/channels/categories', async (req, res) => {
   try {
-    if (ENABLE_DEMO_MODE) {
-      return res.json({
-        categories: [
-          { id: 1, name: 'Updates', description: 'System and important updates' },
-          { id: 2, name: 'General', description: 'General discussion' },
-          { id: 3, name: 'Announcements', description: 'Official announcements' },
-          { id: 4, name: 'Community', description: 'Community-driven content' }
-        ]
-      });
-    }
-
     const { rows: categories } = await pool.query(`
       SELECT id, name, description FROM channel_categories ORDER BY name
     `);
@@ -6766,20 +6510,12 @@ app.post('/api/channels', async (req, res) => {
 
     // Update audit log with txHash
     if (auditLogId) {
-      const auditStatusForChannel = ENABLE_DEMO_MODE ? 'confirmed' : 'pending';
-      if (ENABLE_DEMO_MODE) {
-        await pool.query(`
-          UPDATE blockchain_audit_logs
-          SET tx_hash = $1, status = $2, confirmed_at = NOW()
-          WHERE id = $3 AND user_id = $4
-        `, [txHash, auditStatusForChannel, auditLogId, userId]);
-      } else {
-        await pool.query(`
-          UPDATE blockchain_audit_logs
-          SET tx_hash = $1, status = $2
-          WHERE id = $3 AND user_id = $4
-        `, [txHash, auditStatusForChannel, auditLogId, userId]);
-      }
+      const auditStatusForChannel = 'pending';
+      await pool.query(`
+        UPDATE blockchain_audit_logs
+        SET tx_hash = $1, status = $2
+        WHERE id = $3 AND user_id = $4
+      `, [txHash, auditStatusForChannel, auditLogId, userId]);
     }
 
     res.status(201).json({
@@ -7571,13 +7307,13 @@ app.get('/api/diagnostics/status', async (req, res) => {
   try {
     const rpcHealth = await checkRPCHealth();
 
-    // Determine readiness: real_testnet requires both explorer AND RPC to be healthy
+    // Determine readiness: testnet requires RPC to be healthy; devnet doesn't
     let readyForTestnet = false;
     let readyReason = '';
-    if (NETWORK_MODE === 'demo' || NETWORK_MODE === 'devnet') {
+    if (NETWORK_MODE === 'devnet') {
       readyForTestnet = true;
-      readyReason = `${NETWORK_MODE} mode doesn't require external services`;
-    } else if (NETWORK_MODE === 'real_testnet') {
+      readyReason = 'Devnet mode doesn\'t require external services';
+    } else if (NETWORK_MODE === 'testnet') {
       if (EXPLORER_HEALTHY && rpcHealth.reachable) {
         readyForTestnet = true;
         readyReason = 'Explorer and RPC both healthy';
@@ -7593,7 +7329,6 @@ app.get('/api/diagnostics/status', async (req, res) => {
     const status = {
       server: {
         networkMode: NETWORK_MODE,
-        demoMode: ENABLE_DEMO_MODE,
         timestamp: new Date().toISOString()
       },
       blockchain: {
@@ -7652,8 +7387,7 @@ app.get('/api/diagnostics/wallet-health', async (req, res) => {
       },
       networkMode: {
         current: NETWORK_MODE,
-        requiresWallet: NETWORK_MODE === 'testnet',
-        isDemoMode: NETWORK_MODE === 'demo',
+        requiresWallet: NETWORK_MODE === 'testnet' || NETWORK_MODE === 'devnet',
         isDevnet: NETWORK_MODE === 'devnet'
       },
       rpc: {
