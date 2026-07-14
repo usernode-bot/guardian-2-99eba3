@@ -772,6 +772,15 @@
       </div>
       <!-- Messages View (Direct Messages only) -->
       <div id="messagesView" class="hidden flex flex-col flex-1 overflow-hidden relative">
+        <!-- Find/Search Contacts Button -->
+        <div class="p-3 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0">
+          <button id="findContactsHeaderBtn" onclick="openFindContactsModal()" class="w-full flex items-center justify-center px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-sm text-zinc-900 dark:text-zinc-100" title="Find and add new contacts">
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            Find/Search Contacts
+          </button>
+        </div>
         <!-- Direct Messages List -->
         <div id="directList" class="flex-1 overflow-y-auto">
           <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading conversations...</div>
@@ -790,7 +799,7 @@
       </div>
 
       <!-- Conversations List (initial view) - DEPRECATED, kept for backward compatibility -->
-      <div id="conversationsView" class="flex flex-col flex-1 overflow-hidden">
+      <div id="conversationsView" class="hidden flex flex-col flex-1 overflow-hidden">
         <div id="convList" class="flex-1 overflow-y-auto">
           <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading conversations...</div>
         </div>
@@ -865,14 +874,8 @@
 
       <!-- Contacts View (Saved Contacts only) -->
       <div id="contactsView" class="hidden flex flex-col flex-1 overflow-hidden">
-        <!-- Scrollable Container for Boxes and Results -->
+        <!-- Scrollable Container for Boxes -->
         <div class="flex-1 flex flex-col overflow-y-auto">
-          <!-- Find Contacts Box -->
-          <div class="m-4 p-4 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg flex-shrink-0">
-            <h2 class="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-3">Find Contacts</h2>
-            <input id="contactsSearchInput" type="text" placeholder="Search by wallet address" oninput="handleContactSearch(event)" class="w-full px-3 py-2 bg-white dark:bg-zinc-700 border border-zinc-300 dark:border-zinc-600 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition text-sm">
-          </div>
-
           <!-- Pending Requests Box -->
           <div id="pendingRequestsSection" class="m-4 p-4 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg flex-shrink-0">
             <div class="flex items-center justify-between cursor-pointer select-none" onclick="togglePendingRequestsSection()">
@@ -891,15 +894,6 @@
             <h3 class="text-xs font-semibold text-zinc-600 dark:text-zinc-400 uppercase tracking-wide mb-3">Your Contacts</h3>
             <div id="yourContactsList" class="space-y-1">
               <!-- Filled by renderYourContactsSection -->
-            </div>
-          </div>
-
-          <!-- Search Results -->
-          <div id="contactsList" class="flex-1 overflow-y-auto divide-y divide-zinc-300 dark:divide-zinc-800 px-4 pb-4">
-            <div class="flex flex-col items-center justify-center h-full text-center space-y-4">
-              <div class="text-zinc-600 dark:text-zinc-400">
-                <p class="text-sm">No contacts yet. Start a conversation to build your contact list.</p>
-              </div>
             </div>
           </div>
         </div>
@@ -1131,6 +1125,28 @@
         <button onclick="copyContactAddress()" class="w-full px-4 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-sm text-zinc-900 dark:text-zinc-100">📋 Copy Address</button>
         <button onclick="copyContactLink()" class="w-full px-4 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-sm text-zinc-900 dark:text-zinc-100">🔗 Copy Link</button>
         <button onclick="showQRCodeModal()" class="w-full px-4 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-sm text-zinc-900 dark:text-zinc-100">📱 Generate QR</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Find/Search Contacts Modal -->
+  <div id="findContactsModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-md max-h-[90vh] flex flex-col">
+      <div class="p-4 border-b border-zinc-300 dark:border-zinc-700 flex justify-between items-center flex-shrink-0">
+        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Find Contacts</h2>
+        <button onclick="closeFindContactsModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <div class="p-4 flex-shrink-0">
+        <input id="findContactsInput" type="text" placeholder="Search by wallet address or username..." oninput="handleFindContactsSearch()" class="w-full px-3 py-2 bg-white dark:bg-zinc-700 border border-zinc-300 dark:border-zinc-600 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition text-sm">
+      </div>
+      <div id="findContactsResults" class="flex-1 overflow-y-auto px-4 py-2 space-y-2">
+        <div class="text-center text-zinc-500 dark:text-zinc-400 py-8 text-sm">
+          Type to search for contacts...
+        </div>
       </div>
     </div>
   </div>
@@ -6368,35 +6384,10 @@
       // Load and render pending requests from conversations
       loadPendingRequests();
 
-      // Render the main list (used for search results)
-      const list = document.getElementById('contactsList');
-      if (!allContacts || allContacts.length === 0) {
-        list.innerHTML = '<div class="flex flex-col items-center justify-center h-full text-center space-y-4"><div class="text-zinc-600 dark:text-zinc-400"><p class="text-sm">No contacts yet. Start a conversation to build your contact list.</p></div></div>';
-      } else {
-        // Clear the main list when not searching (submenu is the primary view)
-        list.innerHTML = '<div class="text-center py-8 text-zinc-500 dark:text-zinc-400 text-sm">Type to search for more contacts</div>';
-      }
+      // Note: Search results rendering removed (moved to Find/Search modal)
     }
 
-    function renderContactsList(contacts) {
-      const list = document.getElementById('contactsList');
-
-      if (!contacts || contacts.length === 0) {
-        list.innerHTML = '<div class="flex items-center justify-center h-full text-center space-y-4"><div class="text-zinc-600 dark:text-zinc-400"><p class="text-sm">No results found.</p></div></div>';
-        return;
-      }
-
-      list.innerHTML = contacts.map(contact => `
-        <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer" onclick="startConversationWithContact(${contact.userId}, '${contact.username}')">
-          <div class="flex justify-between items-start gap-2">
-            <div class="flex-1 min-w-0">
-              <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${contact.nickname || contact.username} ${contact.verified ? '<span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
-              <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${contact.usernode_pubkey || 'No wallet'}</div>
-            </div>
-          </div>
-        </div>
-      `).join('');
-    }
+    // Deprecated: renderContactsList - no longer used (moved to Find/Search modal)
 
     function filterContacts(query) {
       if (!query) return allContacts;
@@ -6564,130 +6555,108 @@
       }
     }
 
-    async function handleContactSearch(event) {
-      const query = event.target.value.trim();
+    function openFindContactsModal() {
+      const modal = document.getElementById('findContactsModal');
+      modal.classList.remove('hidden');
+      document.getElementById('findContactsInput').value = '';
+      const resultsContainer = document.getElementById('findContactsResults');
+      resultsContainer.innerHTML = '<div class="text-center text-zinc-500 dark:text-zinc-400 py-8 text-sm">Type to search for contacts...</div>';
+      document.getElementById('findContactsInput').focus();
+    }
 
-      // Always render the "Your Contacts" section
-      renderYourContactsSection(allContacts);
+    function closeFindContactsModal() {
+      const modal = document.getElementById('findContactsModal');
+      modal.classList.add('hidden');
+    }
+
+    async function handleFindContactsSearch() {
+      const query = document.getElementById('findContactsInput').value.trim();
+      const resultsContainer = document.getElementById('findContactsResults');
 
       if (!query) {
-        // When no search query, show all contacts in the main list (duplicates the submenu but maintains backward compatibility)
-        const list = document.getElementById('contactsList');
-        if (!allContacts || allContacts.length === 0) {
-          list.innerHTML = '<div class="flex flex-col items-center justify-center h-full text-center space-y-4"><div class="text-zinc-600 dark:text-zinc-400"><p class="text-sm">No contacts yet. Start a conversation to build your contact list.</p></div></div>';
-        } else {
-          // Show search result items (empty on no query) so submenu is the primary interface
-          list.innerHTML = '<div class="text-center py-8 text-zinc-500 dark:text-zinc-400 text-sm">Type to search for more contacts</div>';
-        }
+        resultsContainer.innerHTML = '<div class="text-center text-zinc-500 dark:text-zinc-400 py-8 text-sm">Type to search for contacts...</div>';
         return;
       }
 
       if (query.length < 2) {
-        const list = document.getElementById('contactsList');
-        list.innerHTML = '<div class="text-center py-8 text-zinc-500 dark:text-zinc-400 text-sm">Type at least 2 characters to search</div>';
+        resultsContainer.innerHTML = '<div class="text-center text-zinc-500 dark:text-zinc-400 py-2 text-sm">Type at least 2 characters to search</div>';
         return;
       }
 
       const searchData = await apiCall(`/api/search/users?q=${encodeURIComponent(query)}`);
       if (!searchData || searchData.error) {
-        renderContactsListWithResults([], query);
+        renderFindContactsResults([]);
         return;
       }
 
       const searchResults = searchData.users || [];
       const savedContactIds = new Set(allContacts.map(c => c.userId));
 
-      const merged = [];
-      const addedIds = new Set();
+      // Filter out already-saved contacts
+      const unsavedResults = searchResults.filter(result => !savedContactIds.has(result.id));
 
-      // First add saved contacts that match search (they're already in submenu, skip them here)
-      for (const result of searchResults) {
-        if (savedContactIds.has(result.id)) {
-          addedIds.add(result.id);
-        }
-      }
-
-      // Then add search results that are NOT saved contacts
-      for (const result of searchResults) {
-        if (!addedIds.has(result.id)) {
-          merged.push({
-            userId: result.id,
-            username: result.username,
-            usernode_pubkey: result.usernode_pubkey,
-            verified: result.verified,
-            avatar_url: result.avatar_url,
-            source: result.source || 'local',
-            isSearchResult: true,
-            id: undefined
-          });
-        }
-      }
-
-      renderContactsListWithResults(merged, query);
+      renderFindContactsResults(unsavedResults);
     }
 
-    function renderContactsListWithResults(results, query) {
-      const list = document.getElementById('contactsList');
+    function renderFindContactsResults(results) {
+      const resultsContainer = document.getElementById('findContactsResults');
 
       if (!results || results.length === 0) {
-        list.innerHTML = '<div class="flex items-center justify-center h-full text-center space-y-4"><div class="text-zinc-600 dark:text-zinc-400"><p class="text-sm">No users found with that wallet address.</p></div></div>';
+        resultsContainer.innerHTML = '<div class="text-center text-zinc-600 dark:text-zinc-400 py-8 text-sm">No users found matching that search.</div>';
         return;
       }
 
-      list.innerHTML = results.map(item => {
-        const isSaved = !item.isSearchResult;
-        const displayName = item.nickname || item.username;
+      resultsContainer.innerHTML = results.map(item => {
+        const displayName = item.username;
         const wallet = item.usernode_pubkey || 'No wallet';
-        const isBlockchainSource = item.source === 'blockchain';
-        const sourceLabel = isBlockchainSource ? ' <span class="text-xs font-medium text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-900/30 px-2 py-1 rounded">Usernode</span>' : '';
-        const userId = item.userId || item.id;
+        const userId = item.id;
+        const verifiedBadge = item.verified ? ' <span class="text-xs text-zinc-600 dark:text-zinc-500">✓</span>' : '';
 
-        if (isSaved) {
-          return `
-            <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer" onclick="startConversationWithContact(${userId}, '${item.username}')">
-              <div class="flex justify-between items-start gap-2">
-                <div class="flex-1 min-w-0">
-                  <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${displayName}${sourceLabel} ${item.verified ? '<span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
-                  <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${wallet}</div>
-                </div>
-                <button onclick="event.stopPropagation(); showDeleteContactModal(${item.id}, '${displayName.replace(/'/g, "\\'")}')" class="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/30 rounded p-1 transition flex-shrink-0" title="Delete contact">🗑️</button>
-              </div>
+        return `
+          <div class="p-3 rounded-lg bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 flex justify-between items-start gap-2">
+            <div class="flex-1 min-w-0">
+              <div class="font-medium text-sm text-zinc-900 dark:text-zinc-100">${displayName}${verifiedBadge}</div>
+              <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${wallet}</div>
             </div>
-          `;
-        } else {
-          return `
-            <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer" onclick="startConversationWithContact(${userId}, '${item.username}')">
-              <div class="flex justify-between items-start gap-2">
-                <div class="flex-1 min-w-0">
-                  <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${displayName}${sourceLabel} ${item.verified ? '<span class="text-sm text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
-                  <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${wallet}</div>
-                </div>
-                <button onclick="event.stopPropagation(); addContactFromSearch(${userId}, '${item.username}')" class="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 text-sm transition">➕ Add</button>
-              </div>
-            </div>
-          `;
-        }
+            <button onclick="chatWithUserFromFindModal(${userId}, '${displayName.replace(/'/g, "\\'")}'); return false;" class="flex-shrink-0 text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 text-sm transition">💬 Chat</button>
+          </div>
+        `;
       }).join('');
     }
 
-    async function addContactFromSearch(userId, username) {
-      const data = await apiCall('/api/contacts/by-id', {
-        method: 'POST',
-        body: JSON.stringify({ user_id: userId, nickname: null })
-      });
+    async function chatWithUserFromFindModal(userId, username) {
+      try {
+        const data = await apiCall('/api/conversations', {
+          method: 'POST',
+          body: JSON.stringify({ participantId: userId })
+        });
 
-      if (data && !data.error) {
-        await loadContactsList();
-        // Refresh conversation list to move conversation from Pending Requests to Your Active Chats
-        await loadConversations();
-        const searchInput = document.getElementById('contactsSearchInput');
-        if (searchInput) {
-          const event = new Event('input');
-          searchInput.dispatchEvent(event);
+        if (data && !data.error) {
+          closeFindContactsModal();
+          await loadConversations();
+          openConversation(data.id, userId, username);
+          console.log('Conversation opened successfully');
+        } else {
+          alert('Failed to create conversation: ' + (data?.error || 'Unknown error'));
         }
-      } else {
-        alert('Failed to add contact: ' + (data?.error || 'Unknown error'));
+      } catch (error) {
+        console.error('Error creating conversation:', error);
+        alert('Failed to create conversation');
       }
+    }
+
+    // Deprecated: Old contact search functions (replaced by Find/Search modal)
+    async function handleContactSearch(event) {
+      // No longer used - functionality moved to Find/Search modal
+      renderYourContactsSection(allContacts);
+    }
+
+    function renderContactsListWithResults(results, query) {
+      // No longer used - functionality moved to Find/Search modal
+    }
+
+    async function addContactFromSearch(userId, username) {
+      // No longer used - functionality moved to Find/Search modal
     }
 
     async function startConversationWithContact(userId, username) {
@@ -7041,7 +7010,6 @@
       document.getElementById('channelDetailHeader').classList.add('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
       if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
-      document.getElementById('contactsSearchInput').value = '';
       updateNewChatFABVisibility();
       loadContactsList();
     }
