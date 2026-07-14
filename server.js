@@ -3343,6 +3343,36 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
   }
 });
 
+app.get('/api/user/latest-transaction/:messageType', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { messageType } = req.params;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
+
+    const { rows } = await pool.query(`
+      SELECT id FROM blockchain_audit_logs
+      WHERE user_id = $1 AND message_type = $2
+      ORDER BY created_at DESC
+      LIMIT 1
+    `, [userId, messageType]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'No transactions found for this type' });
+    }
+
+    res.json({ auditLogId: rows[0].id });
+  } catch (err) {
+    console.error('Error fetching latest transaction:', err);
+    res.status(500).json({ error: 'Failed to fetch latest transaction' });
+  }
+});
+
 app.post('/api/blockchain-audit/:auditLogId/retry', async (req, res) => {
   try {
     if (!req.user) {

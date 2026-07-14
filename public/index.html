@@ -962,16 +962,12 @@
             </div>
 
             <!-- Statistics Section -->
-            <div class="grid grid-cols-3 gap-3 py-2">
-              <div class="text-center p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
-                <div class="text-2xl font-bold text-cyan-600 dark:text-cyan-400" id="profileContactsCount">—</div>
-                <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">Contacts</div>
-              </div>
-              <div class="text-center p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
+            <div class="grid grid-cols-2 gap-3 py-2">
+              <div class="text-center p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-700 transition" onclick="openGroupTransactionModal()">
                 <div class="text-2xl font-bold text-cyan-600 dark:text-cyan-400" id="profileGroupCount">—</div>
                 <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">Group</div>
               </div>
-              <div class="text-center p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
+              <div class="text-center p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-700 transition" onclick="openMessagesTransactionModal()">
                 <div class="text-2xl font-bold text-cyan-600 dark:text-cyan-400" id="profileMessagesCount">—</div>
                 <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">Messages</div>
               </div>
@@ -1830,6 +1826,46 @@
       } catch (err) {
         console.error('Error loading transaction details:', err);
         content.innerHTML = '<div class="text-center py-8 text-red-600 dark:text-red-400">Error loading transaction details</div>';
+      }
+    }
+
+    async function openGroupTransactionModal() {
+      try {
+        const response = await apiCall('/api/user/latest-transaction/group_create');
+        if (response && response.auditLogId) {
+          openTransactionDetailsModal(response.auditLogId);
+        } else {
+          const modal = document.getElementById('transactionDetailsModal');
+          const content = document.getElementById('transactionDetailsContent');
+          modal.classList.remove('hidden');
+          content.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No group transactions found</div>';
+        }
+      } catch (err) {
+        console.error('Error opening group transaction modal:', err);
+        const modal = document.getElementById('transactionDetailsModal');
+        const content = document.getElementById('transactionDetailsContent');
+        modal.classList.remove('hidden');
+        content.innerHTML = '<div class="text-center py-8 text-red-600 dark:text-red-400">Error loading transaction</div>';
+      }
+    }
+
+    async function openMessagesTransactionModal() {
+      try {
+        const response = await apiCall('/api/user/latest-transaction/message');
+        if (response && response.auditLogId) {
+          openTransactionDetailsModal(response.auditLogId);
+        } else {
+          const modal = document.getElementById('transactionDetailsModal');
+          const content = document.getElementById('transactionDetailsContent');
+          modal.classList.remove('hidden');
+          content.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No message transactions found</div>';
+        }
+      } catch (err) {
+        console.error('Error opening messages transaction modal:', err);
+        const modal = document.getElementById('transactionDetailsModal');
+        const content = document.getElementById('transactionDetailsContent');
+        modal.classList.remove('hidden');
+        content.innerHTML = '<div class="text-center py-8 text-red-600 dark:text-red-400">Error loading transaction</div>';
       }
     }
 
@@ -8556,13 +8592,11 @@
       try {
         const statsResponse = await apiCall('/api/user/stats');
         if (statsResponse) {
-          document.getElementById('profileContactsCount').textContent = statsResponse.contactsCount || 0;
           document.getElementById('profileGroupCount').textContent = statsResponse.groupCount || 0;
           document.getElementById('profileMessagesCount').textContent = statsResponse.messagesCount || 0;
         }
       } catch (err) {
         console.error('Error loading profile stats:', err);
-        document.getElementById('profileContactsCount').textContent = '—';
         document.getElementById('profileGroupCount').textContent = '—';
         document.getElementById('profileMessagesCount').textContent = '—';
       }
