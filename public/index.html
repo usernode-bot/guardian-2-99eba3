@@ -1097,7 +1097,7 @@
       <div id="messagesView" class="hidden flex flex-col flex-1 overflow-hidden relative">
         <!-- Find/Search Contacts Button -->
         <div class="p-3 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0">
-          <button id="findContactsHeaderBtn" onclick="openFindContactsModal()" class="w-full flex items-center justify-center px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-sm text-zinc-900 dark:text-zinc-100" title="Find and add new contacts">
+          <button id="findContactsHeaderBtn" onclick="openFindContactsModal()" class="w-full flex items-center justify-center px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 rounded-lg transition text-sm text-white" title="Find and add new contacts">
             <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
@@ -2472,6 +2472,13 @@
       const splashScreen = document.getElementById('splashScreen');
       if (!splashScreen) return;
 
+      // Check if splash has already been shown this session
+      if (sessionStorage.getItem('guardian_splash_shown') === 'true') {
+        splashScreen.style.display = 'none';
+        splashScreen.style.pointerEvents = 'none';
+        return;
+      }
+
       // Apply dark mode class if needed
       const isDarkMode = document.documentElement.classList.contains('dark');
       if (isDarkMode) {
@@ -2485,6 +2492,8 @@
         setTimeout(() => {
           splashScreen.style.display = 'none';
           splashScreen.style.pointerEvents = 'none';
+          // Mark splash screen as shown for this session
+          sessionStorage.setItem('guardian_splash_shown', 'true');
         }, 1000);
       }, 1500);
     }
@@ -4018,6 +4027,8 @@
       if (hub) {
         hub.classList.remove('hidden');
         if (app) app.classList.add('hidden');
+        // Mark connection hub as shown for this session
+        sessionStorage.setItem('guardian_connection_hub_shown', 'true');
       }
 
       // Apply dark theme if needed
@@ -4184,8 +4195,22 @@
       if (networkStatusIntervalId) clearInterval(networkStatusIntervalId);
       networkStatusIntervalId = setInterval(pollNetworkStatus, 2000);
 
-      // Show Connection Hub instead of immediately showing conversations view
-      showConnectionHub();
+      // Check if Connection Hub has already been shown this session
+      if (sessionStorage.getItem('guardian_connection_hub_shown') === 'true') {
+        // Connection hub already shown, skip directly to main app
+        const app = document.getElementById('app');
+        if (app) {
+          app.classList.remove('hidden');
+        }
+        const hub = document.getElementById('connectionHub');
+        if (hub) {
+          hub.classList.add('hidden');
+        }
+        await showConversationsView();
+      } else {
+        // Show Connection Hub for first time this session
+        showConnectionHub();
+      }
       setupEventListeners();
     }
 
