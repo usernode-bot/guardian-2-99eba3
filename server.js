@@ -1765,6 +1765,7 @@ app.get('/health', async (_req, res) => {
       status: 'ok',
       staging: IS_STAGING,
       environment: IS_STAGING ? 'staging' : 'production',
+      networkMode: NETWORK_MODE,
       database: 'connected'
     });
   } catch (err) {
@@ -1775,6 +1776,7 @@ app.get('/health', async (_req, res) => {
       status: 'ok',
       staging: IS_STAGING,
       environment: IS_STAGING ? 'staging' : 'production',
+      networkMode: NETWORK_MODE,
       database: 'disconnected',
       warning: 'Database unavailable but server is running'
     });
