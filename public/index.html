@@ -4355,31 +4355,71 @@
 
       const pollLoop = async () => {
         if (pollAttempt >= maxPollAttempts) {
-          console.log(`[POLL] Reached max attempts (${maxPollAttempts}) for auditLogId=${auditLogId}, showing timeout with check button`);
+          console.log(`[POLL] Reached max attempts (${maxPollAttempts}) for auditLogId=${auditLogId}, fetching final status`);
 
-          // Clean up session storage
-          delete window.activePollingSessions[auditLogId];
-          sessionStorage.setItem('activePollingSessions', JSON.stringify(window.activePollingSessions));
+          // Fetch final status from server before showing timeout message
+          try {
+            const finalResponse = await apiCall(`/api/blockchain-audit/${auditLogId}`);
 
-          const notification = document.getElementById(notificationId);
-          if (notification) {
-            const badge = notification.querySelector('[data-status-badge]');
-            if (badge) {
-              // Detect if this is a synthetic hash (temporary placeholder for real transaction)
-              const isSyntheticHash = signatureState.txHash && signatureState.txHash.startsWith('synthetic_');
-              let timeoutMessage = isSyntheticHash
-                ? '⏱ Waiting for blockchain confirmation (synthetic hash detected) - <a href="#" onclick="checkTransactionStatus(this)" style="text-decoration: underline; cursor: pointer;">Check Now</a>'
-                : '⏱ Confirmation timeout - <a href="#" onclick="checkTransactionStatus(this)" style="text-decoration: underline; cursor: pointer;">Check Now</a>';
-
-              if (isSyntheticHash) {
-                console.warn('[POLL] Synthetic hash still pending after all polling attempts:', signatureState.txHash, '- Backend may not have found real transaction. Check TRANSACTIONS_BASE_URL configuration.');
+            // Check if it actually confirmed while we were polling
+            if (finalResponse && finalResponse.status === 'confirmed') {
+              console.log(`[POLL] ✓ Transaction confirmed on final check: auditLogId=${auditLogId}, txHash=${finalResponse.txHash}`);
+              if (finalResponse.txHash && signatureState.txHash !== finalResponse.txHash) {
+                console.log(`[POLL] Updating txHash from ${signatureState.txHash} to ${finalResponse.txHash}`);
+                signatureState.txHash = finalResponse.txHash;
               }
+              const notification = document.getElementById(notificationId);
+              if (notification) {
+                const badge = notification.querySelector('[data-status-badge]');
+                if (badge) {
+                  badge.innerHTML = '✓ Confirmed';
+                  badge.className = 'text-xs px-2 py-1 rounded bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200';
+                  signatureState.confirmationStatus = 'confirmed';
+                }
+              }
+              delete window.activePollingSessions[auditLogId];
+              sessionStorage.setItem('activePollingSessions', JSON.stringify(window.activePollingSessions));
+              return;
+            }
 
-              badge.innerHTML = timeoutMessage;
-              badge.className = 'text-xs px-2 py-1 rounded bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200';
-              badge.dataset.auditLogId = auditLogId;
+            // Not confirmed yet, check if hash is synthetic
+            const isSyntheticHash = finalResponse && finalResponse.txHash && finalResponse.txHash.startsWith('synthetic_');
+            let timeoutMessage = isSyntheticHash
+              ? '⏱ Waiting for blockchain confirmation (synthetic hash detected) - <a href="#" onclick="checkTransactionStatus(this)" style="text-decoration: underline; cursor: pointer;">Check Now</a>'
+              : '⏱ Confirmation timeout - <a href="#" onclick="checkTransactionStatus(this)" style="text-decoration: underline; cursor: pointer;">Check Now</a>';
+
+            if (isSyntheticHash) {
+              console.warn('[POLL] Synthetic hash still pending after all polling attempts:', finalResponse.txHash, '- Backend may not have found real transaction. Check TRANSACTIONS_BASE_URL configuration.');
+            }
+
+            const notification = document.getElementById(notificationId);
+            if (notification) {
+              const badge = notification.querySelector('[data-status-badge]');
+              if (badge) {
+                badge.innerHTML = timeoutMessage;
+                badge.className = 'text-xs px-2 py-1 rounded bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200';
+                badge.dataset.auditLogId = auditLogId;
+              }
+            }
+          } catch (err) {
+            console.error(`[POLL] Error fetching final status for auditLogId=${auditLogId}:`, err.message);
+            // Fallback: show timeout message with stale local state
+            const notification = document.getElementById(notificationId);
+            if (notification) {
+              const badge = notification.querySelector('[data-status-badge]');
+              if (badge) {
+                const isSyntheticHash = signatureState.txHash && signatureState.txHash.startsWith('synthetic_');
+                badge.innerHTML = isSyntheticHash
+                  ? '⏱ Waiting for blockchain confirmation (synthetic hash detected) - <a href="#" onclick="checkTransactionStatus(this)" style="text-decoration: underline; cursor: pointer;">Check Now</a>'
+                  : '⏱ Confirmation timeout - <a href="#" onclick="checkTransactionStatus(this)" style="text-decoration: underline; cursor: pointer;">Check Now</a>';
+                badge.className = 'text-xs px-2 py-1 rounded bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200';
+                badge.dataset.auditLogId = auditLogId;
+              }
             }
           }
+
+          delete window.activePollingSessions[auditLogId];
+          sessionStorage.setItem('activePollingSessions', JSON.stringify(window.activePollingSessions));
           return;
         }
 
@@ -4415,6 +4455,11 @@
 
           if (response.status === 'confirmed') {
             console.log(`[POLL] ✓ Transaction confirmed: auditLogId=${auditLogId}, txHash=${response.txHash}`);
+            // Update signatureState with real hash when discovered
+            if (response.txHash && signatureState.txHash !== response.txHash) {
+              console.log(`[POLL] Updating txHash from ${signatureState.txHash} to ${response.txHash}`);
+              signatureState.txHash = response.txHash;
+            }
             badge.innerHTML = '✓ Confirmed';
             badge.className = 'text-xs px-2 py-1 rounded bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200';
             signatureState.confirmationStatus = 'confirmed';
@@ -4432,7 +4477,12 @@
             sessionStorage.setItem('activePollingSessions', JSON.stringify(window.activePollingSessions));
             return;
           } else if (response.status === 'pending') {
-            // Still pending, continue polling with exponential backoff
+            // Still pending - update txHash if server found a real hash while polling
+            if (response.txHash && signatureState.txHash !== response.txHash) {
+              console.log(`[POLL] Backend discovered real hash: updating from ${signatureState.txHash} to ${response.txHash}`);
+              signatureState.txHash = response.txHash;
+            }
+            // Continue polling with exponential backoff
             const delayMs = Math.min(backoffMs + Math.random() * 1000, maxIntervalMs);
             setTimeout(pollLoop, delayMs);
             backoffMs = Math.min(backoffMs * 1.5, maxIntervalMs);
@@ -4460,6 +4510,11 @@
         apiCall(`/api/blockchain-audit/${auditLogId}`).then(response => {
           if (response) {
             if (response.status === 'confirmed') {
+              // Update signatureState with real hash when discovered
+              if (response.txHash && signatureState.txHash !== response.txHash) {
+                console.log(`[CHECK-NOW] Updating txHash from ${signatureState.txHash} to ${response.txHash}`);
+                signatureState.txHash = response.txHash;
+              }
               badge.innerHTML = '✓ Confirmed';
               badge.className = 'text-xs px-2 py-1 rounded bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200';
               console.log('[CHECK-NOW] Transaction confirmed:', response.txHash);
