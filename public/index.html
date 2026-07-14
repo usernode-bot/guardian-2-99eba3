@@ -752,20 +752,6 @@
 
     <!-- Main content -->
     <div id="content" class="flex-1 overflow-hidden flex flex-col pt-16">
-      <!-- Development Status Banner (dismiss: session-based) -->
-      <div id="devStatusBanner" class="mt-2 bg-blue-100 dark:bg-blue-950 border-b border-blue-300 dark:border-blue-800 px-3 py-2 sm:px-4 sm:py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
-        <div class="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
-          <span class="text-blue-700 dark:text-blue-300 flex-shrink-0 mt-0.5">ℹ️</span>
-          <p class="text-xs sm:text-sm text-blue-900 dark:text-blue-100 leading-snug break-words font-medium">
-            <strong>Note:</strong> Testnet mode is still in development. Expect changes and improvements. You can change network mode in Settings (gear icon) → System → Network Mode.
-          </p>
-        </div>
-        <button onclick="dismissDevStatusBanner()" class="text-blue-700 dark:text-blue-300 hover:text-blue-900 dark:hover:text-blue-100 transition flex-shrink-0 mt-1 sm:mt-0 self-end sm:self-center p-1" title="Dismiss">
-          <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
       <!-- Messages View (Direct Messages only) -->
       <div id="messagesView" class="hidden flex flex-col flex-1 overflow-hidden relative">
         <!-- Find/Search Contacts Button -->
@@ -2195,33 +2181,12 @@
       return 'real_testnet';
     }
 
-    function dismissDevStatusBanner() {
-      const banner = document.getElementById('devStatusBanner');
-      if (banner) {
-        banner.style.display = 'none';
-        sessionStorage.setItem('devStatusBannerDismissed', 'true');
-      }
-    }
-
-    function initDevStatusBanner() {
-      const dismissed = sessionStorage.getItem('devStatusBannerDismissed');
-      if (dismissed === 'true') {
-        const banner = document.getElementById('devStatusBanner');
-        if (banner) {
-          banner.style.display = 'none';
-        }
-      }
-    }
-
     function initSettings() {
       const settings = loadSettings();
       applyTheme(settings.theme);
       applyLayout(settings.layout);
       document.getElementById('themeSelect').value = settings.theme;
       updateLayoutButtons(settings.layout);
-
-      // Initialize development status banner
-      initDevStatusBanner();
 
       // Load skip signature in devnet preference from API
       if (currentUser && currentUser.skipSignatureInDevnet !== undefined) {
