@@ -3853,33 +3853,127 @@
     let connectionHubNetworkSyncing = null;
     let connectionHubWalletConnecting = false;
 
-    function selectNetwork(network) {
+    async function selectNetwork(network) {
       // Don't allow mainnet selection
       if (network === 'mainnet') {
         return;
       }
 
+      // Prevent selecting a network while any syncing is in progress
+      if (connectionHubNetworkSyncing) {
+        console.log('[Connection Hub] Network selection locked during sync');
+        return;
+      }
+
       connectionHubSelectedNetwork = network;
 
-      // Update UI
+      // Disable all radio buttons immediately during sync
       const options = document.querySelectorAll('.network-option[data-network]');
       options.forEach(option => {
-        const opt = option.getAttribute('data-network');
-        if (opt === network && network !== 'mainnet') {
-          option.classList.add('selected');
-        } else {
-          option.classList.remove('selected');
+        if (option.getAttribute('data-network') !== 'mainnet') {
+          option.style.pointerEvents = 'none';
+          option.style.opacity = '0.6';
         }
       });
 
-      // Update current user network mode
-      if (currentUser) {
-        currentUser.networkMode = network;
+      // Disable Connect Wallet button during network syncing
+      const connectBtn = document.getElementById('connectWalletBtn');
+      if (connectBtn) {
+        connectBtn.disabled = true;
       }
 
       // Show syncing status for the selected network
       updateConnectionHubNetworkSyncStatus(network);
       validateConnectionHubContinueBtn();
+
+      // Send network mode request to backend
+      try {
+        const result = await apiCall('/api/user/network-mode', {
+          method: 'PUT',
+          body: JSON.stringify({ networkMode: network })
+        });
+
+        if (result && !result.error) {
+          const settings = loadSettings();
+          settings.networkMode = result.networkMode || network;
+          saveSettings(settings);
+          if (currentUser) {
+            currentUser.networkMode = result.networkMode || network;
+          }
+          console.log('[Connection Hub] Network mode saved to backend:', result.networkMode);
+
+          // Show success but keep the selection locked until user clicks Continue
+          showToast('Network mode saved', 'success');
+
+          // Clear syncing status
+          clearConnectionHubNetworkSyncStatus(network);
+
+          // Update UI with selection
+          options.forEach(option => {
+            const opt = option.getAttribute('data-network');
+            if (opt === network && network !== 'mainnet') {
+              option.classList.add('selected');
+            } else {
+              option.classList.remove('selected');
+            }
+          });
+
+          // Re-enable Connect Wallet button
+          if (connectBtn) {
+            connectBtn.disabled = false;
+          }
+
+          // Re-enable other network options but keep them deselectable
+          options.forEach(option => {
+            if (option.getAttribute('data-network') !== 'mainnet') {
+              option.style.pointerEvents = 'auto';
+              option.style.opacity = '1';
+            }
+          });
+
+          validateConnectionHubContinueBtn();
+        } else {
+          console.error('[Connection Hub] Failed to save network mode');
+          clearConnectionHubNetworkSyncStatus(network);
+          connectionHubSelectedNetwork = null;
+
+          // Reset UI on error
+          options.forEach(option => {
+            if (option.getAttribute('data-network') !== 'mainnet') {
+              option.style.pointerEvents = 'auto';
+              option.style.opacity = '1';
+              option.classList.remove('selected');
+            }
+          });
+
+          if (connectBtn) {
+            connectBtn.disabled = false;
+          }
+
+          showToast('Failed to save network mode', 'error');
+          validateConnectionHubContinueBtn();
+        }
+      } catch (err) {
+        console.error('[Connection Hub] Error selecting network:', err);
+        clearConnectionHubNetworkSyncStatus(network);
+        connectionHubSelectedNetwork = null;
+
+        // Reset UI on error
+        options.forEach(option => {
+          if (option.getAttribute('data-network') !== 'mainnet') {
+            option.style.pointerEvents = 'auto';
+            option.style.opacity = '1';
+            option.classList.remove('selected');
+          }
+        });
+
+        if (connectBtn) {
+          connectBtn.disabled = false;
+        }
+
+        showToast('Error selecting network', 'error');
+        validateConnectionHubContinueBtn();
+      }
     }
 
     function updateConnectionHubNetworkSyncStatus(network) {
@@ -4016,66 +4110,10 @@
         return;
       }
 
-      // Show syncing state
-      const continueBtn = document.getElementById('connectionHubContinueBtn');
-      const originalBtnText = continueBtn ? continueBtn.textContent : 'Continue';
-      if (continueBtn) {
-        continueBtn.disabled = true;
-        continueBtn.textContent = 'Syncing...';
-      }
-
-      updateConnectionHubNetworkSyncStatus(connectionHubSelectedNetwork);
-
-      // Update network mode on backend
-      if (currentUser.networkMode !== connectionHubSelectedNetwork) {
-        try {
-          const result = await apiCall('/api/user/network-mode', {
-            method: 'PUT',
-            body: JSON.stringify({ networkMode: connectionHubSelectedNetwork })
-          });
-
-          if (result && !result.error) {
-            const settings = loadSettings();
-            settings.networkMode = result.networkMode || connectionHubSelectedNetwork;
-            saveSettings(settings);
-            if (currentUser) {
-              currentUser.networkMode = result.networkMode || connectionHubSelectedNetwork;
-            }
-            console.log('[Connection Hub] Network mode updated to:', result.networkMode);
-
-            // Clear syncing status
-            clearConnectionHubNetworkSyncStatus(connectionHubSelectedNetwork);
-
-            // Show success
-            showToast('Network mode synchronized', 'success');
-
-            hideConnectionHub();
-            await showConversationsView();
-          } else {
-            clearConnectionHubNetworkSyncStatus(connectionHubSelectedNetwork);
-            if (continueBtn) {
-              continueBtn.disabled = false;
-              continueBtn.textContent = originalBtnText;
-            }
-            showToast('Failed to update network mode', 'error');
-            return;
-          }
-        } catch (err) {
-          console.error('[Connection Hub] Error updating network mode:', err);
-          clearConnectionHubNetworkSyncStatus(connectionHubSelectedNetwork);
-          if (continueBtn) {
-            continueBtn.disabled = false;
-            continueBtn.textContent = originalBtnText;
-          }
-          showToast('Error updating network mode', 'error');
-          return;
-        }
-      } else {
-        // Network mode already matches, just proceed
-        clearConnectionHubNetworkSyncStatus(connectionHubSelectedNetwork);
-        hideConnectionHub();
-        await showConversationsView();
-      }
+      // Network mode was already saved when user selected it in selectNetwork()
+      // Just proceed to the main app
+      hideConnectionHub();
+      await showConversationsView();
     }
 
     async function init() {
