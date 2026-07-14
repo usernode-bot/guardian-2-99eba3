@@ -1672,10 +1672,16 @@ async function sendTransactionToBridge(payload, txHashFromFrontend, network = 't
       return { txHash: txHashFromFrontend, status: 'pending' };
     }
 
-    // Fallback: generate a placeholder (should not reach here in production)
-    const networkPrefix = network === 'mainnet' ? 'ut1mainnet-tx-' : 'ut1testnet-tx-';
+    // In testnet mode, no frontend tx hash means RPC must have been used; if it failed, we must fail here too
+    // Do NOT generate synthetic placeholders in testnet — transactions must have real blockchain hashes
+    if (network === 'testnet' || network === 'real_testnet' || network === 'mainnet') {
+      throw new Error(`[BLOCKCHAIN-SUBMIT] ${network} mode requires a real transaction hash from RPC. RPC submission failed and no frontend hash was provided. Transaction cannot be submitted without a valid on-chain hash.`);
+    }
+
+    // For devnet and demo: generate synthetic hash as a fallback
+    const networkPrefix = network === 'demo' ? 'ut1demo-tx-' : 'ut1devnet-tx-';
     const txHash = networkPrefix + Math.random().toString(36).substr(2, 9);
-    console.log(`[BLOCKCHAIN-SUBMIT] WARNING: No txHash from frontend, generating placeholder: ${txHash}`);
+    console.log(`[BLOCKCHAIN-SUBMIT] ${network} mode: generating synthetic hash: ${txHash}`);
     return { txHash, status: 'pending' };
   } catch (err) {
     console.error(`[BLOCKCHAIN-SUBMIT] Error sending transaction to bridge: ${err.message}`, err);
@@ -3059,30 +3065,15 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
             });
           } catch (err) {
             const errorClass = classifyRPCError(err);
-            console.error(`[BLOCKCHAIN-FALLBACK] RPC failed (${errorClass.type}), using bridge fallback for messageId=${messageId}: ${err.message}`);
+            console.error(`[BLOCKCHAIN-RPC-FAILED] RPC submission failed (${errorClass.type}) for messageId=${messageId}: ${err.message}`);
 
-            // Fallback: try bridge approach (generates placeholder hash)
-            try {
-              const bridgeResult = await sendTransactionToBridge(transactionPayload, null, network);
+            // In testnet mode, RPC failure is fatal — do NOT generate synthetic hashes or fallback
+            // Transactions in testnet must use real blockchain hashes only
+            await pool.query(`
+              UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
+            `, [`RPC submission failed: ${err.message}. In testnet mode, transactions require real blockchain hashes from RPC. Verify NODE_RPC_URL and APP_SECRET_KEY configuration in Platform Secrets.`, blockchainRecordingId]);
 
-              // Update audit log with placeholder hash from bridge
-              await pool.query(`
-                UPDATE blockchain_audit_logs SET tx_hash = $1, network_origin = 'bridge', updated_at = NOW() WHERE id = $2
-              `, [bridgeResult.txHash, blockchainRecordingId]);
-
-              console.log(`[BLOCKCHAIN-FALLBACK] Updated audit log with bridge tx hash: txHash=${bridgeResult.txHash}, auditLogId=${blockchainRecordingId}`);
-
-              // Start polling with placeholder (will timeout after max polls)
-              startChainPoller(network, bridgeResult.txHash, blockchainRecordingId).catch(pollerErr => {
-                console.error('Error starting fallback chain poller:', pollerErr);
-              });
-            } catch (bridgeErr) {
-              // Both RPC and fallback failed — mark as failed immediately
-              console.error(`[BLOCKCHAIN-FALLBACK] Bridge fallback also failed: ${bridgeErr.message}`);
-              await pool.query(`
-                UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
-              `, [bridgeErr.message, blockchainRecordingId]);
-            }
+            console.log(`[BLOCKCHAIN-RPC-FAILED] Marked transaction as failed (testnet mode requires real RPC hash): auditLogId=${blockchainRecordingId}`);
           }
         })();
       }
@@ -3406,23 +3397,12 @@ app.post('/api/tokens/send', async (req, res) => {
           }
         } catch (err) {
           const errorClass = classifyRPCError(err);
-          console.error(`[BLOCKCHAIN-FALLBACK] RPC failed (${errorClass.type}), using bridge fallback for token transfer: ${err.message}`);
-          // Fall back to bridge approach
-          try {
-            const result = await sendTransactionToBridge(transactionPayload, null, network);
-            await pool.query(`
-              UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
-            `, [result.txHash, blockchainRecordingId]);
-            console.log(`[BLOCKCHAIN-FALLBACK] Updated audit log with bridge tx hash: txHash=${result.txHash}, auditLogId=${blockchainRecordingId}`);
-            monitorBlockchainStatus(blockchainRecordingId, result.txHash).catch(err => {
-              console.error('Error monitoring blockchain status:', err);
-            });
-          } catch (bridgeErr) {
-            console.error(`[BLOCKCHAIN-FALLBACK] Bridge fallback also failed: ${bridgeErr.message}`);
-            await pool.query(`
-              UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
-            `, [bridgeErr.message, blockchainRecordingId]);
-          }
+          console.error(`[BLOCKCHAIN-RPC-FAILED] RPC submission failed (${errorClass.type}) for token transfer: ${err.message}`);
+          // In testnet mode, RPC failure is fatal — do NOT generate synthetic hashes or fallback
+          await pool.query(`
+            UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
+          `, [`RPC submission failed: ${err.message}. In testnet mode, transactions require real blockchain hashes from RPC. Verify NODE_RPC_URL and APP_SECRET_KEY configuration in Platform Secrets.`, blockchainRecordingId]);
+          console.log(`[BLOCKCHAIN-RPC-FAILED] Marked transaction as failed (testnet mode requires real RPC hash): auditLogId=${blockchainRecordingId}`);
         }
       })();
     }
@@ -4964,28 +4944,12 @@ app.post('/api/groups', async (req, res) => {
           });
         } catch (err) {
           const errorClass = classifyRPCError(err);
-          console.error(`[BLOCKCHAIN-FALLBACK] RPC failed (${errorClass.type}), using bridge fallback for groupId=${groupId}: ${err.message}`);
-
-          // Fallback: try bridge approach
-          try {
-            const bridgeResult = await sendTransactionToBridge(transactionPayload, null, network);
-
-            await pool.query(`
-              UPDATE blockchain_audit_logs SET tx_hash = $1, network_origin = 'bridge', updated_at = NOW() WHERE id = $2
-            `, [bridgeResult.txHash, blockchainRecordingId]);
-
-            console.log(`[BLOCKCHAIN-FALLBACK] Updated audit log with bridge tx hash: txHash=${bridgeResult.txHash}, auditLogId=${blockchainRecordingId}`);
-
-            // Start polling with placeholder so it eventually marks as 'failed'
-            startChainPoller(network, bridgeResult.txHash, blockchainRecordingId).catch(pollerErr => {
-              console.error(`[POST /api/groups::BLOCKCHAIN::ASYNC] Error starting fallback chain poller: ${pollerErr.message}`, pollerErr);
-            });
-          } catch (bridgeErr) {
-            console.error(`[BLOCKCHAIN-FALLBACK] Bridge fallback also failed: ${bridgeErr.message}`);
-            await pool.query(`
-              UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
-            `, [bridgeErr.message, blockchainRecordingId]);
-          }
+          console.error(`[BLOCKCHAIN-RPC-FAILED] RPC submission failed (${errorClass.type}) for groupId=${groupId}: ${err.message}`);
+          // In testnet mode, RPC failure is fatal — do NOT generate synthetic hashes or fallback
+          await pool.query(`
+            UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
+          `, [`RPC submission failed: ${err.message}. In testnet mode, transactions require real blockchain hashes from RPC. Verify NODE_RPC_URL and APP_SECRET_KEY configuration in Platform Secrets.`, blockchainRecordingId]);
+          console.log(`[BLOCKCHAIN-RPC-FAILED] Marked transaction as failed (testnet mode requires real RPC hash): auditLogId=${blockchainRecordingId}`);
         }
       })();
     } else if (!ENABLE_DEMO_MODE && NETWORK_MODE !== 'devnet' && NETWORK_MODE !== 'testnet') {
@@ -5014,28 +4978,12 @@ app.post('/api/groups', async (req, res) => {
           });
         } catch (err) {
           const errorClass = classifyRPCError(err);
-          console.error(`[BLOCKCHAIN-FALLBACK] RPC failed (${errorClass.type}), using bridge fallback for groupId=${groupId}: ${err.message}`);
-
-          // Fallback: try bridge approach
-          try {
-            const bridgeResult = await sendTransactionToBridge(transactionPayload, null, network);
-
-            await pool.query(`
-              UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
-            `, [bridgeResult.txHash, blockchainRecordingId]);
-
-            console.log(`[BLOCKCHAIN-FALLBACK] Updated audit log with bridge tx hash: txHash=${bridgeResult.txHash}, auditLogId=${blockchainRecordingId}`);
-
-            // Start polling with placeholder so it eventually marks as 'failed'
-            startChainPoller(network, bridgeResult.txHash, blockchainRecordingId).catch(pollerErr => {
-              console.error(`[POST /api/groups::BLOCKCHAIN::ASYNC] Error starting fallback chain poller: ${pollerErr.message}`, pollerErr);
-            });
-          } catch (bridgeErr) {
-            console.error(`[BLOCKCHAIN-FALLBACK] Bridge fallback also failed: ${bridgeErr.message}`);
-            await pool.query(`
-              UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
-            `, [bridgeErr.message, blockchainRecordingId]);
-          }
+          console.error(`[BLOCKCHAIN-RPC-FAILED] RPC submission failed (${errorClass.type}) for groupId=${groupId}: ${err.message}`);
+          // In testnet mode, RPC failure is fatal — do NOT generate synthetic hashes or fallback
+          await pool.query(`
+            UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
+          `, [`RPC submission failed: ${err.message}. In testnet mode, transactions require real blockchain hashes from RPC. Verify NODE_RPC_URL and APP_SECRET_KEY configuration in Platform Secrets.`, blockchainRecordingId]);
+          console.log(`[BLOCKCHAIN-RPC-FAILED] Marked transaction as failed (testnet mode requires real RPC hash): auditLogId=${blockchainRecordingId}`);
         }
       })();
     } else {
@@ -5216,9 +5164,10 @@ app.put('/api/groups/:groupId', async (req, res) => {
     };
 
     // Create audit log entry for group update
-    const networkPrefix = network === 'mainnet' ? 'mainnet-' : 'testnet-';
-    const placeholderTxHash = ENABLE_DEMO_MODE ? 'ut1staging-' + networkPrefix + 'tx-update-' + Date.now() : 'ut1-' + networkPrefix + 'tx-update-' + Math.random().toString(36).substr(2, 9);
+    // In testnet, tx_hash starts as NULL and is set after RPC submission succeeds
+    // In demo mode, create a placeholder that's immediately confirmed
     const auditStatus = ENABLE_DEMO_MODE ? 'confirmed' : 'pending';
+    const placeholderTxHash = ENABLE_DEMO_MODE ? 'ut1demo-group-update-' + Date.now() : null;
     const auditRes = await pool.query(`
       INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $6)
@@ -5226,25 +5175,27 @@ app.put('/api/groups/:groupId', async (req, res) => {
     `, [userId, 'group_update', placeholderTxHash, JSON.stringify(transactionPayload), auditStatus, now]);
     const blockchainRecordingId = auditRes.rows[0].id;
 
-    // Async: submit to blockchain in the background
-    (async () => {
-      try {
-        const result = await sendTransactionToBridge(transactionPayload, null, network);
-        // Update audit log with real tx hash
-        await pool.query(`
-          UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
-        `, [result.txHash, blockchainRecordingId]);
-        // Start monitoring
-        monitorBlockchainStatus(blockchainRecordingId, result.txHash).catch(err => {
-          console.error('Error monitoring blockchain status:', err);
-        });
-      } catch (err) {
-        console.error('Background blockchain submission error:', err);
-        await pool.query(`
-          UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
-        `, [err.message, blockchainRecordingId]);
-      }
-    })();
+    // Async: submit to blockchain in the background (only for testnet/real modes, not demo)
+    if (!ENABLE_DEMO_MODE) {
+      (async () => {
+        try {
+          const result = await sendTransactionToBridge(transactionPayload, null, network);
+          // Update audit log with real tx hash
+          await pool.query(`
+            UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
+          `, [result.txHash, blockchainRecordingId]);
+          // Start monitoring
+          monitorBlockchainStatus(blockchainRecordingId, result.txHash).catch(err => {
+            console.error('Error monitoring blockchain status:', err);
+          });
+        } catch (err) {
+          console.error('Background blockchain submission error:', err);
+          await pool.query(`
+            UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
+          `, [err.message, blockchainRecordingId]);
+        }
+      })();
+    }
 
     res.json({ ok: true, blockchainRecordingId: blockchainRecordingId });
   } catch (err) {
@@ -5497,21 +5448,12 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
           });
         } catch (err) {
           const errorClass = classifyRPCError(err);
-          console.error(`[GROUP-MSG-RPC] RPC failed (${errorClass.type}), using bridge fallback: ${err.message}`);
-          try {
-            const bridgeResult = await sendTransactionToBridge(transactionPayload, null, network);
-            await pool.query(`
-              UPDATE blockchain_audit_logs SET tx_hash = $1, network_origin = 'bridge', updated_at = NOW() WHERE id = $2
-            `, [bridgeResult.txHash, blockchainRecordingId]);
-            startChainPoller(network, bridgeResult.txHash, blockchainRecordingId).catch(pollerErr => {
-              console.error('Error starting fallback chain poller:', pollerErr);
-            });
-          } catch (bridgeErr) {
-            console.error(`[GROUP-MSG-RPC] Bridge fallback failed: ${bridgeErr.message}`);
-            await pool.query(`
-              UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
-            `, [bridgeErr.message, blockchainRecordingId]);
-          }
+          console.error(`[BLOCKCHAIN-RPC-FAILED] RPC submission failed (${errorClass.type}) for group message: ${err.message}`);
+          // In testnet mode, RPC failure is fatal — do NOT generate synthetic hashes or fallback
+          await pool.query(`
+            UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
+          `, [`RPC submission failed: ${err.message}. In testnet mode, transactions require real blockchain hashes from RPC. Verify NODE_RPC_URL and APP_SECRET_KEY configuration in Platform Secrets.`, blockchainRecordingId]);
+          console.log(`[BLOCKCHAIN-RPC-FAILED] Marked transaction as failed (testnet mode requires real RPC hash): auditLogId=${blockchainRecordingId}`);
         }
       })();
     } else if (!ENABLE_DEMO_MODE && NETWORK_MODE !== 'devnet') {
@@ -5715,34 +5657,38 @@ app.post('/api/groups/:groupId/members', async (req, res) => {
     };
 
     // Create audit log entry for adding members
-    const networkPrefix = network === 'mainnet' ? 'mainnet-' : 'testnet-';
-    const placeholderTxHash = ENABLE_DEMO_MODE ? 'ut1staging-' + networkPrefix + 'tx-addmem-' + Date.now() : 'ut1-' + networkPrefix + 'tx-addmem-' + Math.random().toString(36).substr(2, 9);
+    // In testnet, tx_hash starts as NULL and is set after RPC submission succeeds
+    // In demo mode, create a placeholder that's immediately confirmed
+    const auditStatus = ENABLE_DEMO_MODE ? 'confirmed' : 'pending';
+    const placeholderTxHash = ENABLE_DEMO_MODE ? 'ut1demo-addmem-' + Date.now() : null;
     const auditRes = await pool.query(`
       INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $6)
       RETURNING id
-    `, [userId, 'group_add_members', placeholderTxHash, JSON.stringify(transactionPayload), 'pending', now]);
+    `, [userId, 'group_add_members', placeholderTxHash, JSON.stringify(transactionPayload), auditStatus, now]);
     const blockchainRecordingId = auditRes.rows[0].id;
 
-    // Async: submit to blockchain in the background
-    (async () => {
-      try {
-        const result = await sendTransactionToBridge(transactionPayload, null, network);
-        // Update audit log with real tx hash
-        await pool.query(`
-          UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
-        `, [result.txHash, blockchainRecordingId]);
-        // Start monitoring
-        monitorBlockchainStatus(blockchainRecordingId, result.txHash).catch(err => {
-          console.error('Error monitoring blockchain status:', err);
-        });
-      } catch (err) {
-        console.error('Background blockchain submission error:', err);
-        await pool.query(`
-          UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
-        `, [err.message, blockchainRecordingId]);
-      }
-    })();
+    // Async: submit to blockchain in the background (only for testnet/real modes, not demo)
+    if (!ENABLE_DEMO_MODE) {
+      (async () => {
+        try {
+          const result = await sendTransactionToBridge(transactionPayload, null, network);
+          // Update audit log with real tx hash
+          await pool.query(`
+            UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
+          `, [result.txHash, blockchainRecordingId]);
+          // Start monitoring
+          monitorBlockchainStatus(blockchainRecordingId, result.txHash).catch(err => {
+            console.error('Error monitoring blockchain status:', err);
+          });
+        } catch (err) {
+          console.error('Background blockchain submission error:', err);
+          await pool.query(`
+            UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
+          `, [err.message, blockchainRecordingId]);
+        }
+      })();
+    }
 
     res.json({ members: addedMembers, blockchainRecordingId: blockchainRecordingId });
   } catch (err) {
@@ -5810,34 +5756,38 @@ app.delete('/api/groups/:groupId/members/:userId', async (req, res) => {
     };
 
     // Create audit log entry for removing member
-    const networkPrefix = network === 'mainnet' ? 'mainnet-' : 'testnet-';
-    const placeholderTxHash = ENABLE_DEMO_MODE ? 'ut1staging-' + networkPrefix + 'tx-remmem-' + Date.now() : 'ut1-' + networkPrefix + 'tx-remmem-' + Math.random().toString(36).substr(2, 9);
+    // In testnet, tx_hash starts as NULL and is set after RPC submission succeeds
+    // In demo mode, create a placeholder that's immediately confirmed
+    const auditStatus = ENABLE_DEMO_MODE ? 'confirmed' : 'pending';
+    const placeholderTxHash = ENABLE_DEMO_MODE ? 'ut1demo-remmem-' + Date.now() : null;
     const auditRes = await pool.query(`
       INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $6)
       RETURNING id
-    `, [userId, 'group_remove_member', placeholderTxHash, JSON.stringify(transactionPayload), 'pending', now]);
+    `, [userId, 'group_remove_member', placeholderTxHash, JSON.stringify(transactionPayload), auditStatus, now]);
     const blockchainRecordingId = auditRes.rows[0].id;
 
-    // Async: submit to blockchain in the background
-    (async () => {
-      try {
-        const result = await sendTransactionToBridge(transactionPayload, null, network);
-        // Update audit log with real tx hash
-        await pool.query(`
-          UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
-        `, [result.txHash, blockchainRecordingId]);
-        // Start monitoring
-        monitorBlockchainStatus(blockchainRecordingId, result.txHash).catch(err => {
-          console.error('Error monitoring blockchain status:', err);
-        });
-      } catch (err) {
-        console.error('Background blockchain submission error:', err);
-        await pool.query(`
-          UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
-        `, [err.message, blockchainRecordingId]);
-      }
-    })();
+    // Async: submit to blockchain in the background (only for testnet/real modes, not demo)
+    if (!ENABLE_DEMO_MODE) {
+      (async () => {
+        try {
+          const result = await sendTransactionToBridge(transactionPayload, null, network);
+          // Update audit log with real tx hash
+          await pool.query(`
+            UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
+          `, [result.txHash, blockchainRecordingId]);
+          // Start monitoring
+          monitorBlockchainStatus(blockchainRecordingId, result.txHash).catch(err => {
+            console.error('Error monitoring blockchain status:', err);
+          });
+        } catch (err) {
+          console.error('Background blockchain submission error:', err);
+          await pool.query(`
+            UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
+          `, [err.message, blockchainRecordingId]);
+        }
+      })();
+    }
 
     res.json({ ok: true, blockchainRecordingId: blockchainRecordingId });
   } catch (err) {
@@ -5885,34 +5835,38 @@ app.post('/api/groups/:groupId/leave', async (req, res) => {
     };
 
     // Create audit log entry for leaving group
-    const networkPrefix = network === 'mainnet' ? 'mainnet-' : 'testnet-';
-    const placeholderTxHash = ENABLE_DEMO_MODE ? 'ut1staging-' + networkPrefix + 'tx-leave-' + Date.now() : 'ut1-' + networkPrefix + 'tx-leave-' + Math.random().toString(36).substr(2, 9);
+    // In testnet, tx_hash starts as NULL and is set after RPC submission succeeds
+    // In demo mode, create a placeholder that's immediately confirmed
+    const auditStatus = ENABLE_DEMO_MODE ? 'confirmed' : 'pending';
+    const placeholderTxHash = ENABLE_DEMO_MODE ? 'ut1demo-leave-' + Date.now() : null;
     const auditRes = await pool.query(`
       INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $6)
       RETURNING id
-    `, [userId, 'group_leave', placeholderTxHash, JSON.stringify(transactionPayload), 'pending', now]);
+    `, [userId, 'group_leave', placeholderTxHash, JSON.stringify(transactionPayload), auditStatus, now]);
     const blockchainRecordingId = auditRes.rows[0].id;
 
-    // Async: submit to blockchain in the background
-    (async () => {
-      try {
-        const result = await sendTransactionToBridge(transactionPayload, null, network);
-        // Update audit log with real tx hash
-        await pool.query(`
-          UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
-        `, [result.txHash, blockchainRecordingId]);
-        // Start monitoring
-        monitorBlockchainStatus(blockchainRecordingId, result.txHash).catch(err => {
-          console.error('Error monitoring blockchain status:', err);
-        });
-      } catch (err) {
-        console.error('Background blockchain submission error:', err);
-        await pool.query(`
-          UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
-        `, [err.message, blockchainRecordingId]);
-      }
-    })();
+    // Async: submit to blockchain in the background (only for testnet/real modes, not demo)
+    if (!ENABLE_DEMO_MODE) {
+      (async () => {
+        try {
+          const result = await sendTransactionToBridge(transactionPayload, null, network);
+          // Update audit log with real tx hash
+          await pool.query(`
+            UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
+          `, [result.txHash, blockchainRecordingId]);
+          // Start monitoring
+          monitorBlockchainStatus(blockchainRecordingId, result.txHash).catch(err => {
+            console.error('Error monitoring blockchain status:', err);
+          });
+        } catch (err) {
+          console.error('Background blockchain submission error:', err);
+          await pool.query(`
+            UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
+          `, [err.message, blockchainRecordingId]);
+        }
+      })();
+    }
 
     res.json({ ok: true, blockchainRecordingId: blockchainRecordingId });
   } catch (err) {
@@ -5963,34 +5917,38 @@ app.delete('/api/groups/:groupId', async (req, res) => {
     };
 
     // Create audit log entry for group deletion
-    const networkPrefix = network === 'mainnet' ? 'mainnet-' : 'testnet-';
-    const placeholderTxHash = ENABLE_DEMO_MODE ? 'ut1staging-' + networkPrefix + 'tx-delete-' + Date.now() : 'ut1-' + networkPrefix + 'tx-delete-' + Math.random().toString(36).substr(2, 9);
+    // In testnet, tx_hash starts as NULL and is set after RPC submission succeeds
+    // In demo mode, create a placeholder that's immediately confirmed
+    const auditStatus = ENABLE_DEMO_MODE ? 'confirmed' : 'pending';
+    const placeholderTxHash = ENABLE_DEMO_MODE ? 'ut1demo-delete-' + Date.now() : null;
     const auditRes = await pool.query(`
       INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, transaction_payload, status, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $6)
       RETURNING id
-    `, [userId, 'group_delete', placeholderTxHash, JSON.stringify(transactionPayload), 'pending', now]);
+    `, [userId, 'group_delete', placeholderTxHash, JSON.stringify(transactionPayload), auditStatus, now]);
     const blockchainRecordingId = auditRes.rows[0].id;
 
-    // Async: submit to blockchain in the background
-    (async () => {
-      try {
-        const result = await sendTransactionToBridge(transactionPayload, null, network);
-        // Update audit log with real tx hash
-        await pool.query(`
-          UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
-        `, [result.txHash, blockchainRecordingId]);
-        // Start monitoring
-        monitorBlockchainStatus(blockchainRecordingId, result.txHash).catch(err => {
-          console.error('Error monitoring blockchain status:', err);
-        });
-      } catch (err) {
-        console.error('Background blockchain submission error:', err);
-        await pool.query(`
-          UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
-        `, [err.message, blockchainRecordingId]);
-      }
-    })();
+    // Async: submit to blockchain in the background (only for testnet/real modes, not demo)
+    if (!ENABLE_DEMO_MODE) {
+      (async () => {
+        try {
+          const result = await sendTransactionToBridge(transactionPayload, null, network);
+          // Update audit log with real tx hash
+          await pool.query(`
+            UPDATE blockchain_audit_logs SET tx_hash = $1 WHERE id = $2
+          `, [result.txHash, blockchainRecordingId]);
+          // Start monitoring
+          monitorBlockchainStatus(blockchainRecordingId, result.txHash).catch(err => {
+            console.error('Error monitoring blockchain status:', err);
+          });
+        } catch (err) {
+          console.error('Background blockchain submission error:', err);
+          await pool.query(`
+            UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
+          `, [err.message, blockchainRecordingId]);
+        }
+      })();
+    }
 
     res.json({ ok: true, blockchainRecordingId: blockchainRecordingId });
   } catch (err) {
