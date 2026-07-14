@@ -961,12 +961,12 @@
             <!-- Statistics Section -->
             <div class="grid grid-cols-3 gap-3 py-2">
               <div class="text-center p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
-                <div class="text-2xl font-bold text-cyan-600 dark:text-cyan-400" id="profilePostsCount">—</div>
-                <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">Posts</div>
-              </div>
-              <div class="text-center p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
                 <div class="text-2xl font-bold text-cyan-600 dark:text-cyan-400" id="profileContactsCount">—</div>
                 <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">Contacts</div>
+              </div>
+              <div class="text-center p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
+                <div class="text-2xl font-bold text-cyan-600 dark:text-cyan-400" id="profileGroupCount">—</div>
+                <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">Group</div>
               </div>
               <div class="text-center p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
                 <div class="text-2xl font-bold text-cyan-600 dark:text-cyan-400" id="profileMessagesCount">—</div>
@@ -8455,14 +8455,14 @@
       try {
         const statsResponse = await apiCall('/api/user/stats');
         if (statsResponse) {
-          document.getElementById('profilePostsCount').textContent = statsResponse.postsCount || 0;
           document.getElementById('profileContactsCount').textContent = statsResponse.contactsCount || 0;
+          document.getElementById('profileGroupCount').textContent = statsResponse.groupCount || 0;
           document.getElementById('profileMessagesCount').textContent = statsResponse.messagesCount || 0;
         }
       } catch (err) {
         console.error('Error loading profile stats:', err);
-        document.getElementById('profilePostsCount').textContent = '—';
         document.getElementById('profileContactsCount').textContent = '—';
+        document.getElementById('profileGroupCount').textContent = '—';
         document.getElementById('profileMessagesCount').textContent = '—';
       }
 

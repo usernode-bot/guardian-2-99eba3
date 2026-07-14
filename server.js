@@ -1990,19 +1990,22 @@ app.get('/api/user/stats', async (req, res) => {
 
     if (ENABLE_DEMO_MODE) {
       return res.json({
-        postsCount: mockData.MOCK_USER_STATS.totalMessagesCount,
         contactsCount: 12,
+        groupCount: mockData.MOCK_USER_STATS.totalGroupsCount,
         messagesCount: mockData.MOCK_USER_STATS.totalGroupsCount + 4
       });
     }
 
-    // Query posts count
-    const postsRes = await pool.query(`SELECT COUNT(*) as count FROM feed_posts WHERE user_id = $1`, [userId]);
-    const postsCount = parseInt(postsRes.rows[0]?.count || 0, 10);
-
     // Query contacts count (contacts added BY this user)
     const contactsRes = await pool.query(`SELECT COUNT(*) as count FROM user_contacts WHERE user_id = $1`, [userId]);
     const contactsCount = parseInt(contactsRes.rows[0]?.count || 0, 10);
+
+    // Query groups count: count distinct groups the user is a member of
+    const groupsRes = await pool.query(`
+      SELECT COUNT(DISTINCT group_id) as count FROM group_members
+      WHERE user_id = $1
+    `, [userId]);
+    const groupCount = parseInt(groupsRes.rows[0]?.count || 0, 10);
 
     // Query messages count: count distinct conversations + groups the user participates in
     // This reflects the user's participation in the Messages view (both Direct and Groups tabs)
@@ -2013,17 +2016,11 @@ app.get('/api/user/stats', async (req, res) => {
     `, [userId]);
     const conversationCount = parseInt(conversationsRes.rows[0]?.count || 0, 10);
 
-    const groupsRes = await pool.query(`
-      SELECT COUNT(DISTINCT group_id) as count FROM group_members
-      WHERE user_id = $1
-    `, [userId]);
-    const groupCount = parseInt(groupsRes.rows[0]?.count || 0, 10);
-
     const messagesCount = conversationCount + groupCount;
 
     res.json({
-      postsCount: postsCount,
       contactsCount: contactsCount,
+      groupCount: groupCount,
       messagesCount: messagesCount,
     });
   } catch (err) {
