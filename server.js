@@ -3310,8 +3310,8 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
     }
 
     const row = rows[0];
-    const explorerUrl = (row.tx_hash && row.network_origin === 'testnet')
-      ? `${EXPLORER_URL}/tx/${row.tx_hash}`
+    const explorerUrl = (row.tx_hash && row.network_origin === 'testnet' && !row.tx_hash.includes('staging') && !row.tx_hash.startsWith('synthetic_') && !row.tx_hash.startsWith('devnet-'))
+      ? `${EXPLORER_URL}/txs/${row.tx_hash}`
       : null;
 
     res.json({
@@ -3626,8 +3626,8 @@ app.get('/api/transactions-by-user', async (req, res) => {
           recipientUsername = r.recipient_username_from_pubkey;
         }
 
-        const explorerUrl = NETWORK_MODE === 'testnet' && r.tx_hash
-          ? `${EXPLORER_URL}/tx/${r.tx_hash}`
+        const explorerUrl = NETWORK_MODE === 'testnet' && r.tx_hash && r.network_origin === 'testnet' && !r.tx_hash.includes('staging') && !r.tx_hash.startsWith('synthetic_') && !r.tx_hash.startsWith('devnet-')
+          ? `${EXPLORER_URL}/txs/${r.tx_hash}`
           : null;
 
         let badgeLabel = null;
