@@ -1191,8 +1191,8 @@
   </div>
 
   <!-- Delete Contact Modal -->
-  <div id="deleteContactModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
-    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
+  <div id="deleteContactModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4" onclick="hideDeleteContactModal()">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4" onclick="event.stopPropagation()">
       <h2 class="text-xl font-semibold text-zinc-900 dark:text-white" id="deleteContactTitle">Delete contact?</h2>
       <p class="text-sm text-zinc-600 dark:text-zinc-400">This cannot be undone.</p>
       <div id="deleteContactWarning" class="text-sm text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 p-3 rounded hidden">
@@ -3116,7 +3116,7 @@
 
         if (data && !data.error && data.ok) {
           const contacts = JSON.parse(localStorage.getItem(`guardian_contacts_${currentUser.id}`) || '[]');
-          const filtered = contacts.filter(c => c.id !== contactId);
+          const filtered = contacts.filter(c => String(c.id) !== String(contactId));
           localStorage.setItem(`guardian_contacts_${currentUser.id}`, JSON.stringify(filtered));
           hideContactHeaderMenu();
           currentContactId = null;
@@ -6007,7 +6007,7 @@
         return `
           <div class="flex ${alignClass} ${marginClass}" data-message-id="${msg.id}" onclick="showDeleteMessageModal(${msg.id})">
             <div class="max-w-xs ${borderRadius} overflow-hidden ${baseClass} cursor-pointer hover:opacity-90 transition">
-              <img src="${msg.content.imageUrl}" alt="Message image" class="max-w-xs cursor-pointer hover:opacity-80 transition" onclick="showLightbox('${msg.content.imageUrl}')">
+              <img src="${msg.content.imageUrl}" alt="Message image" class="max-w-xs cursor-pointer hover:opacity-80 transition" onclick="event.stopPropagation(); showLightbox('${msg.content.imageUrl}')">
               ${senderNameLine}
             </div>
           </div>
@@ -6287,8 +6287,9 @@
             messageElement.style.transition = 'opacity 0.2s ease-out';
             setTimeout(() => {
               messageElement.remove();
-              if (document.getElementById('messageList').children.length === 0) {
-                document.getElementById('messageList').innerHTML = '<div class="text-center text-zinc-600 dark:text-zinc-500 py-4">No messages yet</div>';
+              const messageList = document.getElementById('messageList');
+              if (messageList && messageList.children.length === 0) {
+                messageList.innerHTML = '<div class="text-center text-zinc-600 dark:text-zinc-500 py-4">No messages yet</div>';
               }
             }, 200);
           }
