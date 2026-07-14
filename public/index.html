@@ -812,13 +812,12 @@
       </div>
 
       <!-- Wallet Connection Section -->
-      <div class="connection-hub-section">
-        <div class="connection-hub-section-title">Connect Wallet</div>
+      <div id="walletStatusSection" class="connection-hub-section">
+        <div class="connection-hub-section-title">Wallet Status</div>
         <div class="wallet-status-box">
           <div class="wallet-status-label">Current Status</div>
           <div id="walletStatusText" class="wallet-status-text not-connected">Not connected</div>
         </div>
-        <button id="connectWalletBtn" class="connect-wallet-btn" onclick="showConnectWalletFlow()">Connect Wallet</button>
       </div>
 
       <!-- Continue Button -->
@@ -3885,12 +3884,6 @@
         }
       });
 
-      // Disable Connect Wallet button during network syncing
-      const connectBtn = document.getElementById('connectWalletBtn');
-      if (connectBtn) {
-        connectBtn.disabled = true;
-      }
-
       // Show syncing status for the selected network
       updateConnectionHubNetworkSyncStatus(network);
       validateConnectionHubContinueBtn();
@@ -3927,11 +3920,6 @@
             }
           });
 
-          // Re-enable Connect Wallet button
-          if (connectBtn) {
-            connectBtn.disabled = false;
-          }
-
           // Re-enable other network options but keep them deselectable
           options.forEach(option => {
             if (option.getAttribute('data-network') !== 'mainnet') {
@@ -3940,6 +3928,8 @@
             }
           });
 
+          // Automatically update wallet status after network selection
+          updateConnectionHubWalletStatus();
           validateConnectionHubContinueBtn();
         } else {
           console.error('[Connection Hub] Failed to save network mode');
@@ -3954,10 +3944,6 @@
               option.classList.remove('selected');
             }
           });
-
-          if (connectBtn) {
-            connectBtn.disabled = false;
-          }
 
           showToast('Failed to save network mode', 'error');
           validateConnectionHubContinueBtn();
@@ -3975,10 +3961,6 @@
             option.classList.remove('selected');
           }
         });
-
-        if (connectBtn) {
-          connectBtn.disabled = false;
-        }
 
         showToast('Error selecting network', 'error');
         validateConnectionHubContinueBtn();
@@ -4005,42 +3987,6 @@
         networkLabelText.style.color = '';
         networkLabelText.classList.remove('syncing-text');
       }
-    }
-
-    function showConnectWalletFlow() {
-      connectionHubWalletConnecting = true;
-
-      const connectBtn = document.getElementById('connectWalletBtn');
-      const walletStatusText = document.getElementById('walletStatusText');
-
-      if (connectBtn) {
-        connectBtn.disabled = true;
-        connectBtn.innerHTML = '<span class="connecting-spinner"></span>Connecting...';
-      }
-
-      if (walletStatusText) {
-        walletStatusText.textContent = 'Connecting...';
-        walletStatusText.classList.add('not-connected');
-      }
-
-      // Simulate wallet connection delay
-      // In a real implementation, this would trigger the bridge wallet connection
-      console.log('[Connection Hub] Connect wallet flow triggered');
-
-      // Show a connecting indicator
-      showToast('Initiating wallet connection...', 'info');
-
-      // Simulate async wallet connection completion after short delay
-      setTimeout(() => {
-        connectionHubWalletConnecting = false;
-        updateConnectionHubWalletStatus();
-
-        const connectBtn = document.getElementById('connectWalletBtn');
-        if (connectBtn) {
-          connectBtn.disabled = false;
-          connectBtn.textContent = 'Connect Wallet';
-        }
-      }, 2000);
     }
 
     function updateConnectionHubWalletStatus() {
@@ -4117,11 +4063,12 @@
 
     async function proceedFromConnectionHub() {
       if (!connectionHubSelectedNetwork || !currentUser?.usernode_pubkey) {
-        showToast('Please select a network and connect a wallet', 'warning');
+        showToast('Please select a network first', 'warning');
         return;
       }
 
       // Network mode was already saved when user selected it in selectNetwork()
+      // Wallet status was auto-checked after network selection
       // Just proceed to the main app
       hideConnectionHub();
       await showConversationsView();
