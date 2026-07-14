@@ -61,6 +61,154 @@ let ENABLE_DEMO_MODE = getEnableDemoMode();
 const APP_PUBKEY = process.env.APP_PUBKEY || 'ut1Fww7onqF9LsRSb6d6BozgQWtjNYqQJghYxXmBc8foncb';
 const APP_SECRET_KEY = process.env.APP_SECRET_KEY || 'guardian_sk_mqudwes5_ae613cf56214808e';
 
+// Credential and configuration validation functions
+function validateAPPPubkey(pubkey) {
+  if (!pubkey) return { valid: false, error: 'APP_PUBKEY is not set' };
+  if (!pubkey.startsWith('ut1')) {
+    return { valid: false, error: `APP_PUBKEY must start with 'ut1', got: ${pubkey.substring(0, 10)}...` };
+  }
+  if (pubkey.length < 40 || pubkey.length > 50) {
+    return { valid: false, error: `APP_PUBKEY has invalid length ${pubkey.length}, expected 43-44 characters` };
+  }
+  return { valid: true };
+}
+
+function validateAPPSecretKey(secretKey) {
+  if (!secretKey) return { valid: false, error: 'APP_SECRET_KEY is not set' };
+  // Check if it's 64 hex characters (32 bytes)
+  if (!/^[a-f0-9]{64}$/.test(secretKey)) {
+    if (secretKey.length === 64) {
+      return { valid: false, error: `APP_SECRET_KEY contains non-hex characters; must be 64 hex characters` };
+    }
+    return { valid: false, error: `APP_SECRET_KEY must be exactly 64 hex characters, got ${secretKey.length}` };
+  }
+  return { valid: true };
+}
+
+function validateNetworkMode(mode) {
+  const validModes = ['testnet', 'real_testnet', 'devnet', 'demo', 'mainnet'];
+  if (!validModes.includes(mode)) {
+    return { valid: false, error: `NETWORK_MODE must be one of: ${validModes.join(', ')}, got: ${mode}` };
+  }
+  return { valid: true };
+}
+
+function validateNodeRpcUrl(url) {
+  if (!url) return { valid: false, error: 'NODE_RPC_URL is not set' };
+  try {
+    const parsed = new URL(url);
+    if (!parsed.protocol.startsWith('http')) {
+      return { valid: false, error: `NODE_RPC_URL must use http or https protocol, got: ${parsed.protocol}` };
+    }
+    return { valid: true };
+  } catch (err) {
+    return { valid: false, error: `NODE_RPC_URL is not a valid URL: ${err.message}` };
+  }
+}
+
+// Boot-time configuration checklist for production
+async function validateProductionConfiguration() {
+  const checklist = [];
+  let hasErrors = false;
+
+  console.log(`\n${'═'.repeat(70)}`);
+  console.log(`[BOOT-CONFIG] Guardian Production Configuration Checklist`);
+  console.log(`[BOOT-CONFIG] Environment: ${IS_STAGING ? 'STAGING' : 'PRODUCTION'} | Network Mode: ${NETWORK_MODE}`);
+  console.log(`${'═'.repeat(70)}`);
+
+  // Check NETWORK_MODE
+  const networkModeValidation = validateNetworkMode(NETWORK_MODE);
+  if (!networkModeValidation.valid) {
+    console.error(`[BOOT-CONFIG] ❌ NETWORK_MODE: ${networkModeValidation.error}`);
+    checklist.push({ name: 'NETWORK_MODE', status: 'ERROR', message: networkModeValidation.error });
+    hasErrors = true;
+  } else {
+    console.log(`[BOOT-CONFIG] ✓ NETWORK_MODE: ${NETWORK_MODE}`);
+    checklist.push({ name: 'NETWORK_MODE', status: 'OK', message: `Set to ${NETWORK_MODE}` });
+  }
+
+  // Check APP_PUBKEY format
+  const pubkeyValidation = validateAPPPubkey(APP_PUBKEY);
+  if (!pubkeyValidation.valid) {
+    console.error(`[BOOT-CONFIG] ❌ APP_PUBKEY: ${pubkeyValidation.error}`);
+    checklist.push({ name: 'APP_PUBKEY', status: 'ERROR', message: pubkeyValidation.error });
+    hasErrors = true;
+  } else {
+    const isDefault = APP_PUBKEY === 'ut1Fww7onqF9LsRSb6d6BozgQWtjNYqQJghYxXmBc8foncb';
+    if (isDefault && !IS_STAGING) {
+      console.warn(`[BOOT-CONFIG] ⚠️  APP_PUBKEY: Using hardcoded dev default (${APP_PUBKEY.substring(0, 20)}...)`);
+      console.warn(`[BOOT-CONFIG]    Set APP_PUBKEY in Platform Secrets to use production wallet`);
+      checklist.push({ name: 'APP_PUBKEY', status: 'WARN', message: 'Using hardcoded dev default' });
+    } else {
+      console.log(`[BOOT-CONFIG] ✓ APP_PUBKEY: ${APP_PUBKEY.substring(0, 20)}...${APP_PUBKEY.substring(APP_PUBKEY.length - 10)}`);
+      checklist.push({ name: 'APP_PUBKEY', status: 'OK', message: 'Valid ED25519 address' });
+    }
+  }
+
+  // Check APP_SECRET_KEY format
+  const secretKeyValidation = validateAPPSecretKey(APP_SECRET_KEY);
+  if (!secretKeyValidation.valid) {
+    console.error(`[BOOT-CONFIG] ❌ APP_SECRET_KEY: ${secretKeyValidation.error}`);
+    checklist.push({ name: 'APP_SECRET_KEY', status: 'ERROR', message: secretKeyValidation.error });
+    hasErrors = true;
+  } else {
+    const isDefault = APP_SECRET_KEY === 'guardian_sk_mqudwes5_ae613cf56214808e';
+    if (isDefault && !IS_STAGING) {
+      console.warn(`[BOOT-CONFIG] ⚠️  APP_SECRET_KEY: Using hardcoded dev default (not displayed)`);
+      console.warn(`[BOOT-CONFIG]    Set APP_SECRET_KEY in Platform Secrets to use production wallet`);
+      checklist.push({ name: 'APP_SECRET_KEY', status: 'WARN', message: 'Using hardcoded dev default' });
+    } else {
+      console.log(`[BOOT-CONFIG] ✓ APP_SECRET_KEY: Valid 64-character hex key (not displayed)`);
+      checklist.push({ name: 'APP_SECRET_KEY', status: 'OK', message: 'Valid 64-hex-char seed' });
+    }
+  }
+
+  // Check NODE_RPC_URL for testnet mode
+  if (NETWORK_MODE === 'testnet') {
+    const rpcValidation = validateNodeRpcUrl(NODE_RPC_URL);
+    if (!rpcValidation.valid) {
+      console.error(`[BOOT-CONFIG] ❌ NODE_RPC_URL: ${rpcValidation.error}`);
+      checklist.push({ name: 'NODE_RPC_URL', status: 'ERROR', message: rpcValidation.error });
+      if (!IS_STAGING) {
+        console.error(`\n⚠️  [CONFIG] CRITICAL: NODE_RPC_URL not configured in production testnet mode\n`);
+        console.error(`    Real blockchain transactions will NOT be submitted without RPC access.\n`);
+        console.error(`    Set NODE_RPC_URL in platform Secrets with a value like:\n`);
+        console.error(`    NODE_RPC_URL=http://usernode-node:3000\n`);
+        console.error(`    or\n`);
+        console.error(`    NODE_RPC_URL=https://testnet-rpc.usernodelabs.org\n`);
+        console.error(`\n    Refusing to start in production testnet mode without RPC.\n`);
+        process.exit(1);
+      }
+      hasErrors = true;
+    } else {
+      console.log(`[BOOT-CONFIG] ✓ NODE_RPC_URL: ${NODE_RPC_URL}`);
+      checklist.push({ name: 'NODE_RPC_URL', status: 'OK', message: `Configured to ${NODE_RPC_URL}` });
+    }
+  } else {
+    console.log(`[BOOT-CONFIG] ℹ NODE_RPC_URL: Not required for ${NETWORK_MODE} mode`);
+    checklist.push({ name: 'NODE_RPC_URL', status: 'SKIPPED', message: `Not required for ${NETWORK_MODE} mode` });
+  }
+
+  // Check EXPLORER_URL
+  console.log(`[BOOT-CONFIG] ℹ EXPLORER_URL: ${EXPLORER_URL}`);
+  checklist.push({ name: 'EXPLORER_URL', status: 'OK', message: `Set to ${EXPLORER_URL}` });
+
+  // Print summary
+  console.log(`${'═'.repeat(70)}`);
+  const errorCount = checklist.filter(c => c.status === 'ERROR').length;
+  const warnCount = checklist.filter(c => c.status === 'WARN').length;
+  if (errorCount > 0) {
+    console.error(`[BOOT-CONFIG] SUMMARY: ${errorCount} ERROR(s), ${warnCount} WARNING(s)`);
+  } else if (warnCount > 0) {
+    console.warn(`[BOOT-CONFIG] SUMMARY: ${warnCount} WARNING(s) — App will boot but may not work correctly in production`);
+  } else {
+    console.log(`[BOOT-CONFIG] SUMMARY: All critical configurations verified ✓`);
+  }
+  console.log(`${'═'.repeat(70)}\n`);
+
+  return { checklist, hasErrors };
+}
+
 // RPC Configuration with validation (Testnet mode only)
 function validateAndConfigureRPC() {
   // RPC configuration only applies when NETWORK_MODE === 'testnet'
@@ -1238,6 +1386,11 @@ async function sendOutgoingPayment(recipient, amount, memo) {
             } else if (res.statusCode >= 500) {
               console.error(`[BLOCKCHAIN-RPC] Server error (HTTP ${res.statusCode}): ${response.error || JSON.stringify(response)}`);
               reject(new Error(`RPC server error (HTTP ${res.statusCode}): ${response.error || 'unknown'}`));
+            } else if (res.statusCode === 401 || res.statusCode === 403) {
+              console.error(`[BLOCKCHAIN-RPC] ❌ Authentication failed (HTTP ${res.statusCode})`);
+              console.error(`[BLOCKCHAIN-RPC] RPC rejected the credentials: ${response.error || JSON.stringify(response)}`);
+              console.error(`[BLOCKCHAIN-RPC] ⚠️  Verify APP_SECRET_KEY is valid in Platform Secrets`);
+              reject(new Error(`RPC credential rejected (HTTP ${res.statusCode}): ${response.error || 'authentication failed'}`));
             } else {
               console.error(`[BLOCKCHAIN-RPC] Client error (HTTP ${res.statusCode}): ${response.error || JSON.stringify(response)}`);
               reject(new Error(`RPC error (HTTP ${res.statusCode}): ${response.error || 'unknown'}`));
@@ -1352,6 +1505,11 @@ async function sendMessageToBlockchain(messagePayload, memo, network = 'testnet'
             } else if (res.statusCode >= 500) {
               console.error(`[BLOCKCHAIN-RPC] Server error (HTTP ${res.statusCode}): ${response.error || JSON.stringify(response)}`);
               reject(new Error(`RPC server error (HTTP ${res.statusCode}): ${response.error || 'unknown'}`));
+            } else if (res.statusCode === 401 || res.statusCode === 403) {
+              console.error(`[BLOCKCHAIN-RPC] ❌ Authentication failed (HTTP ${res.statusCode})`);
+              console.error(`[BLOCKCHAIN-RPC] RPC rejected the credentials: ${response.error || JSON.stringify(response)}`);
+              console.error(`[BLOCKCHAIN-RPC] ⚠️  Verify APP_SECRET_KEY is valid in Platform Secrets`);
+              reject(new Error(`RPC credential rejected (HTTP ${res.statusCode}): ${response.error || 'authentication failed'}`));
             } else {
               console.error(`[BLOCKCHAIN-RPC] Client error (HTTP ${res.statusCode}): ${response.error || JSON.stringify(response)}`);
               reject(new Error(`RPC error (HTTP ${res.statusCode}): ${response.error || 'unknown'}`));
@@ -1454,6 +1612,11 @@ async function sendGroupToBlockchain(groupPayload, memo, memberPubkeys, network 
             } else if (res.statusCode >= 500) {
               console.error(`[BLOCKCHAIN-RPC] Server error (HTTP ${res.statusCode}): ${response.error || JSON.stringify(response)}`);
               reject(new Error(`RPC server error (HTTP ${res.statusCode}): ${response.error || 'unknown'}`));
+            } else if (res.statusCode === 401 || res.statusCode === 403) {
+              console.error(`[BLOCKCHAIN-RPC] ❌ Authentication failed (HTTP ${res.statusCode})`);
+              console.error(`[BLOCKCHAIN-RPC] RPC rejected the credentials: ${response.error || JSON.stringify(response)}`);
+              console.error(`[BLOCKCHAIN-RPC] ⚠️  Verify APP_SECRET_KEY is valid in Platform Secrets`);
+              reject(new Error(`RPC credential rejected (HTTP ${res.statusCode}): ${response.error || 'authentication failed'}`));
             } else {
               console.error(`[BLOCKCHAIN-RPC] Client error (HTTP ${res.statusCode}): ${response.error || JSON.stringify(response)}`);
               reject(new Error(`RPC error (HTTP ${res.statusCode}): ${response.error || 'unknown'}`));
@@ -8826,6 +8989,10 @@ async function start() {
       console.log(`[CONFIG] USERNODE_ENV: ${process.env.USERNODE_ENV || 'not set'}`);
       console.log(`[CONFIG] NETWORK_MODE: ${NETWORK_MODE}`);
       console.log(`[CONFIG] IS_STAGING: ${IS_STAGING}`);
+
+      // Run production configuration validation checklist
+      await validateProductionConfiguration();
+
       if (NETWORK_MODE === 'real_testnet') {
         console.log(`[CONFIG] Real Testnet mode - RPC enabled: ${NODE_RPC_URL ? 'yes' : 'no'}`);
         if (NODE_RPC_URL) {
