@@ -3221,16 +3221,36 @@ app.post('/api/contacts/by-id', async (req, res) => {
 app.get('/api/contacts/:contactId/conversation-count', async (req, res) => {
   try {
     if (!req.user) {
+      console.warn('[GET /api/contacts/:contactId/conversation-count] Not authenticated');
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
     const contactId = req.params.contactId;
-    if (!contactId || !/^\d+$/.test(contactId)) {
-      return res.status(400).json({ error: 'Invalid contact ID' });
+    console.log('[GET /api/contacts/:contactId/conversation-count] Received contactId:', {
+      raw: contactId,
+      type: typeof contactId
+    });
+
+    // Defensive validation
+    if (contactId === null || contactId === undefined) {
+      console.error('[GET /api/contacts/:contactId/conversation-count] Contact ID is null or undefined');
+      return res.status(400).json({ error: 'Invalid contact ID (null or undefined)' });
+    }
+
+    const contactIdStr = String(contactId).trim();
+    if (!contactIdStr) {
+      console.error('[GET /api/contacts/:contactId/conversation-count] Contact ID is empty after trim');
+      return res.status(400).json({ error: 'Invalid contact ID (empty)' });
+    }
+
+    if (!/^\d+$/.test(contactIdStr)) {
+      console.error('[GET /api/contacts/:contactId/conversation-count] Invalid contact ID format:', {raw: contactId, trimmed: contactIdStr});
+      return res.status(400).json({ error: 'Invalid contact ID (invalid format)' });
     }
 
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
+      console.error('[GET /api/contacts/:contactId/conversation-count] Invalid user ID:', {userId: req.user.id});
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
@@ -3238,9 +3258,10 @@ app.get('/api/contacts/:contactId/conversation-count', async (req, res) => {
     const contactResult = await pool.query(`
       SELECT contact_user_id FROM user_contacts
       WHERE id = $1 AND user_id = $2
-    `, [contactId, userId]);
+    `, [contactIdStr, userId]);
 
     if (contactResult.rowCount === 0) {
+      console.warn('[GET /api/contacts/:contactId/conversation-count] Contact not found:', {contactId: contactIdStr, userId});
       return res.status(404).json({ error: 'Contact not found' });
     }
 
@@ -3254,9 +3275,14 @@ app.get('/api/contacts/:contactId/conversation-count', async (req, res) => {
     `, [userId, contactUserId]);
 
     const count = parseInt(countResult.rows[0].count, 10);
+    console.log('[GET /api/contacts/:contactId/conversation-count] Conversation count:', {count, contactId: contactIdStr});
     res.json({ conversationCount: count });
   } catch (err) {
-    console.error('Error counting conversations:', err);
+    console.error('[GET /api/contacts/:contactId/conversation-count] Exception:', {
+      error: err.message,
+      contactId: req.params.contactId,
+      userId: req.user?.id
+    });
     res.status(500).json({ error: err.message });
   }
 });
@@ -3264,30 +3290,61 @@ app.get('/api/contacts/:contactId/conversation-count', async (req, res) => {
 app.delete('/api/contacts/:contactId', async (req, res) => {
   try {
     if (!req.user) {
+      console.warn('[DELETE /api/contacts/:contactId] Not authenticated');
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
     const contactId = req.params.contactId;
-    if (!contactId || !/^\d+$/.test(contactId)) {
-      return res.status(400).json({ error: 'Invalid contact ID' });
+    console.log('[DELETE /api/contacts/:contactId] Received contactId:', {
+      raw: contactId,
+      type: typeof contactId,
+      isEmpty: !contactId,
+      isNull: contactId === null,
+      isUndefined: contactId === undefined
+    });
+
+    // Defensive validation: check for null/undefined/empty first
+    if (contactId === null || contactId === undefined) {
+      console.error('[DELETE /api/contacts/:contactId] Contact ID is null or undefined:', {contactId});
+      return res.status(400).json({ error: 'Invalid contact ID (null or undefined)' });
     }
+
+    // Convert to string and trim
+    const contactIdStr = String(contactId).trim();
+    if (!contactIdStr) {
+      console.error('[DELETE /api/contacts/:contactId] Contact ID is empty after trim:', {raw: contactId});
+      return res.status(400).json({ error: 'Invalid contact ID (empty)' });
+    }
+
+    // Validate format: must be digits only
+    if (!/^\d+$/.test(contactIdStr)) {
+      console.error('[DELETE /api/contacts/:contactId] Invalid contact ID format:', {raw: contactId, trimmed: contactIdStr});
+      return res.status(400).json({ error: 'Invalid contact ID (invalid format)' });
+    }
+
+    console.log('[DELETE /api/contacts/:contactId] Contact ID validation passed:', {contactId: contactIdStr});
 
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
+      console.error('[DELETE /api/contacts/:contactId] Invalid user ID:', {userId: req.user.id});
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
     // Get contact_user_id before deletion
+    console.log('[DELETE /api/contacts/:contactId] Querying contact with ID:', {contactId: contactIdStr, userId});
+
     const contactResult = await pool.query(`
       SELECT contact_user_id FROM user_contacts
       WHERE id = $1 AND user_id = $2
-    `, [contactId, userId]);
+    `, [contactIdStr, userId]);
 
     if (contactResult.rowCount === 0) {
+      console.warn('[DELETE /api/contacts/:contactId] Contact not found:', {contactId: contactIdStr, userId});
       return res.status(404).json({ error: 'Contact not found' });
     }
 
     const contactUserId = contactResult.rows[0].contact_user_id;
+    console.log('[DELETE /api/contacts/:contactId] Contact found. Contact user ID:', {contactUserId});
 
     // Delete all conversations with this contact (cascade deletes messages)
     const convResult = await pool.query(`
@@ -3297,16 +3354,22 @@ app.delete('/api/contacts/:contactId', async (req, res) => {
     `, [userId, contactUserId]);
 
     const deletedConversations = convResult.rowCount;
+    console.log('[DELETE /api/contacts/:contactId] Deleted conversations:', {count: deletedConversations});
 
     // Delete the contact record
     await pool.query(`
       DELETE FROM user_contacts
       WHERE id = $1 AND user_id = $2
-    `, [contactId, userId]);
+    `, [contactIdStr, userId]);
 
+    console.log('[DELETE /api/contacts/:contactId] Contact record deleted successfully:', {contactId: contactIdStr});
     res.json({ ok: true, deletedConversations });
   } catch (err) {
-    console.error('Error deleting contact:', err);
+    console.error('[DELETE /api/contacts/:contactId] Exception during contact deletion:', {
+      error: err.message,
+      contactId: req.params.contactId,
+      userId: req.user?.id
+    });
     res.status(500).json({ error: err.message });
   }
 });
