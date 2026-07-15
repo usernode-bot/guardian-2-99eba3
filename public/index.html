@@ -3446,13 +3446,33 @@
 
     async function showDeleteContactModal(contactId, username) {
       // Validate contactId before proceeding
-      const sanitizedContactId = String(contactId).trim();
+      console.log('[showDeleteContactModal] Received contactId:', {
+        raw: contactId,
+        type: typeof contactId,
+        isUndefined: contactId === undefined,
+        isNull: contactId === null
+      });
 
-      if (!sanitizedContactId || !/^\d+$/.test(sanitizedContactId)) {
-        console.error('Invalid contact ID in delete modal:', {contactId, sanitizedContactId});
-        showToast('Error: Invalid contact ID. Please refresh and try again.', 'error');
+      const sanitizedContactId = String(contactId || '').trim();
+
+      console.log('[showDeleteContactModal] After sanitization:', {
+        raw: contactId,
+        sanitized: sanitizedContactId
+      });
+
+      if (!sanitizedContactId) {
+        console.error('[showDeleteContactModal] Empty contact ID after sanitization:', {raw: contactId});
+        showToast('Error: Invalid contact ID (empty). Please refresh and try again.', 'error');
         return;
       }
+
+      if (!/^\d+$/.test(sanitizedContactId)) {
+        console.error('[showDeleteContactModal] Invalid contact ID format:', {raw: contactId, sanitized: sanitizedContactId});
+        showToast('Error: Invalid contact ID (invalid format). Please refresh and try again.', 'error');
+        return;
+      }
+
+      console.log('[showDeleteContactModal] Validation passed. Contact ID:', sanitizedContactId);
 
       pendingDeleteContactId = sanitizedContactId;
       document.getElementById('deleteContactTitle').textContent = `Delete ${username || 'this contact'}?`;
@@ -3462,6 +3482,8 @@
       const warningText = document.getElementById('deleteContactWarningText');
       warningDiv.classList.add('hidden');
 
+      console.log('[showDeleteContactModal] Fetching conversation count for contact:', sanitizedContactId);
+
       const countData = await apiCall(`/api/contacts/${sanitizedContactId}/conversation-count`);
       if (countData && !countData.error && countData.conversationCount !== undefined) {
         const count = countData.conversationCount;
@@ -3469,13 +3491,15 @@
           warningText.textContent = `Also deletes ${count} conversation${count === 1 ? '' : 's'}`;
           warningDiv.classList.remove('hidden');
         }
+        console.log('[showDeleteContactModal] Conversation count fetched successfully:', count);
       } else if (countData && countData.error) {
         // If contact doesn't exist or there's an error, show error and don't proceed
-        console.error('Error fetching conversation count:', countData.error);
+        console.error('[showDeleteContactModal] Error fetching conversation count:', {error: countData.error, contactId: sanitizedContactId});
         showToast(countData.error || 'Error: Unable to fetch contact details', 'error');
         return;
       }
 
+      console.log('[showDeleteContactModal] Opening delete modal');
       document.getElementById('deleteContactModal').classList.remove('hidden');
     }
 
@@ -3486,23 +3510,37 @@
 
     async function confirmDeleteContact() {
       if (!pendingDeleteContactId) {
-        console.warn('No contact ID to delete');
+        console.warn('[confirmDeleteContact] No contact ID to delete');
         return;
       }
 
       // Validate contactId format
-      const contactId = String(pendingDeleteContactId).trim();
-      if (!contactId || !/^\d+$/.test(contactId)) {
-        console.error('Invalid contact ID in confirm delete:', {pendingDeleteContactId, contactId});
-        showToast('Error: Invalid contact ID. Please refresh and try again.', 'error');
+      console.log('[confirmDeleteContact] Starting deletion for pending contact ID:', {
+        raw: pendingDeleteContactId,
+        type: typeof pendingDeleteContactId
+      });
+
+      const contactId = String(pendingDeleteContactId || '').trim();
+
+      if (!contactId) {
+        console.error('[confirmDeleteContact] Empty contact ID after sanitization:', {raw: pendingDeleteContactId});
+        showToast('Error: Invalid contact ID (empty). Please refresh and try again.', 'error');
+        return;
+      }
+
+      if (!/^\d+$/.test(contactId)) {
+        console.error('[confirmDeleteContact] Invalid contact ID format:', {raw: pendingDeleteContactId, sanitized: contactId});
+        showToast('Error: Invalid contact ID (invalid format). Please refresh and try again.', 'error');
         return;
       }
 
       // Prevent duplicate API calls
       if (isDeleteContactInProgress) {
-        console.warn('Delete contact already in progress');
+        console.warn('[confirmDeleteContact] Delete contact already in progress');
         return;
       }
+
+      console.log('[confirmDeleteContact] Validation passed. Proceeding with deletion for contact ID:', contactId);
 
       isDeleteContactInProgress = true;
       hideDeleteContactModal();
@@ -3511,8 +3549,16 @@
       if (btn) btn.disabled = true;
 
       try {
+        console.log('[confirmDeleteContact] Sending DELETE request to /api/contacts/' + contactId);
+
         const data = await apiCall(`/api/contacts/${contactId}`, {
           method: 'DELETE'
+        });
+
+        console.log('[confirmDeleteContact] DELETE response received:', {
+          ok: data?.ok,
+          error: data?.error,
+          deletedConversations: data?.deletedConversations
         });
 
         if (data && !data.error && data.ok) {
@@ -3528,14 +3574,16 @@
           if (data.deletedConversations > 0) {
             toastMessage += `, ${data.deletedConversations} conversation${data.deletedConversations === 1 ? '' : 's'} removed`;
           }
+          console.log('[confirmDeleteContact] Contact deletion successful');
           showToast(toastMessage, 'success');
           return;
         } else {
           const errorMsg = data?.error || 'Failed to delete contact';
+          console.error('[confirmDeleteContact] API returned error:', {error: errorMsg, contactId});
           showToast(errorMsg, 'error');
         }
       } catch (err) {
-        console.error('Error deleting contact:', err);
+        console.error('[confirmDeleteContact] Exception during deletion:', {error: err.message, contactId});
         showToast('Failed to delete contact', 'error');
       } finally {
         isDeleteContactInProgress = false;
@@ -3553,24 +3601,50 @@
       event.preventDefault();
       event.stopPropagation();
 
+      // Defensive conversion and validation of contactId
+      console.log('[openContactOptionsMenu] Received contactId:', {
+        raw: contactId,
+        type: typeof contactId,
+        isUndefined: contactId === undefined,
+        isNull: contactId === null
+      });
+
       // Ensure contactId is a string of digits (never null/undefined)
-      const sanitizedContactId = String(contactId).trim();
-      const sanitizedUserId = String(contactUserId).trim();
+      const sanitizedContactId = String(contactId || '').trim();
+      const sanitizedUserId = String(contactUserId || '').trim();
       const sanitizedName = String(contactName || '').trim();
 
-      if (!sanitizedContactId || !/^\d+$/.test(sanitizedContactId)) {
-        console.error('Invalid contact ID provided to menu:', {contactId, sanitizedContactId});
-        showToast('Error: Invalid contact. Please refresh and try again.', 'error');
+      console.log('[openContactOptionsMenu] After sanitization:', {
+        contactId: sanitizedContactId,
+        userId: sanitizedUserId,
+        name: sanitizedName
+      });
+
+      if (!sanitizedContactId) {
+        console.error('[openContactOptionsMenu] Empty contact ID after sanitization:', {raw: contactId, sanitized: sanitizedContactId});
+        showToast('Error: Invalid contact ID (empty). Please refresh and try again.', 'error');
         return;
       }
 
-      if (!sanitizedUserId || !/^\d+$/.test(sanitizedUserId)) {
-        console.error('Invalid user ID provided to menu:', {contactUserId, sanitizedUserId});
-        showToast('Error: Invalid contact user. Please refresh and try again.', 'error');
+      if (!/^\d+$/.test(sanitizedContactId)) {
+        console.error('[openContactOptionsMenu] Invalid contact ID format:', {raw: contactId, sanitized: sanitizedContactId});
+        showToast('Error: Invalid contact ID (invalid format). Please refresh and try again.', 'error');
         return;
       }
 
-      console.log('Opening menu for contact:', {contactId: sanitizedContactId, contactUserId: sanitizedUserId, contactName: sanitizedName});
+      if (!sanitizedUserId) {
+        console.error('[openContactOptionsMenu] Empty user ID after sanitization:', {raw: contactUserId, sanitized: sanitizedUserId});
+        showToast('Error: Invalid contact user (empty). Please refresh and try again.', 'error');
+        return;
+      }
+
+      if (!/^\d+$/.test(sanitizedUserId)) {
+        console.error('[openContactOptionsMenu] Invalid user ID format:', {raw: contactUserId, sanitized: sanitizedUserId});
+        showToast('Error: Invalid contact user (invalid format). Please refresh and try again.', 'error');
+        return;
+      }
+
+      console.log('[openContactOptionsMenu] All validations passed. Opening menu for contact:', {contactId: sanitizedContactId, contactUserId: sanitizedUserId, contactName: sanitizedName});
 
       currentContactContextMenuId = sanitizedContactId;
       currentContactContextMenuUserId = sanitizedUserId;
@@ -7122,6 +7196,12 @@
       html += activeContacts.map(contact => {
         const isMuted = contact.muted_by?.length && contact.muted_by.includes(userId);
         const muteIndicator = isMuted ? '<span class="text-xs mr-1">🔇</span>' : '';
+        // Validate contact.id before embedding in onclick
+        const contactIdStr = String(contact.id || '').trim();
+        if (!contactIdStr || !/^\d+$/.test(contactIdStr)) {
+          console.warn('[ContactsList] Invalid contact ID for contact:', { contact, contactId: contact.id, sanitized: contactIdStr });
+          return '';
+        }
         return `
           <div class="p-3 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition cursor-pointer" onclick="startConversationWithContact(${contact.userId}, '${contact.username}')">
             <div class="flex justify-between items-start gap-2">
@@ -7129,7 +7209,7 @@
                 <div class="font-medium truncate text-sm text-zinc-900 dark:text-zinc-100">${muteIndicator}${contact.nickname || contact.username} ${contact.verified ? '<span class="text-xs text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
                 <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${contact.usernode_pubkey || 'No wallet'}</div>
               </div>
-              <button onclick="event.stopPropagation(); openContactOptionsMenu(event, ${contact.id}, ${contact.userId}, '${(contact.nickname || contact.username).replace(/'/g, "\\'")}')" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare flex-shrink-0" title="Contact options">⋯</button>
+              <button onclick="event.stopPropagation(); openContactOptionsMenu(event, ${contactIdStr}, ${contact.userId}, '${(contact.nickname || contact.username).replace(/'/g, "\\'")}')" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare flex-shrink-0" title="Contact options">⋯</button>
             </div>
           </div>
         `;
@@ -7151,6 +7231,12 @@
               ${archivedContacts.map(contact => {
                 const isMuted = contact.muted_by?.length && contact.muted_by.includes(userId);
                 const muteIndicator = isMuted ? '<span class="text-xs mr-1">🔇</span>' : '';
+                // Validate contact.id before embedding in onclick
+                const contactIdStr = String(contact.id || '').trim();
+                if (!contactIdStr || !/^\d+$/.test(contactIdStr)) {
+                  console.warn('[ArchivedContactsList] Invalid contact ID for contact:', { contact, contactId: contact.id, sanitized: contactIdStr });
+                  return '';
+                }
                 return `
                   <div class="p-3 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition cursor-pointer opacity-75" onclick="startConversationWithContact(${contact.userId}, '${contact.username}')">
                     <div class="flex justify-between items-start gap-2">
@@ -7158,7 +7244,7 @@
                         <div class="font-medium truncate text-sm text-zinc-900 dark:text-zinc-100">${muteIndicator}${contact.nickname || contact.username} ${contact.verified ? '<span class="text-xs text-zinc-600 dark:text-zinc-500">✓</span>' : ''}</div>
                         <div class="text-xs text-zinc-500 dark:text-zinc-500 truncate">${contact.usernode_pubkey || 'No wallet'}</div>
                       </div>
-                      <button onclick="event.stopPropagation(); openContactOptionsMenu(event, ${contact.id}, ${contact.userId}, '${(contact.nickname || contact.username).replace(/'/g, "\\'")}')" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare flex-shrink-0" title="Contact options">⋯</button>
+                      <button onclick="event.stopPropagation(); openContactOptionsMenu(event, ${contactIdStr}, ${contact.userId}, '${(contact.nickname || contact.username).replace(/'/g, "\\'")}')" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition icon-button-bare flex-shrink-0" title="Contact options">⋯</button>
                     </div>
                   </div>
                 `;
