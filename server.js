@@ -48,6 +48,7 @@ const IS_STAGING = process.env.USERNODE_ENV === 'staging';
 let NETWORK_MODE = process.env.NETWORK_MODE && ['testnet', 'real_testnet', 'devnet', 'mainnet'].includes(process.env.NETWORK_MODE)
   ? (process.env.NETWORK_MODE === 'real_testnet' ? 'testnet' : process.env.NETWORK_MODE)
   : 'testnet';
+console.log(`[CONFIG] NETWORK_MODE: ${NETWORK_MODE}${process.env.NETWORK_MODE ? ' (from env)' : ' (using default)'}`);
 
 // Usernode blockchain configuration
 const APP_PUBKEY = process.env.APP_PUBKEY || 'ut1Fww7onqF9LsRSb6d6BozgQWtjNYqQJghYxXmBc8foncb';

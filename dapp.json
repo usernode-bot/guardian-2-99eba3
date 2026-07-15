@@ -14,6 +14,13 @@
       "required": false,
       "private": false,
       "default": "http://usernode-node:3000"
+    },
+    {
+      "key": "NETWORK_MODE",
+      "description": "Guardian network mode for blockchain operations. Controls whether to use real RPC endpoints (testnet/mainnet) or database-only mode (devnet). Values: testnet (default, requires RPC), devnet (database-only, no RPC needed), mainnet (future).",
+      "required": false,
+      "private": false,
+      "default": "testnet"
     }
   ],
   "tests": [
