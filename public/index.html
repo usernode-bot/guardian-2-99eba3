@@ -2447,26 +2447,6 @@
       document.getElementById('themeSelect').value = settings.theme;
       updateLayoutButtons(settings.layout);
 
-      // Load skip signature in devnet preference from API
-      if (currentUser && currentUser.skipSignatureInDevnet !== undefined) {
-        settings.skipSignatureInDevnet = currentUser.skipSignatureInDevnet;
-        document.getElementById('skipSignatureDevnetToggle').checked = currentUser.skipSignatureInDevnet;
-      }
-
-      // Load network mode preference from API
-      if (currentUser && currentUser.networkMode !== undefined) {
-        settings.networkMode = currentUser.networkMode;
-        const networkModeSelect = document.getElementById('networkModeSelect');
-        if (networkModeSelect) {
-          networkModeSelect.value = currentUser.networkMode;
-        }
-      }
-
-      // Start transaction history polling
-      pollTransactionHistory();
-      if (transactionHistoryIntervalId) clearInterval(transactionHistoryIntervalId);
-      transactionHistoryIntervalId = setInterval(pollTransactionHistory, 2000);
-
       loadConfigState();
     }
 
@@ -2545,34 +2525,6 @@
       }
     }
 
-    function updateNetworkModeVisibility(mode) {
-      const rpcEndpointConfig = document.getElementById('rpcEndpointConfig');
-      const transactionPreferencesSection = document.getElementById('transactionPreferencesSection');
-      const skipSignatureCheckbox = document.getElementById('skipSignatureDevnetToggle');
-
-      // Show RPC endpoint config only for testnet
-      if (mode === 'testnet') {
-        rpcEndpointConfig.classList.remove('hidden');
-      } else {
-        rpcEndpointConfig.classList.add('hidden');
-      }
-
-      // Show transaction preferences only for devnet
-      if (mode === 'devnet') {
-        transactionPreferencesSection.classList.remove('hidden');
-        // Auto-enable the checkbox when devnet is selected
-        if (skipSignatureCheckbox && !skipSignatureCheckbox.checked) {
-          skipSignatureCheckbox.checked = true;
-        }
-      } else {
-        transactionPreferencesSection.classList.add('hidden');
-        // Uncheck when switching away from devnet
-        if (skipSignatureCheckbox && skipSignatureCheckbox.checked) {
-          skipSignatureCheckbox.checked = false;
-        }
-      }
-    }
-
     function toggleConfigAccordion() {
       const content = document.getElementById('configContent');
       const arrow = document.getElementById('configArrow');
@@ -2591,52 +2543,8 @@
       try {
         const config = await apiCall('/api/config');
         if (config && !config.error) {
-          const dropdown = document.getElementById('networkModeSelect');
-          const noPermission = document.getElementById('configNoPermission');
-          const accordion = document.getElementById('configAccordion');
-          const rpcEndpointInput = document.getElementById('rpcEndpointInput');
-
-          // Get user's network mode from currentUser (which comes from /api/user endpoint)
-          // This is the per-user setting, not the global server NETWORK_MODE
-          let currentMode = currentUser?.networkMode || 'devnet';
-          if (currentMode === 'real_testnet') {
-            currentMode = 'testnet';
-          }
-          dropdown.value = currentMode;
-          dropdown.disabled = false;
-
-          // Update conditional visibility for RPC endpoint and transaction preferences
-          updateNetworkModeVisibility(currentMode);
-
-          // Set RPC endpoint input value if in testnet mode
-          if (currentMode === 'testnet') {
-            rpcEndpointInput.value = config.rpcEndpoint || 'http://localhost:3001';
-            rpcEndpointInput.disabled = !config.canEditRpc;
-          }
-
-          // Save to localStorage
-          const settings = loadSettings();
-          settings.networkMode = currentMode;
-          saveSettings(settings);
-
-          if (!config.canEdit) {
-            noPermission.classList.remove('hidden');
-            accordion.classList.add('opacity-60');
-          } else {
-            noPermission.classList.add('hidden');
-            accordion.classList.remove('opacity-60');
-          }
-
-          // Update dot color based on network mode (devnet = cyan, testnet/mainnet = gray)
-          updateNetworkModeDotColor(currentMode === 'devnet');
-
           // Render secrets display
           renderSecretsDisplay(config.secrets);
-
-          // Start polling transaction history
-          pollTransactionHistory();
-          if (transactionHistoryIntervalId) clearInterval(transactionHistoryIntervalId);
-          transactionHistoryIntervalId = setInterval(pollTransactionHistory, 2000);
         }
       } catch (err) {
         console.error('Error loading config state:', err);
@@ -4635,25 +4543,16 @@
       if (!name) return alert('Group name is required');
 
       try {
-        // Phase 1: Create pending audit log
-        const auditLogId = await createPendingAuditLog();
-
-        // Phase 2: Request wallet signature and register txHash
-        const txHash = await requestWalletSignature('Create Group', { name, description: desc || '(none)' }, auditLogId);
-
         const data = await apiCall('/api/groups', {
           method: 'POST',
           body: JSON.stringify({
             name,
-            description: desc || null,
-            txHash: txHash,
-            auditLogId: auditLogId
+            description: desc || null
           })
         });
 
         if (data && !data.error) {
-          // Show action-specific toast with status
-          const statusMsg = networkMode === 'demo' ? 'Group created—simulated signature confirmed' : 'Group created—awaiting blockchain confirmation';
+          const statusMsg = 'Group created';
           showToast(`✓ ${statusMsg}`, 'success');
 
           if (data.blockchainRecordingId) {
@@ -4820,35 +4719,17 @@
       categorySelect.disabled = true;
 
       try {
-        // Phase 1: Create pending audit log
-        const auditLogId = await createPendingAuditLog();
-
-        // Phase 2: Request wallet signature and register txHash
-        const txHash = await requestWalletSignature('Create Channel', { name, category, description: desc || '(none)' }, auditLogId);
-
         const data = await apiCall('/api/channels', {
           method: 'POST',
           body: JSON.stringify({
             name,
             description: desc || null,
-            category,
-            txHash: txHash,
-            auditLogId: auditLogId
+            category
           })
         });
 
         if (data && !data.error) {
-          // Show action-specific toast with status
-          const statusMsg = networkMode === 'demo' ? 'Channel created—simulated signature confirmed' : 'Channel created—awaiting blockchain confirmation';
-          showToast(`✓ ${statusMsg}`, 'success');
-
-          if (data.blockchainRecordingId) {
-            showPersistentNotification('channel_create', {
-              blockchainRecordingId: data.blockchainRecordingId,
-              channelName: name,
-              category: category
-            });
-          }
+          showToast('✓ Channel created', 'success');
           closeCreateChannelModal();
           // Channel created but Feed view has been removed
           // Show the newly created channel detail view if possible
@@ -5132,79 +5013,9 @@
       }
     }
 
-    // Unified wallet signature flow - single dialog, direct to wallet
+    // Wallet signatures are no longer used (blockchain features removed)
     async function requestWalletSignature(action, details, auditLogId = null) {
-      // In demo mode, skip wallet confirmation entirely
-      if (currentUser && currentUser.isDemoMode) {
-        console.log('Demo mode: Skipping wallet signature for action:', action);
-        showToast('Demo mode: Skipping wallet confirmation', 'info');
-        return 'demo-tx-hash-' + Date.now();
-      }
-
-      // In devnet mode with skip signature enabled, skip wallet confirmation
-      const networkModeDropdown = document.getElementById('networkModeSelect');
-      const currentNetworkMode = networkModeDropdown ? networkModeDropdown.value : 'devnet';
-      if (currentNetworkMode === 'devnet' && currentUser && currentUser.skipSignatureInDevnet) {
-        console.log('Devnet + skip-signature enabled: skipping wallet confirmation for action:', action);
-        showToast('Signature skipped (devnet mode)', 'info');
-        return 'devnet-skipped-' + Date.now();
-      }
-
-      // Pre-flight check for testnet: ensure bridge is ready and wallet is configured
-      if (currentNetworkMode === 'testnet' || currentNetworkMode === 'real_testnet') {
-        console.log('[PREFLIGHT] Running testnet wallet readiness check for action:', action);
-        const preflight = await checkWalletReadyForTestnet();
-        if (!preflight.ready) {
-          console.error('[PREFLIGHT] Wallet not ready for testnet:', preflight.error);
-          throw new Error(preflight.error);
-        }
-        console.log('[PREFLIGHT] Testnet wallet readiness check passed');
-      }
-
-      // Validate wallet connection
-      if (!currentUser || !currentUser.usernode_pubkey) {
-        console.error('Wallet not connected: currentUser=', currentUser);
-        throw new Error('You must be connected to Usernode wallet to perform this action. Please refresh your browser.');
-      }
-
-      // Fetch wallet address: try bridge first, fall back to linked wallet
-      let connectedWalletAddress = null;
-      let walletSource = null;
-
-      try {
-        if (typeof window.usernode?.getNodeAddress === 'function') {
-          connectedWalletAddress = await window.usernode.getNodeAddress();
-          if (connectedWalletAddress) {
-            console.log('[WALLET] Connected address from bridge:', connectedWalletAddress);
-            walletSource = 'bridge';
-          }
-        }
-      } catch (err) {
-        console.warn('[WALLET] Could not fetch connected address from bridge:', err.message);
-      }
-
-      // Fall back to linked wallet if bridge didn't provide one
-      if (!connectedWalletAddress && currentUser && currentUser.usernode_pubkey) {
-        console.log('[WALLET] Bridge not available or returned undefined, using linked wallet:', currentUser.usernode_pubkey);
-        connectedWalletAddress = currentUser.usernode_pubkey;
-        walletSource = 'linked';
-      }
-
-      // Validate wallet address format
-      if (!connectedWalletAddress) {
-        throw new Error('No wallet linked to account. Link a wallet in Settings before using testnet mode.');
-      }
-      if (typeof connectedWalletAddress !== 'string' || !connectedWalletAddress.startsWith('ut1')) {
-        throw new Error('Invalid wallet address format: ' + JSON.stringify(connectedWalletAddress));
-      }
-
-      // Show loading toast
-      const sourceLabel = walletSource === 'bridge' ? 'bridge' : 'account';
-      showToast(`Requesting wallet signature (${sourceLabel})...`, 'info');
-      console.log('[WALLET] Using ' + sourceLabel + ' wallet for signature:', connectedWalletAddress);
-
-      // Call wallet signature directly with connected address
-      return await executeWalletSignature(action, details, auditLogId, connectedWalletAddress);
+      return null;
     }
 
     async function executeWalletSignature(action, details, auditLogId = null, connectedWalletAddress = null) {
@@ -6550,19 +6361,11 @@
       try {
         const endpoint = currentGroupId ? `/api/groups/${currentGroupId}/messages` : `/api/conversations/${currentConvId}/messages`;
 
-        // Phase 1: Create pending audit log
-        const auditLogId = await createPendingAuditLog();
-
-        const txDetails = { message: text.substring(0, 50) + (text.length > 50 ? '...' : '') };
-        const txHash = await requestWalletSignature('Send Message', txDetails, auditLogId);
-
         const data = await apiCall(endpoint, {
           method: 'POST',
           body: JSON.stringify({
             type: 'text',
-            content: { text },
-            txHash: txHash,
-            auditLogId: auditLogId
+            content: { text }
           })
         });
 
@@ -6617,24 +6420,13 @@
         try {
           const endpoint = currentGroupId ? `/api/groups/${currentGroupId}/messages` : `/api/conversations/${currentConvId}/messages`;
 
-          // Phase 1: Create pending audit log
-          const auditLogId = await createPendingAuditLog();
-
-          const txHash = await requestWalletSignature('Send Image', { imageSize: imageSizeKb + ' KB' }, auditLogId);
           const data = await apiCall(endpoint, {
             method: 'POST',
-            body: JSON.stringify({ type: 'image', content: { imageUrl: dataUri }, txHash: txHash, auditLogId: auditLogId })
+            body: JSON.stringify({ type: 'image', content: { imageUrl: dataUri } })
           });
 
           if (data && !data.error) {
-            const statusMsg = networkMode === 'demo' ? 'Image sent—simulated signature confirmed' : 'Image sent—confirming on-chain';
-            showToast(`✓ ${statusMsg}`, 'success');
-            if (data.blockchainRecordingId) {
-              showPersistentNotification('image', {
-                blockchainRecordingId: data.blockchainRecordingId,
-                recipient: currentGroupId ? 'group' : currentContactName
-              });
-            }
+            showToast('✓ Image sent', 'success');
             if (currentGroupId) {
               loadGroupMessages(currentGroupId);
             } else {
