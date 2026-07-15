@@ -6684,46 +6684,6 @@
 
     // Blockchain polling functions removed
 
-        const statusEl = document.getElementById(`blockchain-status-${messageId}`);
-        if (!statusEl) break;
-
-        if (auditData.status === 'confirmed') {
-          const txHashShort = auditData.txHash ? auditData.txHash.substring(0, 10) : 'unknown';
-          statusEl.innerHTML = `✓ Confirmed | <span class="font-mono text-xs" title="${auditData.txHash || 'N/A'}">${txHashShort}...</span>`;
-          statusEl.classList.remove('text-amber-600', 'dark:text-amber-400');
-          statusEl.classList.add('text-green-600', 'dark:text-green-400');
-          isComplete = true;
-        } else if (auditData.status === 'failed') {
-          statusEl.innerHTML = `✗ Failed | <button onclick="retryFailedTransaction(${auditLogId}, ${messageId})" class="underline">Retry</button>`;
-          statusEl.classList.remove('text-amber-600', 'dark:text-amber-400');
-          statusEl.classList.add('text-red-600', 'dark:text-red-400');
-          isComplete = true;
-        } else {
-          statusEl.innerHTML = `⏳ Pending confirmation...`;
-          statusEl.classList.add('text-amber-600', 'dark:text-amber-400');
-        }
-      }
-
-      if (onComplete) onComplete();
-    }
-
-    async function retryFailedTransaction(auditLogId, messageId) {
-      const data = await apiCall(`/api/blockchain-audit/${auditLogId}/retry`, {
-        method: 'POST',
-        body: JSON.stringify({})
-      });
-
-      if (data && data.ok) {
-        const statusEl = document.getElementById(`blockchain-status-${messageId}`);
-        if (statusEl) {
-          statusEl.innerHTML = `⏳ Retrying...`;
-          statusEl.classList.remove('text-red-600', 'dark:text-red-400');
-          statusEl.classList.add('text-amber-600', 'dark:text-amber-400');
-        }
-        pollBlockchainStatus(auditLogId, messageId);
-      }
-    }
-
     async function showConversationsView() {
       updateMenuHighlight('messages');
 

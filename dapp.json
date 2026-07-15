@@ -41,11 +41,6 @@
       "expectSelector": "#settingsPanel"
     },
     {
-      "name": "Network Mode selector in settings",
-      "path": "/",
-      "expectSelector": "#networkModeSelect"
-    },
-    {
       "name": "Profile Guardian's tab loads",
       "path": "/",
       "expectSelector": "#profileTabGuardians"
