@@ -9,18 +9,46 @@
       "staging_default": "postgresql://localhost/guardian_staging"
     },
     {
+      "key": "APP_PUBKEY",
+      "description": "Guardian app's ED25519 public key address (ut1...) for blockchain transactions. Used for transaction signing and app identification on Usernode testnet.",
+      "required": true,
+      "private": false,
+      "default": "ut1Fww7onqF9LsRSb6d6BozgQWtjNYqQJghYxXmBc8foncb"
+    },
+    {
+      "key": "APP_SECRET_KEY",
+      "description": "Guardian app's ED25519 private key seed for cryptographic signing of transaction memos on Usernode blockchain. 64 hex characters. Encrypted at rest.",
+      "required": true,
+      "private": true,
+      "staging_default": "guardian_sk_mqudwes5_ae613cf56214808e"
+    },
+    {
       "key": "NODE_RPC_URL",
-      "description": "Usernode blockchain RPC endpoint for transaction submission. Platform provides in-network default; override for custom endpoints. Example: http://usernode-node:3000 (production) or http://usernode-node:3001 (staging).",
+      "description": "Usernode blockchain RPC endpoint for transaction submission. Platform provides in-network default; override for custom endpoints.",
       "required": false,
       "private": false,
       "default": "http://usernode-node:3000"
     },
     {
       "key": "NETWORK_MODE",
-      "description": "Guardian network mode for blockchain operations. Controls whether to use real RPC endpoints (testnet/mainnet) or database-only mode (devnet). Values: testnet (default, requires RPC), devnet (database-only, no RPC needed), mainnet (future).",
+      "description": "Operating mode for blockchain transactions: testnet (true blockchain with RPC/explorer polling), devnet (database-only, no blockchain), or mainnet (future support). Defaults to devnet. Can be set via Secrets or toggled at runtime in Settings → System → Network Mode (changes persist across restarts).",
       "required": false,
       "private": false,
-      "default": "testnet"
+      "default": "devnet"
+    },
+    {
+      "key": "EXPLORER_URL",
+      "description": "Block explorer base URL for polling transaction confirmation status. Defaults to Usernode's testnet explorer. Override for custom testnet deployments or alternate explorer endpoints.",
+      "required": false,
+      "private": false,
+      "default": "https://explorer.testnet.usernodelabs.org"
+    },
+    {
+      "key": "TRANSACTIONS_BASE_URL",
+      "description": "Optional: Base URL for transaction API integration with wallet bridge. If not set, dynamically derives from request origin (e.g., https://staging.example.com). If set, use the full transaction API URL including the chain suffix, e.g., https://testnet-explorer.usernodelabs.org/testnet or http://localhost:3000/explorer-api/testnet — the Usernode bridge appends '/transactions' to this URL to poll for on-chain inclusion.",
+      "required": false,
+      "private": false,
+      "staging_default": "http://localhost:3000/explorer-api/testnet"
     }
   ],
   "tests": [
@@ -53,6 +81,11 @@
       "name": "Settings panel opens",
       "path": "/",
       "expectSelector": "#settingsPanel"
+    },
+    {
+      "name": "Network Mode selector in settings",
+      "path": "/",
+      "expectSelector": "#networkModeSelect"
     },
     {
       "name": "Profile Guardian's tab loads",
