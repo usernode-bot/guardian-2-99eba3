@@ -4121,48 +4121,75 @@
       setupEventListeners();
     }
 
+    // Helper function to safely attach event listeners with error handling
+    function attach(id, event, handler, description) {
+      try {
+        const element = document.getElementById(id);
+        if (!element) {
+          console.warn(`[EventListener] Element not found: #${id}${description ? ` (${description})` : ''}`);
+          return false;
+        }
+        element.addEventListener(event, handler);
+        return true;
+      } catch (err) {
+        console.error(`[EventListener] Failed to attach ${event} to #${id}${description ? ` (${description})` : ''}: ${err.message}`);
+        return false;
+      }
+    }
+
     function setupEventListeners() {
-      document.getElementById('menuBtn').addEventListener('click', toggleSidebar);
-      document.getElementById('backBtn').addEventListener('click', () => {
+      // Navigation and core UI
+      attach('menuBtn', 'click', toggleSidebar, 'menu button');
+      attach('backBtn', 'click', () => {
         currentConvId = null;
         currentGroupId = null;
         showConversationsView();
-      });
+      }, 'back button');
 
-      document.getElementById('msgInput').addEventListener('keydown', (e) => {
+      // Message input
+      attach('msgInput', 'keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
           e.preventDefault();
           sendMessage();
         }
-      });
+      }, 'message input');
 
-      document.getElementById('attachmentMenuBtn').addEventListener('click', toggleAttachmentSheet);
-      document.getElementById('sendBtn').addEventListener('click', sendMessage);
+      // Attachments and send
+      attach('attachmentMenuBtn', 'click', toggleAttachmentSheet, 'attachment menu button');
+      attach('sendBtn', 'click', sendMessage, 'send button');
 
-      document.getElementById('closeLightbox').addEventListener('click', () => {
+      // Lightbox
+      attach('closeLightbox', 'click', () => {
         document.getElementById('imageLightbox').classList.add('hidden');
-      });
+      }, 'close lightbox button');
 
-      document.getElementById('imageLightbox').addEventListener('click', (e) => {
+      attach('imageLightbox', 'click', (e) => {
         if (e.target === document.getElementById('imageLightbox')) {
           document.getElementById('imageLightbox').classList.add('hidden');
         }
-      });
+      }, 'image lightbox');
 
-      document.getElementById('deleteContactCancel').addEventListener('click', hideDeleteContactModal);
-      document.getElementById('deleteContactConfirm').addEventListener('click', confirmDeleteContact);
+      // Delete contact modal
+      attach('deleteContactCancel', 'click', hideDeleteContactModal, 'delete contact cancel button');
+      attach('deleteContactConfirm', 'click', confirmDeleteContact, 'delete contact confirm button');
 
-      document.getElementById('deleteConversationCancel').addEventListener('click', hideDeleteConversationModal);
-      document.getElementById('deleteConversationConfirm').addEventListener('click', confirmDeleteConversation);
+      // Delete conversation modal
+      attach('deleteConversationCancel', 'click', hideDeleteConversationModal, 'delete conversation cancel button');
+      attach('deleteConversationConfirm', 'click', confirmDeleteConversation, 'delete conversation confirm button');
 
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-          closeAttachmentSheet();
-          hideDeleteContactModal();
-          closeChannelSettingsModal();
-          closeDeleteChannelConfirm();
-        }
-      });
+      // Global keyboard shortcuts
+      try {
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape') {
+            closeAttachmentSheet();
+            hideDeleteContactModal();
+            closeChannelSettingsModal();
+            closeDeleteChannelConfirm();
+          }
+        });
+      } catch (err) {
+        console.error('[EventListener] Failed to attach global keydown listener:', err.message);
+      }
 
     }
 
