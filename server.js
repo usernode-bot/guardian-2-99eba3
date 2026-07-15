@@ -2147,13 +2147,7 @@ app.get('/api/config', async (req, res) => {
   }
 });
 
-// Network mode and active chain endpoints removed
-  } catch (err) {
-    console.error('Error fetching active chain:', err);
-    res.status(500).json({ error: 'Failed to fetch active chain' });
-  }
-});
-// RPC and network mode configuration endpoints removed
+// Network mode, RPC, and active chain endpoints removed
 
 // Helper function to check if user has created a group
 async function userHasCreatedGroup(userId) {
