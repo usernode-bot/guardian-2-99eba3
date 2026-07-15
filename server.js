@@ -3134,6 +3134,51 @@ app.post('/api/tokens/send', async (req, res) => {
       startChainPoller(network, txHash, blockchainRecordingId).catch(err => {
         console.error('Error starting chain poller:', err);
       });
+    } else if (NETWORK_MODE === 'testnet' && NODE_RPC_URL && !txHash) {
+      // Testnet with RPC: submit real transaction
+      (async () => {
+        try {
+          console.log(`[TOKEN-RPC] Submitting token transfer to testnet RPC for auditLogId=${blockchainRecordingId}`);
+          const result = await sendMessageToBlockchain(transactionPayload, signTransactionMemo(transactionPayload), network);
+
+          // Update audit log with real txHash from RPC
+          console.log(`[TOKEN-RPC] Received real txHash=${result.transactionHash}, updating auditLogId=${blockchainRecordingId}`);
+          await pool.query(`
+            UPDATE blockchain_audit_logs SET tx_hash = $1, network_origin = 'testnet', updated_at = NOW() WHERE id = $2
+          `, [result.transactionHash, blockchainRecordingId]);
+
+          // Start polling with real txHash against blockchain explorer
+          startChainPoller(network, result.transactionHash, blockchainRecordingId).catch(err => {
+            console.error('Error starting chain poller:', err);
+          });
+        } catch (err) {
+          const errorClass = classifyRPCError(err);
+          console.error(`[BLOCKCHAIN-FALLBACK] RPC failed (${errorClass.type}), using bridge fallback for token transfer: ${err.message}`);
+
+          // Fallback: try bridge approach (generates placeholder hash)
+          try {
+            const bridgeResult = await sendTransactionToBridge(transactionPayload, null, network);
+
+            // Update audit log with placeholder hash from bridge
+            await pool.query(`
+              UPDATE blockchain_audit_logs SET tx_hash = $1, network_origin = 'bridge', updated_at = NOW() WHERE id = $2
+            `, [bridgeResult.txHash, blockchainRecordingId]);
+
+            console.log(`[BLOCKCHAIN-FALLBACK] Updated audit log with bridge tx hash: txHash=${bridgeResult.txHash}, auditLogId=${blockchainRecordingId}`);
+
+            // Start polling with placeholder (will timeout after max polls)
+            startChainPoller(network, bridgeResult.txHash, blockchainRecordingId).catch(pollerErr => {
+              console.error('Error starting fallback chain poller:', pollerErr);
+            });
+          } catch (bridgeErr) {
+            // Both RPC and fallback failed — mark as failed immediately
+            console.error(`[BLOCKCHAIN-FALLBACK] Bridge fallback also failed: ${bridgeErr.message}`);
+            await pool.query(`
+              UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
+            `, [bridgeErr.message, blockchainRecordingId]);
+          }
+        }
+      })();
     } else if (NETWORK_MODE !== 'devnet' && NETWORK_MODE !== 'testnet') {
       // Async: try to call sidecar for real token transfer (mainnet only)
       (async () => {
