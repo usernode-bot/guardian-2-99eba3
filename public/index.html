@@ -1273,7 +1273,7 @@
     </div>
 
     <!-- Attachment Bottom Sheet -->
-    <div id="attachmentOverlay" class="hidden fixed inset-0 z-40 bg-black/50 transition-opacity duration-300" onclick="closeAttachmentSheet()"></div>
+    <div id="attachmentOverlay" class="hidden fixed inset-0 z-40 bg-black/50 transition-opacity duration-300" onclick="if (event.target === this) closeAttachmentSheet()"></div>
     <div id="attachmentSheet" class="hidden fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-zinc-900 border-t border-zinc-300 dark:border-zinc-800 rounded-t-2xl max-h-[50vh] overflow-y-auto transition-transform duration-300">
       <div class="p-4 border-b border-zinc-200 dark:border-zinc-800">
         <h3 class="text-lg font-semibold text-zinc-900 dark:text-white">Attachments</h3>
