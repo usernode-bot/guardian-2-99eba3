@@ -3346,9 +3346,9 @@
       });
 
       // Ensure contactId is a string of digits (never null/undefined)
-      const sanitizedContactId = String(contactId || '').trim();
-      const sanitizedUserId = String(contactUserId || '').trim();
-      const sanitizedName = String(contactName || '').trim();
+      const sanitizedContactId = String(contactId).trim();
+      const sanitizedUserId = String(contactUserId).trim();
+      const sanitizedName = String(contactName).trim();
 
       console.log('[openContactOptionsMenu] After sanitization:', {
         contactId: sanitizedContactId,
@@ -6679,7 +6679,7 @@
         const isMuted = contact.muted_by?.length && contact.muted_by.includes(userId);
         const muteIndicator = isMuted ? '<span class="text-xs mr-1">🔇</span>' : '';
         // Validate contact.id before embedding in onclick
-        const contactIdStr = String(contact.id || '').trim();
+        const contactIdStr = String(contact.id).trim();
         if (!contactIdStr || !/^\d+$/.test(contactIdStr)) {
           console.warn('[ContactsList] Invalid contact ID for contact:', { contact, contactId: contact.id, sanitized: contactIdStr });
           return '';
@@ -6714,7 +6714,7 @@
                 const isMuted = contact.muted_by?.length && contact.muted_by.includes(userId);
                 const muteIndicator = isMuted ? '<span class="text-xs mr-1">🔇</span>' : '';
                 // Validate contact.id before embedding in onclick
-                const contactIdStr = String(contact.id || '').trim();
+                const contactIdStr = String(contact.id).trim();
                 if (!contactIdStr || !/^\d+$/.test(contactIdStr)) {
                   console.warn('[ArchivedContactsList] Invalid contact ID for contact:', { contact, contactId: contact.id, sanitized: contactIdStr });
                   return '';
