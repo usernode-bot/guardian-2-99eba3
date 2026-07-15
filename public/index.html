@@ -684,69 +684,6 @@
       background: rgb(34, 197, 94);
     }
 
-    .wallet-status-box {
-      padding: 14px;
-      background: rgb(249, 250, 251);
-      border: 1px solid rgb(229, 231, 235);
-      border-radius: 8px;
-      margin-bottom: 12px;
-      font-size: 14px;
-    }
-
-    #connectionHub.dark .wallet-status-box {
-      background: rgb(39, 39, 42);
-      border-color: rgb(63, 63, 70);
-    }
-
-    .wallet-status-label {
-      color: rgb(107, 114, 128);
-      font-size: 12px;
-      margin-bottom: 4px;
-    }
-
-    #connectionHub.dark .wallet-status-label {
-      color: rgb(161, 161, 170);
-    }
-
-    .wallet-status-text {
-      color: rgb(31, 41, 55);
-      font-weight: 500;
-      word-break: break-all;
-    }
-
-    #connectionHub.dark .wallet-status-text {
-      color: rgb(229, 231, 235);
-    }
-
-    .wallet-status-text.not-connected {
-      color: rgb(107, 114, 128);
-    }
-
-    #connectionHub.dark .wallet-status-text.not-connected {
-      color: rgb(161, 161, 170);
-    }
-
-    .connect-wallet-btn {
-      width: 100%;
-      padding: 12px 16px;
-      background: rgb(96, 165, 250);
-      color: white;
-      border: none;
-      border-radius: 8px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.2s;
-      margin-bottom: 16px;
-    }
-
-    .connect-wallet-btn:hover:not(:disabled) {
-      background: rgb(59, 130, 246);
-    }
-
-    .connect-wallet-btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
 
     .continue-btn {
       width: 100%;
@@ -812,13 +749,6 @@
       </div>
 
       <!-- Wallet Connection Section -->
-      <div id="walletStatusSection" class="connection-hub-section">
-        <div class="connection-hub-section-title">Wallet Status</div>
-        <div class="wallet-status-box">
-          <div class="wallet-status-label">Current Status</div>
-          <div id="walletStatusText" class="wallet-status-text not-connected">Not connected</div>
-        </div>
-      </div>
 
       <!-- Continue Button -->
       <button id="connectionHubContinueBtn" class="continue-btn" onclick="proceedFromConnectionHub()" disabled>Continue</button>
@@ -958,62 +888,6 @@
               <div class="flex gap-2">
                 <button id="layoutComfort" onclick="applyLayout('comfortable')" class="flex-1 px-2 py-2 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-cyan-600 dark:border-cyan-500 hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Comfortable</button>
                 <button id="layoutCompact" onclick="applyLayout('compact')" class="flex-1 px-2 py-2 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-transparent hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Compact</button>
-              </div>
-            </div>
-            <!-- Network Mode (Sub-Accordion) -->
-            <div id="networkModeAccordion" class="space-y-1">
-              <button id="networkModeToggle" onclick="toggleNetworkModeAccordion()" class="w-full flex items-center justify-between px-0 py-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
-                <div class="flex items-center gap-2">
-                  <span>Network Mode</span>
-                  <span id="networkModeHeaderDot" class="inline-block w-2.5 h-2.5 rounded-full bg-gray-400 transition-colors"></span>
-                </div>
-                <svg id="networkModeArrow" class="w-5 h-5 transition-transform duration-200 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                </svg>
-              </button>
-              <div id="networkModeContent" class="hidden pt-2 space-y-3">
-                <div class="space-y-2">
-                  <label class="text-xs sm:text-sm font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-2">
-                    <span>Network Mode</span>
-                    <span id="networkModeLoading" class="hidden inline-block w-3 h-3 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></span>
-                  </label>
-                  <select id="networkModeSelect" onchange="updateNetworkMode(this.value)" class="w-full px-3 py-2.5 sm:py-2 bg-zinc-50 dark:bg-zinc-700 border border-zinc-400 dark:border-zinc-600 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-400 text-sm">
-                    <option value="mainnet" disabled>Mainnet (Coming soon)</option>
-                    <option value="testnet">Testnet</option>
-                    <option value="devnet">Devnet</option>
-                  </select>
-                  <p class="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">Select your network environment.</p>
-                </div>
-
-                <!-- RPC Endpoint Configuration (only shown in testnet mode) -->
-                <div id="rpcEndpointConfig" class="hidden space-y-2">
-                  <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400 flex items-center gap-2">
-                    <span>RPC Endpoint URL</span>
-                    <span id="rpcEndpointLoading" class="hidden inline-block w-3 h-3 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></span>
-                  </label>
-                  <input
-                    id="rpcEndpointInput"
-                    type="text"
-                    placeholder="e.g., http://localhost:3001 or https://testnet-rpc.usernodelabs.org"
-                    class="w-full px-2 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                  />
-                  <button id="rpcEndpointSave" onclick="updateRpcEndpoint()" class="w-full px-3 py-1.5 bg-cyan-500 text-white rounded text-xs font-medium hover:bg-cyan-600 transition">
-                    Save RPC Endpoint
-                  </button>
-                  <p class="text-xs text-zinc-600 dark:text-zinc-400">Usernode testnet RPC endpoint for submitting transactions.</p>
-                </div>
-
-                <!-- Transaction Preferences (only shown in devnet mode) -->
-                <div id="transactionPreferencesSection" class="hidden space-y-3">
-                  <label class="text-xs sm:text-sm font-medium text-zinc-700 dark:text-zinc-300 block">Transaction Preferences</label>
-                  <div class="flex items-start gap-3 p-3 bg-zinc-100 dark:bg-zinc-800 rounded">
-                    <input type="checkbox" id="skipSignatureDevnetToggle" onchange="updateSkipSignatureDevnet(this.checked)" class="w-5 h-5 rounded cursor-pointer mt-0.5 flex-shrink-0">
-                    <div class="flex-1 min-w-0">
-                      <label for="skipSignatureDevnetToggle" class="text-xs sm:text-sm font-medium text-zinc-900 dark:text-zinc-100 cursor-pointer block mb-1">Skip signature confirmation in devnet mode</label>
-                      <p class="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">When enabled, transactions will broadcast immediately without wallet confirmation.</p>
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
           </div>
@@ -1411,12 +1285,6 @@
             <span>Send Image</span>
           </div>
         </button>
-        <button id="tokenBtn" onclick="handleAttachmentSelect('token')" class="w-full px-4 py-4 text-left text-zinc-900 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition">
-          <div class="flex items-center gap-3">
-            <span class="text-2xl">💰</span>
-            <span>Send Token</span>
-          </div>
-        </button>
       </div>
     </div>
 
@@ -1490,28 +1358,6 @@
     </div>
   </div>
 
-  <!-- Token Transfer Modal -->
-  <div id="tokenModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
-    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
-      <h2 class="text-xl font-semibold text-zinc-900 dark:text-white">Send Tokens</h2>
-      <div class="space-y-2">
-        <label class="text-sm text-zinc-600 dark:text-zinc-400">Recipient</label>
-        <div id="tokenRecipient" class="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-zinc-700 dark:text-zinc-300"></div>
-      </div>
-      <div class="space-y-2">
-        <label class="text-sm text-zinc-600 dark:text-zinc-400">Amount</label>
-        <input id="tokenAmount" type="number" placeholder="0" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
-      </div>
-      <div class="space-y-2">
-        <label class="text-sm text-zinc-600 dark:text-zinc-400">Memo (optional)</label>
-        <input id="tokenMemo" type="text" placeholder="Add a note..." class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
-      </div>
-      <div class="flex gap-2">
-        <button id="tokenCancel" class="flex-1 px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
-        <button id="tokenSend" class="flex-1 px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Send</button>
-      </div>
-    </div>
-  </div>
 
   <!-- Delete Contact Modal -->
   <div id="deleteContactModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4" onclick="hideDeleteContactModal()">
@@ -1845,22 +1691,6 @@
   <!-- Persistent Notification Container -->
   <div id="persistentNotificationContainer" class="fixed top-4 right-4 z-40 flex flex-col gap-3 pointer-events-none max-w-sm"></div>
 
-  <!-- Transaction Details Modal -->
-  <div id="transactionDetailsModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
-    <div class="bg-white dark:bg-zinc-900 rounded-lg shadow-xl max-w-md w-full max-h-[80vh] overflow-y-auto">
-      <div class="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
-        <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Transaction Details</h2>
-        <button onclick="closeTransactionDetailsModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition text-xl">✕</button>
-      </div>
-      <div id="transactionDetailsContent" class="p-6 space-y-4">
-        <div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Loading transaction details...</div>
-      </div>
-      <div class="flex items-center gap-2 px-6 py-4 border-t border-zinc-200 dark:border-zinc-800">
-        <button onclick="closeTransactionDetailsModal()" class="flex-1 px-4 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 rounded-lg transition font-medium">Close</button>
-        <a id="txExplorerLink" href="#" target="_blank" class="hidden flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium text-center">[ View Explorer ]</a>
-      </div>
-    </div>
-  </div>
 
   <!-- Channel Settings Modal -->
   <div id="channelSettingsModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
@@ -2617,26 +2447,6 @@
       document.getElementById('themeSelect').value = settings.theme;
       updateLayoutButtons(settings.layout);
 
-      // Load skip signature in devnet preference from API
-      if (currentUser && currentUser.skipSignatureInDevnet !== undefined) {
-        settings.skipSignatureInDevnet = currentUser.skipSignatureInDevnet;
-        document.getElementById('skipSignatureDevnetToggle').checked = currentUser.skipSignatureInDevnet;
-      }
-
-      // Load network mode preference from API
-      if (currentUser && currentUser.networkMode !== undefined) {
-        settings.networkMode = currentUser.networkMode;
-        const networkModeSelect = document.getElementById('networkModeSelect');
-        if (networkModeSelect) {
-          networkModeSelect.value = currentUser.networkMode;
-        }
-      }
-
-      // Start transaction history polling
-      pollTransactionHistory();
-      if (transactionHistoryIntervalId) clearInterval(transactionHistoryIntervalId);
-      transactionHistoryIntervalId = setInterval(pollTransactionHistory, 2000);
-
       loadConfigState();
     }
 
@@ -2715,34 +2525,6 @@
       }
     }
 
-    function updateNetworkModeVisibility(mode) {
-      const rpcEndpointConfig = document.getElementById('rpcEndpointConfig');
-      const transactionPreferencesSection = document.getElementById('transactionPreferencesSection');
-      const skipSignatureCheckbox = document.getElementById('skipSignatureDevnetToggle');
-
-      // Show RPC endpoint config only for testnet
-      if (mode === 'testnet') {
-        rpcEndpointConfig.classList.remove('hidden');
-      } else {
-        rpcEndpointConfig.classList.add('hidden');
-      }
-
-      // Show transaction preferences only for devnet
-      if (mode === 'devnet') {
-        transactionPreferencesSection.classList.remove('hidden');
-        // Auto-enable the checkbox when devnet is selected
-        if (skipSignatureCheckbox && !skipSignatureCheckbox.checked) {
-          skipSignatureCheckbox.checked = true;
-        }
-      } else {
-        transactionPreferencesSection.classList.add('hidden');
-        // Uncheck when switching away from devnet
-        if (skipSignatureCheckbox && skipSignatureCheckbox.checked) {
-          skipSignatureCheckbox.checked = false;
-        }
-      }
-    }
-
     function toggleConfigAccordion() {
       const content = document.getElementById('configContent');
       const arrow = document.getElementById('configArrow');
@@ -2761,52 +2543,8 @@
       try {
         const config = await apiCall('/api/config');
         if (config && !config.error) {
-          const dropdown = document.getElementById('networkModeSelect');
-          const noPermission = document.getElementById('configNoPermission');
-          const accordion = document.getElementById('configAccordion');
-          const rpcEndpointInput = document.getElementById('rpcEndpointInput');
-
-          // Get user's network mode from currentUser (which comes from /api/user endpoint)
-          // This is the per-user setting, not the global server NETWORK_MODE
-          let currentMode = currentUser?.networkMode || 'devnet';
-          if (currentMode === 'real_testnet') {
-            currentMode = 'testnet';
-          }
-          dropdown.value = currentMode;
-          dropdown.disabled = false;
-
-          // Update conditional visibility for RPC endpoint and transaction preferences
-          updateNetworkModeVisibility(currentMode);
-
-          // Set RPC endpoint input value if in testnet mode
-          if (currentMode === 'testnet') {
-            rpcEndpointInput.value = config.rpcEndpoint || 'http://localhost:3001';
-            rpcEndpointInput.disabled = !config.canEditRpc;
-          }
-
-          // Save to localStorage
-          const settings = loadSettings();
-          settings.networkMode = currentMode;
-          saveSettings(settings);
-
-          if (!config.canEdit) {
-            noPermission.classList.remove('hidden');
-            accordion.classList.add('opacity-60');
-          } else {
-            noPermission.classList.add('hidden');
-            accordion.classList.remove('opacity-60');
-          }
-
-          // Update dot color based on network mode (devnet = cyan, testnet/mainnet = gray)
-          updateNetworkModeDotColor(currentMode === 'devnet');
-
           // Render secrets display
           renderSecretsDisplay(config.secrets);
-
-          // Start polling transaction history
-          pollTransactionHistory();
-          if (transactionHistoryIntervalId) clearInterval(transactionHistoryIntervalId);
-          transactionHistoryIntervalId = setInterval(pollTransactionHistory, 2000);
         }
       } catch (err) {
         console.error('Error loading config state:', err);
@@ -3439,8 +3177,6 @@
         input.accept = 'image/*';
         input.onchange = (e) => handleImageUpload(e.target.files[0]);
         input.click();
-      } else if (type === 'token') {
-        showTokenModal();
       }
     }
 
@@ -4293,51 +4029,75 @@
       setupEventListeners();
     }
 
+    // Helper function to safely attach event listeners with error handling
+    function attach(id, event, handler, description) {
+      try {
+        const element = document.getElementById(id);
+        if (!element) {
+          console.warn(`[EventListener] Element not found: #${id}${description ? ` (${description})` : ''}`);
+          return false;
+        }
+        element.addEventListener(event, handler);
+        return true;
+      } catch (err) {
+        console.error(`[EventListener] Failed to attach ${event} to #${id}${description ? ` (${description})` : ''}: ${err.message}`);
+        return false;
+      }
+    }
+
     function setupEventListeners() {
-      document.getElementById('menuBtn').addEventListener('click', toggleSidebar);
-      document.getElementById('backBtn').addEventListener('click', () => {
+      // Navigation and core UI
+      attach('menuBtn', 'click', toggleSidebar, 'menu button');
+      attach('backBtn', 'click', () => {
         currentConvId = null;
         currentGroupId = null;
         showConversationsView();
-      });
+      }, 'back button');
 
-      document.getElementById('msgInput').addEventListener('keydown', (e) => {
+      // Message input
+      attach('msgInput', 'keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
           e.preventDefault();
           sendMessage();
         }
-      });
+      }, 'message input');
 
-      document.getElementById('attachmentMenuBtn').addEventListener('click', toggleAttachmentSheet);
-      document.getElementById('sendBtn').addEventListener('click', sendMessage);
+      // Attachments and send
+      attach('attachmentMenuBtn', 'click', toggleAttachmentSheet, 'attachment menu button');
+      attach('sendBtn', 'click', sendMessage, 'send button');
 
-      document.getElementById('tokenCancel').addEventListener('click', hideTokenModal);
-      document.getElementById('tokenSend').addEventListener('click', sendToken);
-
-      document.getElementById('closeLightbox').addEventListener('click', () => {
+      // Lightbox
+      attach('closeLightbox', 'click', () => {
         document.getElementById('imageLightbox').classList.add('hidden');
-      });
+      }, 'close lightbox button');
 
-      document.getElementById('imageLightbox').addEventListener('click', (e) => {
+      attach('imageLightbox', 'click', (e) => {
         if (e.target === document.getElementById('imageLightbox')) {
           document.getElementById('imageLightbox').classList.add('hidden');
         }
-      });
+      }, 'image lightbox');
 
-      document.getElementById('deleteContactCancel').addEventListener('click', hideDeleteContactModal);
-      document.getElementById('deleteContactConfirm').addEventListener('click', confirmDeleteContact);
+      // Delete contact modal
+      attach('deleteContactCancel', 'click', hideDeleteContactModal, 'delete contact cancel button');
+      attach('deleteContactConfirm', 'click', confirmDeleteContact, 'delete contact confirm button');
 
-      document.getElementById('deleteConversationCancel').addEventListener('click', hideDeleteConversationModal);
-      document.getElementById('deleteConversationConfirm').addEventListener('click', confirmDeleteConversation);
+      // Delete conversation modal
+      attach('deleteConversationCancel', 'click', hideDeleteConversationModal, 'delete conversation cancel button');
+      attach('deleteConversationConfirm', 'click', confirmDeleteConversation, 'delete conversation confirm button');
 
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-          closeAttachmentSheet();
-          hideDeleteContactModal();
-          closeChannelSettingsModal();
-          closeDeleteChannelConfirm();
-        }
-      });
+      // Global keyboard shortcuts
+      try {
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape') {
+            closeAttachmentSheet();
+            hideDeleteContactModal();
+            closeChannelSettingsModal();
+            closeDeleteChannelConfirm();
+          }
+        });
+      } catch (err) {
+        console.error('[EventListener] Failed to attach global keydown listener:', err.message);
+      }
 
     }
 
@@ -4783,25 +4543,16 @@
       if (!name) return alert('Group name is required');
 
       try {
-        // Phase 1: Create pending audit log
-        const auditLogId = await createPendingAuditLog();
-
-        // Phase 2: Request wallet signature and register txHash
-        const txHash = await requestWalletSignature('Create Group', { name, description: desc || '(none)' }, auditLogId);
-
         const data = await apiCall('/api/groups', {
           method: 'POST',
           body: JSON.stringify({
             name,
-            description: desc || null,
-            txHash: txHash,
-            auditLogId: auditLogId
+            description: desc || null
           })
         });
 
         if (data && !data.error) {
-          // Show action-specific toast with status
-          const statusMsg = networkMode === 'demo' ? 'Group created—simulated signature confirmed' : 'Group created—awaiting blockchain confirmation';
+          const statusMsg = 'Group created';
           showToast(`✓ ${statusMsg}`, 'success');
 
           if (data.blockchainRecordingId) {
@@ -4968,35 +4719,17 @@
       categorySelect.disabled = true;
 
       try {
-        // Phase 1: Create pending audit log
-        const auditLogId = await createPendingAuditLog();
-
-        // Phase 2: Request wallet signature and register txHash
-        const txHash = await requestWalletSignature('Create Channel', { name, category, description: desc || '(none)' }, auditLogId);
-
         const data = await apiCall('/api/channels', {
           method: 'POST',
           body: JSON.stringify({
             name,
             description: desc || null,
-            category,
-            txHash: txHash,
-            auditLogId: auditLogId
+            category
           })
         });
 
         if (data && !data.error) {
-          // Show action-specific toast with status
-          const statusMsg = networkMode === 'demo' ? 'Channel created—simulated signature confirmed' : 'Channel created—awaiting blockchain confirmation';
-          showToast(`✓ ${statusMsg}`, 'success');
-
-          if (data.blockchainRecordingId) {
-            showPersistentNotification('channel_create', {
-              blockchainRecordingId: data.blockchainRecordingId,
-              channelName: name,
-              category: category
-            });
-          }
+          showToast('✓ Channel created', 'success');
           closeCreateChannelModal();
           // Channel created but Feed view has been removed
           // Show the newly created channel detail view if possible
@@ -5280,79 +5013,9 @@
       }
     }
 
-    // Unified wallet signature flow - single dialog, direct to wallet
+    // Wallet signatures are no longer used (blockchain features removed)
     async function requestWalletSignature(action, details, auditLogId = null) {
-      // In demo mode, skip wallet confirmation entirely
-      if (currentUser && currentUser.isDemoMode) {
-        console.log('Demo mode: Skipping wallet signature for action:', action);
-        showToast('Demo mode: Skipping wallet confirmation', 'info');
-        return 'demo-tx-hash-' + Date.now();
-      }
-
-      // In devnet mode with skip signature enabled, skip wallet confirmation
-      const networkModeDropdown = document.getElementById('networkModeSelect');
-      const currentNetworkMode = networkModeDropdown ? networkModeDropdown.value : 'devnet';
-      if (currentNetworkMode === 'devnet' && currentUser && currentUser.skipSignatureInDevnet) {
-        console.log('Devnet + skip-signature enabled: skipping wallet confirmation for action:', action);
-        showToast('Signature skipped (devnet mode)', 'info');
-        return 'devnet-skipped-' + Date.now();
-      }
-
-      // Pre-flight check for testnet: ensure bridge is ready and wallet is configured
-      if (currentNetworkMode === 'testnet' || currentNetworkMode === 'real_testnet') {
-        console.log('[PREFLIGHT] Running testnet wallet readiness check for action:', action);
-        const preflight = await checkWalletReadyForTestnet();
-        if (!preflight.ready) {
-          console.error('[PREFLIGHT] Wallet not ready for testnet:', preflight.error);
-          throw new Error(preflight.error);
-        }
-        console.log('[PREFLIGHT] Testnet wallet readiness check passed');
-      }
-
-      // Validate wallet connection
-      if (!currentUser || !currentUser.usernode_pubkey) {
-        console.error('Wallet not connected: currentUser=', currentUser);
-        throw new Error('You must be connected to Usernode wallet to perform this action. Please refresh your browser.');
-      }
-
-      // Fetch wallet address: try bridge first, fall back to linked wallet
-      let connectedWalletAddress = null;
-      let walletSource = null;
-
-      try {
-        if (typeof window.usernode?.getNodeAddress === 'function') {
-          connectedWalletAddress = await window.usernode.getNodeAddress();
-          if (connectedWalletAddress) {
-            console.log('[WALLET] Connected address from bridge:', connectedWalletAddress);
-            walletSource = 'bridge';
-          }
-        }
-      } catch (err) {
-        console.warn('[WALLET] Could not fetch connected address from bridge:', err.message);
-      }
-
-      // Fall back to linked wallet if bridge didn't provide one
-      if (!connectedWalletAddress && currentUser && currentUser.usernode_pubkey) {
-        console.log('[WALLET] Bridge not available or returned undefined, using linked wallet:', currentUser.usernode_pubkey);
-        connectedWalletAddress = currentUser.usernode_pubkey;
-        walletSource = 'linked';
-      }
-
-      // Validate wallet address format
-      if (!connectedWalletAddress) {
-        throw new Error('No wallet linked to account. Link a wallet in Settings before using testnet mode.');
-      }
-      if (typeof connectedWalletAddress !== 'string' || !connectedWalletAddress.startsWith('ut1')) {
-        throw new Error('Invalid wallet address format: ' + JSON.stringify(connectedWalletAddress));
-      }
-
-      // Show loading toast
-      const sourceLabel = walletSource === 'bridge' ? 'bridge' : 'account';
-      showToast(`Requesting wallet signature (${sourceLabel})...`, 'info');
-      console.log('[WALLET] Using ' + sourceLabel + ' wallet for signature:', connectedWalletAddress);
-
-      // Call wallet signature directly with connected address
-      return await executeWalletSignature(action, details, auditLogId, connectedWalletAddress);
+      return null;
     }
 
     async function executeWalletSignature(action, details, auditLogId = null, connectedWalletAddress = null) {
@@ -6698,19 +6361,11 @@
       try {
         const endpoint = currentGroupId ? `/api/groups/${currentGroupId}/messages` : `/api/conversations/${currentConvId}/messages`;
 
-        // Phase 1: Create pending audit log
-        const auditLogId = await createPendingAuditLog();
-
-        const txDetails = { message: text.substring(0, 50) + (text.length > 50 ? '...' : '') };
-        const txHash = await requestWalletSignature('Send Message', txDetails, auditLogId);
-
         const data = await apiCall(endpoint, {
           method: 'POST',
           body: JSON.stringify({
             type: 'text',
-            content: { text },
-            txHash: txHash,
-            auditLogId: auditLogId
+            content: { text }
           })
         });
 
@@ -6765,24 +6420,13 @@
         try {
           const endpoint = currentGroupId ? `/api/groups/${currentGroupId}/messages` : `/api/conversations/${currentConvId}/messages`;
 
-          // Phase 1: Create pending audit log
-          const auditLogId = await createPendingAuditLog();
-
-          const txHash = await requestWalletSignature('Send Image', { imageSize: imageSizeKb + ' KB' }, auditLogId);
           const data = await apiCall(endpoint, {
             method: 'POST',
-            body: JSON.stringify({ type: 'image', content: { imageUrl: dataUri }, txHash: txHash, auditLogId: auditLogId })
+            body: JSON.stringify({ type: 'image', content: { imageUrl: dataUri } })
           });
 
           if (data && !data.error) {
-            const statusMsg = networkMode === 'demo' ? 'Image sent—simulated signature confirmed' : 'Image sent—confirming on-chain';
-            showToast(`✓ ${statusMsg}`, 'success');
-            if (data.blockchainRecordingId) {
-              showPersistentNotification('image', {
-                blockchainRecordingId: data.blockchainRecordingId,
-                recipient: currentGroupId ? 'group' : currentContactName
-              });
-            }
+            showToast('✓ Image sent', 'success');
             if (currentGroupId) {
               loadGroupMessages(currentGroupId);
             } else {
@@ -6803,91 +6447,7 @@
       reader.readAsDataURL(file);
     }
 
-    function showTokenModal() {
-      apiCall(`/api/users/${currentOtherId}`).then(u => {
-        document.getElementById('tokenRecipient').textContent = u ? u.username : 'Unknown';
-      });
-      document.getElementById('tokenModal').classList.remove('hidden');
-    }
-
-    function hideTokenModal() {
-      document.getElementById('tokenModal').classList.add('hidden');
-      document.getElementById('tokenAmount').value = '';
-      document.getElementById('tokenMemo').value = '';
-    }
-
-    async function sendToken() {
-      const amount = document.getElementById('tokenAmount').value;
-      if (!amount) return;
-
-      if (!currentConvId || !currentOtherId) return;
-
-      const memo = document.getElementById('tokenMemo').value;
-      const sendBtn = document.getElementById('tokenSend');
-      const originalText = sendBtn.textContent;
-
-      try {
-        sendBtn.disabled = true;
-        sendBtn.textContent = 'Sending...';
-
-        try {
-          // Phase 1: Create pending audit log
-          const auditLogId = await createPendingAuditLog();
-
-          const txHash = await requestWalletSignature('Send Tokens', { recipient: 'selected contact', amount: `${amount} tokens`, memo: memo || '(none)' }, auditLogId);
-
-          const data = await apiCall('/api/tokens/send', {
-            method: 'POST',
-            body: JSON.stringify({
-              recipientId: currentOtherId,
-              amount: parseInt(amount),
-              memo,
-              txHash: txHash,
-              auditLogId: auditLogId
-            })
-          });
-
-          if (data && !data.error) {
-            const statusMsg = networkMode === 'demo' ? 'Tokens sent—simulated signature confirmed' : 'Tokens sent—confirming on-chain';
-            showToast(`✓ ${statusMsg}`, 'success');
-            if (data.blockchainRecordingId) {
-              showPersistentNotification('token_transfer', {
-                blockchainRecordingId: data.blockchainRecordingId,
-                amount: parseInt(amount),
-                recipient: currentContactName
-              });
-            }
-            const msgData = await apiCall(`/api/conversations/${currentConvId}/messages`, {
-              method: 'POST',
-              body: JSON.stringify({
-                type: 'token',
-                content: { recipientId: currentOtherId, amount: parseInt(amount), memo, txHash: data.txHash, status: data.status }
-              })
-            });
-            if (msgData && data.blockchainRecordingId) {
-              pollBlockchainStatus(data.blockchainRecordingId, msgData.id);
-            }
-            hideTokenModal();
-            loadMessages();
-          } else if (data && data.error) {
-            showToast(`Failed to send tokens: ${data.error}`, 'error');
-            throw new Error(data.error);
-          }
-        } finally {
-          sendBtn.disabled = false;
-          sendBtn.textContent = originalText;
-        }
-      } catch (err) {
-        // Handle errors from sendToken
-        const isCancelledError = err.message && (err.message.includes('User cancelled') || err.message.includes('cancelled'));
-        if (!isCancelledError) {
-          console.error('Send token error:', err);
-          showToast(`Error: ${err.message}`, 'error');
-        }
-        sendBtn.disabled = false;
-        sendBtn.textContent = originalText;
-      }
-    }
+    // Token transfer functions removed
 
     function showLightbox(imageUrl) {
       document.getElementById('lightboxImage').src = imageUrl;
@@ -6941,57 +6501,7 @@
       }
     }
 
-    async function pollBlockchainStatus(auditLogId, messageId, onComplete) {
-      let isComplete = false;
-      const maxAttempts = 60;
-      let attempt = 0;
-
-      while (!isComplete && attempt < maxAttempts) {
-        attempt++;
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
-        const auditData = await apiCall(`/api/blockchain-audit/${auditLogId}`);
-        if (!auditData) continue;
-
-        const statusEl = document.getElementById(`blockchain-status-${messageId}`);
-        if (!statusEl) break;
-
-        if (auditData.status === 'confirmed') {
-          const txHashShort = auditData.txHash ? auditData.txHash.substring(0, 10) : 'unknown';
-          statusEl.innerHTML = `✓ Confirmed | <span class="font-mono text-xs" title="${auditData.txHash || 'N/A'}">${txHashShort}...</span>`;
-          statusEl.classList.remove('text-amber-600', 'dark:text-amber-400');
-          statusEl.classList.add('text-green-600', 'dark:text-green-400');
-          isComplete = true;
-        } else if (auditData.status === 'failed') {
-          statusEl.innerHTML = `✗ Failed | <button onclick="retryFailedTransaction(${auditLogId}, ${messageId})" class="underline">Retry</button>`;
-          statusEl.classList.remove('text-amber-600', 'dark:text-amber-400');
-          statusEl.classList.add('text-red-600', 'dark:text-red-400');
-          isComplete = true;
-        } else {
-          statusEl.innerHTML = `⏳ Pending confirmation...`;
-          statusEl.classList.add('text-amber-600', 'dark:text-amber-400');
-        }
-      }
-
-      if (onComplete) onComplete();
-    }
-
-    async function retryFailedTransaction(auditLogId, messageId) {
-      const data = await apiCall(`/api/blockchain-audit/${auditLogId}/retry`, {
-        method: 'POST',
-        body: JSON.stringify({})
-      });
-
-      if (data && data.ok) {
-        const statusEl = document.getElementById(`blockchain-status-${messageId}`);
-        if (statusEl) {
-          statusEl.innerHTML = `⏳ Retrying...`;
-          statusEl.classList.remove('text-red-600', 'dark:text-red-400');
-          statusEl.classList.add('text-amber-600', 'dark:text-amber-400');
-        }
-        pollBlockchainStatus(auditLogId, messageId);
-      }
-    }
+    // Blockchain polling functions removed
 
     async function showConversationsView() {
       updateMenuHighlight('messages');
