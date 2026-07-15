@@ -3189,7 +3189,7 @@
         isNull: contactId === null
       });
 
-      const sanitizedContactId = String(contactId || '').trim();
+      const sanitizedContactId = String(contactId).trim();
 
       console.log('[showDeleteContactModal] After sanitization:', {
         raw: contactId,
@@ -3256,7 +3256,7 @@
         type: typeof pendingDeleteContactId
       });
 
-      const contactId = String(pendingDeleteContactId || '').trim();
+      const contactId = String(pendingDeleteContactId).trim();
 
       if (!contactId) {
         console.error('[confirmDeleteContact] Empty contact ID after sanitization:', {raw: pendingDeleteContactId});
