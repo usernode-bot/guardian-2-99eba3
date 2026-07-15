@@ -73,9 +73,10 @@ function validateAndConfigureRPC() {
   // If not set or invalid, use intelligent defaults based on environment
   if (!configuredUrl && NETWORK_MODE === 'testnet') {
     if (IS_STAGING) {
-      // In staging, try multiple fallbacks: in-container Usernode, Docker host, localhost
+      // In staging, try multiple fallbacks: in-container Usernode (port 3001), fallback to 3000, Docker host
       const stagingOptions = [
-        'http://usernode-node:3001',      // In-network Usernode service
+        'http://usernode-node:3001',      // In-network Usernode service (staging default)
+        'http://usernode-node:3000',      // Fallback to production port
         'http://host.docker.internal:3001' // Docker desktop host
       ];
       configuredUrl = stagingOptions[0];  // Default to in-network service
@@ -117,7 +118,7 @@ const PEER_SYNC_TIMEOUT_MS = parseInt(process.env.PEER_SYNC_TIMEOUT_MS || '5000'
 let peerSyncCache = new Map(); // Map<userId, { timestamp, peersHours }>
 let peerSyncPromises = new Map(); // Map<userId, Promise> for concurrent request deduplication
 
-async function checkRPCHealth() {
+async function checkRPCHealth(retryCount = 0, maxRetries = 2) {
   // RPC health checks only in testnet mode
   if (NETWORK_MODE !== 'testnet') {
     return { rpcUrl: null, reachable: false, error: 'Devnet or mainnet mode - RPC not used' };
@@ -128,7 +129,7 @@ async function checkRPCHealth() {
   }
 
   const now = Date.now();
-  if (rpcHealthCache && (now - rpcHealthCacheTime) < RPC_HEALTH_CACHE_MS) {
+  if (retryCount === 0 && rpcHealthCache && (now - rpcHealthCacheTime) < RPC_HEALTH_CACHE_MS) {
     return rpcHealthCache;
   }
 
@@ -140,7 +141,7 @@ async function checkRPCHealth() {
 
     const options = {
       hostname: url.hostname,
-      port: url.port,
+      port: url.port || (isHttps ? 443 : 80),
       path: url.pathname,
       method: 'GET',
       timeout: 3000
@@ -153,6 +154,7 @@ async function checkRPCHealth() {
         reachable: res.statusCode >= 200 && res.statusCode < 300,
         responseTime,
         lastChecked: new Date().toISOString(),
+        statusCode: res.statusCode,
         error: null
       };
       rpcHealthCache = result;
@@ -160,14 +162,25 @@ async function checkRPCHealth() {
       resolve(result);
     });
 
-    req.on('error', (err) => {
+    req.on('error', async (err) => {
       const responseTime = Date.now() - startTime;
+      const errorClass = classifyRPCError(err);
+
+      if (retryCount < maxRetries) {
+        console.warn(`[RPC Health] Attempt ${retryCount + 1}/${maxRetries + 1} failed (${errorClass.type}), retrying in 500ms...`);
+        setTimeout(() => {
+          checkRPCHealth(retryCount + 1, maxRetries).then(resolve);
+        }, 500);
+        return;
+      }
+
       const result = {
         rpcUrl: NODE_RPC_URL,
         reachable: false,
         responseTime,
         lastChecked: new Date().toISOString(),
-        error: err.code || err.message
+        error: errorClass.message,
+        errorType: errorClass.type
       };
       rpcHealthCache = result;
       rpcHealthCacheTime = now;
@@ -182,7 +195,8 @@ async function checkRPCHealth() {
         reachable: false,
         responseTime,
         lastChecked: new Date().toISOString(),
-        error: 'ETIMEDOUT'
+        error: 'RPC endpoint timed out (>3s)',
+        errorType: 'ETIMEDOUT'
       };
       rpcHealthCache = result;
       rpcHealthCacheTime = now;
@@ -193,27 +207,48 @@ async function checkRPCHealth() {
   });
 }
 
-// Helper function to classify RPC errors
+// Helper function to classify RPC errors with detailed diagnostics
 function classifyRPCError(err) {
-  if (!err) return { type: 'unknown', message: 'Unknown error' };
+  if (!err) return { type: 'unknown', message: 'Unknown error', diagnostic: null };
 
   const message = err.message || '';
   const code = err.code || '';
+  const urlObj = NODE_RPC_URL ? new URL(NODE_RPC_URL) : null;
 
   if (code === 'ECONNREFUSED' || message.includes('ECONNREFUSED')) {
-    return { type: 'ECONNREFUSED', message: `RPC connection refused at ${NODE_RPC_URL}` };
+    return {
+      type: 'ECONNREFUSED',
+      message: `RPC connection refused at ${NODE_RPC_URL}`,
+      diagnostic: `The RPC service is not running or not accepting connections on ${urlObj?.hostname}:${urlObj?.port || 80}. Verify the service is online.`
+    };
   }
   if (code === 'ENOTFOUND' || message.includes('ENOTFOUND')) {
-    return { type: 'ENOTFOUND', message: `RPC hostname not found: ${NODE_RPC_URL}` };
+    return {
+      type: 'ENOTFOUND',
+      message: `RPC hostname not found: ${NODE_RPC_URL}`,
+      diagnostic: `DNS resolution failed for ${urlObj?.hostname}. Check hostname spelling and DNS configuration.`
+    };
   }
   if (code === 'ETIMEDOUT' || message.includes('ETIMEDOUT')) {
-    return { type: 'ETIMEDOUT', message: `RPC connection timeout: ${NODE_RPC_URL}` };
+    return {
+      type: 'ETIMEDOUT',
+      message: `RPC connection timeout at ${NODE_RPC_URL}`,
+      diagnostic: `Connection attempt took >3 seconds. Check network path to ${urlObj?.hostname} and firewall rules.`
+    };
   }
   if (message.includes('timeout') || code === 'ESOCKETTIMEDOUT') {
-    return { type: 'timeout', message: `RPC request timeout (>10s): ${NODE_RPC_URL}` };
+    return {
+      type: 'timeout',
+      message: `RPC request timeout: ${NODE_RPC_URL}`,
+      diagnostic: `Socket timeout during communication. RPC service may be slow or unresponsive.`
+    };
   }
 
-  return { type: 'unknown', message: message || code || 'Unknown RPC error' };
+  return {
+    type: 'unknown',
+    message: message || code || 'Unknown RPC error',
+    diagnostic: `Error code: ${code}`
+  };
 }
 
 // Helper function to get RPC endpoint from database
@@ -443,7 +478,9 @@ async function validateWalletForMode(networkMode, userId, userWalletPubkey) {
       console.error('[WALLET-VALIDATION] RPC endpoint not configured in testnet mode');
       return {
         valid: false,
-        error: 'Testnet RPC endpoint not configured. Contact administrator.'
+        error: 'Testnet RPC endpoint not configured. Contact administrator.',
+        rpcEndpoint: null,
+        diagnostic: 'NODE_RPC_URL environment variable is not set. Configure it in platform Secrets.'
       };
     }
 
@@ -451,13 +488,18 @@ async function validateWalletForMode(networkMode, userId, userWalletPubkey) {
     const health = await checkRPCHealth();
     if (!health.reachable) {
       console.error('[WALLET-VALIDATION] RPC endpoint unreachable:', health.error);
+      const errorClassification = health.errorType ? classifyRPCError({ code: health.errorType, message: health.error }) : { diagnostic: null };
       return {
         valid: false,
-        error: `Cannot reach testnet RPC endpoint. ${health.error || 'Network may be unavailable.'}`
+        error: `Cannot reach testnet RPC endpoint. ${health.error || 'Network may be unavailable.'}`,
+        rpcEndpoint: NODE_RPC_URL,
+        diagnostic: errorClassification.diagnostic,
+        errorType: health.errorType,
+        responseTime: health.responseTime
       };
     }
 
-    return { valid: true, error: null };
+    return { valid: true, error: null, rpcEndpoint: NODE_RPC_URL, diagnostic: null };
   }
 
   // Mainnet: wallet optional (future support)

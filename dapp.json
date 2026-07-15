@@ -7,6 +7,13 @@
       "required": false,
       "private": true,
       "staging_default": "postgresql://localhost/guardian_staging"
+    },
+    {
+      "key": "NODE_RPC_URL",
+      "description": "Usernode blockchain RPC endpoint for transaction submission. Platform provides in-network default; override for custom endpoints. Example: http://usernode-node:3000 (production) or http://usernode-node:3001 (staging).",
+      "required": false,
+      "private": false,
+      "default": "http://usernode-node:3000"
     }
   ],
   "tests": [
