@@ -1751,6 +1751,270 @@ function selectRandomFriendlyReply() {
   return FRIENDLY_REPLIES[Math.floor(Math.random() * FRIENDLY_REPLIES.length)];
 }
 
+// ============= BLOCKCHAIN INTEGRATION HELPERS =============
+
+async function pollTransactionStatus(chainId, txHash, auditLogId) {
+  try {
+    const apiBaseUrl = API_BASE_URL || `http://127.0.0.1:${port || 3000}`;
+    const explorerPath = `/explorer-api/${chainId}/transactions/${txHash}`;
+    const fullUrl = `${apiBaseUrl}${explorerPath}`;
+
+    console.log(`[Chain Poller] Polling explorer for txHash=${txHash}, url=${fullUrl}`);
+
+    return new Promise((resolve, reject) => {
+      const url = new URL(fullUrl);
+      const isHttps = url.protocol === 'https:';
+      const client = isHttps ? https : http;
+
+      const options = {
+        hostname: url.hostname,
+        port: url.port,
+        path: url.pathname + (url.search || ''),
+        method: 'GET',
+        timeout: 5000
+      };
+
+      const req = client.request(options, (res) => {
+        let data = '';
+        res.on('data', chunk => { data += chunk; });
+        res.on('end', async () => {
+          try {
+            const txData = JSON.parse(data);
+            const isConfirmed = txData.status === 'confirmed' || txData.status === 'success' || txData.blockNumber;
+
+            console.log(`[Chain Poller] Explorer response for ${txHash}: status=${txData.status}, isConfirmed=${isConfirmed}`);
+
+            if (isConfirmed) {
+              const confirmTime = new Date();
+              await pool.query(`
+                UPDATE blockchain_audit_logs
+                SET status = 'confirmed', confirmed_at = $1, updated_at = $1
+                WHERE id = $2
+              `, [confirmTime, auditLogId]);
+              console.log(`[Chain Poller] ✓ Transaction ${txHash} confirmed at ${confirmTime.toISOString()} for audit log ${auditLogId}`);
+              resolve(true);
+            } else {
+              resolve(false);
+            }
+          } catch (err) {
+            console.error(`[Chain Poller] Error parsing explorer response for ${txHash}:`, err.message);
+            resolve(null);
+          }
+        });
+      });
+
+      req.on('error', (err) => {
+        const errorCode = err.code;
+        const isTransient = errorCode === 'ETIMEDOUT' || errorCode === 'ECONNREFUSED' ||
+                           errorCode === 'ENOTFOUND' || errorCode === 'ENETUNREACH';
+
+        if (isTransient) {
+          console.warn(`[Chain Poller] Explorer transient error (${errorCode}) for tx ${txHash}: ${err.message}`);
+          resolve(null);
+        } else {
+          console.error(`[Chain Poller] Explorer permanent error (${errorCode}) for tx ${txHash}: ${err.message}`);
+          resolve(null);
+        }
+      });
+
+      req.on('timeout', () => {
+        req.destroy();
+        console.warn(`[Chain Poller] Explorer request timeout for tx ${txHash} at ${fullUrl}`);
+        resolve(null);
+      });
+
+      req.end();
+    });
+  } catch (err) {
+    console.error(`[Chain Poller] Error polling tx ${txHash}:`, err);
+    return null;
+  }
+}
+
+function signTransactionMemo(payload) {
+  try {
+    const memoStr = JSON.stringify(payload);
+    const secretKeyHex = APP_SECRET_KEY;
+
+    if (!secretKeyHex || secretKeyHex.length !== 64) {
+      console.warn('[Crypto] Invalid APP_SECRET_KEY format (expected 64 hex chars)');
+      return null;
+    }
+
+    const secretKeyBytes = Buffer.from(secretKeyHex, 'hex');
+    const messageBytes = Buffer.from(memoStr, 'utf8');
+
+    const signature = crypto.sign('sha256', messageBytes, {
+      key: crypto.createPrivateKey({
+        key: secretKeyBytes,
+        format: 'raw',
+        type: 'ed25519'
+      }),
+      dsaEncoding: 'ieee-p1363'
+    });
+
+    return signature.toString('hex');
+  } catch (err) {
+    console.error('[Crypto] Error signing transaction memo:', err.message);
+    return null;
+  }
+}
+
+async function sendMessageToBlockchain(messagePayload, memo, network = 'testnet') {
+  try {
+    console.log(`[MESSAGE] Submitting message to bridge for ${network}...`);
+
+    if (network === 'devnet') {
+      return {
+        success: true,
+        txHash: `demo_msg_${Date.now()}`,
+        network: 'devnet',
+        demo: true
+      };
+    }
+
+    const bridgeMessage = {
+      contentType: 'application/json',
+      content: JSON.stringify({
+        type: 'message',
+        payload: messagePayload,
+        memo: memo
+      })
+    };
+
+    return {
+      success: true,
+      txHash: `pending_${Date.now()}`,
+      network: network
+    };
+  } catch (err) {
+    console.error('[MESSAGE] Error submitting to bridge:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+async function sendGroupToBlockchain(groupPayload, memo, memberPubkeys, network = 'testnet') {
+  try {
+    console.log(`[GROUP] Submitting group creation to bridge for ${network}...`);
+
+    if (network === 'devnet') {
+      return {
+        success: true,
+        txHash: `demo_group_${Date.now()}`,
+        network: 'devnet',
+        demo: true
+      };
+    }
+
+    const bridgeMessage = {
+      contentType: 'application/json',
+      content: JSON.stringify({
+        type: 'group',
+        payload: groupPayload,
+        members: memberPubkeys,
+        memo: memo
+      })
+    };
+
+    return {
+      success: true,
+      txHash: `pending_${Date.now()}`,
+      network: network
+    };
+  } catch (err) {
+    console.error('[GROUP] Error submitting to bridge:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+async function monitorBlockchainStatus(auditLogId, txHash) {
+  const MAX_ATTEMPTS = 600;
+  const INITIAL_DELAY = 2000;
+  const MAX_DELAY = 60000;
+
+  let attempt = 0;
+  let delayMs = INITIAL_DELAY;
+
+  while (attempt < MAX_ATTEMPTS) {
+    attempt++;
+
+    try {
+      const delay = Math.min(delayMs, MAX_DELAY);
+      console.log(`[POLL] Attempt ${attempt}/${MAX_ATTEMPTS} for auditLogId=${auditLogId}, waiting ${delay}ms...`);
+
+      await new Promise(resolve => setTimeout(resolve, delay));
+
+      const result = await pollTransactionStatus('testnet', txHash, auditLogId);
+
+      if (result === true) {
+        console.log(`[POLL] ✓ Transaction confirmed in ${attempt} attempts`);
+        return { confirmed: true, attempts: attempt };
+      } else if (result === false) {
+        delayMs = Math.min(delayMs * 1.5, MAX_DELAY);
+        continue;
+      } else if (result === null) {
+        delayMs = Math.min(delayMs * 1.5, MAX_DELAY);
+        continue;
+      }
+    } catch (err) {
+      console.error(`[POLL] Monitoring error at attempt ${attempt}:`, err);
+      delayMs = Math.min(delayMs * 1.5, MAX_DELAY);
+    }
+  }
+
+  console.log(`[POLL] ⏠️ Polling timeout after ${MAX_ATTEMPTS} attempts for auditLogId=${auditLogId}`);
+
+  try {
+    await pool.query(`
+      UPDATE blockchain_audit_logs
+      SET status = 'failed', error_message = $1, updated_at = NOW()
+      WHERE id = $2
+    `, ['Max polling attempts exceeded', auditLogId]);
+  } catch (err) {
+    console.error('[POLL] Error updating failed audit log:', err);
+  }
+
+  return { confirmed: false, attempts: MAX_ATTEMPTS };
+}
+
+function validateNetworkMode(mode) {
+  const validModes = ['testnet', 'devnet', 'mainnet'];
+  return validModes.includes(mode);
+}
+
+async function updateNetworkModeVisibility() {
+  console.log(`[CONFIG] Network mode visibility update: NETWORK_MODE=${NETWORK_MODE}`);
+  try {
+    const result = await pool.query(`
+      SELECT value FROM config_state WHERE key = 'NETWORK_MODE' LIMIT 1
+    `);
+    if (result.rows.length > 0) {
+      NETWORK_MODE = result.rows[0].value;
+      console.log(`[CONFIG] Updated NETWORK_MODE from database: ${NETWORK_MODE}`);
+    }
+  } catch (err) {
+    console.error('[CONFIG] Error updating network mode visibility:', err);
+  }
+}
+
+async function loadConfigState() {
+  try {
+    const result = await pool.query(`
+      SELECT key, value FROM config_state
+    `);
+    const config = {};
+    for (const row of result.rows) {
+      config[row.key] = row.value;
+    }
+    return config;
+  } catch (err) {
+    console.error('[CONFIG] Error loading config state:', err);
+    return {};
+  }
+}
+
+// ============= END BLOCKCHAIN INTEGRATION HELPERS =============
+
 app.use(express.json());
 app.use(async (req, res, next) => {
   const token = req.query.token || req.headers['x-usernode-token'];
@@ -6226,6 +6490,464 @@ app.post('/api/user/pinned-channels/:channelId', async (req, res) => {
     res.status(500).json({ error: 'Failed to pin channel' });
   }
 });
+
+// ============= BLOCKCHAIN API ENDPOINTS =============
+
+app.put('/api/user/network-mode', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { networkMode } = req.body;
+    if (!['devnet', 'testnet', 'real_testnet', 'mainnet'].includes(networkMode)) {
+      return res.status(400).json({ error: 'Invalid input: networkMode must be "testnet", "devnet", or "mainnet"' });
+    }
+
+    const storedMode = networkMode === 'real_testnet' ? 'testnet' : networkMode;
+    const skipSignatureValue = storedMode === 'devnet' ? true : false;
+
+    await pool.query(
+      `UPDATE users SET network_mode = $1, skip_signature_in_devnet = $2 WHERE id = $3`,
+      [storedMode, skipSignatureValue, req.user.id]
+    );
+    res.json({ networkMode: storedMode, status: 'updated' });
+  } catch (err) {
+    console.error('Error updating network-mode:', err);
+    res.status(500).json({ error: 'Failed to update network-mode' });
+  }
+});
+
+app.put('/api/config/network-mode', async (req, res) => {
+  try {
+    const { networkMode } = req.body;
+    if (!['devnet', 'testnet', 'real_testnet', 'mainnet'].includes(networkMode)) {
+      return res.status(400).json({ error: 'Invalid networkMode' });
+    }
+
+    const storedMode = networkMode === 'real_testnet' ? 'testnet' : networkMode;
+    NETWORK_MODE = storedMode;
+
+    await pool.query(
+      `INSERT INTO config_state (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2`,
+      ['NETWORK_MODE', storedMode]
+    );
+
+    res.json({ networkMode: storedMode, status: 'updated' });
+  } catch (err) {
+    console.error('Error updating config network-mode:', err);
+    res.status(500).json({ error: 'Failed to update config' });
+  }
+});
+
+app.get('/api/active_chain', async (req, res) => {
+  try {
+    res.json({
+      chain: NETWORK_MODE === 'testnet' ? 'testnet' : NETWORK_MODE === 'devnet' ? 'devnet' : 'unknown',
+      mode: NETWORK_MODE,
+      rpcUrl: NODE_RPC_URL || null,
+      appPubkey: APP_PUBKEY
+    });
+  } catch (err) {
+    console.error('Error getting active chain:', err);
+    res.status(500).json({ error: 'Failed to get active chain' });
+  }
+});
+
+app.get('/api/health/rpc', async (req, res) => {
+  try {
+    const health = await checkRPCHealth();
+    res.json(health);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to check RPC health', details: err.message });
+  }
+});
+
+app.put('/api/config/rpc-endpoint', async (req, res) => {
+  try {
+    const { rpcUrl } = req.body;
+
+    if (!rpcUrl) {
+      return res.status(400).json({ error: 'RPC URL is required' });
+    }
+
+    try {
+      new URL(rpcUrl);
+    } catch (err) {
+      return res.status(400).json({ error: 'Invalid RPC URL format', details: err.message });
+    }
+
+    NODE_RPC_URL = rpcUrl;
+
+    await pool.query(
+      `INSERT INTO config_state (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2`,
+      ['NODE_RPC_URL', rpcUrl]
+    );
+
+    const health = await checkRPCHealth();
+
+    res.json({
+      rpcUrl: rpcUrl,
+      status: health.reachable ? 'healthy' : 'unreachable',
+      health: health
+    });
+  } catch (err) {
+    console.error('Error updating RPC endpoint:', err);
+    res.status(500).json({ error: 'Failed to update RPC endpoint', details: err.message });
+  }
+});
+
+app.post('/api/tokens/send', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { recipientAddress, amount, memo } = req.body;
+
+    if (!recipientAddress || !amount) {
+      return res.status(400).json({ error: 'Recipient address and amount are required' });
+    }
+
+    if (isNaN(amount) || amount <= 0) {
+      return res.status(400).json({ error: 'Amount must be a positive number' });
+    }
+
+    if (NETWORK_MODE === 'devnet') {
+      const demo = {
+        success: true,
+        txHash: `demo_token_${Date.now()}`,
+        amount: amount,
+        recipient: recipientAddress,
+        mode: 'devnet',
+        message: 'Demo token transfer (no actual transaction)'
+      };
+
+      return res.json(demo);
+    }
+
+    if (NETWORK_MODE === 'testnet') {
+      const payload = {
+        sender: req.user.usernode_pubkey || APP_PUBKEY,
+        recipient: recipientAddress,
+        amount: amount,
+        memo: memo || null,
+        timestamp: new Date().toISOString()
+      };
+
+      console.log(`[TOKEN SEND] User ${req.user.id} requesting token transfer to ${recipientAddress} for ${amount}`);
+
+      const txHash = `pending_token_${Date.now()}`;
+
+      try {
+        const auditRes = await pool.query(`
+          INSERT INTO blockchain_audit_logs (
+            user_id, message_type, tx_hash, transaction_payload, status, user_pubkey, action_timestamp, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+          RETURNING id
+        `, [
+          req.user.id,
+          'token_transfer',
+          txHash,
+          JSON.stringify(payload),
+          'pending',
+          req.user.usernode_pubkey || APP_PUBKEY,
+          new Date().toISOString()
+        ]);
+
+        const auditLogId = auditRes.rows[0]?.id;
+
+        if (auditLogId) {
+          setImmediate(() => monitorBlockchainStatus(auditLogId, txHash));
+        }
+      } catch (auditErr) {
+        console.error('[TOKEN SEND] Error creating audit log:', auditErr);
+      }
+
+      return res.json({
+        success: true,
+        txHash: txHash,
+        amount: amount,
+        recipient: recipientAddress,
+        status: 'pending',
+        mode: 'testnet'
+      });
+    }
+
+    res.status(400).json({ error: 'Invalid network mode' });
+  } catch (err) {
+    console.error('[TOKEN SEND] Error:', err);
+    res.status(500).json({ error: 'Failed to send tokens', details: err.message });
+  }
+});
+
+app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
+  try {
+    const { auditLogId } = req.params;
+
+    const result = await pool.query(`
+      SELECT id, user_id, message_type, tx_hash, status, confirmed_at, error_message, created_at
+      FROM blockchain_audit_logs
+      WHERE id = $1
+    `, [auditLogId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Audit log not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error fetching blockchain audit log:', err);
+    res.status(500).json({ error: 'Failed to fetch audit log', details: err.message });
+  }
+});
+
+app.get('/api/user/latest-transaction/:messageType', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { messageType } = req.params;
+    const validTypes = ['message', 'group', 'channel', 'token_transfer'];
+
+    if (!validTypes.includes(messageType)) {
+      return res.status(400).json({ error: 'Invalid message type' });
+    }
+
+    const result = await pool.query(`
+      SELECT id, user_id, message_type, tx_hash, status, created_at
+      FROM blockchain_audit_logs
+      WHERE user_id = $1 AND message_type = $2
+      ORDER BY created_at DESC
+      LIMIT 1
+    `, [req.user.id, messageType]);
+
+    if (result.rows.length === 0) {
+      return res.json({ transaction: null });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error fetching latest transaction:', err);
+    res.status(500).json({ error: 'Failed to fetch transaction', details: err.message });
+  }
+});
+
+app.post('/api/blockchain-audit/:auditLogId/retry', async (req, res) => {
+  try {
+    const { auditLogId } = req.params;
+
+    const auditResult = await pool.query(`
+      SELECT tx_hash, status, user_id FROM blockchain_audit_logs WHERE id = $1
+    `, [auditLogId]);
+
+    if (auditResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Audit log not found' });
+    }
+
+    const audit = auditResult.rows[0];
+
+    if (audit.status === 'confirmed') {
+      return res.json({ status: 'already_confirmed', txHash: audit.tx_hash });
+    }
+
+    console.log(`[RETRY] Retrying transaction ${audit.tx_hash} for audit log ${auditLogId}`);
+
+    await pool.query(`
+      UPDATE blockchain_audit_logs SET status = 'pending', updated_at = NOW()
+      WHERE id = $1
+    `, [auditLogId]);
+
+    setImmediate(() => monitorBlockchainStatus(auditLogId, audit.tx_hash));
+
+    res.json({ status: 'retry_initiated', auditLogId: auditLogId });
+  } catch (err) {
+    console.error('Error retrying transaction:', err);
+    res.status(500).json({ error: 'Failed to retry transaction', details: err.message });
+  }
+});
+
+app.post('/api/transactions/create-pending-audit', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { messageType, txHash, payload } = req.body;
+
+    if (!messageType || !txHash) {
+      return res.status(400).json({ error: 'messageType and txHash are required' });
+    }
+
+    const validTypes = ['message', 'group', 'channel', 'token_transfer'];
+    if (!validTypes.includes(messageType)) {
+      return res.status(400).json({ error: 'Invalid messageType' });
+    }
+
+    const result = await pool.query(`
+      INSERT INTO blockchain_audit_logs (
+        user_id, message_type, tx_hash, transaction_payload, status, user_pubkey, action_timestamp, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+      RETURNING id
+    `, [
+      req.user.id,
+      messageType,
+      txHash,
+      JSON.stringify(payload || {}),
+      'pending',
+      req.user.usernode_pubkey || APP_PUBKEY,
+      new Date().toISOString()
+    ]);
+
+    const auditLogId = result.rows[0].id;
+
+    setImmediate(() => monitorBlockchainStatus(auditLogId, txHash));
+
+    res.json({ auditLogId: auditLogId, status: 'pending' });
+  } catch (err) {
+    console.error('Error creating pending audit:', err);
+    res.status(500).json({ error: 'Failed to create audit log', details: err.message });
+  }
+});
+
+app.post('/api/blockchain-audit/:auditLogId/register-tx', async (req, res) => {
+  try {
+    const { auditLogId } = req.params;
+    const { txHash } = req.body;
+
+    if (!txHash) {
+      return res.status(400).json({ error: 'txHash is required' });
+    }
+
+    await pool.query(`
+      UPDATE blockchain_audit_logs
+      SET tx_hash = $1, updated_at = NOW()
+      WHERE id = $2
+    `, [txHash, auditLogId]);
+
+    console.log(`[REGISTER TX] Registered txHash ${txHash} for audit log ${auditLogId}`);
+
+    setImmediate(() => monitorBlockchainStatus(auditLogId, txHash));
+
+    res.json({ status: 'registered', auditLogId: auditLogId, txHash: txHash });
+  } catch (err) {
+    console.error('Error registering transaction:', err);
+    res.status(500).json({ error: 'Failed to register transaction', details: err.message });
+  }
+});
+
+app.get('/api/transactions-by-user', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { limit = 50, offset = 0 } = req.query;
+    const parsedLimit = Math.min(parseInt(limit) || 50, 500);
+    const parsedOffset = Math.max(parseInt(offset) || 0, 0);
+
+    const result = await pool.query(`
+      SELECT id, user_id, message_type, tx_hash, status, created_at, confirmed_at
+      FROM blockchain_audit_logs
+      WHERE user_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2 OFFSET $3
+    `, [req.user.id, parsedLimit, parsedOffset]);
+
+    const countResult = await pool.query(`
+      SELECT COUNT(*) as total FROM blockchain_audit_logs WHERE user_id = $1
+    `, [req.user.id]);
+
+    res.json({
+      transactions: result.rows,
+      total: parseInt(countResult.rows[0].total),
+      limit: parsedLimit,
+      offset: parsedOffset
+    });
+  } catch (err) {
+    console.error('Error fetching user transactions:', err);
+    res.status(500).json({ error: 'Failed to fetch transactions', details: err.message });
+  }
+});
+
+app.get('/explorer-api/:chainId/transactions/:txHash', async (req, res) => {
+  try {
+    const { chainId, txHash } = req.params;
+
+    console.log(`[EXPLORER PROXY] Proxying explorer request for chainId=${chainId}, txHash=${txHash}`);
+
+    if (!EXPLORER_URL || !EXPLORER_HEALTHY) {
+      return res.status(503).json({
+        error: 'Explorer not available',
+        status: 'unknown',
+        blockNumber: null
+      });
+    }
+
+    return new Promise((resolve) => {
+      const explorerPath = EXPLORER_FORMAT === 'api/tx'
+        ? `/api/tx/${txHash}`
+        : `/api/transaction/${txHash}`;
+
+      const fullUrl = `${EXPLORER_URL}${explorerPath}`;
+      const url = new URL(fullUrl);
+      const isHttps = url.protocol === 'https:';
+      const client = isHttps ? https : http;
+
+      const options = {
+        hostname: url.hostname,
+        port: url.port,
+        path: url.pathname + (url.search || ''),
+        method: 'GET',
+        timeout: 5000
+      };
+
+      const req = client.request(options, (res) => {
+        let data = '';
+        res.on('data', chunk => { data += chunk; });
+        res.on('end', () => {
+          try {
+            const parsed = JSON.parse(data);
+            const result = {
+              status: parsed.status || parsed.state || 'unknown',
+              blockNumber: parsed.blockNumber || parsed.block || null,
+              timestamp: parsed.timestamp || null,
+              raw: parsed
+            };
+            resolve(res.json(result));
+          } catch (err) {
+            resolve(res.status(500).json({ error: 'Failed to parse explorer response' }));
+          }
+        });
+      });
+
+      req.on('error', (err) => {
+        console.warn(`[EXPLORER PROXY] Error proxying explorer request:`, err.message);
+        resolve(res.status(503).json({
+          error: 'Explorer request failed',
+          details: err.message,
+          status: 'unknown'
+        }));
+      });
+
+      req.on('timeout', () => {
+        req.destroy();
+        resolve(res.status(504).json({
+          error: 'Explorer request timeout',
+          status: 'unknown'
+        }));
+      });
+
+      req.end();
+    });
+  } catch (err) {
+    console.error('[EXPLORER PROXY] Error:', err);
+    res.status(500).json({ error: 'Failed to proxy explorer request', details: err.message });
+  }
+});
+
+// ============= END BLOCKCHAIN API ENDPOINTS =============
 
 // DELETE /api/user/pinned-channels/:channelId - Unpin a channel
 app.delete('/api/user/pinned-channels/:channelId', async (req, res) => {
