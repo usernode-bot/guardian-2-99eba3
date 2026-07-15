@@ -925,6 +925,49 @@
               </div>
             </div>
 
+            <!-- Network Mode (Sub-Accordion) -->
+            <div id="networkModeAccordion" class="space-y-1">
+              <button id="networkModeToggle" onclick="toggleNetworkModeAccordion()" class="w-full flex items-center justify-between px-0 py-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
+                <div class="flex items-center gap-2">
+                  <span>Network Mode</span>
+                  <span id="networkModeHeaderDot" class="inline-block w-2.5 h-2.5 rounded-full bg-gray-400 transition-colors"></span>
+                </div>
+                <svg id="networkModeArrow" class="w-5 h-5 transition-transform duration-200 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                </svg>
+              </button>
+              <div id="networkModeContent" class="hidden pt-2 space-y-2">
+                <div class="space-y-1">
+                  <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400">Operating Mode</label>
+                  <select id="networkModeSelect" onchange="updateNetworkMode(this.value)" class="w-full px-2 py-2 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                    <option value="testnet">Real Testnet (with blockchain)</option>
+                    <option value="devnet">Devnet (database-only, no blockchain)</option>
+                    <option value="mainnet">Mainnet (future)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- RPC Endpoint Config (Sub-Accordion) -->
+            <div id="rpcAccordion" class="space-y-1">
+              <button id="rpcToggle" onclick="toggleRpcAccordion()" class="w-full flex items-center justify-between px-0 py-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
+                <div class="flex items-center gap-2">
+                  <span>RPC Endpoint</span>
+                  <span id="rpcHeaderDot" class="inline-block w-2.5 h-2.5 rounded-full bg-gray-400 transition-colors"></span>
+                </div>
+                <svg id="rpcArrow" class="w-5 h-5 transition-transform duration-200 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                </svg>
+              </button>
+              <div id="rpcContent" class="hidden pt-2 space-y-2">
+                <div class="space-y-1">
+                  <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400">RPC URL</label>
+                  <input id="rpcEndpointInput" type="text" placeholder="http://usernode-node:3000" class="w-full px-2 py-2 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500" />
+                </div>
+                <button onclick="updateRpcEndpoint()" class="w-full px-2 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 rounded-lg text-xs text-white transition">Save RPC Endpoint</button>
+              </div>
+            </div>
+
             <!-- Secrets UI (Sub-Accordion) -->
             <div id="configAccordion" class="space-y-1">
               <button id="configToggle" onclick="toggleConfigAccordion()" class="w-full flex items-center justify-between px-0 py-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
@@ -1285,6 +1328,12 @@
             <span>Send Image</span>
           </div>
         </button>
+        <button id="tokenBtn" onclick="showTokenModal()" class="w-full px-4 py-4 text-left text-zinc-900 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition">
+          <div class="flex items-center gap-3">
+            <span class="text-2xl">💰</span>
+            <span>Send Token</span>
+          </div>
+        </button>
       </div>
     </div>
 
@@ -1312,6 +1361,34 @@
         <button onclick="copyContactAddress()" class="w-full px-4 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-sm text-zinc-900 dark:text-zinc-100">📋 Copy Address</button>
         <button onclick="copyContactLink()" class="w-full px-4 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-sm text-zinc-900 dark:text-zinc-100">🔗 Copy Link</button>
         <button onclick="showQRCodeModal()" class="w-full px-4 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-sm text-zinc-900 dark:text-zinc-100">📱 Generate QR</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Token Transfer Modal -->
+  <div id="tokenTransferModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
+      <div class="flex justify-between items-start">
+        <h2 class="text-xl font-semibold text-zinc-900 dark:text-white">Send Token</h2>
+        <button onclick="hideTokenModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
+      </div>
+      <div class="space-y-4">
+        <div class="space-y-2">
+          <label class="text-sm text-zinc-600 dark:text-zinc-400">Recipient Address</label>
+          <input id="tokenRecipient" type="text" placeholder="ut1..." class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500" />
+        </div>
+        <div class="space-y-2">
+          <label class="text-sm text-zinc-600 dark:text-zinc-400">Amount</label>
+          <input id="tokenAmount" type="number" placeholder="0.00" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500" step="0.01" />
+        </div>
+        <div class="space-y-2">
+          <label class="text-sm text-zinc-600 dark:text-zinc-400">Memo (optional)</label>
+          <input id="tokenMemo" type="text" placeholder="Leave a note..." class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500" />
+        </div>
+      </div>
+      <div class="space-y-2">
+        <button onclick="sendToken()" class="w-full px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 rounded-lg transition text-white font-medium">Send Token</button>
+        <button onclick="hideTokenModal()" class="w-full px-4 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
       </div>
     </div>
   </div>
@@ -9863,6 +9940,150 @@
         }
       }
     });
+
+    // ===== BLOCKCHAIN UI FUNCTIONS =====
+
+    function showTokenModal() {
+      document.getElementById('tokenTransferModal').classList.remove('hidden');
+      document.getElementById('tokenRecipient').value = '';
+      document.getElementById('tokenAmount').value = '';
+      document.getElementById('tokenMemo').value = '';
+      closeAttachmentSheet();
+    }
+
+    function hideTokenModal() {
+      document.getElementById('tokenTransferModal').classList.add('hidden');
+    }
+
+    async function sendToken() {
+      try {
+        const recipient = document.getElementById('tokenRecipient').value.trim();
+        const amount = parseFloat(document.getElementById('tokenAmount').value);
+        const memo = document.getElementById('tokenMemo').value.trim();
+
+        if (!recipient) {
+          showToast('Please enter recipient address', 'error');
+          return;
+        }
+
+        if (isNaN(amount) || amount <= 0) {
+          showToast('Please enter valid amount', 'error');
+          return;
+        }
+
+        const response = await fetch('/api/tokens/send', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-usernode-token': currentUserToken },
+          body: JSON.stringify({ recipientAddress: recipient, amount: amount, memo: memo })
+        });
+
+        const result = await response.json();
+        if (!response.ok) {
+          showToast(`Error: ${result.error}`, 'error');
+          return;
+        }
+
+        showToast(`Token transfer initiated (${result.status})`, 'success');
+        hideTokenModal();
+      } catch (err) {
+        showToast(`Error sending token: ${err.message}`, 'error');
+        console.error('[TOKEN] Send error:', err);
+      }
+    }
+
+    function toggleNetworkModeAccordion() {
+      const content = document.getElementById('networkModeContent');
+      const arrow = document.getElementById('networkModeArrow');
+      const isHidden = content.classList.contains('hidden');
+
+      if (isHidden) {
+        content.classList.remove('hidden');
+        arrow.classList.add('rotate-180');
+      } else {
+        content.classList.add('hidden');
+        arrow.classList.remove('rotate-180');
+      }
+    }
+
+    function toggleRpcAccordion() {
+      const content = document.getElementById('rpcContent');
+      const arrow = document.getElementById('rpcArrow');
+      const isHidden = content.classList.contains('hidden');
+
+      if (isHidden) {
+        content.classList.remove('hidden');
+        arrow.classList.add('rotate-180');
+      } else {
+        content.classList.add('hidden');
+        arrow.classList.remove('rotate-180');
+      }
+    }
+
+    async function updateNetworkMode(mode) {
+      try {
+        const response = await fetch('/api/user/network-mode', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json', 'x-usernode-token': currentUserToken },
+          body: JSON.stringify({ networkMode: mode })
+        });
+
+        const result = await response.json();
+        if (!response.ok) {
+          showToast(`Error: ${result.error}`, 'error');
+          return;
+        }
+
+        showToast(`Network mode set to ${result.networkMode}`, 'success');
+        await updateNetworkModeVisibility();
+      } catch (err) {
+        showToast(`Error updating network mode: ${err.message}`, 'error');
+        console.error('[NETWORK MODE] Error:', err);
+      }
+    }
+
+    async function updateRpcEndpoint() {
+      try {
+        const rpcUrl = document.getElementById('rpcEndpointInput').value.trim();
+
+        if (!rpcUrl) {
+          showToast('Please enter RPC URL', 'error');
+          return;
+        }
+
+        const response = await fetch('/api/config/rpc-endpoint', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json', 'x-usernode-token': currentUserToken },
+          body: JSON.stringify({ rpcUrl: rpcUrl })
+        });
+
+        const result = await response.json();
+        if (!response.ok) {
+          showToast(`Error: ${result.error}`, 'error');
+          return;
+        }
+
+        showToast(`RPC endpoint ${result.health?.reachable ? 'healthy' : 'unreachable'}`, result.health?.reachable ? 'success' : 'warning');
+      } catch (err) {
+        showToast(`Error updating RPC endpoint: ${err.message}`, 'error');
+        console.error('[RPC] Error:', err);
+      }
+    }
+
+    async function updateNetworkModeVisibility() {
+      try {
+        const response = await fetch('/api/active_chain');
+        const chain = await response.json();
+
+        const rpcSection = document.getElementById('rpcAccordion');
+        if (chain.mode === 'testnet') {
+          rpcSection?.classList.remove('hidden');
+        } else {
+          rpcSection?.classList.add('hidden');
+        }
+      } catch (err) {
+        console.error('[VISIBILITY] Error:', err);
+      }
+    }
 
     // ===== WELCOME SCREEN FUNCTIONS =====
 

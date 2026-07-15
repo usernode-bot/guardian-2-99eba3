@@ -48,6 +48,7 @@ const IS_STAGING = process.env.USERNODE_ENV === 'staging';
 let NETWORK_MODE = process.env.NETWORK_MODE && ['testnet', 'real_testnet', 'devnet', 'mainnet'].includes(process.env.NETWORK_MODE)
   ? (process.env.NETWORK_MODE === 'real_testnet' ? 'testnet' : process.env.NETWORK_MODE)
   : 'testnet';
+console.log(`[CONFIG] NETWORK_MODE: ${NETWORK_MODE}${process.env.NETWORK_MODE ? ' (from env)' : ' (using default)'}`);
 
 // Usernode blockchain configuration
 const APP_PUBKEY = process.env.APP_PUBKEY || 'ut1Fww7onqF9LsRSb6d6BozgQWtjNYqQJghYxXmBc8foncb';
@@ -73,9 +74,10 @@ function validateAndConfigureRPC() {
   // If not set or invalid, use intelligent defaults based on environment
   if (!configuredUrl && NETWORK_MODE === 'testnet') {
     if (IS_STAGING) {
-      // In staging, try multiple fallbacks: in-container Usernode, Docker host, localhost
+      // In staging, try multiple fallbacks: in-container Usernode (port 3001), fallback to 3000, Docker host
       const stagingOptions = [
-        'http://usernode-node:3001',      // In-network Usernode service
+        'http://usernode-node:3001',      // In-network Usernode service (staging default)
+        'http://usernode-node:3000',      // Fallback to production port
         'http://host.docker.internal:3001' // Docker desktop host
       ];
       configuredUrl = stagingOptions[0];  // Default to in-network service
@@ -117,7 +119,7 @@ const PEER_SYNC_TIMEOUT_MS = parseInt(process.env.PEER_SYNC_TIMEOUT_MS || '5000'
 let peerSyncCache = new Map(); // Map<userId, { timestamp, peersHours }>
 let peerSyncPromises = new Map(); // Map<userId, Promise> for concurrent request deduplication
 
-async function checkRPCHealth() {
+async function checkRPCHealth(retryCount = 0, maxRetries = 2) {
   // RPC health checks only in testnet mode
   if (NETWORK_MODE !== 'testnet') {
     return { rpcUrl: null, reachable: false, error: 'Devnet or mainnet mode - RPC not used' };
@@ -128,7 +130,7 @@ async function checkRPCHealth() {
   }
 
   const now = Date.now();
-  if (rpcHealthCache && (now - rpcHealthCacheTime) < RPC_HEALTH_CACHE_MS) {
+  if (retryCount === 0 && rpcHealthCache && (now - rpcHealthCacheTime) < RPC_HEALTH_CACHE_MS) {
     return rpcHealthCache;
   }
 
@@ -140,7 +142,7 @@ async function checkRPCHealth() {
 
     const options = {
       hostname: url.hostname,
-      port: url.port,
+      port: url.port || (isHttps ? 443 : 80),
       path: url.pathname,
       method: 'GET',
       timeout: 3000
@@ -153,6 +155,7 @@ async function checkRPCHealth() {
         reachable: res.statusCode >= 200 && res.statusCode < 300,
         responseTime,
         lastChecked: new Date().toISOString(),
+        statusCode: res.statusCode,
         error: null
       };
       rpcHealthCache = result;
@@ -160,14 +163,25 @@ async function checkRPCHealth() {
       resolve(result);
     });
 
-    req.on('error', (err) => {
+    req.on('error', async (err) => {
       const responseTime = Date.now() - startTime;
+      const errorClass = classifyRPCError(err);
+
+      if (retryCount < maxRetries) {
+        console.warn(`[RPC Health] Attempt ${retryCount + 1}/${maxRetries + 1} failed (${errorClass.type}), retrying in 500ms...`);
+        setTimeout(() => {
+          checkRPCHealth(retryCount + 1, maxRetries).then(resolve);
+        }, 500);
+        return;
+      }
+
       const result = {
         rpcUrl: NODE_RPC_URL,
         reachable: false,
         responseTime,
         lastChecked: new Date().toISOString(),
-        error: err.code || err.message
+        error: errorClass.message,
+        errorType: errorClass.type
       };
       rpcHealthCache = result;
       rpcHealthCacheTime = now;
@@ -182,7 +196,8 @@ async function checkRPCHealth() {
         reachable: false,
         responseTime,
         lastChecked: new Date().toISOString(),
-        error: 'ETIMEDOUT'
+        error: 'RPC endpoint timed out (>3s)',
+        errorType: 'ETIMEDOUT'
       };
       rpcHealthCache = result;
       rpcHealthCacheTime = now;
@@ -193,27 +208,48 @@ async function checkRPCHealth() {
   });
 }
 
-// Helper function to classify RPC errors
+// Helper function to classify RPC errors with detailed diagnostics
 function classifyRPCError(err) {
-  if (!err) return { type: 'unknown', message: 'Unknown error' };
+  if (!err) return { type: 'unknown', message: 'Unknown error', diagnostic: null };
 
   const message = err.message || '';
   const code = err.code || '';
+  const urlObj = NODE_RPC_URL ? new URL(NODE_RPC_URL) : null;
 
   if (code === 'ECONNREFUSED' || message.includes('ECONNREFUSED')) {
-    return { type: 'ECONNREFUSED', message: `RPC connection refused at ${NODE_RPC_URL}` };
+    return {
+      type: 'ECONNREFUSED',
+      message: `RPC connection refused at ${NODE_RPC_URL}`,
+      diagnostic: `The RPC service is not running or not accepting connections on ${urlObj?.hostname}:${urlObj?.port || 80}. Verify the service is online.`
+    };
   }
   if (code === 'ENOTFOUND' || message.includes('ENOTFOUND')) {
-    return { type: 'ENOTFOUND', message: `RPC hostname not found: ${NODE_RPC_URL}` };
+    return {
+      type: 'ENOTFOUND',
+      message: `RPC hostname not found: ${NODE_RPC_URL}`,
+      diagnostic: `DNS resolution failed for ${urlObj?.hostname}. Check hostname spelling and DNS configuration.`
+    };
   }
   if (code === 'ETIMEDOUT' || message.includes('ETIMEDOUT')) {
-    return { type: 'ETIMEDOUT', message: `RPC connection timeout: ${NODE_RPC_URL}` };
+    return {
+      type: 'ETIMEDOUT',
+      message: `RPC connection timeout at ${NODE_RPC_URL}`,
+      diagnostic: `Connection attempt took >3 seconds. Check network path to ${urlObj?.hostname} and firewall rules.`
+    };
   }
   if (message.includes('timeout') || code === 'ESOCKETTIMEDOUT') {
-    return { type: 'timeout', message: `RPC request timeout (>10s): ${NODE_RPC_URL}` };
+    return {
+      type: 'timeout',
+      message: `RPC request timeout: ${NODE_RPC_URL}`,
+      diagnostic: `Socket timeout during communication. RPC service may be slow or unresponsive.`
+    };
   }
 
-  return { type: 'unknown', message: message || code || 'Unknown RPC error' };
+  return {
+    type: 'unknown',
+    message: message || code || 'Unknown RPC error',
+    diagnostic: `Error code: ${code}`
+  };
 }
 
 // Helper function to get RPC endpoint from database
@@ -443,7 +479,9 @@ async function validateWalletForMode(networkMode, userId, userWalletPubkey) {
       console.error('[WALLET-VALIDATION] RPC endpoint not configured in testnet mode');
       return {
         valid: false,
-        error: 'Testnet RPC endpoint not configured. Contact administrator.'
+        error: 'Testnet RPC endpoint not configured. Contact administrator.',
+        rpcEndpoint: null,
+        diagnostic: 'NODE_RPC_URL environment variable is not set. Configure it in platform Secrets.'
       };
     }
 
@@ -451,13 +489,18 @@ async function validateWalletForMode(networkMode, userId, userWalletPubkey) {
     const health = await checkRPCHealth();
     if (!health.reachable) {
       console.error('[WALLET-VALIDATION] RPC endpoint unreachable:', health.error);
+      const errorClassification = health.errorType ? classifyRPCError({ code: health.errorType, message: health.error }) : { diagnostic: null };
       return {
         valid: false,
-        error: `Cannot reach testnet RPC endpoint. ${health.error || 'Network may be unavailable.'}`
+        error: `Cannot reach testnet RPC endpoint. ${health.error || 'Network may be unavailable.'}`,
+        rpcEndpoint: NODE_RPC_URL,
+        diagnostic: errorClassification.diagnostic,
+        errorType: health.errorType,
+        responseTime: health.responseTime
       };
     }
 
-    return { valid: true, error: null };
+    return { valid: true, error: null, rpcEndpoint: NODE_RPC_URL, diagnostic: null };
   }
 
   // Mainnet: wallet optional (future support)
@@ -6183,6 +6226,464 @@ app.post('/api/user/pinned-channels/:channelId', async (req, res) => {
     res.status(500).json({ error: 'Failed to pin channel' });
   }
 });
+
+// ============= BLOCKCHAIN API ENDPOINTS =============
+
+app.put('/api/user/network-mode', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { networkMode } = req.body;
+    if (!['devnet', 'testnet', 'real_testnet', 'mainnet'].includes(networkMode)) {
+      return res.status(400).json({ error: 'Invalid input: networkMode must be "testnet", "devnet", or "mainnet"' });
+    }
+
+    const storedMode = networkMode === 'real_testnet' ? 'testnet' : networkMode;
+    const skipSignatureValue = storedMode === 'devnet' ? true : false;
+
+    await pool.query(
+      `UPDATE users SET network_mode = $1, skip_signature_in_devnet = $2 WHERE id = $3`,
+      [storedMode, skipSignatureValue, req.user.id]
+    );
+    res.json({ networkMode: storedMode, status: 'updated' });
+  } catch (err) {
+    console.error('Error updating network-mode:', err);
+    res.status(500).json({ error: 'Failed to update network-mode' });
+  }
+});
+
+app.put('/api/config/network-mode', async (req, res) => {
+  try {
+    const { networkMode } = req.body;
+    if (!['devnet', 'testnet', 'real_testnet', 'mainnet'].includes(networkMode)) {
+      return res.status(400).json({ error: 'Invalid networkMode' });
+    }
+
+    const storedMode = networkMode === 'real_testnet' ? 'testnet' : networkMode;
+    NETWORK_MODE = storedMode;
+
+    await pool.query(
+      `INSERT INTO config_state (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2`,
+      ['NETWORK_MODE', storedMode]
+    );
+
+    res.json({ networkMode: storedMode, status: 'updated' });
+  } catch (err) {
+    console.error('Error updating config network-mode:', err);
+    res.status(500).json({ error: 'Failed to update config' });
+  }
+});
+
+app.get('/api/active_chain', async (req, res) => {
+  try {
+    res.json({
+      chain: NETWORK_MODE === 'testnet' ? 'testnet' : NETWORK_MODE === 'devnet' ? 'devnet' : 'unknown',
+      mode: NETWORK_MODE,
+      rpcUrl: NODE_RPC_URL || null,
+      appPubkey: APP_PUBKEY
+    });
+  } catch (err) {
+    console.error('Error getting active chain:', err);
+    res.status(500).json({ error: 'Failed to get active chain' });
+  }
+});
+
+app.get('/api/health/rpc', async (req, res) => {
+  try {
+    const health = await checkRPCHealth();
+    res.json(health);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to check RPC health', details: err.message });
+  }
+});
+
+app.put('/api/config/rpc-endpoint', async (req, res) => {
+  try {
+    const { rpcUrl } = req.body;
+
+    if (!rpcUrl) {
+      return res.status(400).json({ error: 'RPC URL is required' });
+    }
+
+    try {
+      new URL(rpcUrl);
+    } catch (err) {
+      return res.status(400).json({ error: 'Invalid RPC URL format', details: err.message });
+    }
+
+    NODE_RPC_URL = rpcUrl;
+
+    await pool.query(
+      `INSERT INTO config_state (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2`,
+      ['NODE_RPC_URL', rpcUrl]
+    );
+
+    const health = await checkRPCHealth();
+
+    res.json({
+      rpcUrl: rpcUrl,
+      status: health.reachable ? 'healthy' : 'unreachable',
+      health: health
+    });
+  } catch (err) {
+    console.error('Error updating RPC endpoint:', err);
+    res.status(500).json({ error: 'Failed to update RPC endpoint', details: err.message });
+  }
+});
+
+app.post('/api/tokens/send', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { recipientAddress, amount, memo } = req.body;
+
+    if (!recipientAddress || !amount) {
+      return res.status(400).json({ error: 'Recipient address and amount are required' });
+    }
+
+    if (isNaN(amount) || amount <= 0) {
+      return res.status(400).json({ error: 'Amount must be a positive number' });
+    }
+
+    if (NETWORK_MODE === 'devnet') {
+      const demo = {
+        success: true,
+        txHash: `demo_token_${Date.now()}`,
+        amount: amount,
+        recipient: recipientAddress,
+        mode: 'devnet',
+        message: 'Demo token transfer (no actual transaction)'
+      };
+
+      return res.json(demo);
+    }
+
+    if (NETWORK_MODE === 'testnet') {
+      const payload = {
+        sender: req.user.usernode_pubkey || APP_PUBKEY,
+        recipient: recipientAddress,
+        amount: amount,
+        memo: memo || null,
+        timestamp: new Date().toISOString()
+      };
+
+      console.log(`[TOKEN SEND] User ${req.user.id} requesting token transfer to ${recipientAddress} for ${amount}`);
+
+      const txHash = `pending_token_${Date.now()}`;
+
+      try {
+        const auditRes = await pool.query(`
+          INSERT INTO blockchain_audit_logs (
+            user_id, message_type, tx_hash, transaction_payload, status, user_pubkey, action_timestamp, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+          RETURNING id
+        `, [
+          req.user.id,
+          'token_transfer',
+          txHash,
+          JSON.stringify(payload),
+          'pending',
+          req.user.usernode_pubkey || APP_PUBKEY,
+          new Date().toISOString()
+        ]);
+
+        const auditLogId = auditRes.rows[0]?.id;
+
+        if (auditLogId) {
+          setImmediate(() => monitorBlockchainStatus(auditLogId, txHash));
+        }
+      } catch (auditErr) {
+        console.error('[TOKEN SEND] Error creating audit log:', auditErr);
+      }
+
+      return res.json({
+        success: true,
+        txHash: txHash,
+        amount: amount,
+        recipient: recipientAddress,
+        status: 'pending',
+        mode: 'testnet'
+      });
+    }
+
+    res.status(400).json({ error: 'Invalid network mode' });
+  } catch (err) {
+    console.error('[TOKEN SEND] Error:', err);
+    res.status(500).json({ error: 'Failed to send tokens', details: err.message });
+  }
+});
+
+app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
+  try {
+    const { auditLogId } = req.params;
+
+    const result = await pool.query(`
+      SELECT id, user_id, message_type, tx_hash, status, confirmed_at, error_message, created_at
+      FROM blockchain_audit_logs
+      WHERE id = $1
+    `, [auditLogId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Audit log not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error fetching blockchain audit log:', err);
+    res.status(500).json({ error: 'Failed to fetch audit log', details: err.message });
+  }
+});
+
+app.get('/api/user/latest-transaction/:messageType', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { messageType } = req.params;
+    const validTypes = ['message', 'group', 'channel', 'token_transfer'];
+
+    if (!validTypes.includes(messageType)) {
+      return res.status(400).json({ error: 'Invalid message type' });
+    }
+
+    const result = await pool.query(`
+      SELECT id, user_id, message_type, tx_hash, status, created_at
+      FROM blockchain_audit_logs
+      WHERE user_id = $1 AND message_type = $2
+      ORDER BY created_at DESC
+      LIMIT 1
+    `, [req.user.id, messageType]);
+
+    if (result.rows.length === 0) {
+      return res.json({ transaction: null });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error fetching latest transaction:', err);
+    res.status(500).json({ error: 'Failed to fetch transaction', details: err.message });
+  }
+});
+
+app.post('/api/blockchain-audit/:auditLogId/retry', async (req, res) => {
+  try {
+    const { auditLogId } = req.params;
+
+    const auditResult = await pool.query(`
+      SELECT tx_hash, status, user_id FROM blockchain_audit_logs WHERE id = $1
+    `, [auditLogId]);
+
+    if (auditResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Audit log not found' });
+    }
+
+    const audit = auditResult.rows[0];
+
+    if (audit.status === 'confirmed') {
+      return res.json({ status: 'already_confirmed', txHash: audit.tx_hash });
+    }
+
+    console.log(`[RETRY] Retrying transaction ${audit.tx_hash} for audit log ${auditLogId}`);
+
+    await pool.query(`
+      UPDATE blockchain_audit_logs SET status = 'pending', updated_at = NOW()
+      WHERE id = $1
+    `, [auditLogId]);
+
+    setImmediate(() => monitorBlockchainStatus(auditLogId, audit.tx_hash));
+
+    res.json({ status: 'retry_initiated', auditLogId: auditLogId });
+  } catch (err) {
+    console.error('Error retrying transaction:', err);
+    res.status(500).json({ error: 'Failed to retry transaction', details: err.message });
+  }
+});
+
+app.post('/api/transactions/create-pending-audit', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { messageType, txHash, payload } = req.body;
+
+    if (!messageType || !txHash) {
+      return res.status(400).json({ error: 'messageType and txHash are required' });
+    }
+
+    const validTypes = ['message', 'group', 'channel', 'token_transfer'];
+    if (!validTypes.includes(messageType)) {
+      return res.status(400).json({ error: 'Invalid messageType' });
+    }
+
+    const result = await pool.query(`
+      INSERT INTO blockchain_audit_logs (
+        user_id, message_type, tx_hash, transaction_payload, status, user_pubkey, action_timestamp, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+      RETURNING id
+    `, [
+      req.user.id,
+      messageType,
+      txHash,
+      JSON.stringify(payload || {}),
+      'pending',
+      req.user.usernode_pubkey || APP_PUBKEY,
+      new Date().toISOString()
+    ]);
+
+    const auditLogId = result.rows[0].id;
+
+    setImmediate(() => monitorBlockchainStatus(auditLogId, txHash));
+
+    res.json({ auditLogId: auditLogId, status: 'pending' });
+  } catch (err) {
+    console.error('Error creating pending audit:', err);
+    res.status(500).json({ error: 'Failed to create audit log', details: err.message });
+  }
+});
+
+app.post('/api/blockchain-audit/:auditLogId/register-tx', async (req, res) => {
+  try {
+    const { auditLogId } = req.params;
+    const { txHash } = req.body;
+
+    if (!txHash) {
+      return res.status(400).json({ error: 'txHash is required' });
+    }
+
+    await pool.query(`
+      UPDATE blockchain_audit_logs
+      SET tx_hash = $1, updated_at = NOW()
+      WHERE id = $2
+    `, [txHash, auditLogId]);
+
+    console.log(`[REGISTER TX] Registered txHash ${txHash} for audit log ${auditLogId}`);
+
+    setImmediate(() => monitorBlockchainStatus(auditLogId, txHash));
+
+    res.json({ status: 'registered', auditLogId: auditLogId, txHash: txHash });
+  } catch (err) {
+    console.error('Error registering transaction:', err);
+    res.status(500).json({ error: 'Failed to register transaction', details: err.message });
+  }
+});
+
+app.get('/api/transactions-by-user', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { limit = 50, offset = 0 } = req.query;
+    const parsedLimit = Math.min(parseInt(limit) || 50, 500);
+    const parsedOffset = Math.max(parseInt(offset) || 0, 0);
+
+    const result = await pool.query(`
+      SELECT id, user_id, message_type, tx_hash, status, created_at, confirmed_at
+      FROM blockchain_audit_logs
+      WHERE user_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2 OFFSET $3
+    `, [req.user.id, parsedLimit, parsedOffset]);
+
+    const countResult = await pool.query(`
+      SELECT COUNT(*) as total FROM blockchain_audit_logs WHERE user_id = $1
+    `, [req.user.id]);
+
+    res.json({
+      transactions: result.rows,
+      total: parseInt(countResult.rows[0].total),
+      limit: parsedLimit,
+      offset: parsedOffset
+    });
+  } catch (err) {
+    console.error('Error fetching user transactions:', err);
+    res.status(500).json({ error: 'Failed to fetch transactions', details: err.message });
+  }
+});
+
+app.get('/explorer-api/:chainId/transactions/:txHash', async (req, res) => {
+  try {
+    const { chainId, txHash } = req.params;
+
+    console.log(`[EXPLORER PROXY] Proxying explorer request for chainId=${chainId}, txHash=${txHash}`);
+
+    if (!EXPLORER_URL || !EXPLORER_HEALTHY) {
+      return res.status(503).json({
+        error: 'Explorer not available',
+        status: 'unknown',
+        blockNumber: null
+      });
+    }
+
+    return new Promise((resolve) => {
+      const explorerPath = EXPLORER_FORMAT === 'api/tx'
+        ? `/api/tx/${txHash}`
+        : `/api/transaction/${txHash}`;
+
+      const fullUrl = `${EXPLORER_URL}${explorerPath}`;
+      const url = new URL(fullUrl);
+      const isHttps = url.protocol === 'https:';
+      const client = isHttps ? https : http;
+
+      const options = {
+        hostname: url.hostname,
+        port: url.port,
+        path: url.pathname + (url.search || ''),
+        method: 'GET',
+        timeout: 5000
+      };
+
+      const req = client.request(options, (res) => {
+        let data = '';
+        res.on('data', chunk => { data += chunk; });
+        res.on('end', () => {
+          try {
+            const parsed = JSON.parse(data);
+            const result = {
+              status: parsed.status || parsed.state || 'unknown',
+              blockNumber: parsed.blockNumber || parsed.block || null,
+              timestamp: parsed.timestamp || null,
+              raw: parsed
+            };
+            resolve(res.json(result));
+          } catch (err) {
+            resolve(res.status(500).json({ error: 'Failed to parse explorer response' }));
+          }
+        });
+      });
+
+      req.on('error', (err) => {
+        console.warn(`[EXPLORER PROXY] Error proxying explorer request:`, err.message);
+        resolve(res.status(503).json({
+          error: 'Explorer request failed',
+          details: err.message,
+          status: 'unknown'
+        }));
+      });
+
+      req.on('timeout', () => {
+        req.destroy();
+        resolve(res.status(504).json({
+          error: 'Explorer request timeout',
+          status: 'unknown'
+        }));
+      });
+
+      req.end();
+    });
+  } catch (err) {
+    console.error('[EXPLORER PROXY] Error:', err);
+    res.status(500).json({ error: 'Failed to proxy explorer request', details: err.message });
+  }
+});
+
+// ============= END BLOCKCHAIN API ENDPOINTS =============
 
 // DELETE /api/user/pinned-channels/:channelId - Unpin a channel
 app.delete('/api/user/pinned-channels/:channelId', async (req, res) => {
