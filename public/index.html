@@ -6467,7 +6467,7 @@
 
       if (msg.type === 'text') {
         const senderNameLine = shouldShowSenderName ? `<div class="text-xs opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'} mb-1 cursor-pointer hover:opacity-100" onclick="event.stopPropagation(); showUserProfileModal(${msg.senderId})">${msg.senderUsername}</div>` : '';
-        const bubbleClasses = isMobile ? 'px-3 py-1.5 rounded-xl text-sm' : 'px-4 py-2 rounded-2xl text-base';
+        const bubbleClasses = isMobile ? 'px-3 py-1.5 rounded-xl text-xs' : 'px-4 py-2 rounded-2xl text-sm';
         return `
           <div class="flex ${alignClass} ${marginClass}" data-message-id="${msg.id}" onclick="showDeleteMessageModal(${msg.id})">
             <div class="max-w-xs ${bubbleClasses} ${baseClass} message-bubble cursor-pointer hover:opacity-90 transition">
@@ -6496,13 +6496,13 @@
         const c = msg.content;
         const memoLine = c.memo && c.memo !== 'No memo' ? `<div class="text-xs mt-1 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'}">${c.memo}</div>` : '';
         const statusIcon = c.status === 'confirmed' ? '✓' : '⏳';
-        const bubbleClasses = isMobile ? 'px-2.5 py-1.5 rounded-lg text-sm' : 'px-3 py-2 rounded-2xl text-base';
+        const bubbleClasses = isMobile ? 'px-2.5 py-1.5 rounded-lg text-xs' : 'px-3 py-2 rounded-2xl text-sm';
         const senderNameLine = shouldShowSenderName ? `<div class="text-xs opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'} mb-1 cursor-pointer hover:opacity-100" onclick="event.stopPropagation(); showUserProfileModal(${msg.senderId})">${msg.senderUsername}</div>` : '';
         return `
           <div class="flex ${alignClass} ${marginClass}" data-message-id="${msg.id}" onclick="showDeleteMessageModal(${msg.id})">
             <div class="max-w-xs ${bubbleClasses} ${baseClass} border-2 border-yellow-500/40 message-bubble cursor-pointer hover:opacity-90 transition">
               ${senderNameLine}
-              <div class="font-bold ${isMobile ? 'text-base' : 'text-lg'} flex items-center justify-between gap-2">
+              <div class="font-bold ${isMobile ? 'text-sm' : 'text-base'} flex items-center justify-between gap-2">
                 <span>💰 ${c.amount} tokens</span>
                 <span class="text-xs">${statusIcon}</span>
               </div>
