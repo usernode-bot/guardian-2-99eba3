@@ -751,7 +751,7 @@
       <!-- Wallet Connection Section -->
 
       <!-- Continue Button -->
-      <button id="connectionHubContinueBtn" class="continue-btn" onclick="proceedFromConnectionHub()" disabled>Continue</button>
+      <button id="connectionHubContinueBtn" class="continue-btn" onclick="proceedFromConnectionHub()" disabled>Select a network to continue</button>
     </div>
   </div>
 
@@ -2506,7 +2506,7 @@
         layout: stored.layout || 'comfortable',
         network: stored.network || 'testnet',
         view_mode: stored.view_mode || 'web',
-        networkMode: stored.networkMode || 'testnet',
+        networkMode: stored.networkMode || null,
         skipSignatureInDevnet: stored.skipSignatureInDevnet || false,
       };
     }
@@ -2528,9 +2528,12 @@
       updateLayoutButtons(settings.layout);
 
       // Initialize network mode selector and RPC visibility
-      const networkMode = settings.networkMode || 'testnet';
-      document.getElementById('networkModeSelect').value = networkMode;
-      updateNetworkModeVisibility(networkMode);
+      // Only set selector value if user has already made a selection (networkMode is not null)
+      const networkMode = settings.networkMode || null;
+      if (networkMode) {
+        document.getElementById('networkModeSelect').value = networkMode;
+        updateNetworkModeVisibility(networkMode);
+      }
 
       loadConfigState();
     }
@@ -3993,6 +3996,17 @@
       const isSyncing = connectionHubNetworkSyncing || connectionHubWalletConnecting;
 
       continueBtn.disabled = !(networkSelected && walletConnected) || isSyncing;
+
+      // Update button text based on state
+      if (!networkSelected) {
+        continueBtn.textContent = 'Select a network to continue';
+      } else if (!walletConnected) {
+        continueBtn.textContent = 'Connect wallet to continue';
+      } else if (isSyncing) {
+        continueBtn.textContent = 'Syncing...';
+      } else {
+        continueBtn.textContent = 'Continue';
+      }
     }
 
     function showConnectionHub() {
@@ -4144,6 +4158,10 @@
       const settings = loadSettings();
       settings.network = 'real_testnet';
       settings.view_mode = viewMode;
+      // Sync networkMode from API response (could be null if user hasn't selected yet)
+      if (user.networkMode) {
+        settings.networkMode = user.networkMode;
+      }
       saveSettings(settings);
       document.getElementById('sidebarUsername').textContent = user.username + (user.verified ? ' ✓' : '');
       document.getElementById('sidebarWallet').textContent = user.usernode_pubkey || 'No wallet linked';
