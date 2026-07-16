@@ -1909,7 +1909,7 @@ app.get('/api/user', async (req, res) => {
     const created_at = userRes.rows[0]?.created_at || null;
     const bio = userRes.rows[0]?.bio || null;
     const skip_signature_in_devnet = userRes.rows[0]?.skip_signature_in_devnet || false;
-    const network_mode = userRes.rows[0]?.network_mode || 'testnet';
+    const network_mode = userRes.rows[0]?.network_mode ?? null;
     res.json({
       id: req.user.id,
       username: req.user.username,
@@ -7632,7 +7632,7 @@ async function start() {
     try {
       console.log('[Migration] Adding network_mode column to users table...');
       await pool.query(`
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS network_mode VARCHAR(50) DEFAULT 'testnet'
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS network_mode VARCHAR(50) DEFAULT NULL
       `);
       console.log('[Migration] ✅ network_mode column migration completed');
     } catch (err) {
@@ -7655,16 +7655,19 @@ async function start() {
       throw err;
     }
 
-    // Migrate existing users with NULL network_mode to testnet default (idempotent migration)
+    // Allow NULL network_mode to indicate user has not made a selection (idempotent migration)
     try {
-      console.log('[Migration] Migrating NULL network_mode values to testnet...');
+      console.log('[Migration] Setting network_mode default to NULL...');
       await pool.query(`
-        UPDATE users SET network_mode = 'testnet' WHERE network_mode IS NULL
+        ALTER TABLE users ALTER COLUMN network_mode SET DEFAULT NULL
       `);
-      console.log('[Migration] ✅ network_mode NULL value migration completed');
+      console.log('[Migration] ✅ network_mode default changed to NULL');
     } catch (err) {
-      console.error('[Migration] ❌ ERROR migrating network_mode NULL values:', err.message);
-      throw err;
+      if (err.code === '42P07' || err.message.includes('already exists')) {
+        console.log('[Migration] ⚠️  network_mode default already NULL (idempotent)');
+      } else {
+        console.error('[Migration] ⚠️  Could not set NULL default:', err.message);
+      }
     }
 
     // Update skip_signature_in_devnet default from FALSE to TRUE (idempotent migration)
