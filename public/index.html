@@ -10168,9 +10168,9 @@
         let mode = networkMode;
         // If no mode passed, try to fetch from API
         if (!mode) {
-          const response = await fetch('/api/active_chain');
+          const response = await fetch('/api/active_chain', { headers });
           const chain = await response.json();
-          mode = chain.mode;
+          mode = chain.networkMode;
         }
 
         const rpcWrapper = document.getElementById('rpcAccordionWrapper');

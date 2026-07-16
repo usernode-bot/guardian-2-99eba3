@@ -6279,8 +6279,8 @@ app.put('/api/config/network-mode', async (req, res) => {
 app.get('/api/active_chain', async (req, res) => {
   try {
     res.json({
-      chain: NETWORK_MODE === 'testnet' ? 'testnet' : NETWORK_MODE === 'devnet' ? 'devnet' : 'unknown',
-      mode: NETWORK_MODE,
+      chainId: NETWORK_MODE === 'testnet' ? 'testnet' : NETWORK_MODE === 'devnet' ? 'devnet' : 'unknown',
+      networkMode: NETWORK_MODE,
       rpcUrl: NODE_RPC_URL || null,
       appPubkey: APP_PUBKEY
     });
