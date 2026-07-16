@@ -6690,6 +6690,14 @@ app.get('/api/transactions-by-user', async (req, res) => {
     }));
 
     console.log(`[API-TRANSACTIONS] Returning ${transactions.length} transactions to frontend`);
+    if (transactions.length > 0) {
+      console.log(`[API-TRANSACTIONS] First transaction structure:`, {
+        id: transactions[0].id,
+        networkOrigin: transactions[0].networkOrigin,
+        blockchainStatus: transactions[0].blockchainStatus,
+        txHash: transactions[0].txHash
+      });
+    }
     res.json({
       transactions: transactions,
       total: parseInt(countResult.rows[0].total),
