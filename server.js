@@ -5341,7 +5341,7 @@ app.get('/api/activity', async (req, res) => {
 
     // Get blockchain audit logs for this user (token transfers and group operations)
     const { rows } = await pool.query(`
-      SELECT id, user_id, message_type, tx_hash, status, error_message, confirmed_at, created_at, transaction_payload
+      SELECT id, user_id, message_type, tx_hash, status, error_message, confirmed_at, created_at, network_origin, transaction_payload
       FROM blockchain_audit_logs
       WHERE user_id = $1 AND message_type IN ('token_transfer', 'group_create', 'group_add_members', 'group_remove_member', 'group_update', 'group_delete', 'group_leave')
       ORDER BY created_at DESC
@@ -5369,6 +5369,7 @@ app.get('/api/activity', async (req, res) => {
         errorMessage: r.error_message || null,
         confirmedAt: r.confirmed_at || null,
         createdAt: r.created_at,
+        networkOrigin: r.network_origin,
         payload: payload
       };
     });
@@ -6459,6 +6460,13 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
     // Format response with blockchainStatus object for consistency with Activity list
     const responseData = {
       ...row,
+      // Add camelCase aliases for frontend compatibility
+      createdAt: row.created_at,
+      confirmedAt: row.confirmed_at,
+      errorMessage: row.error_message,
+      txHash: row.tx_hash,
+      messageType: row.message_type,
+      networkOrigin: row.network_origin,
       explorerUrl: explorerUrl,
       blockchainStatus: {
         status: row.status,
@@ -6654,6 +6662,12 @@ app.get('/api/transactions-by-user', async (req, res) => {
 
     const transactions = result.rows.map(row => ({
       ...row,
+      // Add camelCase aliases for frontend compatibility
+      createdAt: row.created_at,
+      confirmedAt: row.confirmed_at,
+      txHash: row.tx_hash,
+      messageType: row.message_type,
+      networkOrigin: row.network_origin,
       blockchainStatus: {
         ...row.blockchain_status,
         explorerUrl: getExplorerUrl(row.tx_hash)
