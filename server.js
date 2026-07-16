@@ -8537,8 +8537,8 @@ async function start() {
               };
 
           const auditResult = await pool.query(`
-            INSERT INTO blockchain_audit_logs (user_id, message_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, 'confirmed', $6, $7, $8, $9, $10, $10)
+            INSERT INTO blockchain_audit_logs (user_id, message_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, network_origin, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, 'confirmed', $6, $7, $8, $9, 'testnet', $10, $10)
             ON CONFLICT DO NOTHING
             RETURNING id
           `, [msg.sender, messageId, messageType, txHash, JSON.stringify(transactionPayload), msgTime, contentHash, dmUserPubkeyMap[msg.sender], msgTime, msgTime]);
@@ -8549,6 +8549,67 @@ async function start() {
               UPDATE messages SET blockchain_audit_log_id = $1 WHERE id = $2
             `, [auditResult.rows[0].id, messageId]);
           }
+        }
+      }
+
+      // Seed additional testnet transactions for the Activity tab testing
+      // Create pending and confirmed testnet transactions
+      const testnetTxTime = new Date(Date.now() - 600000); // 10 minutes ago
+      const testnetTransactions = [
+        { user: alice, type: 'message', status: 'confirmed', timeOffset: 0 },
+        { user: alice, type: 'message', status: 'pending', timeOffset: 60000 },
+        { user: bob, type: 'message', status: 'confirmed', timeOffset: 120000 },
+        { user: bob, type: 'token_transfer', status: 'confirmed', timeOffset: 180000 }
+      ];
+
+      for (const tx of testnetTransactions) {
+        const txTime = new Date(testnetTxTime.getTime() + tx.timeOffset);
+        const txHashValue = 'ut1testnet-' + tx.type + '-' + tx.user + '-' + txTime.getTime();
+        const contentHashValue = 'hash-' + tx.user + '-' + txTime.getTime();
+
+        // Create placeholder message if needed
+        let messageId = null;
+        if (tx.type === 'message') {
+          const msgResult = await pool.query(`
+            INSERT INTO messages (conversation_id, sender_id, type, content, blockchain_recorded, created_at)
+            VALUES ($1, $2, 'text', $3, true, $4)
+            ON CONFLICT DO NOTHING
+            RETURNING id
+          `, [convId, tx.user, JSON.stringify({ text: '[Staging] Testnet message ' + txTime.toISOString() }), txTime]);
+          if (msgResult.rows.length > 0) {
+            messageId = msgResult.rows[0].id;
+          }
+        }
+
+        // Create testnet transaction audit log
+        const transactionPayload = tx.type === 'token_transfer'
+          ? { type: 'token_transfer', amount: 50, recipient: tx.user === alice ? bob : alice, timestamp: txTime.toISOString() }
+          : { type: 'message', messageId: messageId, timestamp: txTime.toISOString() };
+
+        const auditResult = await pool.query(`
+          INSERT INTO blockchain_audit_logs (user_id, message_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, network_origin, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'testnet', $11, $11)
+          ON CONFLICT DO NOTHING
+          RETURNING id
+        `, [
+          tx.user,
+          messageId,
+          tx.type,
+          tx.status === 'confirmed' ? txHashValue : null,
+          JSON.stringify(transactionPayload),
+          tx.status,
+          tx.status === 'confirmed' ? txTime : null,
+          contentHashValue,
+          dmUserPubkeyMap[tx.user],
+          txTime,
+          txTime
+        ]);
+
+        // Update message with audit log reference if it exists
+        if (messageId && auditResult.rows.length > 0) {
+          await pool.query(`
+            UPDATE messages SET blockchain_audit_log_id = $1 WHERE id = $2
+          `, [auditResult.rows[0].id, messageId]);
         }
       }
 
