@@ -6458,8 +6458,21 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
     }
 
     const row = result.rows[0];
-    row.explorerUrl = getExplorerUrl(row.tx_hash);
-    res.json(row);
+    const explorerUrl = getExplorerUrl(row.tx_hash);
+
+    // Format response with blockchainStatus object for consistency with Activity list
+    const responseData = {
+      ...row,
+      explorerUrl: explorerUrl,
+      blockchainStatus: {
+        status: row.status,
+        txHash: row.tx_hash,
+        networkOrigin: row.network_origin,
+        explorerUrl: explorerUrl
+      }
+    };
+
+    res.json(responseData);
   } catch (err) {
     console.error('Error fetching blockchain audit log:', err);
     res.status(500).json({ error: 'Failed to fetch audit log', details: err.message });
