@@ -5246,8 +5246,9 @@
               signatureAttempt: signatureAttempt
             });
 
-            // Call wallet with timeout using connected address
-            const walletAddressToUse = connectedWalletAddress || appPubkey;
+            // Call wallet with timeout using user's wallet address
+            const userWallet = currentUser?.usernode_pubkey;
+            const walletAddressToUse = connectedWalletAddress || userWallet;
             const bridgePromise = window.sendTransaction(
               walletAddressToUse,
               1,
