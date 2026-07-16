@@ -1487,14 +1487,21 @@
 
   <!-- Message Options Menu -->
   <!-- Delete Message Modal -->
-  <div id="deleteMessageModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4" onclick="closeDeleteMessageModal()">
+  <!-- Message Details Modal -->
+  <div id="messageDetailsModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4" onclick="closeMessageDetailsModal()">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4" onclick="event.stopPropagation()">
-      <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Delete this message?</h2>
-      <p class="text-sm text-zinc-600 dark:text-zinc-400">This message will be deleted from your view. The other person will still see it.</p>
-      <div class="flex gap-2">
-        <button onclick="closeDeleteMessageModal()" class="flex-1 px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
-        <button onclick="deleteMessage()" class="flex-1 px-3 py-2 bg-red-600 hover:bg-red-700 dark:hover:bg-red-500 text-white rounded-lg transition font-medium">Delete for me</button>
+      <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Message details</h2>
+      <div class="space-y-3">
+        <div>
+          <p class="text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">Sent at</p>
+          <p class="text-sm text-zinc-900 dark:text-zinc-100 font-mono" id="messageTime">—</p>
+        </div>
+        <div>
+          <p class="text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">Blockchain hash</p>
+          <p class="text-sm text-zinc-900 dark:text-zinc-100 font-mono break-all" id="messageHash">—</p>
+        </div>
       </div>
+      <button onclick="closeMessageDetailsModal()" class="w-full px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-zinc-900 dark:text-zinc-100 font-medium">Close</button>
     </div>
   </div>
 
@@ -6467,9 +6474,9 @@
 
       if (msg.type === 'text') {
         const senderNameLine = shouldShowSenderName ? `<div class="text-xs opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'} mb-1 cursor-pointer hover:opacity-100" onclick="event.stopPropagation(); showUserProfileModal(${msg.senderId})">${msg.senderUsername}</div>` : '';
-        const bubbleClasses = isMobile ? 'px-3 py-1.5 rounded-xl text-sm' : 'px-4 py-2 rounded-2xl text-base';
+        const bubbleClasses = isMobile ? 'px-3 py-1.5 rounded-xl text-xs' : 'px-4 py-2 rounded-2xl text-sm';
         return `
-          <div class="flex ${alignClass} ${marginClass}" data-message-id="${msg.id}" onclick="showDeleteMessageModal(${msg.id})">
+          <div class="flex ${alignClass} ${marginClass}" data-message-id="${msg.id}" onclick="showMessageDetailsModal(${msg.id}, '${msg.createdAt}', '${msg.blockchainAuditLogId || ''}')">
             <div class="max-w-xs ${bubbleClasses} ${baseClass} message-bubble cursor-pointer hover:opacity-90 transition">
               ${senderNameLine}
               <div>${msg.content.text}</div>
@@ -6483,7 +6490,7 @@
         const senderNameLine = shouldShowSenderName ? `<div class="text-xs px-4 py-2 opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'} cursor-pointer hover:opacity-100" onclick="event.stopPropagation(); showUserProfileModal(${msg.senderId})">${msg.senderUsername}</div>` : '';
         const borderRadius = isMobile ? 'rounded-lg' : 'rounded-2xl';
         return `
-          <div class="flex ${alignClass} ${marginClass}" data-message-id="${msg.id}" onclick="showDeleteMessageModal(${msg.id})">
+          <div class="flex ${alignClass} ${marginClass}" data-message-id="${msg.id}" onclick="showMessageDetailsModal(${msg.id}, '${msg.createdAt}', '${msg.blockchainAuditLogId || ''}')">
             <div class="max-w-xs ${borderRadius} overflow-hidden ${baseClass} cursor-pointer hover:opacity-90 transition">
               <img src="${msg.content.imageUrl}" alt="Message image" class="max-w-xs cursor-pointer hover:opacity-80 transition" onclick="event.stopPropagation(); showLightbox('${msg.content.imageUrl}')">
               ${senderNameLine}
@@ -6496,13 +6503,13 @@
         const c = msg.content;
         const memoLine = c.memo && c.memo !== 'No memo' ? `<div class="text-xs mt-1 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'}">${c.memo}</div>` : '';
         const statusIcon = c.status === 'confirmed' ? '✓' : '⏳';
-        const bubbleClasses = isMobile ? 'px-2.5 py-1.5 rounded-lg text-sm' : 'px-3 py-2 rounded-2xl text-base';
+        const bubbleClasses = isMobile ? 'px-2.5 py-1.5 rounded-lg text-xs' : 'px-3 py-2 rounded-2xl text-sm';
         const senderNameLine = shouldShowSenderName ? `<div class="text-xs opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'} mb-1 cursor-pointer hover:opacity-100" onclick="event.stopPropagation(); showUserProfileModal(${msg.senderId})">${msg.senderUsername}</div>` : '';
         return `
-          <div class="flex ${alignClass} ${marginClass}" data-message-id="${msg.id}" onclick="showDeleteMessageModal(${msg.id})">
+          <div class="flex ${alignClass} ${marginClass}" data-message-id="${msg.id}" onclick="showMessageDetailsModal(${msg.id}, '${msg.createdAt}', '${msg.blockchainAuditLogId || ''}')">
             <div class="max-w-xs ${bubbleClasses} ${baseClass} border-2 border-yellow-500/40 message-bubble cursor-pointer hover:opacity-90 transition">
               ${senderNameLine}
-              <div class="font-bold ${isMobile ? 'text-base' : 'text-lg'} flex items-center justify-between gap-2">
+              <div class="font-bold ${isMobile ? 'text-sm' : 'text-base'} flex items-center justify-between gap-2">
                 <span>💰 ${c.amount} tokens</span>
                 <span class="text-xs">${statusIcon}</span>
               </div>
@@ -6694,51 +6701,23 @@
       document.getElementById('imageLightbox').classList.remove('hidden');
     }
 
-    let deleteMessageId = null;
+    function showMessageDetailsModal(messageId, createdAt, blockchainAuditLogId) {
+      const timeElement = document.getElementById('messageTime');
+      const hashElement = document.getElementById('messageHash');
 
-    function showDeleteMessageModal(messageId) {
-      deleteMessageId = messageId;
-      document.getElementById('deleteMessageModal').classList.remove('hidden');
-    }
-
-    function closeDeleteMessageModal() {
-      document.getElementById('deleteMessageModal').classList.add('hidden');
-      deleteMessageId = null;
-    }
-
-    async function deleteMessage() {
-      if (!deleteMessageId) return;
-
-      try {
-        const messageId = deleteMessageId;
-        const endpoint = currentGroupId
-          ? `/api/groups/${currentGroupId}/messages/${messageId}/delete`
-          : `/api/conversations/${currentConvId}/messages/${messageId}/delete`;
-
-        const response = await apiCall(endpoint, { method: 'POST' });
-
-        if (response && response.ok) {
-          const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
-          if (messageElement) {
-            messageElement.style.opacity = '0';
-            messageElement.style.transition = 'opacity 0.2s ease-out';
-            setTimeout(() => {
-              messageElement.remove();
-              const messageList = document.getElementById('messageList');
-              if (messageList && messageList.children.length === 0) {
-                messageList.innerHTML = '<div class="text-center text-zinc-600 dark:text-zinc-500 py-4">No messages yet</div>';
-              }
-            }, 200);
-          }
-          closeDeleteMessageModal();
-          showToast('Message deleted', 'success');
-        } else {
-          showToast(response?.error || 'Failed to delete message', 'error');
-        }
-      } catch (err) {
-        console.error('Delete message error:', err);
-        showToast(`Error: ${err.message}`, 'error');
+      if (timeElement) {
+        timeElement.textContent = new Date(createdAt).toLocaleString();
       }
+
+      if (hashElement) {
+        hashElement.textContent = blockchainAuditLogId && blockchainAuditLogId.trim() ? blockchainAuditLogId : 'Not recorded on-chain';
+      }
+
+      document.getElementById('messageDetailsModal').classList.remove('hidden');
+    }
+
+    function closeMessageDetailsModal() {
+      document.getElementById('messageDetailsModal').classList.add('hidden');
     }
 
     // Blockchain polling functions removed
