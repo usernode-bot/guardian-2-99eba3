@@ -6518,6 +6518,7 @@
       input.value = '';
 
       try {
+        const settings = loadSettings();
         // In testnet mode, request wallet signature before sending
         let txHash = null;
         if (settings.networkMode === 'testnet' || settings.networkMode === 'real_testnet') {
@@ -6605,6 +6606,7 @@
         const imageSizeKb = Math.round(dataUri.length / 1024);
 
         try {
+          const settings = loadSettings();
           // In testnet mode, request wallet signature before sending
           let txHash = null;
           if (settings.networkMode === 'testnet' || settings.networkMode === 'real_testnet') {
