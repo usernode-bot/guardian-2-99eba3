@@ -940,10 +940,11 @@
                 <div class="space-y-1">
                   <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400">Operating Mode</label>
                   <select id="networkModeSelect" onchange="updateNetworkMode(this.value)" class="w-full px-2 py-2 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500">
-                    <option value="testnet">Real Testnet (with blockchain)</option>
-                    <option value="devnet">Devnet (database-only, no blockchain)</option>
-                    <option value="mainnet">Mainnet (future)</option>
+                    <option value="devnet">Devnet</option>
+                    <option value="testnet">Testnet</option>
+                    <option value="mainnet" disabled>Mainnet</option>
                   </select>
+                  <p class="text-xs text-zinc-500 dark:text-zinc-500 mt-1">Mainnet belum tersedia</p>
                 </div>
               </div>
             </div>
@@ -3565,7 +3566,7 @@
     // Ensures wallet is properly configured before submitting to server
     // Does not require bridge to be ready — linked wallet is sufficient
     async function checkWalletReadyForTestnet() {
-      const currentMode = loadSettings().network;
+      const currentMode = loadSettings().networkMode || 'testnet';
 
       // Only enforce wallet check for testnet mode
       if (currentMode !== 'testnet' && currentMode !== 'real_testnet') {
@@ -6510,14 +6511,42 @@
       input.value = '';
 
       try {
+        // In testnet mode, request wallet signature before sending
+        let txHash = null;
+        if (settings.networkMode === 'testnet' || settings.networkMode === 'real_testnet') {
+          try {
+            console.log('[MESSAGE] Testnet mode detected, requesting wallet signature...');
+            const txResult = await executeWalletSignature('message', {
+              content: text,
+              recipient: currentGroupId ? 'group' : currentContactName,
+              timestamp: new Date().toISOString()
+            });
+            if (txResult) {
+              txHash = txResult;
+              console.log('[MESSAGE] Wallet signature obtained: txHash=' + txHash);
+            }
+          } catch (signErr) {
+            if (signErr.message && (signErr.message.includes('User cancelled') || signErr.message.includes('cancelled'))) {
+              console.log('[MESSAGE] User cancelled wallet signature');
+              showToast('Message cancelled', 'info');
+              return;
+            }
+            throw new Error('Wallet signature failed: ' + signErr.message);
+          }
+        }
+
         const endpoint = currentGroupId ? `/api/groups/${currentGroupId}/messages` : `/api/conversations/${currentConvId}/messages`;
+        const payload = {
+          type: 'text',
+          content: { text }
+        };
+        if (txHash) {
+          payload.txHash = txHash;
+        }
 
         const data = await apiCall(endpoint, {
           method: 'POST',
-          body: JSON.stringify({
-            type: 'text',
-            content: { text }
-          })
+          body: JSON.stringify(payload)
         });
 
         if (data && !data.error) {
@@ -6569,11 +6598,43 @@
         const imageSizeKb = Math.round(dataUri.length / 1024);
 
         try {
+          // In testnet mode, request wallet signature before sending
+          let txHash = null;
+          if (settings.networkMode === 'testnet' || settings.networkMode === 'real_testnet') {
+            try {
+              console.log('[IMAGE] Testnet mode detected, requesting wallet signature...');
+              const txResult = await executeWalletSignature('message', {
+                type: 'image',
+                sizeKb: imageSizeKb,
+                recipient: currentGroupId ? 'group' : currentContactName,
+                timestamp: new Date().toISOString()
+              });
+              if (txResult) {
+                txHash = txResult;
+                console.log('[IMAGE] Wallet signature obtained: txHash=' + txHash);
+              }
+            } catch (signErr) {
+              if (signErr.message && (signErr.message.includes('User cancelled') || signErr.message.includes('cancelled'))) {
+                console.log('[IMAGE] User cancelled wallet signature');
+                showToast('Image upload cancelled', 'info');
+                return;
+              }
+              throw new Error('Wallet signature failed: ' + signErr.message);
+            }
+          }
+
           const endpoint = currentGroupId ? `/api/groups/${currentGroupId}/messages` : `/api/conversations/${currentConvId}/messages`;
+          const payload = {
+            type: 'image',
+            content: { imageUrl: dataUri }
+          };
+          if (txHash) {
+            payload.txHash = txHash;
+          }
 
           const data = await apiCall(endpoint, {
             method: 'POST',
-            body: JSON.stringify({ type: 'image', content: { imageUrl: dataUri } })
+            body: JSON.stringify(payload)
           });
 
           if (data && !data.error) {
@@ -10021,6 +10082,15 @@
 
     async function updateNetworkMode(mode) {
       try {
+        // Prevent mainnet selection
+        if (mode === 'mainnet') {
+          showToast('Mainnet is not yet available', 'info');
+          // Reset dropdown to current mode
+          const settings = loadSettings();
+          document.getElementById('networkModeSelect').value = settings.networkMode || 'testnet';
+          return;
+        }
+
         const response = await fetch('/api/user/network-mode', {
           method: 'PUT',
           headers: { 'content-type': 'application/json', 'x-usernode-token': currentUserToken },
@@ -10034,6 +10104,23 @@
         }
 
         showToast(`Network mode set to ${result.networkMode}`, 'success');
+
+        // Save network mode to local settings
+        const settings = loadSettings();
+        settings.networkMode = result.networkMode;
+        saveSettings(settings);
+
+        // If switching to testnet, validate wallet is linked
+        if (result.networkMode === 'testnet' || result.networkMode === 'real_testnet') {
+          const preflight = await checkWalletReadyForTestnet();
+          if (!preflight.ready) {
+            console.warn('[NETWORK-MODE] Wallet not ready for testnet:', preflight.error);
+            showToast('⚠️ ' + preflight.error, 'warning');
+          } else {
+            console.log('[NETWORK-MODE] Testnet wallet validation passed');
+          }
+        }
+
         await updateNetworkModeVisibility();
       } catch (err) {
         showToast(`Error updating network mode: ${err.message}`, 'error');
