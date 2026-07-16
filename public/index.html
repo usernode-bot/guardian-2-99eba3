@@ -834,6 +834,13 @@
           </svg>
           Profile
         </button>
+        <button id="navSettingsBtn" onclick="showSettingsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
+          <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          Settings
+        </button>
       </nav>
 
       <div id="sidebarUser" class="p-4 border-t border-zinc-200 dark:border-zinc-800">
@@ -843,13 +850,6 @@
             <div id="sidebarUsername" class="font-medium text-cyan-600 dark:text-cyan-400 mt-1">Loading...</div>
             <div id="sidebarWallet" class="text-xs text-zinc-600 dark:text-zinc-500 mt-1 break-all">Loading...</div>
           </div>
-          <button id="navSettingsBtn" onclick="openSettingsPanel()" class="flex-shrink-0 text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300 transition relative group" title="Settings">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            <span class="absolute bottom-full right-0 mb-1 px-2 py-1 bg-zinc-900 dark:bg-zinc-700 text-white dark:text-zinc-100 text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none">Settings</span>
-          </button>
         </div>
         <button onclick="showShareContactModal()" class="w-full px-3 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg transition text-sm text-zinc-900 dark:text-zinc-100">
           📤 Share Contact
@@ -857,159 +857,6 @@
       </div>
     </div>
 
-    <!-- Settings Panel -->
-    <div id="settingsPanel" class="hidden fixed left-0 top-0 w-64 h-full bg-zinc-50 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 z-40 flex flex-col overflow-y-auto pt-16">
-      <div class="p-3 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
-        <h2 class="text-base font-semibold text-zinc-900 dark:text-white">Settings</h2>
-        <button onclick="closeSettingsPanel()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
-
-      <div class="flex-1 px-3 py-2 space-y-1.5">
-        <!-- Theme -->
-        <div class="space-y-1">
-          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Mode</label>
-          <select id="themeSelect" onchange="applyTheme(this.value)" class="w-full px-2 py-2 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500">
-            <option value="dark">Dark</option>
-            <option value="light">Light</option>
-          </select>
-        </div>
-
-        <!-- Display -->
-        <div class="space-y-2">
-          <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Display</label>
-          <div class="space-y-2">
-            <!-- Layout Subsection -->
-            <div class="space-y-1">
-              <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400">Layout</label>
-              <div class="flex gap-2">
-                <button id="layoutComfort" onclick="applyLayout('comfortable')" class="flex-1 px-2 py-2 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-cyan-600 dark:border-cyan-500 hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Comfortable</button>
-                <button id="layoutCompact" onclick="applyLayout('compact')" class="flex-1 px-2 py-2 bg-zinc-200 dark:bg-zinc-800 rounded-lg text-xs border-2 border-transparent hover:bg-zinc-300 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Compact</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Network Mode (Standalone section) -->
-        <div id="networkModeAccordion" class="space-y-1 border-t border-zinc-200 dark:border-zinc-700 pt-1.5 mt-1.5">
-          <button id="networkModeToggle" onclick="toggleNetworkModeAccordion()" class="w-full flex items-center justify-between px-0 py-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
-            <div class="flex items-center gap-2">
-              <span>Network Mode</span>
-              <span id="networkModeHeaderDot" class="inline-block w-2.5 h-2.5 rounded-full bg-gray-400 transition-colors"></span>
-            </div>
-            <svg id="networkModeArrow" class="w-5 h-5 transition-transform duration-200 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-            </svg>
-          </button>
-          <div id="networkModeContent" class="hidden pt-2 space-y-2">
-            <div class="space-y-1">
-              <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400">Operating Mode</label>
-              <select id="networkModeSelect" onchange="updateNetworkMode(this.value)" class="w-full px-2 py-2 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500">
-                <option value="devnet">Devnet</option>
-                <option value="testnet">Testnet</option>
-                <option value="mainnet" disabled>Mainnet</option>
-              </select>
-              <p class="text-xs text-zinc-500 dark:text-zinc-500 mt-1">Mainnet belum tersedia</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- System (Parent Accordion) -->
-        <div id="systemAccordion" class="space-y-1 border-t border-zinc-200 dark:border-zinc-700 pt-1.5 mt-1.5">
-          <button id="systemToggle" onclick="toggleSystemAccordion()" class="w-full flex items-center justify-between px-0 py-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
-            <div class="flex items-center gap-2">
-              <span>System</span>
-              <span id="systemHeaderDot" class="inline-block w-2.5 h-2.5 rounded-full bg-gray-400 transition-colors"></span>
-            </div>
-            <svg id="systemArrow" class="w-5 h-5 transition-transform duration-200 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-            </svg>
-          </button>
-          <div id="systemContent" class="hidden pt-2 space-y-2">
-
-            <!-- On-Chain Activity (Sub-Accordion) -->
-            <div id="transactionHistoryAccordion" class="space-y-1">
-              <button id="transactionToggle" onclick="toggleTransactionAccordion()" class="w-full flex items-center justify-between px-0 py-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
-                <div class="flex items-center gap-2">
-                  <span>On-Chain Activity</span>
-                  <span id="transactionHeaderDot" class="inline-block w-2.5 h-2.5 rounded-full bg-gray-400 transition-colors"></span>
-                </div>
-                <svg id="transactionArrow" class="w-5 h-5 transition-transform duration-200 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                </svg>
-              </button>
-              <div id="transactionContent" class="hidden pt-2 space-y-2">
-                <!-- Transaction History List -->
-                <div id="transactionHistoryList" class="max-h-64 overflow-y-auto space-y-1 text-xs">
-                  <div class="text-center py-4 text-zinc-500 dark:text-zinc-400">Loading...</div>
-                </div>
-              </div>
-            </div>
-
-            <!-- RPC Endpoint Config (Sub-Accordion) - Conditionally visible -->
-            <div id="rpcAccordionWrapper" class="space-y-1 hidden">
-              <div id="rpcAccordion" class="space-y-1">
-                <button id="rpcToggle" onclick="toggleRpcAccordion()" class="w-full flex items-center justify-between px-0 py-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
-                  <div class="flex items-center gap-2">
-                    <span>RPC Endpoint</span>
-                    <span id="rpcHeaderDot" class="inline-block w-2.5 h-2.5 rounded-full bg-gray-400 transition-colors"></span>
-                  </div>
-                  <svg id="rpcArrow" class="w-5 h-5 transition-transform duration-200 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                  </svg>
-                </button>
-                <div id="rpcContent" class="hidden pt-2 space-y-2">
-                  <div class="space-y-1">
-                    <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400">RPC URL</label>
-                    <input id="rpcEndpointInput" type="text" placeholder="http://usernode-node:3000" class="w-full px-2 py-2 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500" />
-                  </div>
-                  <button onclick="updateRpcEndpoint()" class="w-full px-2 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 rounded-lg text-xs text-white transition">Save RPC Endpoint</button>
-                </div>
-              </div>
-            </div>
-
-            <!-- Secrets UI (Sub-Accordion) -->
-            <div id="configAccordion" class="space-y-1">
-              <button id="configToggle" onclick="toggleConfigAccordion()" class="w-full flex items-center justify-between px-0 py-0 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 transition">
-                <div class="flex items-center gap-2">
-                  <span>Secrets UI</span>
-                  <span id="configHeaderDot" class="inline-block w-2.5 h-2.5 rounded-full bg-gray-400 transition-colors"></span>
-                </div>
-                <svg id="configArrow" class="w-5 h-5 transition-transform duration-200 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                </svg>
-              </button>
-              <div id="configContent" class="hidden pt-2 space-y-3">
-                <!-- Secrets Display -->
-                <div id="secretsDisplay" class="space-y-2 border-b border-zinc-200 dark:border-zinc-700 pb-3">
-                  <div class="flex items-center justify-between">
-                    <h3 class="text-xs font-semibold text-zinc-700 dark:text-zinc-300">Secrets Configuration</h3>
-                    <button onclick="refreshSecretsDisplay()" class="text-xs px-2 py-1 bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 rounded text-zinc-700 dark:text-zinc-300 transition">↻ Refresh</button>
-                  </div>
-                  <div id="secretsList" class="space-y-2 text-xs">
-                    <div class="text-center py-2 text-zinc-500 dark:text-zinc-400">Loading secrets...</div>
-                  </div>
-                </div>
-
-                <!-- Permission Notice -->
-                <div id="configNoPermission" class="hidden text-xs text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800 p-2 rounded">
-                  You don't have permission to change configuration settings.
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Settings Footer -->
-      <div class="border-t border-zinc-200 dark:border-zinc-700 pt-2 pb-3 px-3 flex flex-col items-center justify-center text-center">
-        <div class="text-xs text-zinc-500 dark:text-zinc-500 leading-tight">Guardian v0.9.2-beta</div>
-        <div id="settingsFooterNetwork" class="text-xs text-zinc-500 dark:text-zinc-500 leading-tight">UserNode Testnet</div>
-      </div>
-    </div>
 
     <!-- Main content -->
     <div id="content" class="flex-1 overflow-hidden flex flex-col pt-16">
@@ -1301,6 +1148,90 @@
             <span class="text-lg">📊</span>
             <span class="text-xs">Activity</span>
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings View -->
+    <div id="settingsView" class="hidden flex flex-col flex-1 overflow-hidden">
+      <!-- Scrollable Content Area -->
+      <div class="overflow-y-auto flex-1 pb-20">
+        <div class="p-4 space-y-6 max-w-2xl mx-auto">
+          <!-- Theme Section -->
+          <div class="space-y-3">
+            <h3 class="text-lg font-semibold text-zinc-900 dark:text-white">Appearance</h3>
+            <div class="space-y-2">
+              <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Theme</label>
+              <select id="themeSelect" onchange="applyTheme(this.value)" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                <option value="dark">Dark</option>
+                <option value="light">Light</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Display Section -->
+          <div class="space-y-3">
+            <h3 class="text-lg font-semibold text-zinc-900 dark:text-white">Display</h3>
+            <div class="space-y-2">
+              <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Layout</label>
+              <div class="flex gap-2">
+                <button id="layoutComfort" onclick="applyLayout('comfortable')" class="flex-1 px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-sm border-2 border-cyan-600 dark:border-cyan-500 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Comfortable</button>
+                <button id="layoutCompact" onclick="applyLayout('compact')" class="flex-1 px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-sm border-2 border-transparent hover:bg-zinc-200 dark:hover:bg-zinc-700 transition text-zinc-900 dark:text-zinc-100">Compact</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Network Mode Section -->
+          <div class="space-y-3">
+            <h3 class="text-lg font-semibold text-zinc-900 dark:text-white">Network</h3>
+            <div class="space-y-2">
+              <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Operating Mode</label>
+              <select id="networkModeSelect" onchange="updateNetworkMode(this.value)" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                <option value="devnet">Devnet</option>
+                <option value="testnet">Testnet</option>
+                <option value="mainnet" disabled>Mainnet</option>
+              </select>
+              <p class="text-xs text-zinc-500 dark:text-zinc-500 mt-1">Mainnet belum tersedia</p>
+            </div>
+          </div>
+
+          <!-- On-Chain Activity Section -->
+          <div class="space-y-3 border-t border-zinc-200 dark:border-zinc-700 pt-4">
+            <h3 class="text-lg font-semibold text-zinc-900 dark:text-white">On-Chain Activity</h3>
+            <div id="transactionHistoryList" class="space-y-2">
+              <div class="text-center py-8 text-zinc-500 dark:text-zinc-400">Loading transactions...</div>
+            </div>
+          </div>
+
+          <!-- RPC Endpoint Section -->
+          <div id="rpcSection" class="space-y-3 border-t border-zinc-200 dark:border-zinc-700 pt-4 hidden">
+            <h3 class="text-lg font-semibold text-zinc-900 dark:text-white">RPC Endpoint</h3>
+            <div class="space-y-2">
+              <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">RPC URL</label>
+              <input id="rpcEndpointInput" type="text" placeholder="http://usernode-node:3000" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500" />
+            </div>
+            <button onclick="updateRpcEndpoint()" class="w-full px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 rounded-lg text-sm text-white transition">Save RPC Endpoint</button>
+          </div>
+
+          <!-- Secrets UI Section -->
+          <div class="space-y-3 border-t border-zinc-200 dark:border-zinc-700 pt-4">
+            <h3 class="text-lg font-semibold text-zinc-900 dark:text-white">Secrets Configuration</h3>
+            <div class="flex items-center justify-between">
+              <button onclick="refreshSecretsDisplay()" class="text-sm px-3 py-1 bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 rounded text-zinc-700 dark:text-zinc-300 transition">↻ Refresh</button>
+            </div>
+            <div id="secretsList" class="space-y-2">
+              <div class="text-center py-4 text-zinc-500 dark:text-zinc-400">Loading secrets...</div>
+            </div>
+            <div id="configNoPermission" class="hidden text-sm text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800 p-3 rounded">
+              You don't have permission to change configuration settings.
+            </div>
+          </div>
+
+          <!-- Footer Info -->
+          <div class="border-t border-zinc-200 dark:border-zinc-700 pt-4 mt-6 text-center">
+            <div class="text-xs text-zinc-500 dark:text-zinc-500">Guardian v0.9.2-beta</div>
+            <div id="settingsFooterNetwork" class="text-xs text-zinc-500 dark:text-zinc-500">UserNode Testnet</div>
+          </div>
         </div>
       </div>
     </div>
@@ -3492,39 +3423,6 @@
         comfortable.classList.remove('border-cyan-600', 'dark:border-cyan-500');
         comfortable.classList.add('border-transparent');
       }
-    }
-
-    function openSettingsPanel() {
-      updateMenuHighlight('settings');
-      document.getElementById('messagesView').classList.add('hidden');
-      document.getElementById('conversationsView').classList.add('hidden');
-      document.getElementById('chatView').classList.add('hidden');
-      document.getElementById('chatView').classList.remove('active-chat');
-      document.getElementById('contactsView').classList.add('hidden');
-      document.getElementById('feedView').classList.add('hidden');
-      document.getElementById('channelChatView').classList.add('hidden');
-      currentChannelId = null;
-      currentChannel = null;
-      document.getElementById('sidebar').classList.add('hidden');
-      document.getElementById('settingsPanel').classList.remove('hidden');
-      document.getElementById('inputFooter').classList.add('hidden');
-      document.getElementById('header').classList.remove('header-chat-fixed');
-      document.getElementById('headerTitle').textContent = 'Settings';
-      document.getElementById('backBtnContainer').classList.remove('hidden');
-      document.getElementById('headerContent').classList.remove('hidden');
-      document.getElementById('headerBranding').textContent = 'Guardian';
-      document.getElementById('headerPageLabel').textContent = 'Settings';
-      document.getElementById('backBtnContainer').classList.remove('hidden');
-      document.getElementById('menuBtn').classList.add('hidden');
-      document.getElementById('conversationMenuBtn').classList.add('hidden');
-      document.getElementById('postBtn').classList.add('hidden');
-      sidebarOpen = false;
-    }
-
-    function closeSettingsPanel() {
-      document.getElementById('settingsPanel').classList.add('hidden');
-      document.getElementById('sidebar').classList.remove('hidden');
-      showConversationsView();
     }
 
     async function apiCall(path, opts = {}) {
@@ -9266,6 +9164,29 @@
       if (currentUser) {
         localStorage.setItem(`guardian_profile_tab_${currentUser.id}`, tabName);
       }
+    }
+
+    function showSettingsView() {
+      updateMenuHighlight('settings');
+      document.getElementById('messagesView').classList.add('hidden');
+      document.getElementById('conversationsView').classList.add('hidden');
+      document.getElementById('chatView').classList.add('hidden');
+      document.getElementById('chatView').classList.remove('active-chat');
+      document.getElementById('contactsView').classList.add('hidden');
+      document.getElementById('groupsView').classList.add('hidden');
+      document.getElementById('feedView').classList.add('hidden');
+      document.getElementById('channelChatView').classList.add('hidden');
+      document.getElementById('profileView').classList.add('hidden');
+      currentChannelId = null;
+      currentChannel = null;
+      document.getElementById('settingsView').classList.remove('hidden');
+      document.getElementById('inputFooter').classList.add('hidden');
+      document.getElementById('inputFooter').classList.remove('footer-in-view');
+      document.getElementById('header').classList.remove('header-chat-fixed');
+      document.getElementById('headerTitle').textContent = 'Settings';
+      document.getElementById('backBtnContainer').classList.remove('hidden');
+      document.getElementById('headerContent').classList.remove('hidden');
+      document.getElementById('headerBranding').textContent = 'Guardian';
     }
 
     async function loadProfileData() {
