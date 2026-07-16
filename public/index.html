@@ -1985,7 +1985,7 @@
 
     // Helper: Render transaction details HTML
     function renderTransactionDetailsHTML(data) {
-      const timestamp = new Date(data.createdAt).toLocaleString();
+      const timestamp = new Date(data.createdAt || data.created_at).toLocaleString();
       const payload = typeof data.transactionPayload === 'string' ? JSON.parse(data.transactionPayload || '{}') : (data.transactionPayload || {});
 
       let typeIcon = '🔄';
@@ -2026,31 +2026,32 @@
       let networkOriginClass = 'text-zinc-600 dark:text-zinc-400';
 
       // Map network_origin values to display labels
-      if (data.network_origin === 'testnet') {
+      const networkOrigin = data.networkOrigin || data.network_origin;
+      if (networkOrigin === 'testnet') {
         networkOriginLabel = 'Testnet';
         networkOriginIcon = '🔗';
         networkOriginClass = 'text-green-600 dark:text-green-400';
-      } else if (data.network_origin === 'blockchain') {
+      } else if (networkOrigin === 'blockchain') {
         networkOriginLabel = 'Testnet';
         networkOriginIcon = '🔗';
         networkOriginClass = 'text-green-600 dark:text-green-400';
-      } else if (data.network_origin === 'devnet') {
+      } else if (networkOrigin === 'devnet') {
         networkOriginLabel = 'Devnet';
         networkOriginIcon = '💾';
         networkOriginClass = 'text-blue-600 dark:text-blue-400';
-      } else if (data.network_origin === 'database') {
+      } else if (networkOrigin === 'database') {
         networkOriginLabel = 'Devnet';
         networkOriginIcon = '💾';
         networkOriginClass = 'text-blue-600 dark:text-blue-400';
-      } else if (data.network_origin === 'mainnet') {
+      } else if (networkOrigin === 'mainnet') {
         networkOriginLabel = 'Mainnet';
         networkOriginIcon = '🌍';
         networkOriginClass = 'text-amber-600 dark:text-amber-400';
-      } else if (data.network_origin === 'demo') {
+      } else if (networkOrigin === 'demo') {
         networkOriginLabel = 'Demo';
         networkOriginIcon = '🎭';
         networkOriginClass = 'text-purple-600 dark:text-purple-400';
-      } else if (data.network_origin === 'bridge') {
+      } else if (networkOrigin === 'bridge') {
         networkOriginLabel = 'Bridge';
         networkOriginIcon = '🌉';
         networkOriginClass = 'text-orange-600 dark:text-orange-400';
@@ -2058,7 +2059,7 @@
 
       let txHashHtml = '';
       if (data.txHash) {
-        const hashFormat = formatTransactionHash(data.txHash, data.network_origin);
+        const hashFormat = formatTransactionHash(data.txHash, networkOrigin);
         txHashHtml = `<div class="text-sm"><span class="text-zinc-600 dark:text-zinc-400">Hash:</span> <span class="font-mono text-xs text-cyan-600 dark:text-cyan-400 break-all" title="${escapeHtml(hashFormat.title)}">${escapeHtml(hashFormat.display)}</span></div>`;
       }
 
@@ -2180,28 +2181,29 @@
 
       // Update network mode if needed
       const networkEl = row.querySelector('[data-field="network-mode"]');
-      if (networkEl && updatedData.network_origin) {
+      const updateNetworkOrigin = updatedData.networkOrigin || updatedData.network_origin;
+      if (networkEl && updateNetworkOrigin) {
         let networkOriginLabel = 'Not specified';
         let networkOriginIcon = '❓';
         let networkOriginClass = 'text-zinc-600 dark:text-zinc-400';
 
-        if (updatedData.network_origin === 'testnet' || updatedData.network_origin === 'blockchain') {
+        if (updateNetworkOrigin === 'testnet' || updateNetworkOrigin === 'blockchain') {
           networkOriginLabel = 'Testnet';
           networkOriginIcon = '🔗';
           networkOriginClass = 'text-green-600 dark:text-green-400';
-        } else if (updatedData.network_origin === 'devnet' || updatedData.network_origin === 'database') {
+        } else if (updateNetworkOrigin === 'devnet' || updateNetworkOrigin === 'database') {
           networkOriginLabel = 'Devnet';
           networkOriginIcon = '💾';
           networkOriginClass = 'text-blue-600 dark:text-blue-400';
-        } else if (updatedData.network_origin === 'mainnet') {
+        } else if (updateNetworkOrigin === 'mainnet') {
           networkOriginLabel = 'Mainnet';
           networkOriginIcon = '🌍';
           networkOriginClass = 'text-amber-600 dark:text-amber-400';
-        } else if (updatedData.network_origin === 'demo') {
+        } else if (updateNetworkOrigin === 'demo') {
           networkOriginLabel = 'Demo';
           networkOriginIcon = '🎭';
           networkOriginClass = 'text-purple-600 dark:text-purple-400';
-        } else if (updatedData.network_origin === 'bridge') {
+        } else if (updateNetworkOrigin === 'bridge') {
           networkOriginLabel = 'Bridge';
           networkOriginIcon = '🌉';
           networkOriginClass = 'text-orange-600 dark:text-orange-400';
@@ -2261,23 +2263,24 @@
       let networkOriginIcon = '❓';
       let networkOriginClass = 'text-zinc-600 dark:text-zinc-400';
 
-      if (tx.network_origin === 'testnet' || tx.network_origin === 'blockchain') {
+      const txNetworkOrigin = tx.networkOrigin || tx.network_origin;
+      if (txNetworkOrigin === 'testnet' || txNetworkOrigin === 'blockchain') {
         networkOriginLabel = 'Testnet';
         networkOriginIcon = '🔗';
         networkOriginClass = 'text-green-600 dark:text-green-400';
-      } else if (tx.network_origin === 'devnet' || tx.network_origin === 'database') {
+      } else if (txNetworkOrigin === 'devnet' || txNetworkOrigin === 'database') {
         networkOriginLabel = 'Devnet';
         networkOriginIcon = '💾';
         networkOriginClass = 'text-blue-600 dark:text-blue-400';
-      } else if (tx.network_origin === 'mainnet') {
+      } else if (txNetworkOrigin === 'mainnet') {
         networkOriginLabel = 'Mainnet';
         networkOriginIcon = '🌍';
         networkOriginClass = 'text-amber-600 dark:text-amber-400';
-      } else if (tx.network_origin === 'demo') {
+      } else if (txNetworkOrigin === 'demo') {
         networkOriginLabel = 'Demo';
         networkOriginIcon = '🎭';
         networkOriginClass = 'text-purple-600 dark:text-purple-400';
-      } else if (tx.network_origin === 'bridge') {
+      } else if (txNetworkOrigin === 'bridge') {
         networkOriginLabel = 'Bridge';
         networkOriginIcon = '🌉';
         networkOriginClass = 'text-orange-600 dark:text-orange-400';
@@ -2308,7 +2311,7 @@
       // Format hash
       let hashHtml = '';
       if (tx.blockchainStatus && tx.blockchainStatus.txHash) {
-        const hashFormat = formatTransactionHash(tx.blockchainStatus.txHash, tx.network_origin);
+        const hashFormat = formatTransactionHash(tx.blockchainStatus.txHash, txNetworkOrigin);
         if (hashFormat) {
           hashHtml = `<span data-field="hash" class="font-mono text-xs text-cyan-600 dark:text-cyan-400" title="${escapeHtml(hashFormat.title)}">${escapeHtml(hashFormat.display)}</span>`;
         }
