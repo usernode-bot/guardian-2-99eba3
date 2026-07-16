@@ -1952,6 +1952,30 @@
       return notificationId;
     }
 
+    // Helper: Format transaction hash based on network mode
+    function formatTransactionHash(txHash, networkOrigin) {
+      if (!txHash) return null;
+
+      const isTestnet = networkOrigin === 'testnet' || networkOrigin === 'blockchain';
+
+      if (isTestnet) {
+        // For testnet: always show full hash but truncate middle with ellipsis
+        if (txHash.length > 20) {
+          const start = txHash.substring(0, 8);
+          const end = txHash.substring(txHash.length - 8);
+          return { display: `${start}...${end}`, title: txHash };
+        }
+        return { display: txHash, title: txHash };
+      } else {
+        // For non-testnet: show full hash unless it contains "staging"
+        if (txHash.includes('staging')) {
+          const short = txHash.substring(0, 12);
+          return { display: `${short}...`, title: txHash };
+        }
+        return { display: txHash, title: txHash };
+      }
+    }
+
     // Helper: Render transaction details HTML
     function renderTransactionDetailsHTML(data) {
       const timestamp = new Date(data.createdAt).toLocaleString();
@@ -1988,8 +2012,6 @@
         statusClass = 'text-red-600 dark:text-red-400';
         statusIcon = '✗';
       }
-
-      const txHashShort = data.txHash ? data.txHash.substring(0, 12) : 'N/A';
 
       // Determine network origin label with icon
       let networkOriginLabel = 'Not specified';
@@ -2028,10 +2050,9 @@
       }
 
       let txHashHtml = '';
-      if (data.txHash && !data.txHash.includes('staging')) {
-        txHashHtml = `<div class="text-sm"><span class="text-zinc-600 dark:text-zinc-400">Hash:</span> <span class="font-mono text-xs text-cyan-600 dark:text-cyan-400 break-all">${escapeHtml(data.txHash)}</span></div>`;
-      } else if (data.txHash) {
-        txHashHtml = `<div class="text-sm"><span class="text-zinc-600 dark:text-zinc-400">Hash:</span> <span class="font-mono text-xs text-zinc-500">${escapeHtml(txHashShort)}...</span></div>`;
+      if (data.txHash) {
+        const hashFormat = formatTransactionHash(data.txHash, data.network_origin);
+        txHashHtml = `<div class="text-sm"><span class="text-zinc-600 dark:text-zinc-400">Hash:</span> <span class="font-mono text-xs text-cyan-600 dark:text-cyan-400 break-all" title="${escapeHtml(hashFormat.title)}">${escapeHtml(hashFormat.display)}</span></div>`;
       }
 
       return {
