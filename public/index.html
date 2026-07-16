@@ -2219,6 +2219,9 @@
         ? JSON.parse(tx.transactionPayload || '{}')
         : (tx.transactionPayload || {});
 
+      const txNetworkOrigin = tx.networkOrigin || tx.network_origin;
+      console.log(`[RENDER-DEBUG] Rendering tx id=${tx.id}, networkOrigin=${txNetworkOrigin}, messageType=${tx.messageType}`);
+
       // Determine transaction type icon and description
       let typeIcon = '🔄';
       let description = 'Transaction';
@@ -10019,7 +10022,9 @@
         }
 
         const response = await apiCall(`/api/transactions-by-user?limit=20&offset=${offset}`);
+        console.log('[ACTIVITY-DEBUG] API response:', response);
         if (!response || !response.transactions) {
+          console.log('[ACTIVITY-DEBUG] No transactions in response');
           if (offset === 0) {
             document.getElementById('activityTransactionsList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No transactions yet</div>';
           }
@@ -10027,9 +10032,23 @@
         }
 
         if (offset === 0 && response.transactions.length === 0) {
+          console.log('[ACTIVITY-DEBUG] Empty transaction list');
           document.getElementById('activityTransactionsList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No transactions yet</div>';
           return;
         }
+
+        console.log(`[ACTIVITY-DEBUG] Received ${response.transactions.length} transactions`);
+        const testnetTxs = response.transactions.filter(tx => tx.networkOrigin === 'testnet' || tx.network_origin === 'testnet');
+        console.log(`[ACTIVITY-DEBUG] Testnet transactions: ${testnetTxs.length}`);
+        testnetTxs.forEach((tx, i) => {
+          console.log(`[ACTIVITY-DEBUG] Testnet tx ${i}:`, {
+            id: tx.id,
+            messageType: tx.messageType,
+            networkOrigin: tx.networkOrigin || tx.network_origin,
+            status: tx.blockchainStatus?.status,
+            txHash: tx.blockchainStatus?.txHash
+          });
+        });
 
         let html = '';
         for (const tx of response.transactions) {

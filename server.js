@@ -2596,7 +2596,8 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
 
       // Log audit creation with all critical fields
       console.log(`[AUDIT LOG] MESSAGE: txHash=${actualTxHash || 'pending'}, messageId=${messageId}, status=${auditStatus}, contentHash=${contentHash}`);
-      console.log(`[MESSAGE] Recording blockchain audit log: messageId=${messageId}, txHash=${actualTxHash || 'pending'}, status=${auditStatus}, contentHash=${contentHash}`);
+      console.log(`[MESSAGE] Recording blockchain audit log: messageId=${messageId}, txHash=${actualTxHash || 'pending'}, status=${auditStatus}, networkOrigin=${networkOriginValue}, contentHash=${contentHash}`);
+      console.log(`[MESSAGE-DEBUG] NETWORK_MODE=${NETWORK_MODE}, NODE_RPC_URL=${NODE_RPC_URL ? 'set' : 'not set'}, txHash=${txHash}, auditLogId=${auditLogId}`);
 
       let blockchainRecordingId;
       if (auditLogId) {
@@ -6428,6 +6429,8 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
   try {
     const { auditLogId } = req.params;
 
+    console.log(`[DETAIL-API] Fetching audit log: id=${auditLogId}`);
+
     const result = await pool.query(`
       SELECT
         bal.id,
@@ -6451,10 +6454,12 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
     `, [auditLogId]);
 
     if (result.rows.length === 0) {
+      console.log(`[DETAIL-API] Audit log not found: id=${auditLogId}`);
       return res.status(404).json({ error: 'Audit log not found' });
     }
 
     const row = result.rows[0];
+    console.log(`[DETAIL-API] Found audit log: id=${row.id}, networkOrigin=${row.network_origin}, status=${row.status}`);
     const explorerUrl = getExplorerUrl(row.tx_hash);
 
     // Format response with blockchainStatus object for consistency with Activity list
@@ -6628,6 +6633,8 @@ app.get('/api/transactions-by-user', async (req, res) => {
     const parsedLimit = Math.min(parseInt(limit) || 50, 500);
     const parsedOffset = Math.max(parseInt(offset) || 0, 0);
 
+    console.log(`[API-TRANSACTIONS] Fetching transactions for user=${req.user.id}, limit=${parsedLimit}, offset=${parsedOffset}`);
+
     const result = await pool.query(`
       SELECT
         bal.id,
@@ -6656,6 +6663,14 @@ app.get('/api/transactions-by-user', async (req, res) => {
       LIMIT $2 OFFSET $3
     `, [req.user.id, parsedLimit, parsedOffset]);
 
+    console.log(`[API-TRANSACTIONS] Query returned ${result.rows.length} rows`);
+    if (result.rows.length > 0) {
+      const networkOrigins = result.rows.map(r => r.network_origin);
+      console.log(`[API-TRANSACTIONS] Network origins in response: ${networkOrigins.join(', ')}`);
+      const testnetTxs = result.rows.filter(r => r.network_origin === 'testnet');
+      console.log(`[API-TRANSACTIONS] Testnet transactions: ${testnetTxs.length}`);
+    }
+
     const countResult = await pool.query(`
       SELECT COUNT(*) as total FROM blockchain_audit_logs WHERE user_id = $1
     `, [req.user.id]);
@@ -6674,6 +6689,7 @@ app.get('/api/transactions-by-user', async (req, res) => {
       }
     }));
 
+    console.log(`[API-TRANSACTIONS] Returning ${transactions.length} transactions to frontend`);
     res.json({
       transactions: transactions,
       total: parseInt(countResult.rows[0].total),
