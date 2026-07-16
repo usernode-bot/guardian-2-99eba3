@@ -379,6 +379,16 @@ async function validateAndConfigureExplorer() {
   return false;
 }
 
+function getExplorerUrl(txHash) {
+  if (!txHash || !EXPLORER_HEALTHY || !EXPLORER_FORMAT) {
+    return null;
+  }
+  const explorerPath = EXPLORER_FORMAT === 'api/tx'
+    ? `/tx/${txHash}`
+    : `/transaction/${txHash}`;
+  return `${EXPLORER_URL}${explorerPath}`;
+}
+
 // Restore persisted network mode from config_state so a runtime switch
 // (PUT /api/user/network-mode) survives container restarts. An explicit
 // NETWORK_MODE env var still wins over the persisted value.
@@ -6422,16 +6432,34 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
     const { auditLogId } = req.params;
 
     const result = await pool.query(`
-      SELECT id, user_id, message_type, tx_hash, status, confirmed_at, error_message, created_at
-      FROM blockchain_audit_logs
-      WHERE id = $1
+      SELECT
+        bal.id,
+        bal.user_id,
+        bal.message_type,
+        bal.tx_hash,
+        bal.status,
+        bal.confirmed_at,
+        bal.error_message,
+        bal.created_at,
+        bal.network_origin,
+        bal.transaction_payload,
+        g.name as group_name,
+        m.recipient_id,
+        u.username as recipient_username
+      FROM blockchain_audit_logs bal
+      LEFT JOIN groups g ON bal.group_id = g.id
+      LEFT JOIN messages m ON bal.message_id = m.id
+      LEFT JOIN users u ON m.recipient_id = u.id
+      WHERE bal.id = $1
     `, [auditLogId]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Audit log not found' });
     }
 
-    res.json(result.rows[0]);
+    const row = result.rows[0];
+    row.explorerUrl = getExplorerUrl(row.tx_hash);
+    res.json(row);
   } catch (err) {
     console.error('Error fetching blockchain audit log:', err);
     res.status(500).json({ error: 'Failed to fetch audit log', details: err.message });
@@ -6584,10 +6612,30 @@ app.get('/api/transactions-by-user', async (req, res) => {
     const parsedOffset = Math.max(parseInt(offset) || 0, 0);
 
     const result = await pool.query(`
-      SELECT id, user_id, message_type, tx_hash, status, created_at, confirmed_at
-      FROM blockchain_audit_logs
-      WHERE user_id = $1
-      ORDER BY created_at DESC
+      SELECT
+        bal.id,
+        bal.user_id,
+        bal.message_type,
+        bal.tx_hash,
+        bal.status,
+        bal.created_at,
+        bal.confirmed_at,
+        bal.network_origin,
+        bal.transaction_payload,
+        g.name as group_name,
+        m.recipient_id,
+        u.username as recipient_username,
+        json_build_object(
+          'status', bal.status,
+          'txHash', bal.tx_hash,
+          'networkOrigin', bal.network_origin
+        ) as blockchain_status
+      FROM blockchain_audit_logs bal
+      LEFT JOIN groups g ON bal.group_id = g.id
+      LEFT JOIN messages m ON bal.message_id = m.id
+      LEFT JOIN users u ON m.recipient_id = u.id
+      WHERE bal.user_id = $1
+      ORDER BY bal.created_at DESC
       LIMIT $2 OFFSET $3
     `, [req.user.id, parsedLimit, parsedOffset]);
 
@@ -6595,8 +6643,16 @@ app.get('/api/transactions-by-user', async (req, res) => {
       SELECT COUNT(*) as total FROM blockchain_audit_logs WHERE user_id = $1
     `, [req.user.id]);
 
+    const transactions = result.rows.map(row => ({
+      ...row,
+      blockchainStatus: {
+        ...row.blockchain_status,
+        explorerUrl: getExplorerUrl(row.tx_hash)
+      }
+    }));
+
     res.json({
-      transactions: result.rows,
+      transactions: transactions,
       total: parseInt(countResult.rows[0].total),
       limit: parsedLimit,
       offset: parsedOffset
