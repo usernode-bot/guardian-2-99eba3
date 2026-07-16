@@ -910,9 +910,9 @@
               <select id="networkModeSelect" onchange="updateNetworkMode(this.value)" class="w-full px-2 py-2 bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-cyan-500">
                 <option value="devnet">Devnet</option>
                 <option value="testnet">Testnet</option>
-                <option value="mainnet" disabled>Mainnet</option>
+                <option value="mainnet">Mainnet</option>
               </select>
-              <p class="text-xs text-zinc-500 dark:text-zinc-500 mt-1">Mainnet not yet available</p>
+              <p class="text-xs text-zinc-500 dark:text-zinc-500 mt-1">Select your network mode</p>
             </div>
           </div>
         </div>
@@ -2063,6 +2063,23 @@
         txHashHtml = `<div class="text-sm"><span class="text-zinc-600 dark:text-zinc-400">Hash:</span> <span class="font-mono text-xs text-cyan-600 dark:text-cyan-400 break-all" title="${escapeHtml(hashFormat.title)}">${escapeHtml(hashFormat.display)}</span></div>`;
       }
 
+      let errorHtml = '';
+      if (data.status === 'failed' && data.errorMessage) {
+        errorHtml = `<div class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-3 mt-2">
+          <div class="text-xs font-semibold text-red-900 dark:text-red-100 mb-1">Error Details</div>
+          <div class="text-xs text-red-800 dark:text-red-200 break-words">${escapeHtml(data.errorMessage)}</div>
+        </div>`;
+      }
+
+      let devnetIndicatorHtml = '';
+      if (networkOrigin === 'devnet' || networkOrigin === 'database') {
+        devnetIndicatorHtml = `<div class="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mt-2">
+          <div class="text-xs text-blue-900 dark:text-blue-100">
+            <span class="font-semibold">ℹ Database transaction</span> — This transaction exists in the local database only and will not be confirmed on-chain.
+          </div>
+        </div>`;
+      }
+
       return {
         html: `
           <div class="space-y-4">
@@ -2091,6 +2108,8 @@
               ${txHashHtml}
               <div class="text-sm"><span class="text-zinc-600 dark:text-zinc-400">Timestamp:</span> <span class="text-zinc-900 dark:text-zinc-100">${timestamp}</span></div>
             </div>
+            ${errorHtml}
+            ${devnetIndicatorHtml}
           </div>
         `,
         explorerUrl: data.explorerUrl
@@ -3283,6 +3302,8 @@
       }
     }
 
+    let sidebarTransactionPollingTimer = null;
+
     function toggleTransactionAccordion() {
       const content = document.getElementById('transactionContent');
       const arrow = document.getElementById('transactionArrow');
@@ -3291,9 +3312,19 @@
       if (isHidden) {
         content.classList.remove('hidden');
         arrow.classList.add('rotate-180');
+        // Start auto-polling when accordion opens
+        if (!sidebarTransactionPollingTimer) {
+          pollTransactionHistory();
+          sidebarTransactionPollingTimer = setInterval(pollTransactionHistory, 10000);
+        }
       } else {
         content.classList.add('hidden');
         arrow.classList.remove('rotate-180');
+        // Stop polling when accordion closes
+        if (sidebarTransactionPollingTimer) {
+          clearInterval(sidebarTransactionPollingTimer);
+          sidebarTransactionPollingTimer = null;
+        }
       }
     }
 

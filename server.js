@@ -9631,58 +9631,122 @@ async function start() {
       // FIX #8: Seed staging mock data for testing transaction polling without real blockchain
       console.log('[Staging Mock Data] Seeding transaction test data for polling tests...');
       try {
-        const userId = 1; // Staging demo user (Alice)
+        const alice = 1, bob = 2, charlie = 3; // Staging demo users
 
-        // Seed test transactions with various statuses to simulate polling scenarios
+        // Seed test transactions with various statuses, networks, and types to simulate real scenarios
         const testTransactions = [
+          // Testnet transactions (various statuses)
           {
+            userId: alice,
             status: 'confirmed',
-            offset: 120,
-            message: 'Staging test message - confirmed transaction',
-            txHashSuffix: 'test-confirmed-001'
+            offset: 480,
+            messageType: 'token_transfer',
+            networkOrigin: 'testnet',
+            txHashSuffix: 'testnet-token-confirmed-001',
+            payload: { amount: 100, recipient: 'bob' }
           },
           {
+            userId: alice,
             status: 'pending',
-            offset: 60,
-            message: 'Staging test message - still pending (testing polling)',
-            txHashSuffix: 'test-pending-001'
+            offset: 240,
+            messageType: 'token_transfer',
+            networkOrigin: 'testnet',
+            txHashSuffix: 'testnet-token-pending-001',
+            payload: { amount: 50, recipient: 'charlie' }
           },
           {
+            userId: bob,
             status: 'failed',
-            offset: 30,
-            message: 'Staging test message - failed transaction',
-            txHashSuffix: 'test-failed-001',
-            error: 'RPC connection timeout'
+            offset: 120,
+            messageType: 'token_transfer',
+            networkOrigin: 'testnet',
+            txHashSuffix: 'testnet-token-failed-001',
+            error: 'Insufficient balance',
+            payload: { amount: 1000, recipient: 'alice' }
+          },
+          // Devnet transactions (database-only)
+          {
+            userId: alice,
+            status: 'pending',
+            offset: 360,
+            messageType: 'token_transfer',
+            networkOrigin: 'devnet',
+            txHashSuffix: 'devnet-token-pending-001',
+            payload: { amount: 75, recipient: 'bob' }
+          },
+          {
+            userId: charlie,
+            status: 'confirmed',
+            offset: 300,
+            messageType: 'group_create',
+            networkOrigin: 'devnet',
+            txHashSuffix: 'devnet-group-create-001',
+            payload: { groupName: 'Staging Test Group', memberCount: 3 }
+          },
+          // Mainnet transaction
+          {
+            userId: bob,
+            status: 'confirmed',
+            offset: 600,
+            messageType: 'token_transfer',
+            networkOrigin: 'mainnet',
+            txHashSuffix: 'mainnet-token-confirmed-001',
+            payload: { amount: 250, recipient: 'alice' }
+          },
+          // Message type transaction
+          {
+            userId: alice,
+            status: 'confirmed',
+            offset: 180,
+            messageType: 'message',
+            networkOrigin: 'testnet',
+            txHashSuffix: 'testnet-message-confirmed-001',
+            payload: { text: 'Hello from testnet!' }
+          },
+          // Group operation transactions
+          {
+            userId: bob,
+            status: 'confirmed',
+            offset: 420,
+            messageType: 'group_add_members',
+            networkOrigin: 'testnet',
+            txHashSuffix: 'testnet-group-add-members-001',
+            payload: { groupName: 'Design Team', newMembers: 2 }
           }
         ];
 
         for (const tx of testTransactions) {
           const msgTime = new Date(Date.now() - tx.offset * 60000);
-          const contentHash = computeContentHash(tx.message);
+          const contentHash = computeContentHash(JSON.stringify(tx.payload));
           const txHash = `ut1staging-${tx.txHashSuffix}`;
+          const confirmedTime = tx.status === 'confirmed' ? msgTime : null;
+          const userPubkey = tx.userId === 1 ? 'ut1staging-alice-001' : tx.userId === 2 ? 'ut1staging-bob-001' : 'ut1staging-charlie-001';
 
-          // Create audit log for testing polling flow
+          // Create audit log for testing
           const auditRes = await pool.query(`
             INSERT INTO blockchain_audit_logs (
-              user_id, message_type, tx_hash, status, content_hash, user_pubkey,
-              action_timestamp, error_message, created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
-            ON CONFLICT (user_id, tx_hash) DO NOTHING
+              user_id, message_type, tx_hash, status, network_origin, transaction_payload, confirmed_at,
+              content_hash, user_pubkey, action_timestamp, error_message, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
+            ON CONFLICT (tx_hash) DO NOTHING
             RETURNING id
           `, [
-            userId,
-            'message',
+            tx.userId,
+            tx.messageType,
             txHash,
             tx.status,
+            tx.networkOrigin,
+            JSON.stringify(tx.payload),
+            confirmedTime,
             contentHash,
-            'ut1staging-alice-001',
+            userPubkey,
             msgTime,
             tx.error || null,
             msgTime
           ]);
 
           if (auditRes.rows.length > 0) {
-            console.log(`[Staging Mock Data] Created test transaction: ${tx.txHashSuffix} (status: ${tx.status})`);
+            console.log(`[Staging Mock Data] Created test transaction: ${tx.txHashSuffix} (${tx.messageType}, ${tx.networkOrigin}, status: ${tx.status})`);
           }
         }
 
