@@ -10114,7 +10114,8 @@
           showToast('Mainnet is not yet available', 'info');
           // Reset dropdown to current mode
           const settings = loadSettings();
-          document.getElementById('networkModeSelect').value = settings.networkMode || 'testnet';
+          const currentMode = settings.networkMode || 'devnet';
+          document.getElementById('networkModeSelect').value = currentMode;
           return;
         }
 
@@ -10127,6 +10128,10 @@
         const result = await response.json();
         if (!response.ok) {
           showToast(`Error: ${result.error}`, 'error');
+          // Reset dropdown on error
+          const settings = loadSettings();
+          const currentMode = settings.networkMode || 'devnet';
+          document.getElementById('networkModeSelect').value = currentMode;
           return;
         }
 
@@ -10152,6 +10157,10 @@
       } catch (err) {
         showToast(`Error updating network mode: ${err.message}`, 'error');
         console.error('[NETWORK MODE] Error:', err);
+        // Reset dropdown on error
+        const settings = loadSettings();
+        const currentMode = settings.networkMode || 'devnet';
+        document.getElementById('networkModeSelect').value = currentMode;
       }
     }
 
