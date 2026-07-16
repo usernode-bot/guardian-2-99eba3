@@ -1672,6 +1672,23 @@
     </div>
   </div>
 
+  <!-- Transaction Details Modal -->
+  <div id="transactionDetailsModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4" onclick="if (event.target === this) closeTransactionDetailsModal()">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-xl max-h-[90vh] flex flex-col">
+      <div class="p-6 border-b border-zinc-300 dark:border-zinc-700 flex justify-between items-center">
+        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Transaction Details</h2>
+        <button onclick="closeTransactionDetailsModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
+      </div>
+      <div id="transactionDetailsContent" class="flex-1 overflow-y-auto p-6">
+        <div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Loading transaction details...</div>
+      </div>
+      <div class="p-6 border-t border-zinc-300 dark:border-zinc-700 space-y-3">
+        <a id="txExplorerLink" href="#" target="_blank" class="hidden w-full px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 rounded-lg transition text-white font-medium text-center block">View on Explorer</a>
+        <button onclick="closeTransactionDetailsModal()" class="w-full px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- View Group Info Modal -->
   <div id="viewGroupInfoModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-md max-h-[90vh] flex flex-col">
@@ -1942,6 +1959,30 @@
       return notificationId;
     }
 
+    // Helper: Format transaction hash based on network mode
+    function formatTransactionHash(txHash, networkOrigin) {
+      if (!txHash) return null;
+
+      const isTestnet = networkOrigin === 'testnet' || networkOrigin === 'blockchain';
+
+      if (isTestnet) {
+        // For testnet: always show full hash but truncate middle with ellipsis
+        if (txHash.length > 20) {
+          const start = txHash.substring(0, 8);
+          const end = txHash.substring(txHash.length - 8);
+          return { display: `${start}...${end}`, title: txHash };
+        }
+        return { display: txHash, title: txHash };
+      } else {
+        // For non-testnet: show full hash unless it contains "staging"
+        if (txHash.includes('staging')) {
+          const short = txHash.substring(0, 12);
+          return { display: `${short}...`, title: txHash };
+        }
+        return { display: txHash, title: txHash };
+      }
+    }
+
     // Helper: Render transaction details HTML
     function renderTransactionDetailsHTML(data) {
       const timestamp = new Date(data.createdAt).toLocaleString();
@@ -1978,8 +2019,6 @@
         statusClass = 'text-red-600 dark:text-red-400';
         statusIcon = '✗';
       }
-
-      const txHashShort = data.txHash ? data.txHash.substring(0, 12) : 'N/A';
 
       // Determine network origin label with icon
       let networkOriginLabel = 'Not specified';
@@ -2018,10 +2057,9 @@
       }
 
       let txHashHtml = '';
-      if (data.txHash && !data.txHash.includes('staging')) {
-        txHashHtml = `<div class="text-sm"><span class="text-zinc-600 dark:text-zinc-400">Hash:</span> <span class="font-mono text-xs text-cyan-600 dark:text-cyan-400 break-all">${escapeHtml(data.txHash)}</span></div>`;
-      } else if (data.txHash) {
-        txHashHtml = `<div class="text-sm"><span class="text-zinc-600 dark:text-zinc-400">Hash:</span> <span class="font-mono text-xs text-zinc-500">${escapeHtml(txHashShort)}...</span></div>`;
+      if (data.txHash) {
+        const hashFormat = formatTransactionHash(data.txHash, data.network_origin);
+        txHashHtml = `<div class="text-sm"><span class="text-zinc-600 dark:text-zinc-400">Hash:</span> <span class="font-mono text-xs text-cyan-600 dark:text-cyan-400 break-all" title="${escapeHtml(hashFormat.title)}">${escapeHtml(hashFormat.display)}</span></div>`;
       }
 
       return {
@@ -2063,6 +2101,314 @@
       window.modalPollingTimers = {};
     }
 
+    // Global transaction update callback system
+    if (!window.transactionUpdateCallbacks) {
+      window.transactionUpdateCallbacks = {};
+    }
+    if (!window.activityPollingTimers) {
+      window.activityPollingTimers = {};
+    }
+
+    function registerTransactionUpdateCallback(transactionId, callback) {
+      if (!window.transactionUpdateCallbacks[transactionId]) {
+        window.transactionUpdateCallbacks[transactionId] = [];
+      }
+      window.transactionUpdateCallbacks[transactionId].push(callback);
+    }
+
+    function publishTransactionUpdate(transactionId, updatedData) {
+      if (window.transactionUpdateCallbacks[transactionId]) {
+        window.transactionUpdateCallbacks[transactionId].forEach(callback => {
+          try {
+            callback(updatedData);
+          } catch (err) {
+            console.error('Error in transaction update callback:', err);
+          }
+        });
+      }
+    }
+
+    function updateActivityTransactionRow(transactionId, updatedData) {
+      const row = document.querySelector(`[data-transaction-id="${transactionId}"]`);
+      if (!row) return;
+
+      // Extract fields from updatedData
+      const payload = typeof updatedData.transactionPayload === 'string'
+        ? JSON.parse(updatedData.transactionPayload || '{}')
+        : (updatedData.transactionPayload || {});
+
+      // Update status
+      const statusEl = row.querySelector('[data-field="status"]');
+      if (statusEl && updatedData.blockchainStatus) {
+        const badge = updatedData.blockchainStatus;
+        let statusIcon = '⏳';
+        let statusClass = 'text-gray-500 dark:text-gray-400';
+        let statusLabel = 'Pending verification';
+
+        if (badge.status === 'confirmed' && badge.networkOrigin === 'testnet') {
+          statusIcon = '✓';
+          statusClass = 'text-green-600 dark:text-green-400';
+          statusLabel = 'Verified on Testnet';
+        } else if (badge.status === 'confirmed') {
+          statusIcon = '✓';
+          statusClass = 'text-green-600 dark:text-green-400';
+          statusLabel = 'Verified';
+        } else if (badge.status === 'failed') {
+          statusIcon = '✗';
+          statusClass = 'text-red-600 dark:text-red-400';
+          statusLabel = 'Verification failed';
+        }
+
+        statusEl.innerHTML = `<span class="${statusClass}"><span class="text-lg">${statusIcon}</span> <span class="font-medium">${statusLabel}</span></span>`;
+      }
+
+      // Update hash
+      const hashEl = row.querySelector('[data-field="hash"]');
+      if (hashEl && updatedData.blockchainStatus && updatedData.blockchainStatus.txHash) {
+        const hashFormat = formatTransactionHash(updatedData.blockchainStatus.txHash, updatedData.network_origin);
+        if (hashFormat) {
+          hashEl.innerHTML = `<span class="font-mono text-xs text-cyan-600 dark:text-cyan-400" title="${escapeHtml(hashFormat.title)}">${escapeHtml(hashFormat.display)}</span>`;
+        }
+      }
+
+      // Update explorer link
+      const explorerLinkEl = row.querySelector('[data-field="explorer-link"]');
+      if (explorerLinkEl && updatedData.blockchainStatus && updatedData.blockchainStatus.explorerUrl) {
+        explorerLinkEl.innerHTML = `<a href="${escapeHtml(updatedData.blockchainStatus.explorerUrl)}" target="_blank" onclick="event.stopPropagation()" class="text-cyan-600 dark:text-cyan-400 hover:underline ml-1">↗</a>`;
+        explorerLinkEl.classList.remove('hidden');
+      }
+
+      // Update network mode if needed
+      const networkEl = row.querySelector('[data-field="network-mode"]');
+      if (networkEl && updatedData.network_origin) {
+        let networkOriginLabel = 'Not specified';
+        let networkOriginIcon = '❓';
+        let networkOriginClass = 'text-zinc-600 dark:text-zinc-400';
+
+        if (updatedData.network_origin === 'testnet' || updatedData.network_origin === 'blockchain') {
+          networkOriginLabel = 'Testnet';
+          networkOriginIcon = '🔗';
+          networkOriginClass = 'text-green-600 dark:text-green-400';
+        } else if (updatedData.network_origin === 'devnet' || updatedData.network_origin === 'database') {
+          networkOriginLabel = 'Devnet';
+          networkOriginIcon = '💾';
+          networkOriginClass = 'text-blue-600 dark:text-blue-400';
+        } else if (updatedData.network_origin === 'mainnet') {
+          networkOriginLabel = 'Mainnet';
+          networkOriginIcon = '🌍';
+          networkOriginClass = 'text-amber-600 dark:text-amber-400';
+        } else if (updatedData.network_origin === 'demo') {
+          networkOriginLabel = 'Demo';
+          networkOriginIcon = '🎭';
+          networkOriginClass = 'text-purple-600 dark:text-purple-400';
+        } else if (updatedData.network_origin === 'bridge') {
+          networkOriginLabel = 'Bridge';
+          networkOriginIcon = '🌉';
+          networkOriginClass = 'text-orange-600 dark:text-orange-400';
+        }
+
+        networkEl.innerHTML = `<span class="${networkOriginClass}"><span>${networkOriginIcon}</span> <span class="font-medium">${networkOriginLabel}</span></span>`;
+      }
+    }
+
+    function renderActivityTransactionComplete(tx) {
+      const timestamp = formatRelativeTime(tx.createdAt);
+      const payload = typeof tx.transactionPayload === 'string'
+        ? JSON.parse(tx.transactionPayload || '{}')
+        : (tx.transactionPayload || {});
+
+      // Determine transaction type icon and description
+      let typeIcon = '🔄';
+      let description = 'Transaction';
+
+      if (tx.messageType === 'message') {
+        typeIcon = '💬';
+        const recipient = tx.recipientUsername || 'unknown';
+        description = `Sent message to @${escapeHtml(recipient)}`;
+      } else if (tx.messageType === 'token_transfer') {
+        typeIcon = '💰';
+        const recipient = tx.recipientUsername || 'unknown';
+        const amount = payload.amount || '?';
+        description = `Transferred ${amount} tokens to @${escapeHtml(recipient)}`;
+      } else if (tx.messageType === 'group_create') {
+        typeIcon = '👥';
+        const groupName = tx.groupName || 'group';
+        description = `Created group '${escapeHtml(groupName)}'`;
+      } else if (tx.messageType === 'group_add_members') {
+        typeIcon = '👥';
+        const groupName = tx.groupName || 'group';
+        description = `Added members to '${escapeHtml(groupName)}'`;
+      } else if (tx.messageType === 'group_remove_member') {
+        typeIcon = '👥';
+        const groupName = tx.groupName || 'group';
+        description = `Removed member from '${escapeHtml(groupName)}'`;
+      } else if (tx.messageType === 'group_update') {
+        typeIcon = '👥';
+        const groupName = tx.groupName || 'group';
+        description = `Updated '${escapeHtml(groupName)}'`;
+      } else if (tx.messageType === 'group_delete') {
+        typeIcon = '👥';
+        const groupName = tx.groupName || 'group';
+        description = `Deleted group '${escapeHtml(groupName)}'`;
+      } else if (tx.messageType === 'group_leave') {
+        typeIcon = '👥';
+        const groupName = tx.groupName || 'group';
+        description = `Left '${escapeHtml(groupName)}'`;
+      }
+
+      // Determine network origin label with icon
+      let networkOriginLabel = 'Not specified';
+      let networkOriginIcon = '❓';
+      let networkOriginClass = 'text-zinc-600 dark:text-zinc-400';
+
+      if (tx.network_origin === 'testnet' || tx.network_origin === 'blockchain') {
+        networkOriginLabel = 'Testnet';
+        networkOriginIcon = '🔗';
+        networkOriginClass = 'text-green-600 dark:text-green-400';
+      } else if (tx.network_origin === 'devnet' || tx.network_origin === 'database') {
+        networkOriginLabel = 'Devnet';
+        networkOriginIcon = '💾';
+        networkOriginClass = 'text-blue-600 dark:text-blue-400';
+      } else if (tx.network_origin === 'mainnet') {
+        networkOriginLabel = 'Mainnet';
+        networkOriginIcon = '🌍';
+        networkOriginClass = 'text-amber-600 dark:text-amber-400';
+      } else if (tx.network_origin === 'demo') {
+        networkOriginLabel = 'Demo';
+        networkOriginIcon = '🎭';
+        networkOriginClass = 'text-purple-600 dark:text-purple-400';
+      } else if (tx.network_origin === 'bridge') {
+        networkOriginLabel = 'Bridge';
+        networkOriginIcon = '🌉';
+        networkOriginClass = 'text-orange-600 dark:text-orange-400';
+      }
+
+      // Determine status icon and class
+      let statusIcon = '⏳';
+      let statusClass = 'text-gray-500 dark:text-gray-400';
+      let statusLabel = 'Pending verification';
+
+      if (tx.blockchainStatus) {
+        const badge = tx.blockchainStatus;
+        if (badge.status === 'confirmed' && badge.networkOrigin === 'testnet') {
+          statusIcon = '✓';
+          statusClass = 'text-green-600 dark:text-green-400';
+          statusLabel = 'Verified on Testnet';
+        } else if (badge.status === 'confirmed') {
+          statusIcon = '✓';
+          statusClass = 'text-green-600 dark:text-green-400';
+          statusLabel = 'Verified';
+        } else if (badge.status === 'failed') {
+          statusIcon = '✗';
+          statusClass = 'text-red-600 dark:text-red-400';
+          statusLabel = 'Verification failed';
+        }
+      }
+
+      // Format hash
+      let hashHtml = '';
+      if (tx.blockchainStatus && tx.blockchainStatus.txHash) {
+        const hashFormat = formatTransactionHash(tx.blockchainStatus.txHash, tx.network_origin);
+        if (hashFormat) {
+          hashHtml = `<span data-field="hash" class="font-mono text-xs text-cyan-600 dark:text-cyan-400" title="${escapeHtml(hashFormat.title)}">${escapeHtml(hashFormat.display)}</span>`;
+        }
+      }
+
+      // Explorer link
+      let explorerLinkHtml = '';
+      if (tx.blockchainStatus && tx.blockchainStatus.explorerUrl) {
+        explorerLinkHtml = `<a data-field="explorer-link" href="${escapeHtml(tx.blockchainStatus.explorerUrl)}" target="_blank" onclick="event.stopPropagation()" class="text-cyan-600 dark:text-cyan-400 hover:underline ml-1">↗</a>`;
+      } else {
+        explorerLinkHtml = `<span data-field="explorer-link" class="hidden"></span>`;
+      }
+
+      return `
+        <div class="px-3 py-3 bg-zinc-100 dark:bg-zinc-800 rounded border border-zinc-200 dark:border-zinc-700 cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-700 transition"
+             onclick="openTransactionDetailsModal(${tx.id})"
+             data-transaction-id="${tx.id}">
+          <!-- Header: Type + Description -->
+          <div class="text-xs font-medium text-zinc-900 dark:text-zinc-100 truncate mb-2">
+            ${typeIcon} ${description}
+          </div>
+
+          <!-- Network Mode Label -->
+          <div class="text-xs mb-1">
+            <span class="text-zinc-600 dark:text-zinc-400">Mode:</span>
+            <span data-field="network-mode" class="flex items-center gap-1 inline-flex ${networkOriginClass}">
+              <span>${networkOriginIcon}</span>
+              <span class="font-medium">${networkOriginLabel}</span>
+            </span>
+          </div>
+
+          <!-- Status Badge with Icon + Status + Hash + Explorer Link -->
+          <div class="text-xs mb-1 flex items-center gap-1 flex-wrap">
+            <span class="text-zinc-600 dark:text-zinc-400">Status:</span>
+            <span data-field="status" class="${statusClass}">
+              <span class="text-lg">${statusIcon}</span>
+              <span class="font-medium">${statusLabel}</span>
+            </span>
+            ${hashHtml}
+            ${explorerLinkHtml}
+          </div>
+
+          <!-- Timestamp -->
+          <div class="text-xs text-zinc-600 dark:text-zinc-400">
+            ${timestamp}
+          </div>
+        </div>
+      `;
+    }
+
+    function startActivityTransactionPolling(transactionId) {
+      // Start polling if not already polling
+      if (window.activityPollingTimers[transactionId]) {
+        return; // Already polling
+      }
+
+      const pollInterval = setInterval(async () => {
+        try {
+          const data = await apiCall(`/api/blockchain-audit/${transactionId}`);
+          if (!data) return;
+
+          // Stop polling if status is no longer pending
+          if (data.status !== 'pending') {
+            clearInterval(window.activityPollingTimers[transactionId]);
+            delete window.activityPollingTimers[transactionId];
+            return;
+          }
+
+          // Publish update to all subscribers
+          publishTransactionUpdate(transactionId, data);
+        } catch (err) {
+          console.error(`Error polling transaction ${transactionId}:`, err);
+        }
+      }, 4000); // 4 second interval
+
+      window.activityPollingTimers[transactionId] = pollInterval;
+    }
+
+    function stopActivityTransactionPolling(transactionId) {
+      if (window.activityPollingTimers[transactionId]) {
+        clearInterval(window.activityPollingTimers[transactionId]);
+        delete window.activityPollingTimers[transactionId];
+      }
+    }
+
+    function cleanupActivityPolling() {
+      Object.keys(window.activityPollingTimers).forEach(txId => {
+        clearInterval(window.activityPollingTimers[txId]);
+      });
+      window.activityPollingTimers = {};
+    }
+
+    // Cleanup on page unload or tab close
+    window.addEventListener('beforeunload', () => {
+      cleanupActivityPolling();
+      Object.keys(window.modalPollingTimers).forEach(txId => {
+        clearInterval(window.modalPollingTimers[txId]);
+      });
+    });
+
     function closeTransactionDetailsModal() {
       const modal = document.getElementById('transactionDetailsModal');
       const auditLogId = modal.dataset.currentAuditLogId;
@@ -2071,6 +2417,11 @@
       if (auditLogId && window.modalPollingTimers[auditLogId]) {
         clearInterval(window.modalPollingTimers[auditLogId]);
         delete window.modalPollingTimers[auditLogId];
+      }
+
+      // Remove modal as subscriber to transaction updates (Activity list continues polling)
+      if (auditLogId && window.transactionUpdateCallbacks[auditLogId]) {
+        window.transactionUpdateCallbacks[auditLogId] = [];
       }
 
       modal.classList.add('hidden');
@@ -2114,6 +2465,17 @@
             explorerLink.classList.add('hidden');
           }
 
+          // Publish update to Activity list so it reflects modal changes
+          publishTransactionUpdate(auditLogId, data);
+
+          // Stop polling for Activity list when modal closes
+          if (!document.getElementById('transactionDetailsModal').classList.contains('hidden')) {
+            // Modal is still open, keep Activity list polling going
+          } else {
+            // Modal closed, stop Activity list polling too
+            stopActivityTransactionPolling(auditLogId);
+          }
+
           // Track status changes for logging
           if (data.status !== lastStatus) {
             console.log(`[MODAL] Transaction ${auditLogId} status: ${data.status}${data.txHash ? ` (hash: ${data.txHash.substring(0, 16)}...)` : ' (no hash yet)'}`);
@@ -2127,6 +2489,8 @@
               clearInterval(window.modalPollingTimers[auditLogId]);
               delete window.modalPollingTimers[auditLogId];
             }
+            // Also stop Activity list polling when transaction is done
+            stopActivityTransactionPolling(auditLogId);
             return;
           }
 
@@ -9646,6 +10010,11 @@
 
     async function loadActivityTransactions(offset) {
       try {
+        // Clean up any existing polling timers when refreshing list
+        if (offset === 0) {
+          cleanupActivityPolling();
+        }
+
         const response = await apiCall(`/api/transactions-by-user?limit=20&offset=${offset}`);
         if (!response || !response.transactions) {
           if (offset === 0) {
@@ -9661,115 +10030,7 @@
 
         let html = '';
         for (const tx of response.transactions) {
-          const timestamp = formatRelativeTime(tx.createdAt);
-
-          // Determine status icon and class
-          let statusIcon = '⏳';
-          let statusClass = 'text-gray-500 dark:text-gray-400';
-          if (tx.status === 'confirmed') {
-            statusIcon = '✓';
-            statusClass = 'text-green-600 dark:text-green-400';
-          } else if (tx.status === 'failed') {
-            statusIcon = '✗';
-            statusClass = 'text-red-600 dark:text-red-400';
-          }
-
-          // Determine transaction type icon and description
-          let typeIcon = '🔄';
-          let description = 'Transaction';
-          const payload = typeof tx.transactionPayload === 'string'
-            ? JSON.parse(tx.transactionPayload || '{}')
-            : (tx.transactionPayload || {});
-
-          if (tx.messageType === 'message') {
-            typeIcon = '💬';
-            const recipient = tx.recipientUsername || 'unknown';
-            description = `Sent message to @${escapeHtml(recipient)}`;
-          } else if (tx.messageType === 'token_transfer') {
-            typeIcon = '💰';
-            const recipient = tx.recipientUsername || 'unknown';
-            const amount = payload.amount || '?';
-            description = `Transferred ${amount} tokens to @${escapeHtml(recipient)}`;
-          } else if (tx.messageType === 'group_create') {
-            typeIcon = '👥';
-            const groupName = tx.groupName || 'group';
-            description = `Created group '${escapeHtml(groupName)}'`;
-          } else if (tx.messageType === 'group_add_members') {
-            typeIcon = '👥';
-            const groupName = tx.groupName || 'group';
-            description = `Added members to '${escapeHtml(groupName)}'`;
-          } else if (tx.messageType === 'group_remove_member') {
-            typeIcon = '👥';
-            const groupName = tx.groupName || 'group';
-            description = `Removed member from '${escapeHtml(groupName)}'`;
-          } else if (tx.messageType === 'group_update') {
-            typeIcon = '👥';
-            const groupName = tx.groupName || 'group';
-            description = `Updated '${escapeHtml(groupName)}'`;
-          } else if (tx.messageType === 'group_delete') {
-            typeIcon = '👥';
-            const groupName = tx.groupName || 'group';
-            description = `Deleted group '${escapeHtml(groupName)}'`;
-          } else if (tx.messageType === 'group_leave') {
-            typeIcon = '👥';
-            const groupName = tx.groupName || 'group';
-            description = `Left '${escapeHtml(groupName)}'`;
-          }
-
-          // Render blockchain status badge
-          let badgeHtml = '';
-          if (tx.blockchainStatus) {
-            const badge = tx.blockchainStatus;
-            const txHashShort = badge.txHash ? badge.txHash.substring(0, 12) : '';
-
-            let badgeBgColor = 'bg-zinc-100 dark:bg-zinc-700';
-            let badgeTextColor = 'text-zinc-700 dark:text-zinc-300';
-            let badgeLabel = 'Local Record';
-            let badgeIcon = '📝';
-
-            if (badge.status === 'confirmed' && badge.networkOrigin === 'testnet') {
-              badgeBgColor = 'bg-green-100 dark:bg-green-900/30';
-              badgeTextColor = 'text-green-700 dark:text-green-300';
-              badgeLabel = 'Verified on Testnet';
-              badgeIcon = '✓';
-            } else if (badge.status === 'pending') {
-              badgeBgColor = 'bg-gray-100 dark:bg-gray-700';
-              badgeTextColor = 'text-gray-700 dark:text-gray-300';
-              badgeLabel = 'Pending verification';
-              badgeIcon = '⏳';
-            } else if (badge.status === 'failed') {
-              badgeBgColor = 'bg-red-100 dark:bg-red-900/30';
-              badgeTextColor = 'text-red-700 dark:text-red-300';
-              badgeLabel = 'Verification failed';
-              badgeIcon = '✗';
-            }
-
-            if (badge.explorerUrl) {
-              badgeHtml = `<a href="${escapeHtml(badge.explorerUrl)}" target="_blank" onclick="event.stopPropagation()" class="inline-block px-2 py-1 ${badgeBgColor} ${badgeTextColor} rounded text-xs font-medium cursor-pointer hover:opacity-80 transition" title="${escapeHtml(badge.txHash || '')}">
-                ${badgeIcon} ${badgeLabel}
-                <span class="font-mono text-xs ml-1">${txHashShort}</span>
-              </a>`;
-            } else {
-              badgeHtml = `<div class="inline-block px-2 py-1 ${badgeBgColor} ${badgeTextColor} rounded text-xs font-medium" title="${escapeHtml(badge.txHash || '')}">
-                ${badgeIcon} ${badgeLabel}
-                ${txHashShort ? `<span class="font-mono text-xs ml-1">${txHashShort}</span>` : ''}
-              </div>`;
-            }
-          } else {
-            badgeHtml = '<span class="text-zinc-500 dark:text-zinc-500 text-xs">No blockchain data</span>';
-          }
-
-          html += `
-            <div class="px-3 py-3 bg-zinc-100 dark:bg-zinc-800 rounded border border-zinc-200 dark:border-zinc-700 cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-700 transition" onclick="openTransactionDetailsModal(${tx.id})">
-              <div class="flex justify-between items-center gap-2 mb-2">
-                <div class="text-xs font-medium text-zinc-900 dark:text-zinc-100 truncate flex-1">${typeIcon} ${description}</div>
-              </div>
-              <div class="flex justify-between items-center gap-2">
-                <div class="truncate flex-1">${badgeHtml}</div>
-                <div class="ml-2 whitespace-nowrap text-xs text-zinc-600 dark:text-zinc-400">${timestamp}</div>
-              </div>
-            </div>
-          `;
+          html += renderActivityTransactionComplete(tx);
         }
 
         if (offset === 0) {
@@ -9779,6 +10040,18 @@
           const loadMoreBtn = container.querySelector('[data-load-more="transactions"]');
           if (loadMoreBtn) loadMoreBtn.remove();
           container.innerHTML += html;
+        }
+
+        // Start polling for all pending transactions and register callbacks
+        for (const tx of response.transactions) {
+          if (tx.blockchainStatus && tx.blockchainStatus.status === 'pending') {
+            // Register callback for modal to use
+            registerTransactionUpdateCallback(tx.id, (data) => {
+              updateActivityTransactionRow(tx.id, data);
+            });
+            // Start polling
+            startActivityTransactionPolling(tx.id);
+          }
         }
 
         // Show load more button if there are more items
