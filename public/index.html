@@ -10034,7 +10034,7 @@
 
         const response = await fetch('/api/tokens/send', {
           method: 'POST',
-          headers: { 'content-type': 'application/json', 'x-usernode-token': currentUserToken },
+          headers: { 'content-type': 'application/json', 'x-usernode-token': token },
           body: JSON.stringify({ recipientAddress: recipient, amount: amount, memo: memo })
         });
 
@@ -10093,7 +10093,7 @@
 
         const response = await fetch('/api/user/network-mode', {
           method: 'PUT',
-          headers: { 'content-type': 'application/json', 'x-usernode-token': currentUserToken },
+          headers: { 'content-type': 'application/json', 'x-usernode-token': token },
           body: JSON.stringify({ networkMode: mode })
         });
 
@@ -10139,7 +10139,7 @@
 
         const response = await fetch('/api/config/rpc-endpoint', {
           method: 'PUT',
-          headers: { 'content-type': 'application/json', 'x-usernode-token': currentUserToken },
+          headers: { 'content-type': 'application/json', 'x-usernode-token': token },
           body: JSON.stringify({ rpcUrl: rpcUrl })
         });
 
