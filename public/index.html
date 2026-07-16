@@ -10168,11 +10168,19 @@
     async function updateNetworkModeVisibility(networkMode) {
       try {
         let mode = networkMode;
+        let chainId = null;
         // If no mode passed, try to fetch from API
         if (!mode) {
           const response = await fetch('/api/active_chain', { headers });
           const chain = await response.json();
           mode = chain.networkMode;
+          chainId = chain.chainId;
+        }
+
+        // Update wallet bridge context with correct chain ID
+        if (chainId && typeof window.usernode === 'object' && window.usernode !== null) {
+          window.usernode.activeChainId = chainId;
+          console.log('[CHAIN] Active chain updated:', chainId, '(network mode:', mode + ')');
         }
 
         const rpcWrapper = document.getElementById('rpcAccordionWrapper');
