@@ -9379,56 +9379,60 @@ async function start() {
       }
 
       // Seed blockchain audit logs with various statuses for Activity/Transaction Detail testing
-      const now = new Date();
-      const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-      const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
-      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
-      const thirtyMinsAgo = new Date(now.getTime() - 30 * 60 * 1000);
-      const tenMinsAgo = new Date(now.getTime() - 10 * 60 * 1000);
+      try {
+        const now = new Date();
+        const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+        const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+        const thirtyMinsAgo = new Date(now.getTime() - 30 * 60 * 1000);
+        const tenMinsAgo = new Date(now.getTime() - 10 * 60 * 1000);
 
-      // Confirmed testnet transaction (token transfer)
-      await pool.query(`
-        INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, status, confirmed_at, created_at, updated_at, network_origin, transaction_payload)
-        VALUES ($1, 'token_transfer', $2, 'confirmed', $3, $4, $4, 'testnet', $5)
-        ON CONFLICT (tx_hash) DO NOTHING
-      `, [alice, 'tx_staging_confirmed_001', yesterday, yesterday, JSON.stringify({ amount: '50', recipient: 'staging-demo-bob' })]);
+        // Confirmed testnet transaction (token transfer)
+        await pool.query(`
+          INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, status, confirmed_at, created_at, updated_at, network_origin, transaction_payload)
+          VALUES ($1, 'token_transfer', $2, 'confirmed', $3, $4, $4, 'testnet', $5)
+          ON CONFLICT (tx_hash) DO NOTHING
+        `, [alice, 'tx_staging_confirmed_001', yesterday, yesterday, JSON.stringify({ amount: '50', recipient: 'staging-demo-bob' })]);
 
-      // Pending testnet transaction (token transfer)
-      await pool.query(`
-        INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, status, created_at, updated_at, network_origin, transaction_payload)
-        VALUES ($1, 'token_transfer', $2, 'pending', $3, $3, 'testnet', $4)
-        ON CONFLICT (tx_hash) DO NOTHING
-      `, [alice, 'tx_staging_pending_001', twoHoursAgo, JSON.stringify({ amount: '25', recipient: 'staging-demo-charlie' })]);
+        // Pending testnet transaction (token transfer)
+        await pool.query(`
+          INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, status, created_at, updated_at, network_origin, transaction_payload)
+          VALUES ($1, 'token_transfer', $2, 'pending', $3, $3, 'testnet', $4)
+          ON CONFLICT (tx_hash) DO NOTHING
+        `, [alice, 'tx_staging_pending_001', twoHoursAgo, JSON.stringify({ amount: '25', recipient: 'staging-demo-charlie' })]);
 
-      // Failed testnet transaction (group create)
-      await pool.query(`
-        INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, status, error_message, created_at, updated_at, network_origin, group_id)
-        VALUES ($1, 'group_create', $2, 'failed', 'Gas estimation failed', $3, $3, 'testnet', $4)
-        ON CONFLICT (tx_hash) DO NOTHING
-      `, [bob, 'tx_staging_failed_001', oneHourAgo, designGroupId]);
+        // Failed testnet transaction (group create)
+        await pool.query(`
+          INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, status, error_message, created_at, updated_at, network_origin, group_id)
+          VALUES ($1, 'group_create', $2, 'failed', 'Gas estimation failed', $3, $3, 'testnet', $4)
+          ON CONFLICT (tx_hash) DO NOTHING
+        `, [bob, 'tx_staging_failed_001', oneHourAgo, designGroupId]);
 
-      // Pending devnet transaction (message)
-      await pool.query(`
-        INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, status, created_at, updated_at, network_origin, transaction_payload)
-        VALUES ($1, 'message', $2, 'pending', $3, $3, 'devnet', $4)
-        ON CONFLICT (tx_hash) DO NOTHING
-      `, [charlie, 'tx_staging_pending_002', thirtyMinsAgo, JSON.stringify({ recipient: 'staging-demo-alice' })]);
+        // Pending devnet transaction (message)
+        await pool.query(`
+          INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, status, created_at, updated_at, network_origin, transaction_payload)
+          VALUES ($1, 'message', $2, 'pending', $3, $3, 'devnet', $4)
+          ON CONFLICT (tx_hash) DO NOTHING
+        `, [charlie, 'tx_staging_pending_002', thirtyMinsAgo, JSON.stringify({ recipient: 'staging-demo-alice' })]);
 
-      // Confirmed devnet transaction (group add members)
-      await pool.query(`
-        INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, status, confirmed_at, created_at, updated_at, network_origin, group_id)
-        VALUES ($1, 'group_add_members', $2, 'confirmed', $3, $4, $4, 'devnet', $5)
-        ON CONFLICT (tx_hash) DO NOTHING
-      `, [alice, 'tx_staging_confirmed_002', tenMinsAgo, tenMinsAgo, designGroupId]);
+        // Confirmed devnet transaction (group add members)
+        await pool.query(`
+          INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, status, confirmed_at, created_at, updated_at, network_origin, group_id)
+          VALUES ($1, 'group_add_members', $2, 'confirmed', $3, $4, $4, 'devnet', $5)
+          ON CONFLICT (tx_hash) DO NOTHING
+        `, [alice, 'tx_staging_confirmed_002', tenMinsAgo, tenMinsAgo, designGroupId]);
 
-      // Synthetic hash pending (waiting for fallback lookup)
-      await pool.query(`
-        INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, status, created_at, updated_at, network_origin, transaction_payload)
-        VALUES ($1, 'token_transfer', $2, 'pending', $3, $3, 'testnet', $4)
-        ON CONFLICT (tx_hash) DO NOTHING
-      `, [david, 'synthetic_staging_pending_001', tenMinsAgo, JSON.stringify({ amount: '100', recipient: 'staging-demo-emma' })]);
+        // Synthetic hash pending (waiting for fallback lookup)
+        await pool.query(`
+          INSERT INTO blockchain_audit_logs (user_id, message_type, tx_hash, status, created_at, updated_at, network_origin, transaction_payload)
+          VALUES ($1, 'token_transfer', $2, 'pending', $3, $3, 'testnet', $4)
+          ON CONFLICT (tx_hash) DO NOTHING
+        `, [david, 'synthetic_staging_pending_001', tenMinsAgo, JSON.stringify({ amount: '100', recipient: 'staging-demo-emma' })]);
 
-      console.log('[STAGING SEED] Blockchain audit logs seeded successfully');
+        console.log('[STAGING SEED] Blockchain audit logs seeded successfully');
+      } catch (blockchainSeedErr) {
+        console.warn('[STAGING SEED] Blockchain audit logs seeding failed (non-critical):', blockchainSeedErr.message);
+      }
     }
 
     // Create reserved system user for network milestones (all environments)
