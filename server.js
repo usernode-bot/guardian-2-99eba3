@@ -379,8 +379,15 @@ async function validateAndConfigureExplorer() {
   return false;
 }
 
-function getExplorerUrl(txHash) {
+function getExplorerUrl(txHash, status) {
   if (!txHash || !EXPLORER_HEALTHY || !EXPLORER_FORMAT) {
+    return null;
+  }
+  // Only return explorer URL for confirmed transactions with real (non-synthetic) hashes
+  if (status !== 'confirmed') {
+    return null;
+  }
+  if (txHash.startsWith('synthetic_') || txHash.startsWith('pending_') || txHash.startsWith('demo_')) {
     return null;
   }
   const explorerPath = EXPLORER_FORMAT === 'api/tx'
@@ -5375,7 +5382,7 @@ app.get('/api/activity', async (req, res) => {
           status: r.status,
           txHash: r.tx_hash,
           networkOrigin: r.network_origin,
-          explorerUrl: getExplorerUrl(r.tx_hash)
+          explorerUrl: getExplorerUrl(r.tx_hash, r.status)
         }
       };
     });
@@ -6391,8 +6398,8 @@ app.post('/api/tokens/send', async (req, res) => {
       try {
         const auditRes = await pool.query(`
           INSERT INTO blockchain_audit_logs (
-            user_id, message_type, tx_hash, transaction_payload, status, user_pubkey, action_timestamp, created_at, updated_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+            user_id, message_type, tx_hash, transaction_payload, status, user_pubkey, action_timestamp, network_origin, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
           RETURNING id
         `, [
           req.user.id,
@@ -6401,13 +6408,17 @@ app.post('/api/tokens/send', async (req, res) => {
           JSON.stringify(payload),
           'pending',
           req.user.usernode_pubkey || APP_PUBKEY,
-          new Date().toISOString()
+          new Date().toISOString(),
+          'testnet'
         ]);
 
         const auditLogId = auditRes.rows[0]?.id;
 
         if (auditLogId) {
-          setImmediate(() => monitorBlockchainStatus(auditLogId, txHash));
+          // Use startChainPoller for testnet tokens (matches message/group behavior)
+          startChainPoller('testnet', txHash, auditLogId).catch(err => {
+            console.error('[TOKEN SEND] Error starting chain poller:', err);
+          });
         }
       } catch (auditErr) {
         console.error('[TOKEN SEND] Error creating audit log:', auditErr);
@@ -6461,7 +6472,7 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
     }
 
     const row = result.rows[0];
-    const explorerUrl = getExplorerUrl(row.tx_hash);
+    const explorerUrl = getExplorerUrl(row.tx_hash, row.status);
 
     // Format response with blockchainStatus object for consistency with Activity list
     const responseData = {
@@ -6676,7 +6687,7 @@ app.get('/api/transactions-by-user', async (req, res) => {
       networkOrigin: row.network_origin,
       blockchainStatus: {
         ...row.blockchain_status,
-        explorerUrl: getExplorerUrl(row.tx_hash)
+        explorerUrl: getExplorerUrl(row.tx_hash, row.status)
       }
     }));
 
