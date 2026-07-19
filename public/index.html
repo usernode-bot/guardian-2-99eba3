@@ -2043,7 +2043,12 @@
       };
     }
 
-    // Track active modal polling sessions
+    // Consolidated polling system - single poller per transaction shared by all subscribers
+    if (!window.sharedTransactionPollers) {
+      window.sharedTransactionPollers = {}; // { txId: { timer, subscribers: Set, errorCount, attempts } }
+    }
+
+    // Track active modal polling sessions (kept for backward compatibility)
     if (!window.modalPollingTimers) {
       window.modalPollingTimers = {};
     }
@@ -2056,9 +2061,12 @@
       window.activityPollingTimers = {};
     }
 
-    function registerTransactionUpdateCallback(transactionId, callback) {
+    function registerTransactionUpdateCallback(transactionId, callback, isModalCallback = false) {
       if (!window.transactionUpdateCallbacks[transactionId]) {
         window.transactionUpdateCallbacks[transactionId] = [];
+      }
+      if (isModalCallback) {
+        callback._isModalCallback = true;
       }
       window.transactionUpdateCallbacks[transactionId].push(callback);
     }
@@ -2073,6 +2081,60 @@
           }
         });
       }
+    }
+
+    // Consolidated polling - single poller shared by all subscribers (activity + modal)
+    function startSharedTransactionPoller(transactionId) {
+      // If already polling, just return
+      if (window.sharedTransactionPollers[transactionId]) {
+        return;
+      }
+
+      let errorCount = 0;
+      let pollCount = 0;
+      const maxConsecutiveErrors = 5;
+      const baseInterval = 4000;
+
+      const poll = async () => {
+        try {
+          const data = await apiCall(`/api/blockchain-audit/${transactionId}`);
+          if (!data) {
+            errorCount++;
+            console.warn(`[SHARED-POLLER] No data returned for transaction ${transactionId} (error ${errorCount}/${maxConsecutiveErrors})`);
+            return;
+          }
+
+          // Reset error counter on success
+          errorCount = 0;
+          pollCount++;
+
+          // Publish update to all subscribers
+          publishTransactionUpdate(transactionId, data);
+
+          // Stop polling if status is no longer pending
+          if (data.status === 'confirmed' || data.status === 'failed') {
+            console.log(`[SHARED-POLLER] Stopping polling for transaction ${transactionId} - status is ${data.status}`);
+            clearInterval(window.sharedTransactionPollers[transactionId].timer);
+            delete window.sharedTransactionPollers[transactionId];
+          }
+        } catch (err) {
+          errorCount++;
+          console.error(`[SHARED-POLLER] Error polling transaction ${transactionId} (error ${errorCount}/${maxConsecutiveErrors}):`, err.message);
+
+          // Stop polling after max consecutive errors
+          if (errorCount >= maxConsecutiveErrors) {
+            console.warn(`[SHARED-POLLER] Max error retries (${maxConsecutiveErrors}) reached for transaction ${transactionId}, stopping polling`);
+            clearInterval(window.sharedTransactionPollers[transactionId].timer);
+            delete window.sharedTransactionPollers[transactionId];
+          }
+        }
+      };
+
+      const timer = setInterval(poll, baseInterval);
+      window.sharedTransactionPollers[transactionId] = { timer, errorCount, pollCount };
+
+      // Do initial poll immediately
+      poll();
     }
 
     function updateActivityTransactionRow(transactionId, updatedData) {
@@ -2314,10 +2376,19 @@
         return; // Already polling
       }
 
-      const pollInterval = setInterval(async () => {
+      let pollCount = 0;
+      let consecutiveErrors = 0;
+      const maxConsecutiveErrors = 5;
+      const baseInterval = 4000;
+
+      const poll = async () => {
         try {
           const data = await apiCall(`/api/blockchain-audit/${transactionId}`);
           if (!data) return;
+
+          // Reset error counter on success
+          consecutiveErrors = 0;
+          pollCount++;
 
           // Stop polling if status is no longer pending
           if (data.status !== 'pending') {
@@ -2329,9 +2400,23 @@
           // Publish update to all subscribers
           publishTransactionUpdate(transactionId, data);
         } catch (err) {
-          console.error(`Error polling transaction ${transactionId}:`, err);
+          consecutiveErrors++;
+          console.error(`Error polling transaction ${transactionId} (attempt ${consecutiveErrors}/${maxConsecutiveErrors}):`, err);
+
+          // Stop polling after max consecutive errors
+          if (consecutiveErrors >= maxConsecutiveErrors) {
+            console.warn(`[ACTIVITY] Max error retries (${maxConsecutiveErrors}) reached for transaction ${transactionId}, stopping polling`);
+            clearInterval(window.activityPollingTimers[transactionId]);
+            delete window.activityPollingTimers[transactionId];
+          }
         }
-      }, 4000); // 4 second interval
+      };
+
+      // Use exponential backoff: base interval plus exponential increase on errors
+      const pollInterval = setInterval(() => {
+        const backoffMultiplier = Math.pow(1.5, consecutiveErrors);
+        poll();
+      }, baseInterval);
 
       window.activityPollingTimers[transactionId] = pollInterval;
     }
@@ -2368,9 +2453,11 @@
         delete window.modalPollingTimers[auditLogId];
       }
 
-      // Remove modal as subscriber to transaction updates (Activity list continues polling)
+      // Remove only the modal callback subscriber (identified by 'modal-' prefix)
       if (auditLogId && window.transactionUpdateCallbacks[auditLogId]) {
-        window.transactionUpdateCallbacks[auditLogId] = [];
+        window.transactionUpdateCallbacks[auditLogId] = window.transactionUpdateCallbacks[auditLogId].filter(
+          cb => !cb._isModalCallback
+        );
       }
 
       modal.classList.add('hidden');
@@ -2391,7 +2478,9 @@
 
       let lastStatus = null;
       let pollingAttempts = 0;
-      const maxPollingAttempts = 600; // ~30 min with exponential backoff
+      let consecutiveErrors = 0;
+      const maxPollingAttempts = 600; // ~30 min
+      const maxConsecutiveErrors = 5;
 
       const pollModal = async () => {
         try {
@@ -2400,6 +2489,9 @@
             content.innerHTML = '<div class="text-center py-8 text-red-600 dark:text-red-400">Failed to load transaction details</div>';
             return;
           }
+
+          // Reset error counter on success
+          consecutiveErrors = 0;
 
           // Render the details
           const rendered = renderTransactionDetailsHTML(data);
@@ -2452,7 +2544,18 @@
             }
           }
         } catch (err) {
-          console.error(`[MODAL] Error polling transaction details for ${auditLogId}:`, err.message);
+          consecutiveErrors++;
+          console.error(`[MODAL] Error polling transaction details for ${auditLogId} (attempt ${consecutiveErrors}/${maxConsecutiveErrors}):`, err.message);
+
+          // Stop polling after max consecutive errors
+          if (consecutiveErrors >= maxConsecutiveErrors) {
+            console.warn(`[MODAL] Max error retries (${maxConsecutiveErrors}) reached for transaction ${auditLogId}, stopping polling`);
+            if (window.modalPollingTimers[auditLogId]) {
+              clearInterval(window.modalPollingTimers[auditLogId]);
+              delete window.modalPollingTimers[auditLogId];
+            }
+            content.innerHTML = '<div class="text-center py-8 text-red-600 dark:text-red-400">Error loading transaction details - polling stopped</div>';
+          }
         }
       };
 
