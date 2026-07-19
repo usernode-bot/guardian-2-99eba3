@@ -4303,6 +4303,59 @@ app.put('/api/groups/:groupId', async (req, res) => {
   }
 });
 
+app.post('/api/groups/:groupId/avatar', express.json({ limit: '2mb' }), async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { groupId } = req.params;
+    const { dataUri } = req.body;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    if (!dataUri) {
+      return res.status(400).json({ error: 'No image data provided' });
+    }
+
+    if (!dataUri.startsWith('data:image/')) {
+      return res.status(400).json({ error: 'Invalid image format' });
+    }
+
+    // Verify user is group creator
+    const { rows: groupRows } = await pool.query(`
+      SELECT creator_id FROM groups WHERE id = $1
+    `, [groupId]);
+
+    if (groupRows.length === 0) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+
+    if (groupRows[0].creator_id !== userId) {
+      return res.status(403).json({ error: 'Only creator can update group avatar' });
+    }
+
+    // Validate wallet connection before proceeding
+    const walletValidation = await validateWalletForMode(NETWORK_MODE, userId, req.user.usernode_pubkey);
+    if (!walletValidation.valid) {
+      return res.status(401).json({ error: walletValidation.error });
+    }
+
+    // Store the data URI as avatar_url
+    await pool.query(`UPDATE groups SET avatar_url = $1, updated_at = NOW() WHERE id = $2`, [dataUri, groupId]);
+
+    res.json({
+      avatar_url: dataUri,
+      status: 'updated',
+    });
+  } catch (err) {
+    console.error('Error updating group avatar:', err);
+    res.status(500).json({ error: 'Failed to update group avatar' });
+  }
+});
+
 app.get('/api/groups/:groupId/messages', async (req, res) => {
   try {
     if (!req.user) {

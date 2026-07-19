@@ -1469,6 +1469,14 @@
       <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Create Group</h2>
       <input id="groupNameInput" type="text" placeholder="Group name" maxlength="255" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
       <textarea id="groupDescInput" placeholder="Description (optional)" maxlength="1000" rows="3" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"></textarea>
+      <div class="flex justify-center">
+        <div class="relative">
+          <img id="createGroupAvatarPreview" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23d4d4d8' width='100' height='100'/%3E%3Ccircle cx='50' cy='35' r='18' fill='%23a1a1a9'/%3E%3Cpath d='M20 75 Q20 55 50 55 Q80 55 80 75' fill='%23a1a1a9'/%3E%3C/svg%3E" alt="Avatar Preview" class="w-24 h-24 rounded-full bg-zinc-200 dark:bg-zinc-700 border-2 border-cyan-600 dark:border-cyan-500 object-cover cursor-pointer hover:opacity-80 transition">
+        </div>
+      </div>
+      <input id="createGroupAvatarFileInput" type="file" accept="image/*" class="hidden" onchange="handleCreateGroupAvatarFileSelect(event)">
+      <button onclick="document.getElementById('createGroupAvatarFileInput').click()" class="w-full px-4 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 rounded-lg transition">Add Avatar (optional)</button>
+      <div id="createGroupAvatarError" class="hidden text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg"></div>
       <div class="flex gap-2">
         <button onclick="closeCreateGroupModal()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
         <button onclick="createGroup()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Create</button>
@@ -1643,6 +1651,18 @@
         <button onclick="closeViewGroupInfoModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
       </div>
       <div class="flex-1 overflow-y-auto p-6 space-y-4">
+        <!-- Avatar Section -->
+        <div class="flex flex-col items-center">
+          <div class="relative">
+            <div id="viewGroupInfoAvatar" class="w-20 h-20 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center text-white text-2xl font-semibold"></div>
+            <div id="changeAvatarBtn" class="hidden absolute bottom-0 right-0 bg-cyan-600 dark:bg-cyan-500 hover:bg-cyan-700 dark:hover:bg-cyan-400 text-white rounded-full p-2 cursor-pointer transition" onclick="openGroupAvatarUpload(currentViewingGroupId)" title="Change avatar">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </div>
+          </div>
+        </div>
         <div>
           <label class="text-xs font-medium text-zinc-600 dark:text-zinc-400">Name</label>
           <div id="viewGroupInfoName" class="text-lg font-semibold text-zinc-900 dark:text-zinc-100 mt-1">—</div>
@@ -1660,6 +1680,32 @@
       </div>
       <div class="p-6 border-t border-zinc-300 dark:border-zinc-700">
         <button onclick="closeViewGroupInfoModal()" class="w-full px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Group Avatar Upload Modal -->
+  <div id="groupAvatarModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
+      <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Upload Group Avatar</h2>
+      <div class="flex justify-center">
+        <div class="relative">
+          <img id="groupAvatarPreview" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23d4d4d8' width='100' height='100'/%3E%3Ccircle cx='50' cy='35' r='18' fill='%23a1a1a9'/%3E%3Cpath d='M20 75 Q20 55 50 55 Q80 55 80 75' fill='%23a1a1a9'/%3E%3C/svg%3E" alt="Avatar Preview" class="w-32 h-32 rounded-full bg-zinc-200 dark:bg-zinc-700 border-2 border-cyan-600 dark:border-cyan-500 object-cover">
+          <div id="groupAvatarUploadSpinner" class="hidden absolute inset-0 rounded-full bg-black bg-opacity-40 flex items-center justify-center">
+            <svg class="animate-spin w-8 h-8 text-white" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+            </svg>
+          </div>
+        </div>
+      </div>
+      <input id="groupAvatarFileInput" type="file" accept="image/*" class="hidden" onchange="handleGroupAvatarFileSelect(event)">
+      <button onclick="document.getElementById('groupAvatarFileInput').click()" class="w-full px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Choose Image</button>
+      <div id="groupAvatarError" class="hidden text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg"></div>
+      <div id="groupAvatarSuccess" class="hidden text-sm text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 p-3 rounded-lg"></div>
+      <div class="flex gap-2">
+        <button onclick="closeGroupAvatarModal()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
+        <button id="groupAvatarUploadBtn" onclick="submitGroupAvatarUpload()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium" disabled>Upload</button>
       </div>
     </div>
   </div>
@@ -4767,10 +4813,14 @@
           const activeClass = isActive ? 'border-l-4 border-cyan-600 bg-cyan-50 dark:bg-cyan-900/20' : '';
           const lastMessage = group.lastMessage || 'No messages';
           const lastTime = group.lastMessageAt ? formatTime(new Date(group.lastMessageAt)) : '';
+          const avatarHtml = renderGroupAvatar(group.avatar_url, group.name, 'w-10 h-10');
 
           return `
             <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer transition border-b border-zinc-300 dark:border-zinc-800 ${activeClass}" onclick="openGroup(${group.id})" oncontextmenu="openGroupContextMenu(event, ${group.id})">
-              <div class="flex justify-between items-start gap-2">
+              <div class="flex justify-between items-start gap-3">
+                <div class="flex-shrink-0">
+                  ${avatarHtml}
+                </div>
                 <div class="flex-1 min-w-0">
                   <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${group.name}</div>
                   <div class="text-xs text-zinc-600 dark:text-zinc-400">${group.memberCount} members</div>
@@ -5048,6 +5098,20 @@
           const statusMsg = 'Group created';
           showToast(`✓ ${statusMsg}`, 'success');
 
+          // If avatar was selected, upload it after group creation
+          if (window.createGroupAvatarDataUri) {
+            try {
+              await apiCall(`/api/groups/${data.id}/avatar`, {
+                method: 'POST',
+                body: JSON.stringify({ dataUri: window.createGroupAvatarDataUri })
+              });
+              window.createGroupAvatarDataUri = null;
+            } catch (avatarErr) {
+              console.error('Failed to upload group avatar:', avatarErr);
+              // Continue anyway, group was created successfully
+            }
+          }
+
           if (data.blockchainRecordingId) {
             showPersistentNotification('group_create', {
               blockchainRecordingId: data.blockchainRecordingId,
@@ -5083,6 +5147,10 @@
       document.getElementById('createGroupModal').classList.add('hidden');
       document.getElementById('groupNameInput').value = '';
       document.getElementById('groupDescInput').value = '';
+      document.getElementById('createGroupAvatarPreview').src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Crect fill="%23d4d4d8" width="100" height="100"/%3E%3Ccircle cx="50" cy="35" r="18" fill="%23a1a1a9"/%3E%3Cpath d="M20 75 Q20 55 50 55 Q80 55 80 75" fill="%23a1a1a9"/%3E%3C/svg%3E';
+      document.getElementById('createGroupAvatarFileInput').value = '';
+      document.getElementById('createGroupAvatarError').classList.add('hidden');
+      window.createGroupAvatarDataUri = null;
     }
 
     // New chat modal functions
@@ -5810,8 +5878,150 @@
       }
     }
 
+    // Helper function to render group avatar (image or placeholder)
+    function renderGroupAvatar(avatarUrl, groupName, sizeClass = 'w-10 h-10') {
+      if (avatarUrl) {
+        return `<img src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(groupName)}" class="${sizeClass} rounded-full object-cover flex-shrink-0 cursor-pointer hover:opacity-80 transition" onerror="this.style.display='none'">`;
+      }
+      const initial = groupName ? groupName.charAt(0).toUpperCase() : '?';
+      const textSize = sizeClass.includes('w-10') ? 'text-sm' : (sizeClass.includes('w-20') ? 'text-2xl' : 'text-xl');
+      return `<div class="${sizeClass} rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center text-white ${textSize} font-semibold flex-shrink-0">${initial}</div>`;
+    }
+
+    // Group avatar modal functions
+    let currentUploadingGroupId = null;
+    let currentGroupAvatarDataUri = null;
+
+    function openGroupAvatarUpload(groupId) {
+      currentUploadingGroupId = groupId;
+      currentGroupAvatarDataUri = null;
+      document.getElementById('groupAvatarModal').classList.remove('hidden');
+      document.getElementById('groupAvatarError').classList.add('hidden');
+      document.getElementById('groupAvatarSuccess').classList.add('hidden');
+      document.getElementById('groupAvatarUploadBtn').disabled = true;
+      document.getElementById('groupAvatarPreview').src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Crect fill="%23d4d4d8" width="100" height="100"/%3E%3Ccircle cx="50" cy="35" r="18" fill="%23a1a1a9"/%3E%3Cpath d="M20 75 Q20 55 50 55 Q80 55 80 75" fill="%23a1a1a9"/%3E%3C/svg%3E';
+    }
+
+    function closeGroupAvatarModal() {
+      document.getElementById('groupAvatarModal').classList.add('hidden');
+      currentUploadingGroupId = null;
+      currentGroupAvatarDataUri = null;
+      document.getElementById('groupAvatarFileInput').value = '';
+    }
+
+    function handleGroupAvatarFileSelect(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const errorEl = document.getElementById('groupAvatarError');
+      errorEl.classList.add('hidden');
+
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        errorEl.textContent = 'Please select an image file (JPG, PNG, GIF, etc.)';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+
+      // Validate file size (2MB)
+      if (file.size > 2 * 1024 * 1024) {
+        errorEl.textContent = 'Image must be smaller than 2MB';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+
+      // Read and preview
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        currentGroupAvatarDataUri = e.target.result;
+        document.getElementById('groupAvatarPreview').src = currentGroupAvatarDataUri;
+        document.getElementById('groupAvatarUploadBtn').disabled = false;
+      };
+      reader.onerror = () => {
+        errorEl.textContent = 'Failed to read file';
+        errorEl.classList.remove('hidden');
+      };
+      reader.readAsDataURL(file);
+    }
+
+    async function submitGroupAvatarUpload() {
+      if (!currentUploadingGroupId || !currentGroupAvatarDataUri) return;
+
+      const uploadBtn = document.getElementById('groupAvatarUploadBtn');
+      const spinner = document.getElementById('groupAvatarUploadSpinner');
+      const errorEl = document.getElementById('groupAvatarError');
+      const successEl = document.getElementById('groupAvatarSuccess');
+
+      uploadBtn.disabled = true;
+      spinner.classList.remove('hidden');
+      errorEl.classList.add('hidden');
+      successEl.classList.add('hidden');
+
+      try {
+        const data = await apiCall(`/api/groups/${currentUploadingGroupId}/avatar`, {
+          method: 'POST',
+          body: JSON.stringify({ dataUri: currentGroupAvatarDataUri })
+        });
+
+        if (data && !data.error) {
+          successEl.textContent = 'Avatar updated successfully!';
+          successEl.classList.remove('hidden');
+          setTimeout(() => {
+            closeGroupAvatarModal();
+            // Refresh group info modal to show updated avatar
+            viewGroupInfo();
+            loadGroups();
+          }, 1000);
+        } else {
+          errorEl.textContent = data?.error || 'Failed to upload avatar';
+          errorEl.classList.remove('hidden');
+        }
+      } catch (err) {
+        errorEl.textContent = err.message || 'Failed to upload avatar';
+        errorEl.classList.remove('hidden');
+      } finally {
+        spinner.classList.add('hidden');
+        uploadBtn.disabled = false;
+      }
+    }
+
+    // File select handler for create group modal
+    function handleCreateGroupAvatarFileSelect(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const errorEl = document.getElementById('createGroupAvatarError');
+      errorEl.classList.add('hidden');
+
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        errorEl.textContent = 'Please select an image file (JPG, PNG, GIF, etc.)';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+
+      // Validate file size (2MB)
+      if (file.size > 2 * 1024 * 1024) {
+        errorEl.textContent = 'Image must be smaller than 2MB';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+
+      // Read and preview
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        window.createGroupAvatarDataUri = e.target.result;
+        document.getElementById('createGroupAvatarPreview').src = e.target.result;
+      };
+      reader.onerror = () => {
+        errorEl.textContent = 'Failed to read file';
+        errorEl.classList.remove('hidden');
+      };
+      reader.readAsDataURL(file);
+    }
 
     // View group info
+    let currentViewingGroupId = null;
     async function viewGroupInfo() {
       if (!currentGroupContextMenuId) return;
       document.getElementById('groupContextMenu').classList.add('hidden');
@@ -5826,6 +6036,21 @@
         if (!groupData) {
           showToast('Failed to load group info', 'error');
           return;
+        }
+
+        currentViewingGroupId = groupData.id;
+
+        // Populate avatar
+        const avatarHtml = renderGroupAvatar(groupData.avatar_url, groupData.name, 'w-20 h-20');
+        document.getElementById('viewGroupInfoAvatar').innerHTML = avatarHtml;
+
+        // Show/hide change avatar button if user is creator
+        const isCreator = parseInt(groupData.creatorId, 10) === parseInt(currentUser.id, 10);
+        const changeAvatarBtn = document.getElementById('changeAvatarBtn');
+        if (isCreator) {
+          changeAvatarBtn.classList.remove('hidden');
+        } else {
+          changeAvatarBtn.classList.add('hidden');
         }
 
         // Populate modal
