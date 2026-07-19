@@ -4428,14 +4428,22 @@
       }
     }
 
+    // Gatekeeper function to check if network mode is selected before allowing access to main views
+    function requireNetworkModeSelected() {
+      if (!currentUser?.networkMode) {
+        console.log('[Navigation Guard] Network mode not selected, showing Connection Hub');
+        showConnectionHub();
+        return false;
+      }
+      return true;
+    }
+
     function showConnectionHub() {
       const hub = document.getElementById('connectionHub');
       const app = document.getElementById('app');
       if (hub) {
         hub.classList.remove('hidden');
         if (app) app.classList.add('hidden');
-        // Mark connection hub as shown for this session
-        sessionStorage.setItem('guardian_connection_hub_shown', 'true');
       }
 
       // Apply dark theme if needed
@@ -4469,7 +4477,7 @@
     }
 
     async function proceedFromConnectionHub() {
-      if (!connectionHubSelectedNetwork || !currentUser?.usernode_pubkey) {
+      if (!currentUser?.networkMode) {
         showToast('Please select a network first', 'warning');
         return;
       }
@@ -4606,9 +4614,9 @@
       if (networkStatusIntervalId) clearInterval(networkStatusIntervalId);
       networkStatusIntervalId = setInterval(pollNetworkStatus, 2000);
 
-      // Check if Connection Hub has already been shown this session
-      if (sessionStorage.getItem('guardian_connection_hub_shown') === 'true') {
-        // Connection hub already shown, skip directly to main app
+      // Check if user has selected a network mode
+      if (currentUser.networkMode) {
+        // Network mode already selected, proceed to main app
         const app = document.getElementById('app');
         if (app) {
           app.classList.remove('hidden');
@@ -4619,7 +4627,7 @@
         }
         await showConversationsView();
       } else {
-        // Show Connection Hub for first time this session
+        // Network mode not selected, show Connection Hub
         showConnectionHub();
       }
       setupEventListeners();
@@ -7135,6 +7143,7 @@
     // Blockchain polling functions removed
 
     async function showConversationsView() {
+      if (!requireNetworkModeSelected()) return;
       updateMenuHighlight('messages');
 
       document.getElementById('messagesView').classList.remove('hidden');
@@ -7811,6 +7820,7 @@
     }
 
     function showContactsView() {
+      if (!requireNetworkModeSelected()) return;
       updateMenuHighlight('contacts');
       document.getElementById('messagesView').classList.add('hidden');
       document.getElementById('conversationsView').classList.add('hidden');
@@ -7842,6 +7852,7 @@
     }
 
     async function showGroupsView() {
+      if (!requireNetworkModeSelected()) return;
       updateMenuHighlight('groups');
       document.getElementById('messagesView').classList.add('hidden');
       document.getElementById('conversationsView').classList.add('hidden');
@@ -7885,6 +7896,7 @@
     }
 
     async function showFeedView() {
+      if (!requireNetworkModeSelected()) return;
       updateMenuHighlight('channels');
       const viewsToHide = ['messagesView', 'conversationsView', 'chatView', 'contactsView', 'profileView', 'groupsView', 'channelChatView'];
       viewsToHide.forEach(viewId => {
@@ -9218,6 +9230,7 @@
     });
 
     function showProfileView() {
+      if (!requireNetworkModeSelected()) return;
       updateMenuHighlight('profile');
       document.getElementById('messagesView').classList.add('hidden');
       document.getElementById('conversationsView').classList.add('hidden');
