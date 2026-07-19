@@ -1227,56 +1227,6 @@
           <div id="profileTabContentIdentity" class="hidden space-y-4 p-4">
           </div>
 
-          <!-- Guardian's Tab -->
-          <div id="profileTabContentGuardians" class="hidden space-y-2 p-4">
-              <!-- Contribution Level Section -->
-              <div class="space-y-2">
-                <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Contribution Level</label>
-                <div class="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-center">
-                  <div id="profileGuardianStars" class="text-2xl tracking-wide">☆☆☆☆☆</div>
-                  <div id="profileGuardianStarLevel" class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">0/5</div>
-                </div>
-              </div>
-
-              <!-- Foreground Hours Section -->
-              <div class="space-y-2">
-                <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Foreground Hours</label>
-                <div class="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
-                  <div id="profileGuardianHours" class="text-xl font-bold text-cyan-600 dark:text-cyan-400">0</div>
-                </div>
-              </div>
-
-              <!-- Rank Section -->
-              <div class="space-y-2">
-                <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Rank</label>
-                <div id="profileGuardianRankContainer" class="cursor-pointer group" onclick="showGuardianRankModal()">
-                  <div class="px-3 py-2 bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-200 dark:border-cyan-800 rounded-lg flex items-center justify-between group-hover:bg-cyan-100 dark:group-hover:bg-cyan-900/40 transition">
-                    <div>
-                      <div id="profileGuardianRank" class="font-bold text-cyan-900 dark:text-cyan-100">New Guardian</div>
-                    </div>
-                    <svg class="w-5 h-5 text-cyan-600 dark:text-cyan-400 group-hover:translate-x-0.5 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
-
-              <!-- guardiaNFT Eligibility Section -->
-              <div class="space-y-2">
-                <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">guardiaNFT Eligibility</label>
-                <div id="profileGuardiaNFTContainer" class="cursor-pointer group" onclick="showGuardiaNFTModal()">
-                  <div class="px-3 py-2 bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-200 dark:border-cyan-800 rounded-lg flex items-center justify-between group-hover:bg-cyan-100 dark:group-hover:bg-cyan-900/40 transition">
-                    <div>
-                      <div id="profileGuardiaNFTStatus" class="text-sm font-semibold text-cyan-700 dark:text-cyan-300">View Eligibility</div>
-                      <div id="profileGuardiaNFTPreview" class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">Click to check your NFT eligibility status</div>
-                    </div>
-                    <svg class="w-5 h-5 text-cyan-600 dark:text-cyan-400 group-hover:translate-x-0.5 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
-            </div>
 
           <!-- Activity Tab -->
           <div id="profileTabContentActivity" class="hidden space-y-2 p-4">
@@ -1292,10 +1242,6 @@
           <button id="profileTabIdentity" onclick="switchProfileTab('identity')" class="flex-1 px-4 py-4 text-sm font-medium text-cyan-600 dark:text-cyan-400 border-t-2 border-cyan-600 dark:border-cyan-500 hover:text-cyan-700 dark:hover:text-cyan-300 transition flex flex-col items-center gap-1">
             <span class="text-lg">👤</span>
             <span class="text-xs">Identity</span>
-          </button>
-          <button id="profileTabGuardians" onclick="switchProfileTab('guardians')" class="flex-1 px-4 py-4 text-sm font-medium text-zinc-700 dark:text-zinc-400 border-t-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100 transition flex flex-col items-center gap-1">
-            <span class="text-lg">🛡️</span>
-            <span class="text-xs">Guardian's</span>
           </button>
           <button id="profileTabActivity" onclick="switchProfileTab('activity')" class="flex-1 px-4 py-4 text-sm font-medium text-zinc-700 dark:text-zinc-400 border-t-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100 transition flex flex-col items-center gap-1">
             <span class="text-lg">📊</span>
@@ -2585,10 +2531,6 @@
     let currentActiveView = 'messages';
     let pendingConvIds = new Set();
     let pendingConversationData = {}; // Maps convId to full conversation object for recipient check
-
-    // Guardian's tab caching
-    let cachedGuardiansData = null;
-    let guardianPollInterval = null;
 
     // Messages tab state
     let activeMessagesTab = 'direct';
@@ -7120,7 +7062,6 @@
       // Clear all polling intervals when returning to messages view
       if (pollInterval) clearInterval(pollInterval);
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
-      if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
 
       // Clear modals/menus when returning to messages view
       closeManageGroupMembersModal();
@@ -7791,7 +7732,6 @@
       document.getElementById('postBtn').classList.add('hidden');
       document.getElementById('channelDetailHeader').classList.add('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
-      if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
       updateNewChatFABVisibility();
       loadContactsList();
     }
@@ -7825,7 +7765,6 @@
 
       // Clear polling intervals
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
-      if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
       if (pollInterval) clearInterval(pollInterval);
 
       // Load groups data
@@ -7865,7 +7804,6 @@
       document.getElementById('conversationMenuBtn').classList.add('hidden');
       document.getElementById('postBtn').classList.remove('hidden');
       if (conversationsPollInterval) clearInterval(conversationsPollInterval);
-      if (guardianPollInterval) { clearInterval(guardianPollInterval); guardianPollInterval = null; }
       // Clear channel polling when switching away from channel view
       if (pollInterval) clearInterval(pollInterval);
       currentChannelId = null;
@@ -9209,7 +9147,6 @@
     function switchProfileTab(tabName) {
       // Hide all tab contents
       document.getElementById('profileTabContentIdentity').classList.add('hidden');
-      document.getElementById('profileTabContentGuardians').classList.add('hidden');
       document.getElementById('profileTabContentActivity').classList.add('hidden');
 
       // Show/hide core profile content based on active tab
@@ -9221,7 +9158,7 @@
       }
 
       // Reset all tab buttons to inactive state
-      ['identity', 'guardians', 'activity'].forEach(name => {
+      ['identity', 'activity'].forEach(name => {
         const btn = document.getElementById(`profileTab${name.charAt(0).toUpperCase() + name.slice(1)}`);
         if (btn) {
           btn.classList.remove('text-cyan-600', 'dark:text-cyan-400', 'border-t-2', 'border-cyan-600', 'dark:border-cyan-500');
@@ -9231,9 +9168,7 @@
 
       // Show selected tab content (but only if not identity, since identity shows core content instead)
       if (tabName !== 'identity') {
-        const contentId = tabName === 'guardians'
-          ? 'profileTabContentGuardians'
-          : `profileTabContent${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`;
+        const contentId = `profileTabContent${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`;
         document.getElementById(contentId).classList.remove('hidden');
       } else {
         // For identity tab, show the Identity tab content div (which is empty) and core content above
@@ -9241,25 +9176,11 @@
       }
 
       // Activate selected tab button
-      const buttonId = tabName === 'guardians'
-        ? 'profileTabGuardians'
-        : `profileTab${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`;
+      const buttonId = `profileTab${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`;
       const activeBtn = document.getElementById(buttonId);
       if (activeBtn) {
         activeBtn.classList.remove('text-zinc-700', 'dark:text-zinc-400', 'border-transparent');
         activeBtn.classList.add('text-cyan-600', 'dark:text-cyan-400', 'border-t-2', 'border-cyan-600', 'dark:border-cyan-500');
-      }
-
-      // Clear any existing guardian polling when switching tabs
-      if (guardianPollInterval) {
-        clearInterval(guardianPollInterval);
-        guardianPollInterval = null;
-      }
-
-      // Load guardian data and start polling when on guardians tab
-      if (tabName === 'guardians') {
-        loadGuardiansData();
-        // Polling will start in loadGuardiansData if network_mode is 'real_testnet'
       }
 
       // Save tab preference
@@ -9319,242 +9240,6 @@
       loadProfileActivity();
     }
 
-    async function loadGuardiansData() {
-      try {
-        console.log('[Guardian Data] Loading guardians data...');
-
-        // Set up fallback timeout - display mock data if API doesn't respond in 2 seconds
-        let fallbackDisplayed = false;
-        const fallbackTimer = setTimeout(() => {
-          if (!cachedGuardiansData) {
-            console.log('[Guardian Data] API call timeout, displaying fallback mock data');
-            displayGuardiansData(createFallbackMockData());
-            fallbackDisplayed = true;
-          }
-        }, 2000);
-
-        // Attempt API call with retry logic
-        let response = null;
-        let attempts = 0;
-        const maxAttempts = 5;
-        let delay = 1000; // Start with 1 second
-
-        while (attempts < maxAttempts && !response) {
-          attempts++;
-          console.log(`[Guardian Data] Attempt ${attempts}/${maxAttempts} to fetch guardians data`);
-
-          response = await apiCall('/api/user/guardians');
-
-          if (response && !response.error) {
-            clearTimeout(fallbackTimer);
-            break;
-          }
-
-          if (attempts < maxAttempts) {
-            // Exponential backoff: 1s, 2s, 4s, 8s, 16s
-            await new Promise(resolve => setTimeout(resolve, delay));
-            delay = Math.min(delay * 2, 16000);
-          }
-        }
-
-        // If we still don't have valid data after retries, use fallback
-        if (!response || response.error) {
-          clearTimeout(fallbackTimer);
-          console.error('[Guardian Data] All retry attempts failed, using fallback');
-          if (!fallbackDisplayed) {
-            displayGuardiansData(createFallbackMockData());
-          }
-          return;
-        }
-
-        clearTimeout(fallbackTimer);
-
-        console.log('[Guardian Data] Loaded successfully:', {
-          foregroundHours: response.foregroundHours,
-          rank: response.rank,
-          contributionLevel: response.contributionLevel
-        });
-
-
-        // Cache the data and update display with real data
-        cachedGuardiansData = response;
-        console.log('[Guardian Data] Data cached and ready');
-        displayGuardiansData(response);
-
-      } catch (err) {
-        console.error('[Guardian Data] Unexpected error:', err);
-        displayGuardiansError();
-      }
-    }
-
-    function createFallbackMockData() {
-      // Create deterministic mock data based on user ID (matches backend mock pattern)
-      const userId = currentUser?.id || 1;
-      const mockDataSet = [5, 25, 100, 300, 15, 50, 75, 150, 200, 250, 500, 750, 1000];
-      const foregroundHours = mockDataSet[userId % mockDataSet.length];
-
-      // Calculate rank and contribution level based on hours (mirrors backend logic)
-      let rank = 'New Guardian';
-      let contributionLevel = (foregroundHours / 200) * 5;
-
-      if (foregroundHours >= 10 && foregroundHours < 50) {
-        rank = 'Active Guardian';
-      } else if (foregroundHours >= 50 && foregroundHours < 200) {
-        rank = 'Trusted Guardian';
-      } else if (foregroundHours >= 200) {
-        rank = 'Elite Guardian';
-      }
-
-      // Cap contribution level at 5
-      contributionLevel = Math.min(contributionLevel, 5);
-
-      // Determine hours bracket
-      let hoursBracket = foregroundHours < 10 ? '0-10'
-        : foregroundHours < 50 ? '10-50'
-        : foregroundHours < 200 ? '50-200'
-        : '200-1000+';
-
-      return {
-        foregroundHours,
-        rank,
-        contributionLevel,
-        hoursBracket
-      };
-    }
-
-    function displayGuardiansError() {
-      document.getElementById('profileGuardianHours').textContent = '0';
-      document.getElementById('profileGuardianRank').textContent = 'New Guardian';
-      document.getElementById('profileGuardianStars').textContent = '☆☆☆☆☆';
-      document.getElementById('profileGuardianStarLevel').textContent = '0/5';
-    }
-
-    function displayGuardiansData(data) {
-      const hours = data.foregroundHours || 0;
-      const level = data.contributionLevel || 0;
-      const rank = data.rank || 'New Guardian';
-
-      // Update hours display
-      const hoursDisplay = document.getElementById('profileGuardianHours');
-      if (hoursDisplay) {
-        hoursDisplay.textContent = hours;
-      }
-
-      // Update rank
-      document.getElementById('profileGuardianRank').textContent = rank;
-
-      // Update star rating
-      const fullStars = Math.floor(level);
-      const hasHalfStar = level % 1 !== 0;
-      let starDisplay = '';
-      for (let i = 0; i < fullStars; i++) {
-        starDisplay += '★';
-      }
-      if (hasHalfStar) {
-        starDisplay += '½';
-      }
-      const emptyStars = 5 - Math.ceil(level);
-      for (let i = 0; i < emptyStars; i++) {
-        starDisplay += '☆';
-      }
-      document.getElementById('profileGuardianStars').textContent = starDisplay;
-      document.getElementById('profileGuardianStarLevel').textContent = `${level.toFixed(1)}/5`;
-
-      // Re-register click handler for rank expansion
-      registerRankClickHandler(data);
-    }
-
-    function registerRankClickHandler(data) {
-      const rankContainer = document.getElementById('profileGuardianRankContainer');
-      if (rankContainer) {
-        rankContainer.onclick = (e) => {
-          e.stopPropagation();
-          showGuardianRankModal(data);
-        };
-      }
-    }
-
-    function showGuardianRankModal(data) {
-      // Use cached data if available, otherwise show error
-      const guardianData = data || cachedGuardiansData;
-
-      if (!guardianData) {
-        console.error('Rank modal: no Guardian data available');
-        showErrorModal('Guardian Rank', 'Unable to load rank information. Please try again.');
-        return;
-      }
-
-      const hours = guardianData.foregroundHours || 0;
-      const rank = guardianData.rank || 'New Guardian';
-
-      // Determine progress to next tier
-      let nextTierHours = 10;
-      let progressPercentage = 0;
-      let tierDescription = '';
-
-      if (hours < 10) {
-        nextTierHours = 10;
-        progressPercentage = (hours / 10) * 100;
-        tierDescription = 'A new contributor to the network. Keep building your presence!';
-      } else if (hours < 50) {
-        nextTierHours = 50;
-        progressPercentage = ((hours - 10) / 40) * 100;
-        tierDescription = 'An active contributor showing consistent engagement with the network.';
-      } else if (hours < 200) {
-        nextTierHours = 200;
-        progressPercentage = ((hours - 50) / 150) * 100;
-        tierDescription = 'A trusted member of the community with significant contributions.';
-      } else {
-        nextTierHours = null;
-        progressPercentage = 100;
-        tierDescription = 'An elite contributor and valued leader in the Guardian network.';
-      }
-
-      // Create modal
-      const modal = document.createElement('div');
-      modal.id = 'guardianRankModal';
-      modal.className = 'fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4';
-      modal.onclick = (e) => {
-        if (e.target === modal) closeGuardianRankModal();
-      };
-
-      const progressHTML = nextTierHours
-        ? `<div class="mt-6 space-y-2">
-             <div class="flex justify-between text-sm text-zinc-700 dark:text-zinc-400">
-               <span>Progress to next tier</span>
-               <span>${hours}/${nextTierHours}h</span>
-             </div>
-             <div class="w-full bg-zinc-300 dark:bg-zinc-700 rounded-full h-2">
-               <div class="bg-cyan-600 dark:bg-cyan-500 h-2 rounded-full transition-all" style="width: ${Math.min(progressPercentage, 100)}%"></div>
-             </div>
-           </div>`
-        : `<div class="mt-6 text-center text-cyan-600 dark:text-cyan-400 font-semibold">Maximum Tier Achieved</div>`;
-
-      modal.innerHTML = `
-        <div class="bg-white dark:bg-zinc-900 rounded-lg p-6 w-full max-w-md shadow-lg space-y-4">
-          <div class="flex justify-between items-start">
-            <h2 class="text-xl font-bold text-zinc-900 dark:text-white">${rank}</h2>
-            <button onclick="closeGuardianRankModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
-          </div>
-          <div class="space-y-4">
-            <p class="text-sm text-zinc-700 dark:text-zinc-400">${tierDescription}</p>
-            <div class="bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-200 dark:border-cyan-800 rounded-lg p-4">
-              <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Foreground Hours</div>
-              <div class="text-3xl font-bold text-cyan-600 dark:text-cyan-400">${hours}</div>
-            </div>
-            ${progressHTML}
-          </div>
-        </div>
-      `;
-
-      document.body.appendChild(modal);
-    }
-
-    function closeGuardianRankModal() {
-      const modal = document.getElementById('guardianRankModal');
-      if (modal) modal.remove();
-    }
-
     function showErrorModal(title, message) {
       const modal = document.createElement('div');
       modal.id = 'errorModal';
@@ -9577,86 +9262,6 @@
       `;
 
       document.body.appendChild(modal);
-    }
-
-    async function showGuardiaNFTModal() {
-      try {
-        console.log('[GuardiaNFT] Loading NFT eligibility data...');
-        const [userRes, guardiansRes] = await Promise.all([
-          apiCall('/api/user'),
-          apiCall('/api/user/guardians')
-        ]);
-
-        if (!guardiansRes) {
-          console.error('[GuardiaNFT] No guardians response');
-          showErrorModal('Guardian NFT Eligibility', 'Unable to load eligibility data. Please try again.');
-          return;
-        }
-
-        const foregroundHours = guardiansRes.foregroundHours || 0;
-        const isVerified = userRes?.verified || false;
-        const isEligible = foregroundHours >= 1000 && isVerified;
-
-        console.log('[GuardiaNFT] Loaded:', { foregroundHours, isVerified, isEligible });
-
-        const progressPercentage = Math.min((foregroundHours / 1000) * 100, 100);
-        const verifiedText = isVerified ? 'Verified' : 'Unverified';
-        const verifiedColor = isVerified
-          ? 'bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800'
-          : 'bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800';
-        const verifiedTextColor = isVerified
-          ? 'text-green-700 dark:text-green-300'
-          : 'text-amber-700 dark:text-amber-300';
-
-        const eligibilityMessage = isEligible
-          ? `<div class="mt-6 p-4 bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-200 dark:border-cyan-800 rounded-lg text-center">
-               <div class="text-lg font-bold text-cyan-700 dark:text-cyan-300">Anda eligible</div>
-             </div>`
-          : '';
-
-        const modal = document.createElement('div');
-        modal.id = 'guardiaNFTModal';
-        modal.className = 'fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4';
-        modal.onclick = (e) => {
-          if (e.target === modal) closeGuardiaNFTModal();
-        };
-
-        modal.innerHTML = `
-          <div class="bg-white dark:bg-zinc-900 rounded-lg p-6 w-full max-w-md shadow-lg space-y-4">
-            <div class="flex justify-between items-start">
-              <h2 class="text-xl font-bold text-zinc-900 dark:text-white">Guardian NFT Eligibility</h2>
-              <button onclick="closeGuardiaNFTModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
-            </div>
-            <div class="space-y-4">
-              <div class="bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-200 dark:border-cyan-800 rounded-lg p-4">
-                <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3">Foreground Hours</div>
-                <div class="flex justify-between items-end mb-3">
-                  <div class="text-3xl font-bold text-cyan-600 dark:text-cyan-400">${foregroundHours}</div>
-                  <div class="text-sm text-zinc-600 dark:text-zinc-400">/ 1000</div>
-                </div>
-                <div class="w-full bg-zinc-300 dark:bg-zinc-700 rounded-full h-2">
-                  <div class="bg-cyan-600 dark:bg-cyan-500 h-2 rounded-full transition-all" style="width: ${progressPercentage}%"></div>
-                </div>
-              </div>
-              <div class="${verifiedColor} rounded-lg p-4">
-                <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">PoP Verification Status</div>
-                <div class="${verifiedTextColor} text-base font-semibold">${verifiedText}</div>
-              </div>
-              ${eligibilityMessage}
-            </div>
-          </div>
-        `;
-
-        document.body.appendChild(modal);
-      } catch (err) {
-        console.error('[GuardiaNFT] Error loading eligibility data:', err);
-        showErrorModal('Guardian NFT Eligibility', 'Unable to load eligibility data. Please try again.');
-      }
-    }
-
-    function closeGuardiaNFTModal() {
-      const modal = document.getElementById('guardiaNFTModal');
-      if (modal) modal.remove();
     }
 
     // User profile modal cache to avoid re-fetching
