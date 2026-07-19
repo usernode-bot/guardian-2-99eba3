@@ -4337,12 +4337,6 @@ app.post('/api/groups/:groupId/avatar', express.json({ limit: '2mb' }), async (r
       return res.status(403).json({ error: 'Only creator can update group avatar' });
     }
 
-    // Validate wallet connection before proceeding
-    const walletValidation = await validateWalletForMode(NETWORK_MODE, userId, req.user.usernode_pubkey);
-    if (!walletValidation.valid) {
-      return res.status(401).json({ error: walletValidation.error });
-    }
-
     // Store the data URI as avatar_url
     await pool.query(`UPDATE groups SET avatar_url = $1, updated_at = NOW() WHERE id = $2`, [dataUri, groupId]);
 
