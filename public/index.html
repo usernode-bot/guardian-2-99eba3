@@ -9298,9 +9298,10 @@
       if (tabName !== 'identity') {
         const contentId = `profileTabContent${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`;
         document.getElementById(contentId).classList.remove('hidden');
-        // Attach category listeners for activity tab
+        // Initialize and load activity tab
         if (tabName === 'activity') {
-          attachActivityCategoryListeners();
+          initActivityCategoryListeners();
+          loadProfileActivity();
         }
       } else {
         // For identity tab, show the Identity tab content div (which is empty) and core content above
@@ -9695,12 +9696,27 @@
     // Activity transactions offset tracking
     let activityTransactionsOffset = 0;
     let currentActivityCategory = 'all';
+    let activityCategoryListenersAttached = false;
 
     async function loadProfileActivity() {
       activityTransactionsOffset = 0;
       currentActivityCategory = 'all';
       updateActivityCategoryButtons();
       await loadActivityTransactions(0, 'all');
+    }
+
+    function initActivityCategoryListeners() {
+      if (activityCategoryListenersAttached) return;
+      activityCategoryListenersAttached = true;
+
+      document.querySelectorAll('.activity-category-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const category = btn.getAttribute('data-category');
+          currentActivityCategory = category;
+          updateActivityCategoryButtons();
+          await loadActivityTransactions(0, category);
+        });
+      });
     }
 
     function updateActivityCategoryButtons() {
@@ -9780,16 +9796,6 @@
       }
     }
 
-    function attachActivityCategoryListeners() {
-      document.querySelectorAll('.activity-category-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const category = btn.getAttribute('data-category');
-          currentActivityCategory = category;
-          updateActivityCategoryButtons();
-          await loadActivityTransactions(0, category);
-        });
-      });
-    }
 
 
 
