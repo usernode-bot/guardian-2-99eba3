@@ -3796,7 +3796,7 @@ app.post('/api/groups', async (req, res) => {
     }
     console.log(`[POST /api/groups::VALIDATE] Authentication successful: userId=${req.user.id}`);
 
-    const { name, description, initialMemberIds, txHash, auditLogId, contentHash: frontendContentHash, networkMode } = req.body;
+    const { name, description, initialMemberIds, txHash, auditLogId, contentHash: frontendContentHash, networkMode, avatar_dataUri } = req.body;
 
     // Validation: parse and validate user ID
     const userId = parseInt(req.user.id, 10);
@@ -3820,18 +3820,29 @@ app.post('/api/groups', async (req, res) => {
       console.error(`[POST /api/groups::VALIDATE] Group name validation failed: empty or missing`);
       return res.status(400).json({ error: 'Group name is required' });
     }
+
+    // Validate avatar_dataUri if provided
+    if (avatar_dataUri) {
+      if (!avatar_dataUri.startsWith('data:image/')) {
+        return res.status(400).json({ error: 'Invalid image format' });
+      }
+      if (!avatar_dataUri.match(/^data:image\/(jpeg|png)/i)) {
+        return res.status(400).json({ error: 'Only JPEG and PNG images are supported' });
+      }
+    }
+
     console.log(`[POST /api/groups::VALIDATE] All validations passed`);
 
     const network = 'testnet';
     const now = new Date();
 
     // Database: Create group
-    console.log(`[POST /api/groups::DB] Creating group with: creator_id=${userId}, name="${name.trim()}", description="${description || '(null)'}", network=${network}`);
+    console.log(`[POST /api/groups::DB] Creating group with: creator_id=${userId}, name="${name.trim()}", description="${description || '(null)'}", hasAvatar=${!!avatar_dataUri}, network=${network}`);
     const result = await pool.query(`
-      INSERT INTO groups (creator_id, name, description, created_at, updated_at)
-      VALUES ($1, $2, $3, NOW(), NOW())
+      INSERT INTO groups (creator_id, name, description, avatar_url, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, NOW(), NOW())
       RETURNING id, name, description, avatar_url, creator_id, created_at, updated_at
-    `, [userId, name.trim(), description || null]);
+    `, [userId, name.trim(), description || null, avatar_dataUri || null]);
 
     if (result.rows.length === 0) {
       console.error(`[POST /api/groups::DB] Group insert returned no rows`);
