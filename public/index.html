@@ -1872,11 +1872,6 @@
       let statusBadgeClass = 'text-xs px-2 py-1 rounded bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200';
       let statusBadgeText = '⏳ Confirming...';
 
-      if (isStaging) {
-        statusBadgeText = '🎭 Demo Mode';
-        statusBadgeClass = 'text-xs px-2 py-1 rounded bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300';
-      }
-
       notification.id = notificationId;
       notification.className = 'bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg p-4 shadow-lg pointer-events-auto max-w-sm animate-slideIn';
       notification.innerHTML = `
@@ -1897,8 +1892,8 @@
 
       container.appendChild(notification);
 
-      // Start polling for confirmation if not in staging mode
-      if (!isStaging && data.blockchainRecordingId) {
+      // Always start polling for confirmation - badge will be updated based on actual network_origin
+      if (data.blockchainRecordingId) {
         pollTransactionConfirmation(notificationId, data.blockchainRecordingId);
       }
 
@@ -2195,11 +2190,11 @@
         let networkOriginIcon = '❓';
         let networkOriginClass = 'text-zinc-600 dark:text-zinc-400';
 
-        if (updateNetworkOrigin === 'testnet' || updateNetworkOrigin === 'blockchain') {
+        if (updateNetworkOrigin === 'testnet') {
           networkOriginLabel = 'Testnet';
           networkOriginIcon = '🔗';
           networkOriginClass = 'text-green-600 dark:text-green-400';
-        } else if (updateNetworkOrigin === 'devnet' || updateNetworkOrigin === 'database') {
+        } else if (updateNetworkOrigin === 'devnet') {
           networkOriginLabel = 'Devnet';
           networkOriginIcon = '💾';
           networkOriginClass = 'text-blue-600 dark:text-blue-400';
@@ -2207,14 +2202,6 @@
           networkOriginLabel = 'Mainnet';
           networkOriginIcon = '🌍';
           networkOriginClass = 'text-amber-600 dark:text-amber-400';
-        } else if (updateNetworkOrigin === 'demo') {
-          networkOriginLabel = 'Demo';
-          networkOriginIcon = '🎭';
-          networkOriginClass = 'text-purple-600 dark:text-purple-400';
-        } else if (updateNetworkOrigin === 'bridge') {
-          networkOriginLabel = 'Bridge';
-          networkOriginIcon = '🌉';
-          networkOriginClass = 'text-orange-600 dark:text-orange-400';
         }
 
         networkEl.innerHTML = `<span class="${networkOriginClass}"><span>${networkOriginIcon}</span> <span class="font-medium">${networkOriginLabel}</span></span>`;
@@ -2272,11 +2259,11 @@
       let networkOriginClass = 'text-zinc-600 dark:text-zinc-400';
 
       const txNetworkOrigin = tx.networkOrigin || tx.network_origin;
-      if (txNetworkOrigin === 'testnet' || txNetworkOrigin === 'blockchain') {
+      if (txNetworkOrigin === 'testnet') {
         networkOriginLabel = 'Testnet';
         networkOriginIcon = '🔗';
         networkOriginClass = 'text-green-600 dark:text-green-400';
-      } else if (txNetworkOrigin === 'devnet' || txNetworkOrigin === 'database') {
+      } else if (txNetworkOrigin === 'devnet') {
         networkOriginLabel = 'Devnet';
         networkOriginIcon = '💾';
         networkOriginClass = 'text-blue-600 dark:text-blue-400';
@@ -2284,14 +2271,6 @@
         networkOriginLabel = 'Mainnet';
         networkOriginIcon = '🌍';
         networkOriginClass = 'text-amber-600 dark:text-amber-400';
-      } else if (txNetworkOrigin === 'demo') {
-        networkOriginLabel = 'Demo';
-        networkOriginIcon = '🎭';
-        networkOriginClass = 'text-purple-600 dark:text-purple-400';
-      } else if (txNetworkOrigin === 'bridge') {
-        networkOriginLabel = 'Bridge';
-        networkOriginIcon = '🌉';
-        networkOriginClass = 'text-orange-600 dark:text-orange-400';
       }
 
       // Determine status icon and class
@@ -5359,6 +5338,7 @@
       let backoffMs = 2000; // Start at 2 seconds, exponential backoff to match server (5s starting)
       const minIntervalMs = 2000;
       const maxIntervalMs = 60000;
+      let networkOriginCache = null; // Cache network_origin to avoid re-fetching
 
       // Store in sessionStorage so page refresh can resume polling
       if (!window.activePollingSessions) {
@@ -5366,6 +5346,62 @@
       }
       window.activePollingSessions[auditLogId] = { notificationId, auditLogId, startTime: Date.now() };
       sessionStorage.setItem('activePollingSessions', JSON.stringify(window.activePollingSessions));
+
+      // Fetch transaction data early to determine correct network mode badge
+      const updateBadgeBasedOnNetworkOrigin = (txData) => {
+        if (!txData || !txData.networkOrigin) return;
+
+        networkOriginCache = txData.networkOrigin;
+        const notification = document.getElementById(notificationId);
+        if (!notification) return;
+
+        const badge = notification.querySelector('[data-status-badge]');
+        if (!badge) return;
+
+        // Update badge based on network_origin and status
+        if (txData.networkOrigin === 'devnet') {
+          // Devnet transactions are simulated and instantly confirmed
+          badge.innerHTML = '💾 Devnet';
+          badge.className = 'text-xs px-2 py-1 rounded bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200';
+        } else if (txData.networkOrigin === 'testnet') {
+          // Testnet transactions await blockchain confirmation
+          if (txData.status === 'confirmed') {
+            badge.innerHTML = '✓ Confirmed';
+            badge.className = 'text-xs px-2 py-1 rounded bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200';
+          } else {
+            badge.innerHTML = '⏳ Confirming...';
+            badge.className = 'text-xs px-2 py-1 rounded bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200';
+          }
+        } else if (txData.networkOrigin === 'mainnet') {
+          // Mainnet transactions (not yet available)
+          if (txData.status === 'confirmed') {
+            badge.innerHTML = '✓ Confirmed';
+            badge.className = 'text-xs px-2 py-1 rounded bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200';
+          } else {
+            badge.innerHTML = '🌍 Mainnet';
+            badge.className = 'text-xs px-2 py-1 rounded bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300';
+          }
+        }
+      };
+
+      // Initial fetch to get network_origin and current status
+      try {
+        const initialResponse = await apiCall(`/api/blockchain-audit/${auditLogId}`);
+        if (initialResponse) {
+          updateBadgeBasedOnNetworkOrigin(initialResponse);
+          console.log(`[POLL] Initial fetch: network_origin=${initialResponse.networkOrigin}, status=${initialResponse.status}`);
+
+          // If already confirmed, no need to keep polling
+          if (initialResponse.status === 'confirmed') {
+            console.log(`[POLL] Transaction already confirmed: auditLogId=${auditLogId}`);
+            delete window.activePollingSessions[auditLogId];
+            sessionStorage.setItem('activePollingSessions', JSON.stringify(window.activePollingSessions));
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn(`[POLL] Initial fetch failed: ${err.message}, will retry during polling`);
+      }
 
       const pollLoop = async () => {
         if (pollAttempt >= maxPollAttempts) {
@@ -5449,7 +5485,12 @@
             return;
           }
 
-          console.log(`[POLL] Attempt ${pollAttempt}/${maxPollAttempts}: status=${response.status} for auditLogId=${auditLogId}`);
+          // Cache network_origin if not already cached
+          if (!networkOriginCache && response.networkOrigin) {
+            networkOriginCache = response.networkOrigin;
+          }
+
+          console.log(`[POLL] Attempt ${pollAttempt}/${maxPollAttempts}: status=${response.status}, network_origin=${response.networkOrigin || networkOriginCache} for auditLogId=${auditLogId}`);
 
           const notification = document.getElementById(notificationId);
           if (!notification) {
