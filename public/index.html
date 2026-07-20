@@ -1977,36 +1977,24 @@
       let networkOriginIcon = '❓';
       let networkOriginClass = 'text-zinc-600 dark:text-zinc-400';
 
-      // Map network_origin values to display labels
+      // Map backend's storage values to user-facing display labels
+      // Backend stores: 'database' (devnet), 'testnet' (testnet with RPC), 'bridge' (testnet without RPC), 'blockchain' (mainnet)
       const networkOrigin = data.networkOrigin || data.network_origin;
-      if (networkOrigin === 'testnet') {
+      if (networkOrigin === 'testnet' || networkOrigin === 'bridge') {
+        // 'testnet' = user selected testnet with RPC, 'bridge' = user selected testnet without RPC
         networkOriginLabel = 'Testnet';
         networkOriginIcon = '🔗';
         networkOriginClass = 'text-green-600 dark:text-green-400';
-      } else if (networkOrigin === 'blockchain') {
-        networkOriginLabel = 'Testnet';
-        networkOriginIcon = '🔗';
-        networkOriginClass = 'text-green-600 dark:text-green-400';
-      } else if (networkOrigin === 'devnet') {
-        networkOriginLabel = 'Devnet';
-        networkOriginIcon = '💾';
-        networkOriginClass = 'text-blue-600 dark:text-blue-400';
       } else if (networkOrigin === 'database') {
+        // 'database' = user selected devnet (database-only mode)
         networkOriginLabel = 'Devnet';
         networkOriginIcon = '💾';
         networkOriginClass = 'text-blue-600 dark:text-blue-400';
-      } else if (networkOrigin === 'mainnet') {
+      } else if (networkOrigin === 'blockchain') {
+        // 'blockchain' = user provided explicit txHash (real transaction)
         networkOriginLabel = 'Mainnet';
         networkOriginIcon = '🌍';
         networkOriginClass = 'text-amber-600 dark:text-amber-400';
-      } else if (networkOrigin === 'demo') {
-        networkOriginLabel = 'Demo';
-        networkOriginIcon = '🎭';
-        networkOriginClass = 'text-purple-600 dark:text-purple-400';
-      } else if (networkOrigin === 'bridge') {
-        networkOriginLabel = 'Bridge';
-        networkOriginIcon = '🌉';
-        networkOriginClass = 'text-orange-600 dark:text-orange-400';
       }
 
       let txHashHtml = '';
@@ -2201,15 +2189,20 @@
         let networkOriginIcon = '❓';
         let networkOriginClass = 'text-zinc-600 dark:text-zinc-400';
 
-        if (updateNetworkOrigin === 'testnet') {
+        // Map backend's storage values to user-facing display labels
+        // Backend stores: 'database' (devnet), 'testnet' (testnet with RPC), 'bridge' (testnet without RPC), 'blockchain' (mainnet)
+        if (updateNetworkOrigin === 'testnet' || updateNetworkOrigin === 'bridge') {
+          // 'testnet' = user selected testnet with RPC, 'bridge' = user selected testnet without RPC
           networkOriginLabel = 'Testnet';
           networkOriginIcon = '🔗';
           networkOriginClass = 'text-green-600 dark:text-green-400';
-        } else if (updateNetworkOrigin === 'devnet') {
+        } else if (updateNetworkOrigin === 'database') {
+          // 'database' = user selected devnet (database-only mode)
           networkOriginLabel = 'Devnet';
           networkOriginIcon = '💾';
           networkOriginClass = 'text-blue-600 dark:text-blue-400';
-        } else if (updateNetworkOrigin === 'mainnet') {
+        } else if (updateNetworkOrigin === 'blockchain') {
+          // 'blockchain' = user provided explicit txHash (real transaction)
           networkOriginLabel = 'Mainnet';
           networkOriginIcon = '🌍';
           networkOriginClass = 'text-amber-600 dark:text-amber-400';
@@ -2270,14 +2263,23 @@
       let networkOriginClass = 'text-zinc-600 dark:text-zinc-400';
 
       const txNetworkOrigin = tx.networkOrigin || tx.network_origin;
-      if (txNetworkOrigin === 'testnet') {
+      // Map backend's storage values to user-friendly display labels
+      // Backend stores: 'testnet', 'database' (for devnet), 'blockchain' (for txHash), 'bridge' (testnet fallback)
+      if (txNetworkOrigin === 'testnet' || txNetworkOrigin === 'bridge') {
+        // 'testnet' = user selected testnet with RPC, 'bridge' = user selected testnet without RPC
         networkOriginLabel = 'Testnet';
         networkOriginIcon = '🔗';
         networkOriginClass = 'text-green-600 dark:text-green-400';
-      } else if (txNetworkOrigin === 'devnet') {
+      } else if (txNetworkOrigin === 'database') {
+        // 'database' = user selected devnet (database-only mode)
         networkOriginLabel = 'Devnet';
         networkOriginIcon = '💾';
         networkOriginClass = 'text-blue-600 dark:text-blue-400';
+      } else if (txNetworkOrigin === 'blockchain') {
+        // 'blockchain' = user provided explicit txHash (real transaction)
+        networkOriginLabel = 'Mainnet';
+        networkOriginIcon = '🌍';
+        networkOriginClass = 'text-amber-600 dark:text-amber-400';
       } else if (txNetworkOrigin === 'mainnet') {
         networkOriginLabel = 'Mainnet';
         networkOriginIcon = '🌍';
@@ -2475,7 +2477,7 @@
       const pollModal = async () => {
         try {
           const data = await apiCall(`/api/blockchain-audit/${auditLogId}`);
-          if (!data) {
+          if (!data || data.error) {
             content.innerHTML = '<div class="text-center py-8 text-red-600 dark:text-red-400">Failed to load transaction details</div>';
             return;
           }
@@ -2571,9 +2573,12 @@
 
     async function openGroupTransactionModal() {
       try {
-        const response = await apiCall('/api/user/latest-transaction/group_create');
-        if (response && response.auditLogId) {
-          openTransactionDetailsModal(response.auditLogId);
+        const response = await fetch('/api/user/latest-transaction/group_create', {
+          headers: { 'Content-Type': 'application/json', ...headers }
+        });
+        const data = await response.json();
+        if (data && data.auditLogId) {
+          openTransactionDetailsModal(data.auditLogId);
         } else {
           const modal = document.getElementById('transactionDetailsModal');
           const content = document.getElementById('transactionDetailsContent');
@@ -2591,9 +2596,12 @@
 
     async function openMessagesTransactionModal() {
       try {
-        const response = await apiCall('/api/user/latest-transaction/message');
-        if (response && response.auditLogId) {
-          openTransactionDetailsModal(response.auditLogId);
+        const response = await fetch('/api/user/latest-transaction/message', {
+          headers: { 'Content-Type': 'application/json', ...headers }
+        });
+        const data = await response.json();
+        if (data && data.auditLogId) {
+          openTransactionDetailsModal(data.auditLogId);
         } else {
           const modal = document.getElementById('transactionDetailsModal');
           const content = document.getElementById('transactionDetailsContent');
@@ -2922,7 +2930,16 @@
 
     function saveSettings(settings) {
       if (!currentUser) return;
-      localStorage.setItem(`guardian_settings_${currentUser.id}`, JSON.stringify(settings));
+      // Ensure networkMode is included when saving
+      const settingsToSave = {
+        theme: settings.theme,
+        layout: settings.layout,
+        network: settings.network,
+        view_mode: settings.view_mode,
+        networkMode: settings.networkMode,
+        skipSignatureInDevnet: settings.skipSignatureInDevnet
+      };
+      localStorage.setItem(`guardian_settings_${currentUser.id}`, JSON.stringify(settingsToSave));
     }
 
     function getCurrentNetwork() {
@@ -4287,6 +4304,8 @@
           const settings = loadSettings();
           settings.networkMode = result.networkMode || network;
           saveSettings(settings);
+          // Also save directly to localStorage for immediate availability
+          localStorage.setItem('networkMode', result.networkMode || network);
           if (currentUser) {
             currentUser.networkMode = result.networkMode || network;
           }
@@ -5142,11 +5161,13 @@
       if (!name) return alert('Group name is required');
 
       try {
+        const settings = loadSettings();
         const data = await apiCall('/api/groups', {
           method: 'POST',
           body: JSON.stringify({
             name,
-            description: desc || null
+            description: desc || null,
+            networkMode: settings.networkMode
           })
         });
 
@@ -7049,7 +7070,8 @@
         const endpoint = currentGroupId ? `/api/groups/${currentGroupId}/messages` : `/api/conversations/${currentConvId}/messages`;
         const payload = {
           type: 'text',
-          content: { text }
+          content: { text },
+          networkMode: settings.networkMode
         };
         if (txHash) {
           payload.txHash = txHash;
@@ -10055,10 +10077,11 @@
           return;
         }
 
+        const settings = loadSettings();
         const response = await fetch('/api/tokens/send', {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'x-usernode-token': token },
-          body: JSON.stringify({ recipientAddress: recipient, amount: amount, memo: memo })
+          body: JSON.stringify({ recipientAddress: recipient, amount: amount, memo: memo, networkMode: settings.networkMode })
         });
 
         const result = await response.json();

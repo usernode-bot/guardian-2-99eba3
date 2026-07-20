@@ -2447,7 +2447,7 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
     }
 
     const { convId } = req.params;
-    const { type, content, txHash, auditLogId, contentHash: frontendContentHash } = req.body;
+    const { type, content, txHash, auditLogId, contentHash: frontendContentHash, networkMode } = req.body;
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
@@ -2571,34 +2571,40 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
         throw new Error('Failed to create valid transaction payload');
       }
 
-      // Determine audit status and network origin based on mode
+      // Determine audit status and network origin based on user's network mode or server mode
       let auditStatus = 'pending';
       let networkOriginValue = null;
       let actualTxHash = null;
 
-      // For testnet mode with RPC: submit real transaction, store null tx_hash initially
-      // For devnet: generate synthetic hash, mark confirmed
-      // For testnet without RPC: will be set later via fallback
-      if (NETWORK_MODE === 'testnet' && NODE_RPC_URL && !txHash) {
-        // Real testnet mode: insert with null tx_hash, will be updated after RPC submission
-        auditStatus = 'pending';
-        networkOriginValue = 'testnet';
-        actualTxHash = null;
-      } else if (txHash) {
-        // Frontend provided a real tx hash
-        actualTxHash = txHash;
-        auditStatus = 'pending';
-        networkOriginValue = 'blockchain';
-      } else if (NETWORK_MODE === 'devnet') {
+      // Use user's networkMode if provided, otherwise fall back to server NETWORK_MODE
+      const effectiveNetworkMode = networkMode || NETWORK_MODE;
+
+      // Map effectiveNetworkMode to network_origin value
+      if (effectiveNetworkMode === 'devnet') {
         // Devnet mode: generate synthetic hash, confirm immediately
         actualTxHash = 'ut1devnet-message-' + messageId + '-' + Date.now();
         auditStatus = 'confirmed';
         networkOriginValue = 'database';
-      } else {
+      } else if (effectiveNetworkMode === 'testnet' && NODE_RPC_URL && !txHash) {
+        // Real testnet mode with RPC: insert with null tx_hash, will be updated after RPC submission
+        auditStatus = 'pending';
+        networkOriginValue = 'testnet';
+        actualTxHash = null;
+      } else if (effectiveNetworkMode === 'testnet' && !NODE_RPC_URL) {
         // Testnet without RPC: store null, will be populated later
         actualTxHash = null;
         auditStatus = 'pending';
         networkOriginValue = 'bridge';
+      } else if (txHash) {
+        // Frontend provided a real tx hash (mainnet or other blockchain)
+        actualTxHash = txHash;
+        auditStatus = 'pending';
+        networkOriginValue = 'blockchain';
+      } else {
+        // Default fallback: testnet
+        actualTxHash = null;
+        auditStatus = 'pending';
+        networkOriginValue = 'testnet';
       }
 
       // Log audit creation with all critical fields
@@ -3834,7 +3840,7 @@ app.post('/api/groups', async (req, res) => {
     }
     console.log(`[POST /api/groups::VALIDATE] Authentication successful: userId=${req.user.id}`);
 
-    const { name, description, initialMemberIds, txHash, auditLogId, contentHash: frontendContentHash } = req.body;
+    const { name, description, initialMemberIds, txHash, auditLogId, contentHash: frontendContentHash, networkMode } = req.body;
 
     // Validation: parse and validate user ID
     const userId = parseInt(req.user.id, 10);
@@ -3945,29 +3951,37 @@ app.post('/api/groups', async (req, res) => {
     const memo = signTransactionMemo(transactionPayload);
 
     // Blockchain: Use existing audit log if provided, otherwise create new one
-    // Determine audit status and network origin based on mode
+    // Determine audit status and network origin based on user's network mode or server mode
     let auditStatus = 'pending';
     let networkOriginValue = null;
     let actualTxHash = null;
 
-    // For testnet mode with RPC: submit real transaction, store null tx_hash initially
-    if (NETWORK_MODE === 'testnet' && NODE_RPC_URL && !txHash) {
-      auditStatus = 'pending';
-      networkOriginValue = 'testnet';
-      actualTxHash = null;
-    } else if (txHash) {
-      actualTxHash = txHash;
-      auditStatus = 'pending';
-      networkOriginValue = 'blockchain';
-    } else if (NETWORK_MODE === 'devnet') {
+    // Use user's networkMode if provided, otherwise fall back to server NETWORK_MODE
+    const effectiveNetworkMode = networkMode || NETWORK_MODE;
+
+    // Map effectiveNetworkMode to network_origin value
+    if (effectiveNetworkMode === 'devnet') {
       actualTxHash = 'ut1devnet-group-' + groupId + '-' + Date.now();
       auditStatus = 'confirmed';
       networkOriginValue = 'database';
-    } else {
+    } else if (effectiveNetworkMode === 'testnet' && NODE_RPC_URL && !txHash) {
+      auditStatus = 'pending';
+      networkOriginValue = 'testnet';
+      actualTxHash = null;
+    } else if (effectiveNetworkMode === 'testnet' && !NODE_RPC_URL) {
       // Testnet without RPC: store null, will be populated later
       actualTxHash = null;
       auditStatus = 'pending';
       networkOriginValue = 'bridge';
+    } else if (txHash) {
+      actualTxHash = txHash;
+      auditStatus = 'pending';
+      networkOriginValue = 'blockchain';
+    } else {
+      // Default fallback: testnet
+      actualTxHash = null;
+      auditStatus = 'pending';
+      networkOriginValue = 'testnet';
     }
 
     let blockchainRecordingId;
@@ -4373,7 +4387,7 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
     }
 
     const { groupId } = req.params;
-    const { type, content, txHash, auditLogId } = req.body;
+    const { type, content, txHash, auditLogId, networkMode } = req.body;
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
@@ -4432,29 +4446,37 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
       network: network
     };
 
-    // Determine audit status and network origin based on mode
+    // Determine audit status and network origin based on user's network mode or server mode
     let auditStatus = 'pending';
     let networkOriginValue = null;
     let actualTxHash = null;
 
-    // For testnet mode with RPC: submit real transaction, store null tx_hash initially
-    if (NETWORK_MODE === 'testnet' && NODE_RPC_URL && !txHash) {
-      auditStatus = 'pending';
-      networkOriginValue = 'testnet';
-      actualTxHash = null;
-    } else if (txHash) {
-      actualTxHash = txHash;
-      auditStatus = 'pending';
-      networkOriginValue = 'testnet';
-    } else if (NETWORK_MODE === 'devnet') {
+    // Use user's networkMode if provided, otherwise fall back to server NETWORK_MODE
+    const effectiveNetworkMode = networkMode || NETWORK_MODE;
+
+    // Map effectiveNetworkMode to network_origin value
+    if (effectiveNetworkMode === 'devnet') {
       actualTxHash = 'ut1devnet-message-' + messageId + '-' + Date.now();
       auditStatus = 'confirmed';
       networkOriginValue = 'database';
-    } else {
+    } else if (effectiveNetworkMode === 'testnet' && NODE_RPC_URL && !txHash) {
+      auditStatus = 'pending';
+      networkOriginValue = 'testnet';
+      actualTxHash = null;
+    } else if (effectiveNetworkMode === 'testnet' && !NODE_RPC_URL) {
       // Testnet without RPC: store null, will be populated later
       actualTxHash = null;
       auditStatus = 'pending';
       networkOriginValue = 'bridge';
+    } else if (txHash) {
+      actualTxHash = txHash;
+      auditStatus = 'pending';
+      networkOriginValue = 'blockchain';
+    } else {
+      // Default fallback: testnet
+      actualTxHash = null;
+      auditStatus = 'pending';
+      networkOriginValue = 'testnet';
     }
 
     let blockchainRecordingId;
@@ -6359,7 +6381,7 @@ app.post('/api/tokens/send', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const { recipientAddress, amount, memo } = req.body;
+    const { recipientAddress, amount, memo, networkMode } = req.body;
 
     if (!recipientAddress || !amount) {
       return res.status(400).json({ error: 'Recipient address and amount are required' });
@@ -6369,7 +6391,10 @@ app.post('/api/tokens/send', async (req, res) => {
       return res.status(400).json({ error: 'Amount must be a positive number' });
     }
 
-    if (NETWORK_MODE === 'devnet') {
+    // Use user's networkMode if provided, otherwise fall back to server NETWORK_MODE
+    const effectiveNetworkMode = networkMode || NETWORK_MODE;
+
+    if (effectiveNetworkMode === 'devnet') {
       const demo = {
         success: true,
         txHash: `demo_token_${Date.now()}`,
@@ -6382,7 +6407,7 @@ app.post('/api/tokens/send', async (req, res) => {
       return res.json(demo);
     }
 
-    if (NETWORK_MODE === 'testnet') {
+    if (effectiveNetworkMode === 'testnet') {
       const payload = {
         sender: req.user.usernode_pubkey || APP_PUBKEY,
         recipient: recipientAddress,
@@ -6394,6 +6419,14 @@ app.post('/api/tokens/send', async (req, res) => {
       console.log(`[TOKEN SEND] User ${req.user.id} requesting token transfer to ${recipientAddress} for ${amount}`);
 
       const txHash = `pending_token_${Date.now()}`;
+
+      // Map effectiveNetworkMode to network_origin value
+      let networkOriginValue = 'testnet';
+      if (effectiveNetworkMode === 'devnet') {
+        networkOriginValue = 'database';
+      } else if (effectiveNetworkMode === 'testnet' && !NODE_RPC_URL) {
+        networkOriginValue = 'bridge';
+      }
 
       try {
         const auditRes = await pool.query(`
@@ -6409,7 +6442,7 @@ app.post('/api/tokens/send', async (req, res) => {
           'pending',
           req.user.usernode_pubkey || APP_PUBKEY,
           new Date().toISOString(),
-          'testnet'
+          networkOriginValue
         ]);
 
         const auditLogId = auditRes.rows[0]?.id;
@@ -6443,6 +6476,10 @@ app.post('/api/tokens/send', async (req, res) => {
 
 app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
     const { auditLogId } = req.params;
 
     const result = await pool.query(`
@@ -6452,20 +6489,15 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
         bal.message_type,
         bal.tx_hash,
         bal.status,
-        bal.confirmed_at,
         bal.error_message,
         bal.created_at,
         bal.network_origin,
         bal.transaction_payload,
-        g.name as group_name,
-        m.recipient_id,
-        u.username as recipient_username
+        g.name as group_name
       FROM blockchain_audit_logs bal
       LEFT JOIN groups g ON bal.group_id = g.id
-      LEFT JOIN messages m ON bal.message_id = m.id
-      LEFT JOIN users u ON m.recipient_id = u.id
-      WHERE bal.id = $1
-    `, [auditLogId]);
+      WHERE bal.id = $1 AND bal.user_id = $2
+    `, [auditLogId, req.user.id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Audit log not found' });
@@ -6474,16 +6506,18 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
     const row = result.rows[0];
     const explorerUrl = getExplorerUrl(row.tx_hash, row.status);
 
-    // Format response with blockchainStatus object for consistency with Activity list
+    // Format response with proper camelCase aliases for frontend compatibility
     const responseData = {
-      ...row,
-      // Add camelCase aliases for frontend compatibility
-      createdAt: row.created_at,
-      confirmedAt: row.confirmed_at,
-      errorMessage: row.error_message,
-      txHash: row.tx_hash,
+      id: row.id,
+      userId: row.user_id,
       messageType: row.message_type,
+      txHash: row.tx_hash,
+      status: row.status,
+      errorMessage: row.error_message,
+      createdAt: row.created_at,
       networkOrigin: row.network_origin,
+      transactionPayload: row.transaction_payload,
+      groupName: row.group_name,
       explorerUrl: explorerUrl,
       blockchainStatus: {
         status: row.status,
@@ -6514,10 +6548,26 @@ app.get('/api/user/latest-transaction/:messageType', async (req, res) => {
     }
 
     const result = await pool.query(`
-      SELECT id, user_id, message_type, tx_hash, status, created_at
-      FROM blockchain_audit_logs
-      WHERE user_id = $1 AND message_type = $2
-      ORDER BY created_at DESC
+      SELECT
+        bal.id,
+        bal.user_id,
+        bal.message_type,
+        bal.tx_hash,
+        bal.status,
+        bal.confirmed_at,
+        bal.error_message,
+        bal.created_at,
+        bal.network_origin,
+        bal.transaction_payload,
+        g.name as group_name,
+        m.recipient_id,
+        u.username as recipient_username
+      FROM blockchain_audit_logs bal
+      LEFT JOIN groups g ON bal.group_id = g.id
+      LEFT JOIN messages m ON bal.message_id = m.id
+      LEFT JOIN users u ON m.recipient_id = u.id
+      WHERE bal.user_id = $1 AND bal.message_type = $2
+      ORDER BY bal.created_at DESC
       LIMIT 1
     `, [req.user.id, messageType]);
 
@@ -6525,7 +6575,30 @@ app.get('/api/user/latest-transaction/:messageType', async (req, res) => {
       return res.json({ transaction: null });
     }
 
-    res.json(result.rows[0]);
+    const row = result.rows[0];
+    const explorerUrl = getExplorerUrl(row.tx_hash, row.status);
+
+    // Format response with camelCase aliases for frontend compatibility
+    const responseData = {
+      ...row,
+      // Add camelCase aliases for frontend compatibility
+      auditLogId: row.id,
+      createdAt: row.created_at,
+      confirmedAt: row.confirmed_at,
+      errorMessage: row.error_message,
+      txHash: row.tx_hash,
+      messageType: row.message_type,
+      networkOrigin: row.network_origin,
+      explorerUrl: explorerUrl,
+      blockchainStatus: {
+        status: row.status,
+        txHash: row.tx_hash,
+        networkOrigin: row.network_origin,
+        explorerUrl: explorerUrl
+      }
+    };
+
+    res.json(responseData);
   } catch (err) {
     console.error('Error fetching latest transaction:', err);
     res.status(500).json({ error: 'Failed to fetch transaction', details: err.message });
@@ -6653,21 +6726,16 @@ app.get('/api/transactions-by-user', async (req, res) => {
         bal.tx_hash,
         bal.status,
         bal.created_at,
-        bal.confirmed_at,
         bal.network_origin,
-        bal.transaction_payload,
+        bal.error_message,
         g.name as group_name,
-        m.recipient_id,
-        u.username as recipient_username,
-        json_build_object(
-          'status', bal.status,
-          'txHash', bal.tx_hash,
-          'networkOrigin', bal.network_origin
-        ) as blockchain_status
+        u.id as recipient_id,
+        u.username as recipient_username
       FROM blockchain_audit_logs bal
       LEFT JOIN groups g ON bal.group_id = g.id
       LEFT JOIN messages m ON bal.message_id = m.id
-      LEFT JOIN users u ON m.recipient_id = u.id
+      LEFT JOIN conversations c ON m.conversation_id = c.id
+      LEFT JOIN users u ON u.id = CASE WHEN c.participant_a_id = bal.user_id THEN c.participant_b_id ELSE c.participant_a_id END
       WHERE bal.user_id = $1
       ORDER BY bal.created_at DESC
       LIMIT $2 OFFSET $3
@@ -6678,15 +6746,22 @@ app.get('/api/transactions-by-user', async (req, res) => {
     `, [req.user.id]);
 
     const transactions = result.rows.map(row => ({
-      ...row,
-      // Add camelCase aliases for frontend compatibility
-      createdAt: row.created_at,
-      confirmedAt: row.confirmed_at,
-      txHash: row.tx_hash,
+      id: row.id,
+      userId: row.user_id,
       messageType: row.message_type,
+      txHash: row.tx_hash,
+      status: row.status,
+      createdAt: row.created_at,
       networkOrigin: row.network_origin,
+      errorMessage: row.error_message,
+      recipientId: row.recipient_id,
+      recipientUsername: row.recipient_username,
+      groupName: row.group_name,
+      explorerUrl: getExplorerUrl(row.tx_hash, row.status),
       blockchainStatus: {
-        ...row.blockchain_status,
+        status: row.status,
+        txHash: row.tx_hash,
+        networkOrigin: row.network_origin,
         explorerUrl: getExplorerUrl(row.tx_hash, row.status)
       }
     }));
