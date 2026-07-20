@@ -2039,6 +2039,24 @@ app.post('/api/user/avatar', express.json({ limit: '2mb' }), async (req, res) =>
   }
 });
 
+app.delete('/api/user/avatar', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    // Delete avatar by setting avatar_url to NULL
+    await pool.query(`UPDATE users SET avatar_url = NULL WHERE id = $1`, [req.user.id]);
+
+    res.json({
+      status: 'deleted',
+    });
+  } catch (err) {
+    console.error('Error deleting avatar:', err);
+    res.status(500).json({ error: 'Failed to delete avatar' });
+  }
+});
+
 app.get('/api/usernode/status', async (req, res) => {
   try {
     if (!req.user) {

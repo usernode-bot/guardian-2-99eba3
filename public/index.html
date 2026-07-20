@@ -845,7 +845,7 @@
         <!-- Content area (avatar, username, wallet, share button) -->
         <div class="p-4 flex flex-col items-center">
           <!-- Avatar (centered) -->
-          <div id="sidebarAvatarContainer" class="mb-3 w-16 h-16 rounded-full cursor-pointer hover:opacity-80 transition flex items-center justify-center flex-shrink-0" onclick="showProfileView(); toggleSidebar()">
+          <div id="sidebarAvatarContainer" class="mb-3 w-16 h-16 rounded-full cursor-pointer hover:opacity-80 transition flex items-center justify-center flex-shrink-0" onclick="openAvatarModal(); toggleSidebar()">
             <div id="sidebarAvatarImage" class="w-full h-full rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center text-white text-lg font-semibold">A</div>
           </div>
 
@@ -1707,6 +1707,37 @@
       <div class="p-6 border-t border-zinc-300 dark:border-zinc-700 flex gap-2">
         <button id="leaveGroupCancelBtn" onclick="closeLeaveGroupModal()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
         <button id="leaveGroupSubmitBtn" onclick="submitLeaveGroup()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Leave</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Avatar Modal -->
+  <div id="avatarModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-sm">
+      <div class="p-6 border-b border-zinc-300 dark:border-zinc-700 flex justify-between items-start">
+        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Avatar</h2>
+        <button onclick="closeAvatarModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
+      </div>
+      <div class="p-6 space-y-4 flex flex-col items-center">
+        <!-- Avatar display (160px) -->
+        <div class="relative">
+          <div id="avatarModalDisplay" class="w-40 h-40 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center text-white text-6xl font-semibold overflow-hidden">
+            <span id="avatarModalInitial">A</span>
+            <img id="avatarModalImg" src="" alt="Avatar" class="w-full h-full object-cover hidden">
+          </div>
+          <div id="avatarModalSpinner" class="hidden absolute inset-0 rounded-full bg-black bg-opacity-40 flex items-center justify-center">
+            <svg class="animate-spin w-8 h-8 text-white" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+            </svg>
+          </div>
+        </div>
+        <!-- Buttons -->
+        <div class="w-full flex gap-2">
+          <button id="avatarModalChangeBtn" onclick="openAvatarModalFilePicker()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Change</button>
+          <button id="avatarModalDeleteBtn" onclick="deleteAvatar()" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 dark:hover:bg-red-500 text-white rounded-lg transition font-medium">Delete</button>
+        </div>
+        <input id="avatarModalFileInput" type="file" accept="image/png,image/jpeg" class="hidden">
       </div>
     </div>
   </div>
@@ -9824,6 +9855,215 @@
         console.error('Error uploading avatar:', err);
         clearLoadingState();
         showToast('Error uploading avatar', 'error');
+      }
+    }
+
+    function openAvatarModal() {
+      const modal = document.getElementById('avatarModal');
+      const deleteBtn = document.getElementById('avatarModalDeleteBtn');
+      const avatarImg = document.getElementById('avatarModalImg');
+      const initial = document.getElementById('avatarModalInitial');
+
+      // Show/hide delete button based on whether avatar exists
+      if (currentUser?.avatar_url) {
+        deleteBtn.classList.remove('hidden');
+        avatarImg.src = currentUser.avatar_url;
+        avatarImg.classList.remove('hidden');
+        initial.classList.add('hidden');
+      } else {
+        deleteBtn.classList.add('hidden');
+        avatarImg.classList.add('hidden');
+        initial.classList.remove('hidden');
+        initial.textContent = currentUser?.username?.charAt(0).toUpperCase() || 'A';
+      }
+
+      modal.classList.remove('hidden');
+      modal.onclick = (e) => { if (e.target === modal) closeAvatarModal(); };
+    }
+
+    function closeAvatarModal() {
+      const modal = document.getElementById('avatarModal');
+      modal.classList.add('hidden');
+    }
+
+    function openAvatarModalFilePicker() {
+      const fileInput = document.getElementById('avatarModalFileInput');
+      fileInput.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          await uploadAvatarFromModal(file);
+        }
+      };
+      fileInput.click();
+    }
+
+    async function uploadAvatarFromModal(file) {
+      // Validate file size (max 2MB)
+      if (file.size > 2 * 1024 * 1024) {
+        showToast('Image size must be less than 2MB', 'error');
+        return;
+      }
+
+      // Validate MIME type
+      if (!file.type.match(/^image\/(jpeg|png)$/i)) {
+        showToast('Only JPEG and PNG images are supported', 'error');
+        return;
+      }
+
+      // Show loading state
+      const spinner = document.getElementById('avatarModalSpinner');
+      const changeBtn = document.getElementById('avatarModalChangeBtn');
+      const deleteBtn = document.getElementById('avatarModalDeleteBtn');
+      if (spinner) spinner.classList.remove('hidden');
+      changeBtn.disabled = true;
+      deleteBtn.disabled = true;
+
+      try {
+        // Resize and recompress via canvas
+        const dataUri = await new Promise((resolve, reject) => {
+          const img = new Image();
+          const objectUrl = URL.createObjectURL(file);
+          img.onload = () => {
+            URL.revokeObjectURL(objectUrl);
+            const MAX = 400;
+            let w = img.width;
+            let h = img.height;
+            if (w > MAX || h > MAX) {
+              if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+              else { w = Math.round(w * MAX / h); h = MAX; }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+            canvas.toBlob((blob) => {
+              if (!blob) { reject(new Error('Canvas export failed')); return; }
+              const reader = new FileReader();
+              reader.onload = (e) => resolve(e.target.result);
+              reader.onerror = () => reject(new Error('FileReader error'));
+              reader.readAsDataURL(blob);
+            }, 'image/jpeg', 0.8);
+          };
+          img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('Image load failed')); };
+          img.src = objectUrl;
+        });
+
+        const response = await fetch('/api/user/avatar', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-usernode-token': getStoredToken(),
+          },
+          body: JSON.stringify({ dataUri }),
+        });
+
+        if (!response.ok) {
+          let errMsg = 'Unknown error';
+          try { const err = await response.json(); errMsg = err.error || errMsg; } catch {}
+          throw new Error(errMsg);
+        }
+
+        const data = await response.json();
+        if (data.avatar_url) {
+          currentUser.avatar_url = data.avatar_url;
+
+          // Update modal display
+          const avatarImg = document.getElementById('avatarModalImg');
+          const initial = document.getElementById('avatarModalInitial');
+          avatarImg.src = data.avatar_url;
+          avatarImg.classList.remove('hidden');
+          initial.classList.add('hidden');
+
+          // Update sidebar avatar
+          const sidebarAvatarImage = document.getElementById('sidebarAvatarImage');
+          if (sidebarAvatarImage) {
+            sidebarAvatarImage.innerHTML = `<img src="${escapeHtml(data.avatar_url)}" alt="${escapeHtml(currentUser.username)}" class="w-full h-full rounded-full object-cover">`;
+          }
+
+          // Update profile avatar if visible
+          const profileAvatar = document.getElementById('profileAvatar');
+          if (profileAvatar) {
+            profileAvatar.src = data.avatar_url;
+          }
+
+          showToast('Avatar updated successfully', 'success');
+
+          // Auto-close after 1-2 seconds
+          setTimeout(() => {
+            closeAvatarModal();
+          }, 1500);
+        }
+      } catch (err) {
+        console.error('Error uploading avatar:', err);
+        showToast('Error uploading avatar: ' + err.message, 'error');
+      } finally {
+        if (spinner) spinner.classList.add('hidden');
+        changeBtn.disabled = false;
+        deleteBtn.disabled = false;
+      }
+    }
+
+    async function deleteAvatar() {
+      // Show loading state
+      const spinner = document.getElementById('avatarModalSpinner');
+      const changeBtn = document.getElementById('avatarModalChangeBtn');
+      const deleteBtn = document.getElementById('avatarModalDeleteBtn');
+      if (spinner) spinner.classList.remove('hidden');
+      changeBtn.disabled = true;
+      deleteBtn.disabled = true;
+
+      try {
+        const response = await fetch('/api/user/avatar', {
+          method: 'DELETE',
+          headers: {
+            'x-usernode-token': getStoredToken(),
+          },
+        });
+
+        if (!response.ok) {
+          let errMsg = 'Unknown error';
+          try { const err = await response.json(); errMsg = err.error || errMsg; } catch {}
+          throw new Error(errMsg);
+        }
+
+        // Clear avatar from current user
+        currentUser.avatar_url = null;
+
+        // Update modal display to show initial
+        const avatarImg = document.getElementById('avatarModalImg');
+        const initial = document.getElementById('avatarModalInitial');
+        avatarImg.classList.add('hidden');
+        initial.classList.remove('hidden');
+        initial.textContent = currentUser?.username?.charAt(0).toUpperCase() || 'A';
+
+        // Update sidebar avatar to show gradient
+        const sidebarAvatarImage = document.getElementById('sidebarAvatarImage');
+        if (sidebarAvatarImage) {
+          sidebarAvatarImage.innerHTML = `<div class="w-full h-full rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center text-white text-lg font-semibold">${currentUser?.username?.charAt(0).toUpperCase() || 'A'}</div>`;
+        }
+
+        // Update profile avatar if visible
+        const profileAvatar = document.getElementById('profileAvatar');
+        if (profileAvatar) {
+          profileAvatar.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Crect fill="%23d4d4d8" width="100" height="100"/%3E%3Ccircle cx="50" cy="35" r="18" fill="%23a1a1a9"/%3E%3Cpath d="M20 75 Q20 55 50 55 Q80 55 80 75" fill="%23a1a1a9"/%3E%3C/svg%3E';
+        }
+
+        // Hide delete button
+        deleteBtn.classList.add('hidden');
+
+        showToast('Avatar deleted', 'success');
+
+        // Auto-close after 1-2 seconds
+        setTimeout(() => {
+          closeAvatarModal();
+        }, 1500);
+      } catch (err) {
+        console.error('Error deleting avatar:', err);
+        showToast('Error deleting avatar: ' + err.message, 'error');
+      } finally {
+        if (spinner) spinner.classList.add('hidden');
+        changeBtn.disabled = false;
+        deleteBtn.disabled = false;
       }
     }
 
