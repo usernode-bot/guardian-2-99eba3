@@ -4198,7 +4198,7 @@ app.put('/api/groups/:groupId', async (req, res) => {
     }
 
     const { groupId } = req.params;
-    const { name, description } = req.body;
+    const { name, description, avatar_dataUri } = req.body;
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
@@ -4225,13 +4225,29 @@ app.put('/api/groups/:groupId', async (req, res) => {
       return res.status(403).json({ error: 'Only creator can edit group' });
     }
 
+    // Validate avatar_dataUri if provided
+    if (avatar_dataUri) {
+      if (!avatar_dataUri.startsWith('data:image/')) {
+        return res.status(400).json({ error: 'Invalid image format' });
+      }
+      if (!avatar_dataUri.match(/^data:image\/(jpeg|png)/i)) {
+        return res.status(400).json({ error: 'Only JPEG and PNG images are supported' });
+      }
+    }
+
     // Fetch user's network preference
     const network = 'testnet';
 
-    // Update group
+    // Fetch current group to preserve avatar if not being updated
+    const { rows: currentGroupRows } = await pool.query(`
+      SELECT avatar_url FROM groups WHERE id = $1
+    `, [groupId]);
+    const currentAvatarUrl = currentGroupRows.length > 0 ? currentGroupRows[0].avatar_url : null;
+
+    // Update group (only update avatar if explicitly provided)
     await pool.query(`
-      UPDATE groups SET name = $1, description = $2, updated_at = NOW() WHERE id = $3
-    `, [name || groupRows[0].name, description || null, groupId]);
+      UPDATE groups SET name = $1, description = $2, avatar_url = $3, updated_at = NOW() WHERE id = $4
+    `, [name || groupRows[0].name, description || null, avatar_dataUri !== undefined ? avatar_dataUri : currentAvatarUrl, groupId]);
 
     // Prepare transaction payload for blockchain
     const transactionPayload = {
@@ -8824,11 +8840,12 @@ async function start() {
 
       let designGroupId;
       if (designGroupRows.length === 0) {
+        const designAvatarDataUri = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAAUABQDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8VAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCwAA8A/9k=';
         const result = await pool.query(`
-          INSERT INTO groups (creator_id, name, description, created_at, updated_at)
-          VALUES ($1, 'Staging Design Feedback', '[Staging] Share design ideas and feedback', NOW(), NOW())
+          INSERT INTO groups (creator_id, name, description, avatar_url, created_at, updated_at)
+          VALUES ($1, 'Staging Design Feedback', '[Staging] Share design ideas and feedback', $2, NOW(), NOW())
           RETURNING id
-        `, [alice]);
+        `, [alice, designAvatarDataUri]);
         designGroupId = result.rows[0].id;
       } else {
         designGroupId = designGroupRows[0].id;
