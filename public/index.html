@@ -1971,36 +1971,24 @@
       let networkOriginIcon = '❓';
       let networkOriginClass = 'text-zinc-600 dark:text-zinc-400';
 
-      // Map network_origin values to display labels
+      // Map backend's storage values to user-facing display labels
+      // Backend stores: 'database' (devnet), 'testnet' (testnet with RPC), 'bridge' (testnet without RPC), 'blockchain' (mainnet)
       const networkOrigin = data.networkOrigin || data.network_origin;
-      if (networkOrigin === 'testnet') {
+      if (networkOrigin === 'testnet' || networkOrigin === 'bridge') {
+        // 'testnet' = user selected testnet with RPC, 'bridge' = user selected testnet without RPC
         networkOriginLabel = 'Testnet';
         networkOriginIcon = '🔗';
         networkOriginClass = 'text-green-600 dark:text-green-400';
-      } else if (networkOrigin === 'blockchain') {
-        networkOriginLabel = 'Testnet';
-        networkOriginIcon = '🔗';
-        networkOriginClass = 'text-green-600 dark:text-green-400';
-      } else if (networkOrigin === 'devnet') {
-        networkOriginLabel = 'Devnet';
-        networkOriginIcon = '💾';
-        networkOriginClass = 'text-blue-600 dark:text-blue-400';
       } else if (networkOrigin === 'database') {
+        // 'database' = user selected devnet (database-only mode)
         networkOriginLabel = 'Devnet';
         networkOriginIcon = '💾';
         networkOriginClass = 'text-blue-600 dark:text-blue-400';
-      } else if (networkOrigin === 'mainnet') {
+      } else if (networkOrigin === 'blockchain') {
+        // 'blockchain' = user provided explicit txHash (real transaction)
         networkOriginLabel = 'Mainnet';
         networkOriginIcon = '🌍';
         networkOriginClass = 'text-amber-600 dark:text-amber-400';
-      } else if (networkOrigin === 'demo') {
-        networkOriginLabel = 'Demo';
-        networkOriginIcon = '🎭';
-        networkOriginClass = 'text-purple-600 dark:text-purple-400';
-      } else if (networkOrigin === 'bridge') {
-        networkOriginLabel = 'Bridge';
-        networkOriginIcon = '🌉';
-        networkOriginClass = 'text-orange-600 dark:text-orange-400';
       }
 
       let txHashHtml = '';
@@ -2195,15 +2183,20 @@
         let networkOriginIcon = '❓';
         let networkOriginClass = 'text-zinc-600 dark:text-zinc-400';
 
-        if (updateNetworkOrigin === 'testnet') {
+        // Map backend's storage values to user-facing display labels
+        // Backend stores: 'database' (devnet), 'testnet' (testnet with RPC), 'bridge' (testnet without RPC), 'blockchain' (mainnet)
+        if (updateNetworkOrigin === 'testnet' || updateNetworkOrigin === 'bridge') {
+          // 'testnet' = user selected testnet with RPC, 'bridge' = user selected testnet without RPC
           networkOriginLabel = 'Testnet';
           networkOriginIcon = '🔗';
           networkOriginClass = 'text-green-600 dark:text-green-400';
-        } else if (updateNetworkOrigin === 'devnet') {
+        } else if (updateNetworkOrigin === 'database') {
+          // 'database' = user selected devnet (database-only mode)
           networkOriginLabel = 'Devnet';
           networkOriginIcon = '💾';
           networkOriginClass = 'text-blue-600 dark:text-blue-400';
-        } else if (updateNetworkOrigin === 'mainnet') {
+        } else if (updateNetworkOrigin === 'blockchain') {
+          // 'blockchain' = user provided explicit txHash (real transaction)
           networkOriginLabel = 'Mainnet';
           networkOriginIcon = '🌍';
           networkOriginClass = 'text-amber-600 dark:text-amber-400';
