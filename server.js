@@ -6460,13 +6460,9 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
         bal.created_at,
         bal.network_origin,
         bal.transaction_payload,
-        g.name as group_name,
-        m.recipient_id,
-        u.username as recipient_username
+        g.name as group_name
       FROM blockchain_audit_logs bal
       LEFT JOIN groups g ON bal.group_id = g.id
-      LEFT JOIN messages m ON bal.message_id = m.id
-      LEFT JOIN users u ON m.recipient_id = u.id
       WHERE bal.id = $1 AND bal.user_id = $2
     `, [auditLogId, req.user.id]);
 
@@ -6489,8 +6485,6 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
       networkOrigin: row.network_origin,
       transactionPayload: row.transaction_payload,
       groupName: row.group_name,
-      recipientId: row.recipient_id,
-      recipientUsername: row.recipient_username,
       explorerUrl: explorerUrl,
       blockchainStatus: {
         status: row.status,
@@ -6702,13 +6696,9 @@ app.get('/api/transactions-by-user', async (req, res) => {
         bal.network_origin,
         bal.transaction_payload,
         bal.error_message,
-        g.name as group_name,
-        m.recipient_id,
-        u.username as recipient_username
+        g.name as group_name
       FROM blockchain_audit_logs bal
       LEFT JOIN groups g ON bal.group_id = g.id
-      LEFT JOIN messages m ON bal.message_id = m.id
-      LEFT JOIN users u ON m.recipient_id = u.id
       WHERE bal.user_id = $1
       ORDER BY bal.created_at DESC
       LIMIT $2 OFFSET $3
@@ -6729,8 +6719,6 @@ app.get('/api/transactions-by-user', async (req, res) => {
       errorMessage: row.error_message,
       transactionPayload: row.transaction_payload,
       groupName: row.group_name,
-      recipientId: row.recipient_id,
-      recipientUsername: row.recipient_username,
       explorerUrl: getExplorerUrl(row.tx_hash, row.status),
       blockchainStatus: {
         status: row.status,
