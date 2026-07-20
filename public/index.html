@@ -1451,11 +1451,27 @@
 
   <!-- Create Group Modal -->
   <div id="createGroupModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
-    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg p-6 w-full max-w-sm space-y-4">
-      <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Create Group</h2>
-      <input id="groupNameInput" type="text" placeholder="Group name" maxlength="255" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
-      <textarea id="groupDescInput" placeholder="Description (optional)" maxlength="1000" rows="3" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"></textarea>
-      <div class="flex gap-2">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-sm">
+      <div class="p-6 border-b border-zinc-300 dark:border-zinc-700">
+        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Create Group</h2>
+      </div>
+      <div class="p-6 space-y-4">
+        <!-- Avatar upload area (optional) -->
+        <div class="flex flex-col items-center gap-3">
+          <div id="createGroupAvatarPreview" onclick="event.stopPropagation(); openCreateGroupAvatarPicker()" class="cursor-pointer relative w-24 h-24 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center overflow-hidden hover:bg-zinc-300 dark:hover:bg-zinc-600 transition">
+            <img id="createGroupAvatarImg" src="" alt="Group avatar" class="w-full h-full object-cover hidden">
+            <div id="createGroupAvatarPlaceholder" class="text-3xl text-zinc-500 dark:text-zinc-400">👥</div>
+          </div>
+          <input id="createGroupAvatarFileInput" type="file" accept="image/png,image/jpeg" class="hidden">
+          <p class="text-xs text-zinc-600 dark:text-zinc-400">Click to add avatar (optional)</p>
+        </div>
+        <!-- Group name input -->
+        <input id="groupNameInput" type="text" placeholder="Group name" maxlength="255" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+        <!-- Group description input -->
+        <textarea id="groupDescInput" placeholder="Description (optional)" maxlength="1000" rows="3" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"></textarea>
+        <div id="createGroupError" class="hidden text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg"></div>
+      </div>
+      <div class="p-6 border-t border-zinc-300 dark:border-zinc-700 flex gap-2">
         <button onclick="closeCreateGroupModal()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
         <button onclick="createGroup()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Create</button>
       </div>
@@ -1654,16 +1670,26 @@
   <div id="renameGroupModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-sm">
       <div class="p-6 border-b border-zinc-300 dark:border-zinc-700">
-        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Rename Group</h2>
+        <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Edit Group Settings</h2>
       </div>
       <div class="p-6 space-y-4">
-        <input id="renameGroupInput" type="text" placeholder="New group name" maxlength="255" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
+        <!-- Avatar upload area -->
+        <div class="flex flex-col items-center gap-3">
+          <div id="groupAvatarPreview" onclick="event.stopPropagation(); openGroupAvatarPicker()" class="cursor-pointer relative w-24 h-24 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center overflow-hidden hover:bg-zinc-300 dark:hover:bg-zinc-600 transition">
+            <img id="groupAvatarImg" src="" alt="Group avatar" class="w-full h-full object-cover hidden">
+            <div id="groupAvatarPlaceholder" class="text-3xl text-zinc-500 dark:text-zinc-400">👥</div>
+          </div>
+          <input id="groupAvatarFileInput" type="file" accept="image/png,image/jpeg" class="hidden">
+          <p class="text-xs text-zinc-600 dark:text-zinc-400">Click to upload avatar</p>
+        </div>
+        <!-- Group name input -->
+        <input id="renameGroupInput" type="text" placeholder="Group name" maxlength="255" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-600 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition">
         <div id="renameGroupError" class="hidden text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg"></div>
         <div id="renameGroupSuccess" class="hidden text-sm text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 p-3 rounded-lg"></div>
       </div>
       <div class="p-6 border-t border-zinc-300 dark:border-zinc-700 flex gap-2">
         <button id="renameGroupCancelBtn" onclick="closeRenameGroupModal()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100">Cancel</button>
-        <button id="renameGroupSubmitBtn" onclick="submitRenameGroup()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Rename</button>
+        <button id="renameGroupSubmitBtn" onclick="submitRenameGroup()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Save Settings</button>
       </div>
     </div>
   </div>
@@ -4827,10 +4853,16 @@
           const activeClass = isActive ? 'border-l-4 border-cyan-600 bg-cyan-50 dark:bg-cyan-900/20' : '';
           const lastMessage = group.lastMessage || 'No messages';
           const lastTime = group.lastMessageAt ? formatTime(new Date(group.lastMessageAt)) : '';
+          const avatarHtml = group.avatar_url
+            ? `<img src="${escapeHtml(group.avatar_url)}" alt="${escapeHtml(group.name)}" class="w-10 h-10 rounded-full object-cover">`
+            : `<div class="w-10 h-10 rounded-full bg-zinc-300 dark:bg-zinc-700 flex items-center justify-center text-lg">👥</div>`;
 
           return `
             <div class="p-4 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer transition border-b border-zinc-300 dark:border-zinc-800 ${activeClass}" onclick="openGroup(${group.id})" oncontextmenu="openGroupContextMenu(event, ${group.id})">
-              <div class="flex justify-between items-start gap-2">
+              <div class="flex justify-between items-start gap-3">
+                <div class="flex-shrink-0">
+                  ${avatarHtml}
+                </div>
                 <div class="flex-1 min-w-0">
                   <div class="font-medium truncate text-zinc-900 dark:text-zinc-100">${group.name}</div>
                   <div class="text-xs text-zinc-600 dark:text-zinc-400">${group.memberCount} members</div>
@@ -5089,6 +5121,80 @@
       }
     }
 
+    // Open create group avatar picker
+    function openCreateGroupAvatarPicker() {
+      const fileInput = document.getElementById('createGroupAvatarFileInput');
+      fileInput.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          await processCreateGroupAvatarFile(file);
+        }
+      };
+      fileInput.click();
+    }
+
+    // Process and compress create group avatar file
+    async function processCreateGroupAvatarFile(file) {
+      // Validate file size (max 2MB)
+      if (file.size > 2 * 1024 * 1024) {
+        document.getElementById('createGroupError').textContent = 'Image size must be less than 2MB';
+        document.getElementById('createGroupError').classList.remove('hidden');
+        return;
+      }
+
+      // Validate MIME type
+      if (!file.type.match(/^image\/(jpeg|png)$/i)) {
+        document.getElementById('createGroupError').textContent = 'Only JPEG and PNG images are supported';
+        document.getElementById('createGroupError').classList.remove('hidden');
+        return;
+      }
+
+      try {
+        // Resize and recompress via canvas
+        const dataUri = await new Promise((resolve, reject) => {
+          const img = new Image();
+          const objectUrl = URL.createObjectURL(file);
+          img.onload = () => {
+            URL.revokeObjectURL(objectUrl);
+            const MAX = 400;
+            let w = img.width;
+            let h = img.height;
+            if (w > MAX || h > MAX) {
+              if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+              else { w = Math.round(w * MAX / h); h = MAX; }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+            canvas.toBlob((blob) => {
+              if (!blob) { reject(new Error('Canvas export failed')); return; }
+              const reader = new FileReader();
+              reader.onload = (e) => resolve(e.target.result);
+              reader.onerror = () => reject(new Error('FileReader error'));
+              reader.readAsDataURL(blob);
+            }, 'image/jpeg', 0.8);
+          };
+          img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('Image load failed')); };
+          img.src = objectUrl;
+        });
+
+        // Store the data URI and update preview
+        window.createGroupAvatarDataUri = dataUri;
+        const avatarImg = document.getElementById('createGroupAvatarImg');
+        const placeholder = document.getElementById('createGroupAvatarPlaceholder');
+        avatarImg.src = dataUri;
+        avatarImg.classList.remove('hidden');
+        placeholder.classList.add('hidden');
+        document.getElementById('createGroupError').classList.add('hidden');
+        showToast('Avatar preview updated', 'success');
+      } catch (err) {
+        console.error('Error processing avatar:', err);
+        document.getElementById('createGroupError').textContent = 'Error processing image: ' + err.message;
+        document.getElementById('createGroupError').classList.remove('hidden');
+      }
+    }
+
     // Create group
     async function createGroup() {
       const name = document.getElementById('groupNameInput').value.trim();
@@ -5098,13 +5204,20 @@
 
       try {
         const settings = loadSettings();
+        const requestBody = {
+          name,
+          description: desc || null,
+          networkMode: settings.networkMode
+        };
+
+        // Include avatar if one was selected
+        if (window.createGroupAvatarDataUri) {
+          requestBody.avatar_dataUri = window.createGroupAvatarDataUri;
+        }
+
         const data = await apiCall('/api/groups', {
           method: 'POST',
-          body: JSON.stringify({
-            name,
-            description: desc || null,
-            networkMode: settings.networkMode
-          })
+          body: JSON.stringify(requestBody)
         });
 
         if (data && !data.error) {
@@ -5139,6 +5252,14 @@
       document.getElementById('createGroupModal').classList.remove('hidden');
       document.getElementById('groupNameInput').value = '';
       document.getElementById('groupDescInput').value = '';
+      document.getElementById('createGroupError').classList.add('hidden');
+
+      // Reset avatar preview
+      window.createGroupAvatarDataUri = null;
+      const avatarImg = document.getElementById('createGroupAvatarImg');
+      const placeholder = document.getElementById('createGroupAvatarPlaceholder');
+      avatarImg.classList.add('hidden');
+      placeholder.classList.remove('hidden');
     }
 
     // Close create group modal
@@ -5146,6 +5267,14 @@
       document.getElementById('createGroupModal').classList.add('hidden');
       document.getElementById('groupNameInput').value = '';
       document.getElementById('groupDescInput').value = '';
+      document.getElementById('createGroupError').classList.add('hidden');
+
+      // Reset avatar state
+      window.createGroupAvatarDataUri = null;
+      const avatarImg = document.getElementById('createGroupAvatarImg');
+      const placeholder = document.getElementById('createGroupAvatarPlaceholder');
+      avatarImg.classList.add('hidden');
+      placeholder.classList.remove('hidden');
     }
 
     // New chat modal functions
@@ -6128,6 +6257,76 @@
       document.getElementById('groupContextMenu').classList.add('hidden');
     }
 
+    // Open group avatar picker
+    function openGroupAvatarPicker() {
+      const fileInput = document.getElementById('groupAvatarFileInput');
+      fileInput.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          await processGroupAvatarFile(file);
+        }
+      };
+      fileInput.click();
+    }
+
+    // Process and compress group avatar file
+    async function processGroupAvatarFile(file) {
+      // Validate file size (max 2MB)
+      if (file.size > 2 * 1024 * 1024) {
+        showToast('Image size must be less than 2MB', 'error');
+        return;
+      }
+
+      // Validate MIME type
+      if (!file.type.match(/^image\/(jpeg|png)$/i)) {
+        showToast('Only JPEG and PNG images are supported', 'error');
+        return;
+      }
+
+      try {
+        // Resize and recompress via canvas
+        const dataUri = await new Promise((resolve, reject) => {
+          const img = new Image();
+          const objectUrl = URL.createObjectURL(file);
+          img.onload = () => {
+            URL.revokeObjectURL(objectUrl);
+            const MAX = 400;
+            let w = img.width;
+            let h = img.height;
+            if (w > MAX || h > MAX) {
+              if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+              else { w = Math.round(w * MAX / h); h = MAX; }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+            canvas.toBlob((blob) => {
+              if (!blob) { reject(new Error('Canvas export failed')); return; }
+              const reader = new FileReader();
+              reader.onload = (e) => resolve(e.target.result);
+              reader.onerror = () => reject(new Error('FileReader error'));
+              reader.readAsDataURL(blob);
+            }, 'image/jpeg', 0.8);
+          };
+          img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('Image load failed')); };
+          img.src = objectUrl;
+        });
+
+        // Store the data URI and update preview
+        window.currentGroupAvatarDataUri = dataUri;
+        const avatarImg = document.getElementById('groupAvatarImg');
+        const placeholder = document.getElementById('groupAvatarPlaceholder');
+        avatarImg.src = dataUri;
+        avatarImg.classList.remove('hidden');
+        placeholder.classList.add('hidden');
+        showToast('Avatar preview updated', 'success');
+      } catch (err) {
+        console.error('Error processing avatar:', err);
+        showToast('Error processing image: ' + err.message, 'error');
+      }
+    }
+
     // Rename group
     async function renameGroup() {
       if (!currentGroupContextMenuId || isNaN(currentGroupContextMenuId)) {
@@ -6136,12 +6335,32 @@
       }
       document.getElementById('groupContextMenu').classList.add('hidden');
 
+      // Fetch group data to populate modal
+      const groupData = await apiCall(`/api/groups/${currentGroupContextMenuId}`);
+      if (!groupData || groupData.error) {
+        showToast('Failed to load group data', 'error');
+        return;
+      }
+
       // Clear modal state
-      document.getElementById('renameGroupInput').value = '';
+      document.getElementById('renameGroupInput').value = groupData.name || '';
       document.getElementById('renameGroupError').classList.add('hidden');
       document.getElementById('renameGroupSuccess').classList.add('hidden');
       document.getElementById('renameGroupSubmitBtn').disabled = false;
       document.getElementById('renameGroupCancelBtn').disabled = false;
+
+      // Reset avatar preview
+      const avatarImg = document.getElementById('groupAvatarImg');
+      const placeholder = document.getElementById('groupAvatarPlaceholder');
+      window.currentGroupAvatarDataUri = null;
+      if (groupData.avatar_url) {
+        avatarImg.src = groupData.avatar_url;
+        avatarImg.classList.remove('hidden');
+        placeholder.classList.add('hidden');
+      } else {
+        avatarImg.classList.add('hidden');
+        placeholder.classList.remove('hidden');
+      }
 
       // Open modal
       document.getElementById('renameGroupModal').classList.remove('hidden');
@@ -6168,14 +6387,18 @@
 
       submitBtn.disabled = true;
       cancelBtn.disabled = true;
-      submitBtn.textContent = 'Renaming...';
+      submitBtn.textContent = 'Saving...';
       errorDiv.classList.add('hidden');
       successDiv.classList.add('hidden');
 
       try {
+        const requestBody = { name: newName };
+        if (window.currentGroupAvatarDataUri) {
+          requestBody.avatar_dataUri = window.currentGroupAvatarDataUri;
+        }
         const data = await apiCall(`/api/groups/${currentGroupContextMenuId}`, {
           method: 'PUT',
-          body: JSON.stringify({ name: newName })
+          body: JSON.stringify(requestBody)
         });
 
         if (data && data.error) {
@@ -6183,14 +6406,14 @@
           errorDiv.classList.remove('hidden');
           submitBtn.disabled = false;
           cancelBtn.disabled = false;
-          submitBtn.textContent = 'Rename';
+          submitBtn.textContent = 'Save Settings';
         } else if (data) {
-          successDiv.textContent = 'Group renamed successfully';
+          successDiv.textContent = 'Group settings updated successfully';
           successDiv.classList.remove('hidden');
-          submitBtn.textContent = 'Rename';
+          submitBtn.textContent = 'Save Settings';
           setTimeout(() => {
             closeRenameGroupModal();
-            showToast('Group renamed successfully', 'success');
+            showToast('Group settings updated successfully', 'success');
             refreshGroupsUI();
           }, 800);
         }
@@ -6200,7 +6423,7 @@
         errorDiv.classList.remove('hidden');
         submitBtn.disabled = false;
         cancelBtn.disabled = false;
-        submitBtn.textContent = 'Rename';
+        submitBtn.textContent = 'Save Settings';
       }
     }
 
