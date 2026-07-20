@@ -1984,50 +1984,6 @@ app.put('/api/user/skip-signature-devnet', async (req, res) => {
 });
 
 
-app.get('/api/user/stats', async (req, res) => {
-  try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const userId = parseInt(req.user.id, 10);
-    if (isNaN(userId)) {
-      return res.status(400).json({ error: 'Invalid user ID' });
-    }
-
-    // Query contacts count (contacts added BY this user)
-    const contactsRes = await pool.query(`SELECT COUNT(*) as count FROM user_contacts WHERE user_id = $1`, [userId]);
-    const contactsCount = parseInt(contactsRes.rows[0]?.count || 0, 10);
-
-    // Query groups count: count distinct groups the user is a member of
-    const groupsRes = await pool.query(`
-      SELECT COUNT(DISTINCT group_id) as count FROM group_members
-      WHERE user_id = $1
-    `, [userId]);
-    const groupCount = parseInt(groupsRes.rows[0]?.count || 0, 10);
-
-    // Query messages count: count distinct conversations + groups the user participates in
-    // This reflects the user's participation in the Messages view (both Direct and Groups tabs)
-    const conversationsRes = await pool.query(`
-      SELECT COUNT(DISTINCT id) as count FROM conversations
-      WHERE (participant_a_id = $1 OR participant_b_id = $1)
-      AND status_a != 'ignored' AND status_b != 'ignored'
-    `, [userId]);
-    const conversationCount = parseInt(conversationsRes.rows[0]?.count || 0, 10);
-
-    const messagesCount = conversationCount + groupCount;
-
-    res.json({
-      contactsCount: contactsCount,
-      groupCount: groupCount,
-      messagesCount: messagesCount,
-    });
-  } catch (err) {
-    console.error('Error fetching user stats:', err);
-    res.status(500).json({ error: 'Failed to fetch user stats' });
-  }
-});
-
 app.put('/api/user/bio', async (req, res) => {
   try {
     if (!req.user) {

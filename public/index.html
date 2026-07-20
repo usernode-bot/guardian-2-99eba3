@@ -1202,31 +1202,6 @@
               <div id="profileJoined" class="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-zinc-700 dark:text-zinc-300 text-sm">Loading...</div>
             </div>
 
-            <!-- Separator -->
-            <div class="flex items-center gap-2 py-2">
-              <div class="flex-1 border-t border-zinc-300 dark:border-zinc-700"></div>
-              <span class="text-zinc-400 dark:text-zinc-600 text-xs">────</span>
-              <div class="flex-1 border-t border-zinc-300 dark:border-zinc-700"></div>
-            </div>
-
-            <!-- Statistics Section -->
-            <div class="grid grid-cols-2 gap-3 py-2">
-              <div class="text-center p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-700 transition" onclick="openGroupTransactionModal()">
-                <div class="text-2xl font-bold text-cyan-600 dark:text-cyan-400" id="profileGroupCount">—</div>
-                <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">Group</div>
-              </div>
-              <div class="text-center p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-700 transition" onclick="openMessagesTransactionModal()">
-                <div class="text-2xl font-bold text-cyan-600 dark:text-cyan-400" id="profileMessagesCount">—</div>
-                <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">Messages</div>
-              </div>
-            </div>
-
-            <!-- Separator -->
-            <div class="flex items-center gap-2 py-2">
-              <div class="flex-1 border-t border-zinc-300 dark:border-zinc-700"></div>
-              <span class="text-zinc-400 dark:text-zinc-600 text-xs">────</span>
-              <div class="flex-1 border-t border-zinc-300 dark:border-zinc-700"></div>
-            </div>
 
             <!-- UserNode Identity Badge -->
             <div class="text-center py-2">
@@ -2577,51 +2552,6 @@
       }
     }
 
-    async function openGroupTransactionModal() {
-      try {
-        const response = await fetch('/api/user/latest-transaction/group_create', {
-          headers: { 'Content-Type': 'application/json', ...headers }
-        });
-        const data = await response.json();
-        if (data && data.auditLogId) {
-          openTransactionDetailsModal(data.auditLogId);
-        } else {
-          const modal = document.getElementById('transactionDetailsModal');
-          const content = document.getElementById('transactionDetailsContent');
-          modal.classList.remove('hidden');
-          content.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No group transactions found</div>';
-        }
-      } catch (err) {
-        console.error('Error opening group transaction modal:', err);
-        const modal = document.getElementById('transactionDetailsModal');
-        const content = document.getElementById('transactionDetailsContent');
-        modal.classList.remove('hidden');
-        content.innerHTML = '<div class="text-center py-8 text-red-600 dark:text-red-400">Error loading transaction</div>';
-      }
-    }
-
-    async function openMessagesTransactionModal() {
-      try {
-        const response = await fetch('/api/user/latest-transaction/message', {
-          headers: { 'Content-Type': 'application/json', ...headers }
-        });
-        const data = await response.json();
-        if (data && data.auditLogId) {
-          openTransactionDetailsModal(data.auditLogId);
-        } else {
-          const modal = document.getElementById('transactionDetailsModal');
-          const content = document.getElementById('transactionDetailsContent');
-          modal.classList.remove('hidden');
-          content.innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No message transactions found</div>';
-        }
-      } catch (err) {
-        console.error('Error opening messages transaction modal:', err);
-        const modal = document.getElementById('transactionDetailsModal');
-        const content = document.getElementById('transactionDetailsContent');
-        modal.classList.remove('hidden');
-        content.innerHTML = '<div class="text-center py-8 text-red-600 dark:text-red-400">Error loading transaction</div>';
-      }
-    }
 
     let currentUser = null;
     let isDemoMode = false;
@@ -9423,19 +9353,6 @@
         identityBadge.innerHTML = '<span class="text-green-600 dark:text-green-400 font-medium">✓ UserNode Identity</span>';
       } else {
         identityBadge.textContent = '—';
-      }
-
-      // Load stats
-      try {
-        const statsResponse = await apiCall('/api/user/stats');
-        if (statsResponse) {
-          document.getElementById('profileGroupCount').textContent = statsResponse.groupCount || 0;
-          document.getElementById('profileMessagesCount').textContent = statsResponse.messagesCount || 0;
-        }
-      } catch (err) {
-        console.error('Error loading profile stats:', err);
-        document.getElementById('profileGroupCount').textContent = '—';
-        document.getElementById('profileMessagesCount').textContent = '—';
       }
 
       // Load activity
