@@ -2560,9 +2560,12 @@
 
     async function openGroupTransactionModal() {
       try {
-        const response = await apiCall('/api/user/latest-transaction/group_create');
-        if (response && response.auditLogId) {
-          openTransactionDetailsModal(response.auditLogId);
+        const response = await fetch('/api/user/latest-transaction/group_create', {
+          headers: { 'Content-Type': 'application/json', ...headers }
+        });
+        const data = await response.json();
+        if (data && data.auditLogId) {
+          openTransactionDetailsModal(data.auditLogId);
         } else {
           const modal = document.getElementById('transactionDetailsModal');
           const content = document.getElementById('transactionDetailsContent');
@@ -2580,9 +2583,12 @@
 
     async function openMessagesTransactionModal() {
       try {
-        const response = await apiCall('/api/user/latest-transaction/message');
-        if (response && response.auditLogId) {
-          openTransactionDetailsModal(response.auditLogId);
+        const response = await fetch('/api/user/latest-transaction/message', {
+          headers: { 'Content-Type': 'application/json', ...headers }
+        });
+        const data = await response.json();
+        if (data && data.auditLogId) {
+          openTransactionDetailsModal(data.auditLogId);
         } else {
           const modal = document.getElementById('transactionDetailsModal');
           const content = document.getElementById('transactionDetailsContent');
