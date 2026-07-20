@@ -2190,11 +2190,11 @@
         let networkOriginIcon = '❓';
         let networkOriginClass = 'text-zinc-600 dark:text-zinc-400';
 
-        if (updateNetworkOrigin === 'testnet' || updateNetworkOrigin === 'blockchain') {
+        if (updateNetworkOrigin === 'testnet') {
           networkOriginLabel = 'Testnet';
           networkOriginIcon = '🔗';
           networkOriginClass = 'text-green-600 dark:text-green-400';
-        } else if (updateNetworkOrigin === 'devnet' || updateNetworkOrigin === 'database') {
+        } else if (updateNetworkOrigin === 'devnet') {
           networkOriginLabel = 'Devnet';
           networkOriginIcon = '💾';
           networkOriginClass = 'text-blue-600 dark:text-blue-400';
@@ -2202,14 +2202,6 @@
           networkOriginLabel = 'Mainnet';
           networkOriginIcon = '🌍';
           networkOriginClass = 'text-amber-600 dark:text-amber-400';
-        } else if (updateNetworkOrigin === 'demo') {
-          networkOriginLabel = 'Demo';
-          networkOriginIcon = '🎭';
-          networkOriginClass = 'text-purple-600 dark:text-purple-400';
-        } else if (updateNetworkOrigin === 'bridge') {
-          networkOriginLabel = 'Bridge';
-          networkOriginIcon = '🌉';
-          networkOriginClass = 'text-orange-600 dark:text-orange-400';
         }
 
         networkEl.innerHTML = `<span class="${networkOriginClass}"><span>${networkOriginIcon}</span> <span class="font-medium">${networkOriginLabel}</span></span>`;
@@ -2267,11 +2259,11 @@
       let networkOriginClass = 'text-zinc-600 dark:text-zinc-400';
 
       const txNetworkOrigin = tx.networkOrigin || tx.network_origin;
-      if (txNetworkOrigin === 'testnet' || txNetworkOrigin === 'blockchain') {
+      if (txNetworkOrigin === 'testnet') {
         networkOriginLabel = 'Testnet';
         networkOriginIcon = '🔗';
         networkOriginClass = 'text-green-600 dark:text-green-400';
-      } else if (txNetworkOrigin === 'devnet' || txNetworkOrigin === 'database') {
+      } else if (txNetworkOrigin === 'devnet') {
         networkOriginLabel = 'Devnet';
         networkOriginIcon = '💾';
         networkOriginClass = 'text-blue-600 dark:text-blue-400';
@@ -2279,14 +2271,6 @@
         networkOriginLabel = 'Mainnet';
         networkOriginIcon = '🌍';
         networkOriginClass = 'text-amber-600 dark:text-amber-400';
-      } else if (txNetworkOrigin === 'demo') {
-        networkOriginLabel = 'Demo';
-        networkOriginIcon = '🎭';
-        networkOriginClass = 'text-purple-600 dark:text-purple-400';
-      } else if (txNetworkOrigin === 'bridge') {
-        networkOriginLabel = 'Bridge';
-        networkOriginIcon = '🌉';
-        networkOriginClass = 'text-orange-600 dark:text-orange-400';
       }
 
       // Determine status icon and class
