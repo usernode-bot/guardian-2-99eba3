@@ -2573,6 +2573,7 @@
     let activeMessagesTab = 'direct';
     let currentGroupId = null;
     let currentGroupContextMenuId = null;
+    let previousViewBeforeChat = null;
 
     // Message history state
     let messageHistoryOldestTimestamp = null;
@@ -4605,7 +4606,11 @@
       attach('backBtn', 'click', () => {
         currentConvId = null;
         currentGroupId = null;
-        showConversationsView();
+        if (previousViewBeforeChat === 'groups') {
+          showGroupsView();
+        } else {
+          showConversationsView();
+        }
       }, 'back button');
 
       // Message input
@@ -4902,6 +4907,7 @@
       currentOtherId = null;
       currentChannelId = null;
       currentGroupId = groupId;
+      previousViewBeforeChat = 'groups';
 
       // Fetch group name for header (groups use two-line layout with "Group" label)
       document.getElementById('headerContent').classList.remove('hidden');
@@ -6715,6 +6721,7 @@
       currentConvId = convId;
       currentOtherId = otherId;
       currentContactName = username;
+      previousViewBeforeChat = 'conversations';
       document.getElementById('headerTitle').innerHTML = username + ' <span class="text-xs text-zinc-500 dark:text-zinc-400">● Online</span>';
       document.getElementById('backBtnContainer').classList.remove('hidden');
       // For direct conversations, use the two-line header with "Direct" label instead of "Guardian"
@@ -7159,6 +7166,7 @@
 
     async function showConversationsView() {
       updateMenuHighlight('messages');
+      previousViewBeforeChat = null;
 
       document.getElementById('messagesView').classList.remove('hidden');
       document.getElementById('conversationsView').classList.add('hidden');
@@ -7866,6 +7874,7 @@
 
     async function showGroupsView() {
       updateMenuHighlight('groups');
+      previousViewBeforeChat = null;
       document.getElementById('messagesView').classList.add('hidden');
       document.getElementById('conversationsView').classList.add('hidden');
       document.getElementById('chatView').classList.add('hidden');
