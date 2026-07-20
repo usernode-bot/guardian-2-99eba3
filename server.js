@@ -6456,12 +6456,17 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
         bal.message_type,
         bal.tx_hash,
         bal.status,
-        bal.confirmed_at,
         bal.error_message,
         bal.created_at,
-        bal.updated_at,
-        bal.network_origin
+        bal.network_origin,
+        bal.transaction_payload,
+        g.name as group_name,
+        m.recipient_id,
+        u.username as recipient_username
       FROM blockchain_audit_logs bal
+      LEFT JOIN groups g ON bal.group_id = g.id
+      LEFT JOIN messages m ON bal.message_id = m.id
+      LEFT JOIN users u ON m.recipient_id = u.id
       WHERE bal.id = $1 AND bal.user_id = $2
     `, [auditLogId, req.user.id]);
 
@@ -6479,11 +6484,13 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
       messageType: row.message_type,
       txHash: row.tx_hash,
       status: row.status,
-      confirmedAt: row.confirmed_at,
       errorMessage: row.error_message,
       createdAt: row.created_at,
-      updatedAt: row.updated_at,
       networkOrigin: row.network_origin,
+      transactionPayload: row.transaction_payload,
+      groupName: row.group_name,
+      recipientId: row.recipient_id,
+      recipientUsername: row.recipient_username,
       explorerUrl: explorerUrl,
       blockchainStatus: {
         status: row.status,
@@ -6692,17 +6699,12 @@ app.get('/api/transactions-by-user', async (req, res) => {
         bal.tx_hash,
         bal.status,
         bal.created_at,
-        bal.confirmed_at,
         bal.network_origin,
         bal.transaction_payload,
+        bal.error_message,
         g.name as group_name,
         m.recipient_id,
-        u.username as recipient_username,
-        json_build_object(
-          'status', bal.status,
-          'txHash', bal.tx_hash,
-          'networkOrigin', bal.network_origin
-        ) as blockchain_status
+        u.username as recipient_username
       FROM blockchain_audit_logs bal
       LEFT JOIN groups g ON bal.group_id = g.id
       LEFT JOIN messages m ON bal.message_id = m.id
@@ -6717,15 +6719,23 @@ app.get('/api/transactions-by-user', async (req, res) => {
     `, [req.user.id]);
 
     const transactions = result.rows.map(row => ({
-      ...row,
-      // Add camelCase aliases for frontend compatibility
-      createdAt: row.created_at,
-      confirmedAt: row.confirmed_at,
-      txHash: row.tx_hash,
+      id: row.id,
+      userId: row.user_id,
       messageType: row.message_type,
+      txHash: row.tx_hash,
+      status: row.status,
+      createdAt: row.created_at,
       networkOrigin: row.network_origin,
+      errorMessage: row.error_message,
+      transactionPayload: row.transaction_payload,
+      groupName: row.group_name,
+      recipientId: row.recipient_id,
+      recipientUsername: row.recipient_username,
+      explorerUrl: getExplorerUrl(row.tx_hash, row.status),
       blockchainStatus: {
-        ...row.blockchain_status,
+        status: row.status,
+        txHash: row.tx_hash,
+        networkOrigin: row.network_origin,
         explorerUrl: getExplorerUrl(row.tx_hash, row.status)
       }
     }));
