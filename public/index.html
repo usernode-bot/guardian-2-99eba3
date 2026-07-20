@@ -1155,92 +1155,87 @@
 
       <!-- Profile View -->
       <div id="profileView" class="hidden flex flex-col flex-1 overflow-hidden">
-        <!-- Scrollable Content Area -->
-        <div class="overflow-y-auto flex-1 pb-20">
-          <!-- Core Profile Content (Shown on Identity Tab Only) -->
-          <div id="profileCoreContent" class="p-4 space-y-4">
-            <!-- Avatar Section -->
-            <div class="flex justify-center pt-4 pb-2">
-              <div class="relative">
-                <img id="profileAvatar" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23d4d4d8' width='100' height='100'/%3E%3Ccircle cx='50' cy='35' r='18' fill='%23a1a1a9'/%3E%3Cpath d='M20 75 Q20 55 50 55 Q80 55 80 75' fill='%23a1a1a9'/%3E%3C/svg%3E" alt="Profile Avatar" class="w-32 h-32 rounded-full bg-zinc-200 dark:bg-zinc-700 border-2 border-cyan-600 dark:border-cyan-500 cursor-pointer hover:opacity-80 transition" onclick="openAvatarUpload()">
-                <div id="avatarUploadSpinner" class="hidden absolute inset-0 rounded-full bg-black bg-opacity-40 flex items-center justify-center">
-                  <svg class="animate-spin w-8 h-8 text-white" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
-                  </svg>
-                </div>
-                <div class="absolute bottom-0 right-0 bg-cyan-600 dark:bg-cyan-500 hover:bg-cyan-700 dark:hover:bg-cyan-400 text-white rounded-full p-2 cursor-pointer transition" onclick="openAvatarUpload()" title="Change avatar">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                </div>
+        <!-- Core Profile Content (Identity Section - Always Visible, Non-Scrollable) -->
+        <div id="profileCoreContent" class="p-3 space-y-3 flex-shrink-0 overflow-hidden">
+          <!-- Avatar Section -->
+          <div class="flex justify-center pt-2 pb-1">
+            <div class="relative">
+              <img id="profileAvatar" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23d4d4d8' width='100' height='100'/%3E%3Ccircle cx='50' cy='35' r='18' fill='%23a1a1a9'/%3E%3Cpath d='M20 75 Q20 55 50 55 Q80 55 80 75' fill='%23a1a1a9'/%3E%3C/svg%3E" alt="Profile Avatar" class="w-28 h-28 rounded-full bg-zinc-200 dark:bg-zinc-700 border-2 border-cyan-600 dark:border-cyan-500 cursor-pointer hover:opacity-80 transition" onclick="openAvatarUpload()">
+              <div id="avatarUploadSpinner" class="hidden absolute inset-0 rounded-full bg-black bg-opacity-40 flex items-center justify-center">
+                <svg class="animate-spin w-8 h-8 text-white" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+                </svg>
               </div>
-            </div>
-
-            <!-- Username -->
-            <div class="text-center">
-              <div class="text-xl font-bold text-zinc-900 dark:text-zinc-100" id="profileUsername">Loading...</div>
-            </div>
-
-            <!-- Bio -->
-            <div class="space-y-2">
-              <div class="flex items-center justify-between">
-                <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Bio</label>
-                <button onclick="openBioEdit()" class="text-xs text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition" title="Edit bio">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
-                </button>
+              <div class="absolute bottom-0 right-0 bg-cyan-600 dark:bg-cyan-500 hover:bg-cyan-700 dark:hover:bg-cyan-400 text-white rounded-full p-2 cursor-pointer transition" onclick="openAvatarUpload()" title="Change avatar">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
               </div>
-              <div id="profileBio" class="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-zinc-700 dark:text-zinc-300 text-sm min-h-[2.5rem] flex items-center">—</div>
-            </div>
-
-            <!-- Joined Date -->
-            <div class="space-y-2">
-              <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Joined</label>
-              <div id="profileJoined" class="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-zinc-700 dark:text-zinc-300 text-sm">Loading...</div>
-            </div>
-
-            <!-- Separator -->
-            <div class="flex items-center gap-2 py-2">
-              <div class="flex-1 border-t border-zinc-300 dark:border-zinc-700"></div>
-              <span class="text-zinc-400 dark:text-zinc-600 text-xs">────</span>
-              <div class="flex-1 border-t border-zinc-300 dark:border-zinc-700"></div>
-            </div>
-
-            <!-- Statistics Section -->
-            <div class="grid grid-cols-2 gap-3 py-2">
-              <div class="text-center p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-700 transition" onclick="openGroupTransactionModal()">
-                <div class="text-2xl font-bold text-cyan-600 dark:text-cyan-400" id="profileGroupCount">—</div>
-                <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">Group</div>
-              </div>
-              <div class="text-center p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-700 transition" onclick="openMessagesTransactionModal()">
-                <div class="text-2xl font-bold text-cyan-600 dark:text-cyan-400" id="profileMessagesCount">—</div>
-                <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-1">Messages</div>
-              </div>
-            </div>
-
-            <!-- Separator -->
-            <div class="flex items-center gap-2 py-2">
-              <div class="flex-1 border-t border-zinc-300 dark:border-zinc-700"></div>
-              <span class="text-zinc-400 dark:text-zinc-600 text-xs">────</span>
-              <div class="flex-1 border-t border-zinc-300 dark:border-zinc-700"></div>
-            </div>
-
-            <!-- UserNode Identity Badge -->
-            <div class="text-center py-2">
-              <div id="profileIdentityBadge" class="text-sm text-zinc-600 dark:text-zinc-400">—</div>
             </div>
           </div>
 
-          <!-- Identity Tab (Empty - content moved to persistent header) -->
-          <div id="profileTabContentIdentity" class="hidden space-y-4 p-4">
+          <!-- Username -->
+          <div class="text-center">
+            <div class="text-lg font-bold text-zinc-900 dark:text-zinc-100" id="profileUsername">Loading...</div>
           </div>
 
+          <!-- Bio -->
+          <div class="space-y-1">
+            <div class="flex items-center justify-between">
+              <label class="text-xs font-medium text-zinc-700 dark:text-zinc-300">Bio</label>
+              <button onclick="openBioEdit()" class="text-xs text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition" title="Edit bio">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </button>
+            </div>
+            <div id="profileBio" class="px-2 py-1 bg-zinc-100 dark:bg-zinc-800 rounded text-zinc-700 dark:text-zinc-300 text-xs min-h-[1.75rem] flex items-center">—</div>
+          </div>
 
+          <!-- Joined Date -->
+          <div class="space-y-1">
+            <label class="text-xs font-medium text-zinc-700 dark:text-zinc-300">Joined</label>
+            <div id="profileJoined" class="px-2 py-1 bg-zinc-100 dark:bg-zinc-800 rounded text-zinc-700 dark:text-zinc-300 text-xs">Loading...</div>
+          </div>
+
+          <!-- Separator -->
+          <div class="flex items-center gap-2 py-1">
+            <div class="flex-1 border-t border-zinc-300 dark:border-zinc-700"></div>
+            <span class="text-zinc-400 dark:text-zinc-600 text-xs">────</span>
+            <div class="flex-1 border-t border-zinc-300 dark:border-zinc-700"></div>
+          </div>
+
+          <!-- Statistics Section -->
+          <div class="grid grid-cols-2 gap-2 py-1">
+            <div class="text-center p-2 bg-zinc-100 dark:bg-zinc-800 rounded cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-700 transition" onclick="openGroupTransactionModal()">
+              <div class="text-xl font-bold text-cyan-600 dark:text-cyan-400" id="profileGroupCount">—</div>
+              <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-0.5">Group</div>
+            </div>
+            <div class="text-center p-2 bg-zinc-100 dark:bg-zinc-800 rounded cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-700 transition" onclick="openMessagesTransactionModal()">
+              <div class="text-xl font-bold text-cyan-600 dark:text-cyan-400" id="profileMessagesCount">—</div>
+              <div class="text-xs text-zinc-600 dark:text-zinc-400 mt-0.5">Messages</div>
+            </div>
+          </div>
+
+          <!-- Separator -->
+          <div class="flex items-center gap-2 py-1">
+            <div class="flex-1 border-t border-zinc-300 dark:border-zinc-700"></div>
+            <span class="text-zinc-400 dark:text-zinc-600 text-xs">────</span>
+            <div class="flex-1 border-t border-zinc-300 dark:border-zinc-700"></div>
+          </div>
+
+          <!-- UserNode Identity Badge -->
+          <div class="text-center py-1">
+            <div id="profileIdentityBadge" class="text-xs text-zinc-600 dark:text-zinc-400">—</div>
+          </div>
+        </div>
+
+        <!-- Scrollable Content Area (Activity Tab Only) -->
+        <div class="overflow-y-auto flex-1">
           <!-- Activity Tab -->
-          <div id="profileTabContentActivity" class="hidden space-y-2 p-4">
+          <div id="profileTabContentActivity" class="hidden space-y-2 p-3">
             <!-- On-Chain Transaction History -->
             <div id="activityTransactionsList" class="space-y-1">
               <div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Loading transactions...</div>
@@ -9338,16 +9333,7 @@
 
     function switchProfileTab(tabName) {
       // Hide all tab contents
-      document.getElementById('profileTabContentIdentity').classList.add('hidden');
       document.getElementById('profileTabContentActivity').classList.add('hidden');
-
-      // Show/hide core profile content based on active tab
-      const coreContent = document.getElementById('profileCoreContent');
-      if (tabName === 'identity') {
-        coreContent.classList.remove('hidden');
-      } else {
-        coreContent.classList.add('hidden');
-      }
 
       // Reset all tab buttons to inactive state
       ['identity', 'activity'].forEach(name => {
@@ -9358,13 +9344,9 @@
         }
       });
 
-      // Show selected tab content (but only if not identity, since identity shows core content instead)
-      if (tabName !== 'identity') {
-        const contentId = `profileTabContent${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`;
-        document.getElementById(contentId).classList.remove('hidden');
-      } else {
-        // For identity tab, show the Identity tab content div (which is empty) and core content above
-        document.getElementById('profileTabContentIdentity').classList.remove('hidden');
+      // Show selected tab content (only Activity tab has scrollable content)
+      if (tabName === 'activity') {
+        document.getElementById('profileTabContentActivity').classList.remove('hidden');
       }
 
       // Activate selected tab button
