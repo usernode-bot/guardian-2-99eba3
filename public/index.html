@@ -857,8 +857,12 @@
       </div>
     </div>
 
+    <!-- Settings Panel Overlay -->
+    <div id="settingsPanelOverlay" class="hidden fixed inset-0 bg-black/50 z-30" onclick="closeSettingsPanel()"></div>
+
     <!-- Settings Panel -->
-    <div id="settingsPanel" class="hidden fixed left-0 top-0 w-64 h-full bg-zinc-50 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 z-40 flex flex-col overflow-y-auto">
+    <div id="settingsPanel" class="hidden fixed inset-0 z-40 flex items-center justify-center p-4">
+      <div class="w-full max-w-sm max-h-[90vh] overflow-y-auto bg-zinc-50 dark:bg-zinc-900 rounded-lg shadow-2xl flex flex-col">
       <div class="p-3 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
         <h2 class="text-base font-semibold text-zinc-900 dark:text-white">Settings</h2>
         <button onclick="closeSettingsPanel()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 transition">
@@ -1008,6 +1012,7 @@
       <div class="border-t border-zinc-200 dark:border-zinc-700 pt-2 pb-3 px-3 flex flex-col items-center justify-center text-center">
         <div class="text-xs text-zinc-500 dark:text-zinc-500 leading-tight">Guardian v0.9.2-beta</div>
         <div id="settingsFooterNetwork" class="text-xs text-zinc-500 dark:text-zinc-500 leading-tight">UserNode Testnet</div>
+      </div>
       </div>
     </div>
 
@@ -3537,6 +3542,7 @@
       currentChannel = null;
       document.getElementById('sidebar').classList.add('hidden');
       document.getElementById('settingsPanel').classList.remove('hidden');
+      document.getElementById('settingsPanelOverlay').classList.remove('hidden');
       document.getElementById('inputFooter').classList.add('hidden');
       document.getElementById('header').classList.remove('header-chat-fixed');
       document.getElementById('headerTitle').textContent = 'Settings';
@@ -3553,6 +3559,7 @@
 
     function closeSettingsPanel() {
       document.getElementById('settingsPanel').classList.add('hidden');
+      document.getElementById('settingsPanelOverlay').classList.add('hidden');
       document.getElementById('sidebar').classList.remove('hidden');
       showConversationsView();
     }
