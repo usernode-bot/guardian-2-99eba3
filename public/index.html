@@ -2469,7 +2469,7 @@
       const pollModal = async () => {
         try {
           const data = await apiCall(`/api/blockchain-audit/${auditLogId}`);
-          if (!data) {
+          if (!data || data.error) {
             content.innerHTML = '<div class="text-center py-8 text-red-600 dark:text-red-400">Failed to load transaction details</div>';
             return;
           }
