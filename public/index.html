@@ -6911,8 +6911,8 @@
         const senderNameLine = shouldShowSenderName ? `<div class="text-xs opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'} mb-1 cursor-pointer hover:opacity-100" onclick="event.stopPropagation(); showUserProfileModal(${msg.senderId})">${msg.senderUsername}</div>` : '';
         const bubbleClasses = isMobile ? 'px-3 py-1.5 rounded-xl text-xs' : 'px-4 py-2 rounded-2xl text-sm';
         return `
-          <div class="flex ${alignClass} ${marginClass}" data-message-id="${msg.id}" onclick="showMessageDetailsModal(${msg.id}, '${msg.createdAt}', '${msg.blockchainAuditLogId || ''}')">
-            <div class="max-w-xs ${bubbleClasses} ${baseClass} message-bubble cursor-pointer hover:opacity-90 transition">
+          <div class="flex ${alignClass} ${marginClass}" data-message-id="${msg.id}">
+            <div class="max-w-xs ${bubbleClasses} ${baseClass} message-bubble cursor-pointer hover:opacity-90 transition" onclick="showMessageDetailsModal(${msg.id}, '${msg.createdAt}', '${msg.blockchainAuditLogId || ''}')">
               ${senderNameLine}
               <div>${msg.content.text}</div>
               <div class="text-xs mt-1.5 opacity-70">${formatTime(new Date(msg.createdAt))}</div>
@@ -6925,8 +6925,8 @@
         const senderNameLine = shouldShowSenderName ? `<div class="text-xs px-4 py-2 opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'} cursor-pointer hover:opacity-100" onclick="event.stopPropagation(); showUserProfileModal(${msg.senderId})">${msg.senderUsername}</div>` : '';
         const borderRadius = isMobile ? 'rounded-lg' : 'rounded-2xl';
         return `
-          <div class="flex ${alignClass} ${marginClass}" data-message-id="${msg.id}" onclick="showMessageDetailsModal(${msg.id}, '${msg.createdAt}', '${msg.blockchainAuditLogId || ''}')">
-            <div class="max-w-xs ${borderRadius} overflow-hidden ${baseClass} cursor-pointer hover:opacity-90 transition">
+          <div class="flex ${alignClass} ${marginClass}" data-message-id="${msg.id}">
+            <div class="max-w-xs ${borderRadius} overflow-hidden ${baseClass} cursor-pointer hover:opacity-90 transition" onclick="showMessageDetailsModal(${msg.id}, '${msg.createdAt}', '${msg.blockchainAuditLogId || ''}')">
               <img src="${msg.content.imageUrl}" alt="Message image" class="max-w-xs cursor-pointer hover:opacity-80 transition" onclick="event.stopPropagation(); showLightbox('${msg.content.imageUrl}')">
               ${senderNameLine}
             </div>
@@ -6941,8 +6941,8 @@
         const bubbleClasses = isMobile ? 'px-2.5 py-1.5 rounded-lg text-xs' : 'px-3 py-2 rounded-2xl text-sm';
         const senderNameLine = shouldShowSenderName ? `<div class="text-xs opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'} mb-1 cursor-pointer hover:opacity-100" onclick="event.stopPropagation(); showUserProfileModal(${msg.senderId})">${msg.senderUsername}</div>` : '';
         return `
-          <div class="flex ${alignClass} ${marginClass}" data-message-id="${msg.id}" onclick="showMessageDetailsModal(${msg.id}, '${msg.createdAt}', '${msg.blockchainAuditLogId || ''}')">
-            <div class="max-w-xs ${bubbleClasses} ${baseClass} border-2 border-yellow-500/40 message-bubble cursor-pointer hover:opacity-90 transition">
+          <div class="flex ${alignClass} ${marginClass}" data-message-id="${msg.id}">
+            <div class="max-w-xs ${bubbleClasses} ${baseClass} border-2 border-yellow-500/40 message-bubble cursor-pointer hover:opacity-90 transition" onclick="showMessageDetailsModal(${msg.id}, '${msg.createdAt}', '${msg.blockchainAuditLogId || ''}')">
               ${senderNameLine}
               <div class="font-bold ${isMobile ? 'text-sm' : 'text-base'} flex items-center justify-between gap-2">
                 <span>💰 ${c.amount} tokens</span>
