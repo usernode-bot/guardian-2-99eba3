@@ -6693,24 +6693,37 @@ app.post('/api/blockchain-audit/:auditLogId/register-tx', async (req, res) => {
 
 app.get('/api/transactions-by-user', async (req, res) => {
   try {
+    console.log('[ACTIVITY_API] GET /api/transactions-by-user called');
+
     if (!req.user) {
+      console.error('[ACTIVITY_API] BLOCKING: req.user is null/undefined');
       return res.status(401).json({ error: 'Not authenticated' });
     }
+
+    console.log('[ACTIVITY_API] req.user validation PASSED: user_id=' + req.user.id);
 
     const { limit = 50, offset = 0, category } = req.query;
     const parsedLimit = Math.min(parseInt(limit) || 50, 500);
     const parsedOffset = Math.max(parseInt(offset) || 0, 0);
+
+    console.log('[ACTIVITY_API] Query parameters: limit=' + limit + ', offset=' + offset + ', category=' + (category || 'all'));
+    console.log('[ACTIVITY_API] Parsed parameters: limit=' + parsedLimit + ', offset=' + parsedOffset);
 
     let whereClause = 'bal.user_id = $1';
     let params = [req.user.id];
 
     // Apply category filter
     if (category === 'messages') {
+      console.log('[ACTIVITY_API] Applying category filter: messages');
       whereClause += " AND bal.message_type IN ('message', 'token_transfer')";
     } else if (category === 'group') {
+      console.log('[ACTIVITY_API] Applying category filter: group');
       whereClause += " AND bal.message_type IN ('group_create', 'group_add_members', 'group_remove_member', 'group_update', 'group_delete', 'group_leave')";
+    } else {
+      console.log('[ACTIVITY_API] No category filter applied (all)');
     }
 
+    console.log('[ACTIVITY_API] Executing query with whereClause:', whereClause);
     const result = await pool.query(`
       SELECT
         bal.id,
@@ -6734,39 +6747,56 @@ app.get('/api/transactions-by-user', async (req, res) => {
       LIMIT $2 OFFSET $3
     `, [...params, parsedLimit, parsedOffset]);
 
+    console.log('[ACTIVITY_API] Query returned ' + result.rows.length + ' rows');
+
     const countResult = await pool.query(`
       SELECT COUNT(*) as total FROM blockchain_audit_logs WHERE ${whereClause}
     `, params);
 
-    const transactions = result.rows.map(row => ({
-      id: row.id,
-      userId: row.user_id,
-      messageType: row.message_type,
-      txHash: row.tx_hash,
-      status: row.status,
-      createdAt: row.created_at,
-      networkOrigin: row.network_origin,
-      errorMessage: row.error_message,
-      recipientId: row.recipient_id,
-      recipientUsername: row.recipient_username,
-      groupName: row.group_name,
-      explorerUrl: getExplorerUrl(row.tx_hash, row.status),
-      blockchainStatus: {
-        status: row.status,
-        txHash: row.tx_hash,
-        networkOrigin: row.network_origin,
-        explorerUrl: getExplorerUrl(row.tx_hash, row.status)
-      }
-    }));
+    const totalCount = parseInt(countResult.rows[0].total);
+    console.log('[ACTIVITY_API] Total transactions matching filter: ' + totalCount);
 
-    res.json({
+    const transactions = result.rows.map(row => {
+      console.log('[ACTIVITY_API] Mapping transaction: id=' + row.id + ', type=' + row.message_type);
+      return {
+        id: row.id,
+        userId: row.user_id,
+        messageType: row.message_type,
+        txHash: row.tx_hash,
+        status: row.status,
+        createdAt: row.created_at,
+        networkOrigin: row.network_origin,
+        errorMessage: row.error_message,
+        recipientId: row.recipient_id,
+        recipientUsername: row.recipient_username,
+        groupName: row.group_name,
+        explorerUrl: getExplorerUrl(row.tx_hash, row.status),
+        blockchainStatus: {
+          status: row.status,
+          txHash: row.tx_hash,
+          networkOrigin: row.network_origin,
+          explorerUrl: getExplorerUrl(row.tx_hash, row.status)
+        }
+      };
+    });
+
+    console.log('[ACTIVITY_API] Mapped ' + transactions.length + ' transactions successfully');
+
+    const response = {
       transactions: transactions,
-      total: parseInt(countResult.rows[0].total),
+      total: totalCount,
       limit: parsedLimit,
       offset: parsedOffset
-    });
+    };
+
+    console.log('[ACTIVITY_API] Sending response with ' + transactions.length + ' transactions, total=' + totalCount);
+    res.json(response);
   } catch (err) {
-    console.error('Error fetching user transactions:', err);
+    console.error('[ACTIVITY_API] ====== EXCEPTION IN GET /api/transactions-by-user ======');
+    console.error('[ACTIVITY_API] Exception type:', err.constructor.name);
+    console.error('[ACTIVITY_API] Exception message:', err.message);
+    console.error('[ACTIVITY_API] Exception stack:', err.stack);
+    console.error('[ACTIVITY_API] Full exception:', err);
     res.status(500).json({ error: 'Failed to fetch transactions', details: err.message });
   }
 });

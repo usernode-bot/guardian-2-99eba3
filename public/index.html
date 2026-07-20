@@ -9530,14 +9530,22 @@
 
       // Show selected tab content
       if (tabName === 'activity') {
+        console.log('[ACTIVITY] ====== ACTIVITY TAB SELECTED ======');
         const contentId = `profileTabContent${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`;
-        document.getElementById(contentId).classList.remove('hidden');
+        const contentEl = document.getElementById(contentId);
+        console.log('[ACTIVITY] Content element ID:', contentId, 'exists:', !!contentEl);
+        if (contentEl) {
+          contentEl.classList.remove('hidden');
+        }
         // Reset activity state and initialize for activity tab
-        console.log('[ACTIVITY] Initializing activity tab');
+        console.log('[ACTIVITY] Resetting activity state');
         activityTransactionsOffset = 0;
         currentActivityCategory = 'all';
+        console.log('[ACTIVITY] Calling initActivityCategoryListeners()');
         initActivityCategoryListeners();
+        console.log('[ACTIVITY] Calling loadProfileActivity()');
         loadProfileActivity();
+        console.log('[ACTIVITY] ====== ACTIVITY TAB INITIALIZATION COMPLETE ======');
       } else if (tabName !== 'identity') {
         const contentId = `profileTabContent${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`;
         document.getElementById(contentId).classList.remove('hidden');
@@ -9934,48 +9942,73 @@
     let activityCategoryListenersAttached = false;
 
     async function loadProfileActivity() {
-      console.log('[ACTIVITY] loadProfileActivity called');
-      console.log('[ACTIVITY] currentUser:', currentUser ? currentUser.id : 'null');
+      console.log('[ACTIVITY] ====== loadProfileActivity CALLED ======');
+      console.log('[ACTIVITY] currentUser:', currentUser ? { id: currentUser.id, username: currentUser.username } : 'NULL');
 
       if (!currentUser) {
-        console.warn('[ACTIVITY] loadProfileActivity called but currentUser is null');
+        console.error('[ACTIVITY] BLOCKING: loadProfileActivity called but currentUser is null - aborting');
         return;
       }
 
+      console.log('[ACTIVITY] currentUser validation PASSED');
+      console.log('[ACTIVITY] Resetting state: activityTransactionsOffset=0, currentActivityCategory=all');
       activityTransactionsOffset = 0;
       currentActivityCategory = 'all';
+
+      console.log('[ACTIVITY] Updating category buttons');
       updateActivityCategoryButtons();
+
+      console.log('[ACTIVITY] Calling loadActivityTransactions(0, "all")');
       await loadActivityTransactions(0, 'all');
+      console.log('[ACTIVITY] ====== loadProfileActivity COMPLETED ======');
     }
 
     function initActivityCategoryListeners() {
-      console.log('[ACTIVITY] initActivityCategoryListeners called');
+      console.log('[ACTIVITY] ====== initActivityCategoryListeners CALLED ======');
       if (activityCategoryListenersAttached) {
-        console.log('[ACTIVITY] Category listeners already attached, skipping');
+        console.log('[ACTIVITY] Category listeners already attached, skipping re-attachment');
         return;
       }
+      console.log('[ACTIVITY] Flag activityCategoryListenersAttached set to TRUE');
       activityCategoryListenersAttached = true;
 
       const buttons = document.querySelectorAll('.activity-category-btn');
-      console.log('[ACTIVITY] Found', buttons.length, 'category buttons');
+      console.log('[ACTIVITY] Found ' + buttons.length + ' category buttons to attach listeners');
 
-      buttons.forEach(btn => {
+      buttons.forEach((btn, index) => {
+        const category = btn.getAttribute('data-category');
+        console.log('[ACTIVITY] Attaching listener to button #' + index + ' with data-category=' + category);
+
         btn.addEventListener('click', async () => {
-          const category = btn.getAttribute('data-category');
-          console.log('[ACTIVITY] Category button clicked:', category);
+          console.log('[ACTIVITY] ====== CATEGORY BUTTON CLICKED ======');
+          console.log('[ACTIVITY] Clicked category:', category);
+          console.log('[ACTIVITY] Previous category:', currentActivityCategory);
+
           currentActivityCategory = category;
+          console.log('[ACTIVITY] Updated currentActivityCategory to:', currentActivityCategory);
+
+          console.log('[ACTIVITY] Calling updateActivityCategoryButtons()');
           updateActivityCategoryButtons();
+
+          console.log('[ACTIVITY] Calling loadActivityTransactions(0, "' + category + '")');
           await loadActivityTransactions(0, category);
+          console.log('[ACTIVITY] ====== CATEGORY BUTTON CLICK COMPLETED ======');
         });
       });
-      console.log('[ACTIVITY] Category listeners attached successfully');
+      console.log('[ACTIVITY] ====== All category listeners attached successfully ======');
     }
 
     function updateActivityCategoryButtons() {
       console.log('[ACTIVITY] updateActivityCategoryButtons called for category:', currentActivityCategory);
-      document.querySelectorAll('.activity-category-btn').forEach(btn => {
+      const buttons = document.querySelectorAll('.activity-category-btn');
+      console.log('[ACTIVITY] Found ' + buttons.length + ' buttons to update');
+
+      buttons.forEach(btn => {
         const category = btn.getAttribute('data-category');
-        if (category === currentActivityCategory) {
+        const isActive = category === currentActivityCategory;
+        console.log('[ACTIVITY] Button category=' + category + ' active=' + isActive);
+
+        if (isActive) {
           btn.classList.remove('text-zinc-700', 'dark:text-zinc-400', 'border-b-transparent');
           btn.classList.add('text-cyan-600', 'dark:text-cyan-400', 'border-b-cyan-600', 'dark:border-b-cyan-500');
         } else {
@@ -9987,90 +10020,195 @@
 
     async function loadActivityTransactions(offset, category = currentActivityCategory) {
       try {
-        console.log('[ACTIVITY] loadActivityTransactions called with offset:', offset, 'category:', category);
+        console.log('[ACTIVITY] ====== loadActivityTransactions CALLED ======');
+        console.log('[ACTIVITY] offset:', offset);
+        console.log('[ACTIVITY] category:', category);
+        console.log('[ACTIVITY] currentUser:', currentUser ? { id: currentUser.id, username: currentUser.username } : 'NULL');
 
         // Verify currentUser exists
         if (!currentUser) {
-          console.warn('[ACTIVITY] loadActivityTransactions called but currentUser is null');
-          return;
-        }
-
-        // Clean up any existing polling timers when refreshing list
-        if (offset === 0) {
-          cleanupActivityPolling();
-        }
-
-        const categoryParam = category && category !== 'all' ? `&category=${category}` : '';
-        const apiUrl = `/api/transactions-by-user?limit=20&offset=${offset}${categoryParam}`;
-        console.log('[ACTIVITY] Calling API:', apiUrl);
-
-        const response = await apiCall(apiUrl);
-        console.log('[ACTIVITY] API response:', response);
-
-        if (!response || response.error) {
-          console.warn('[ACTIVITY] API returned error or no response:', response);
+          console.error('[ACTIVITY] BLOCKING: currentUser is null/undefined - cannot proceed with API call');
           if (offset === 0) {
-            document.getElementById('activityTransactionsList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Error loading transactions</div>';
+            document.getElementById('activityTransactionsList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Error loading transactions (no user)</div>';
           }
           return;
         }
 
-        // Handle response - check for .transactions property
-        const transactions = response.transactions || response.data || response;
-        if (!transactions || !Array.isArray(transactions)) {
-          console.warn('[ACTIVITY] Response does not contain valid transactions array:', response);
+        console.log('[ACTIVITY] currentUser validation PASSED: user_id=' + currentUser.id);
+
+        // Clean up any existing polling timers when refreshing list
+        if (offset === 0) {
+          console.log('[ACTIVITY] Cleaning up existing polling timers for refresh');
+          cleanupActivityPolling();
+        }
+
+        // Construct API URL with parameters
+        const categoryParam = category && category !== 'all' ? `&category=${category}` : '';
+        const apiUrl = `/api/transactions-by-user?limit=20&offset=${offset}${categoryParam}`;
+        console.log('[ACTIVITY] API URL constructed:', apiUrl);
+        console.log('[ACTIVITY] API parameters: limit=20, offset=' + offset + ', category=' + (category || 'all'));
+
+        // Make API call
+        console.log('[ACTIVITY] Making API call...');
+        const response = await apiCall(apiUrl);
+        console.log('[ACTIVITY] API response received:', {
+          type: typeof response,
+          hasError: response && response.error ? true : false,
+          responseKeys: response ? Object.keys(response) : 'null',
+          fullResponse: response
+        });
+
+        // Check for API errors
+        if (!response) {
+          console.error('[ACTIVITY] API returned null/undefined response');
+          if (offset === 0) {
+            document.getElementById('activityTransactionsList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Error loading transactions (no response)</div>';
+          }
+          return;
+        }
+
+        if (response.error) {
+          console.error('[ACTIVITY] API returned error:', response.error);
+          if (offset === 0) {
+            document.getElementById('activityTransactionsList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Error loading transactions: ' + response.error + '</div>';
+          }
+          return;
+        }
+
+        // Validate and extract transactions array from response
+        console.log('[ACTIVITY] Validating response format...');
+        let transactions = null;
+
+        if (response.transactions && Array.isArray(response.transactions)) {
+          console.log('[ACTIVITY] Response format: response.transactions (expected format)');
+          transactions = response.transactions;
+        } else if (response.data && Array.isArray(response.data)) {
+          console.log('[ACTIVITY] Response format: response.data (alternate format)');
+          transactions = response.data;
+        } else if (Array.isArray(response)) {
+          console.log('[ACTIVITY] Response format: raw array');
+          transactions = response;
+        } else {
+          console.error('[ACTIVITY] Response validation FAILED: no valid transactions array found', {
+            hasTransactions: !!response.transactions,
+            hasData: !!response.data,
+            isArray: Array.isArray(response),
+            responseKeys: Object.keys(response),
+            responseType: typeof response
+          });
           if (offset === 0) {
             document.getElementById('activityTransactionsList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No transactions yet</div>';
           }
           return;
         }
 
+        console.log('[ACTIVITY] Transactions extracted:', { count: transactions.length, isArray: Array.isArray(transactions) });
+
+        // Check if transactions array is valid
+        if (!Array.isArray(transactions)) {
+          console.error('[ACTIVITY] Transactions is not an array after extraction:', typeof transactions);
+          if (offset === 0) {
+            document.getElementById('activityTransactionsList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No transactions yet</div>';
+          }
+          return;
+        }
+
+        // Handle empty transactions on initial load
         if (offset === 0 && transactions.length === 0) {
-          console.log('[ACTIVITY] No transactions found');
+          console.log('[ACTIVITY] No transactions found for category=' + category);
           document.getElementById('activityTransactionsList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No transactions yet</div>';
           return;
         }
 
-        console.log('[ACTIVITY] Rendering', transactions.length, 'transactions');
-        let html = '';
-        for (const tx of transactions) {
-          html += renderActivityTransactionComplete(tx);
+        // Validate each transaction has required properties
+        console.log('[ACTIVITY] Validating transaction objects...');
+        const validTransactions = transactions.filter(tx => {
+          if (!tx || typeof tx !== 'object') {
+            console.warn('[ACTIVITY] Skipping invalid transaction:', tx);
+            return false;
+          }
+          return true;
+        });
+        console.log('[ACTIVITY] Transaction validation complete: ' + validTransactions.length + '/' + transactions.length + ' valid');
+
+        if (validTransactions.length === 0 && offset === 0) {
+          console.log('[ACTIVITY] No valid transactions after filtering');
+          document.getElementById('activityTransactionsList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No transactions yet</div>';
+          return;
         }
 
+        // Render transactions
+        console.log('[ACTIVITY] Rendering ' + validTransactions.length + ' transactions...');
+        let html = '';
+        for (const tx of validTransactions) {
+          try {
+            const txHtml = renderActivityTransactionComplete(tx);
+            html += txHtml;
+            console.log('[ACTIVITY] Rendered transaction:', tx.id || 'unknown');
+          } catch (txErr) {
+            console.error('[ACTIVITY] Error rendering transaction:', { id: tx.id, error: txErr.message });
+          }
+        }
+
+        // Update DOM
         const listContainer = document.getElementById('activityTransactionsList');
+        if (!listContainer) {
+          console.error('[ACTIVITY] Cannot find activityTransactionsList container');
+          return;
+        }
+
         if (offset === 0) {
+          console.log('[ACTIVITY] Initial load: replacing container innerHTML');
           listContainer.innerHTML = html;
         } else {
+          console.log('[ACTIVITY] Pagination: appending to container');
           const loadMoreBtn = listContainer.querySelector('[data-load-more="transactions"]');
           if (loadMoreBtn) loadMoreBtn.remove();
           listContainer.innerHTML += html;
         }
+        console.log('[ACTIVITY] DOM update complete');
 
-        // Start polling for all pending transactions and register callbacks
-        for (const tx of transactions) {
+        // Start polling for pending transactions
+        console.log('[ACTIVITY] Checking for pending transactions to poll...');
+        let pendingCount = 0;
+        for (const tx of validTransactions) {
           if (tx.blockchainStatus && tx.blockchainStatus.status === 'pending') {
-            // Register callback for modal to use
+            pendingCount++;
+            console.log('[ACTIVITY] Starting poll for pending transaction:', tx.id);
             registerTransactionUpdateCallback(tx.id, (data) => {
+              console.log('[ACTIVITY] Transaction update callback triggered for:', tx.id);
               updateActivityTransactionRow(tx.id, data);
             });
-            // Start polling
             startActivityTransactionPolling(tx.id);
           }
         }
+        console.log('[ACTIVITY] Polling started for ' + pendingCount + ' pending transactions');
 
-        // Show load more button if there are more items
-        if (transactions.length >= 20) {
+        // Show load more button if needed
+        if (validTransactions.length >= 20) {
+          console.log('[ACTIVITY] Creating load more button (found 20+ transactions)');
           const loadMoreBtn = document.createElement('button');
           loadMoreBtn.setAttribute('data-load-more', 'transactions');
           loadMoreBtn.className = 'w-full py-2 px-3 text-xs font-medium text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition border border-cyan-600 dark:border-cyan-500 rounded';
           loadMoreBtn.textContent = 'Load more transactions';
-          loadMoreBtn.onclick = () => loadActivityTransactions(offset + 20, category);
+          loadMoreBtn.onclick = () => {
+            console.log('[ACTIVITY] Load more clicked, fetching offset=' + (offset + 20));
+            loadActivityTransactions(offset + 20, category);
+          };
           listContainer.appendChild(loadMoreBtn);
         }
+
+        console.log('[ACTIVITY] ====== loadActivityTransactions COMPLETED SUCCESSFULLY ======');
       } catch (err) {
-        console.error('[ACTIVITY] Error loading activity transactions:', err);
+        console.error('[ACTIVITY] ====== EXCEPTION IN loadActivityTransactions ======');
+        console.error('[ACTIVITY] Exception type:', err.constructor.name);
+        console.error('[ACTIVITY] Exception message:', err.message);
+        console.error('[ACTIVITY] Exception stack:', err.stack);
+        console.error('[ACTIVITY] Full exception:', err);
+
         if (offset === 0) {
-          document.getElementById('activityTransactionsList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Error loading transactions</div>';
+          const errorMsg = err.message || 'Unknown error';
+          document.getElementById('activityTransactionsList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Error loading transactions: ' + errorMsg + '</div>';
         }
       }
     }
