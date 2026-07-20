@@ -5346,18 +5346,18 @@ app.get('/api/activity', async (req, res) => {
       return res.status(401).json({ error: 'Invalid user ID' });
     }
 
-    // Get blockchain audit logs for this user (token transfers and group operations)
+    // Get blockchain audit logs for this user (messages, token transfers, and group operations)
     const { rows } = await pool.query(`
       SELECT id, user_id, message_type, tx_hash, status, error_message, confirmed_at, created_at, network_origin, transaction_payload
       FROM blockchain_audit_logs
-      WHERE user_id = $1 AND message_type IN ('token_transfer', 'group_create', 'group_add_members', 'group_remove_member', 'group_update', 'group_delete', 'group_leave')
+      WHERE user_id = $1 AND message_type IN ('message', 'token_transfer', 'group_create', 'group_add_members', 'group_remove_member', 'group_update', 'group_delete', 'group_leave')
       ORDER BY created_at DESC
       LIMIT $2 OFFSET $3
     `, [userId, limit, offset]);
 
     const { rows: countRows } = await pool.query(`
       SELECT COUNT(*) as total FROM blockchain_audit_logs
-      WHERE user_id = $1 AND message_type IN ('token_transfer', 'group_create', 'group_add_members', 'group_remove_member', 'group_update', 'group_delete', 'group_leave')
+      WHERE user_id = $1 AND message_type IN ('message', 'token_transfer', 'group_create', 'group_add_members', 'group_remove_member', 'group_update', 'group_delete', 'group_leave')
     `, [userId]);
 
     const activities = rows.map(r => {
