@@ -1241,6 +1241,12 @@
 
           <!-- Activity Tab -->
           <div id="profileTabContentActivity" class="hidden space-y-2 p-4">
+            <!-- Category Filter Buttons -->
+            <div class="flex gap-2 mb-4 border-b border-zinc-200 dark:border-zinc-700">
+              <button id="activityCategoryAll" class="activity-category-btn px-4 py-2 text-sm font-medium text-cyan-600 dark:text-cyan-400 border-b-2 border-cyan-600 dark:border-cyan-500 hover:text-cyan-700 dark:hover:text-cyan-300 transition" data-category="all">All</button>
+              <button id="activityCategoryMessages" class="activity-category-btn px-4 py-2 text-sm font-medium text-zinc-700 dark:text-zinc-400 border-b-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100 transition" data-category="messages">Messages</button>
+              <button id="activityCategoryGroup" class="activity-category-btn px-4 py-2 text-sm font-medium text-zinc-700 dark:text-zinc-400 border-b-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100 transition" data-category="group">Group</button>
+            </div>
             <!-- On-Chain Transaction History -->
             <div id="activityTransactionsList" class="space-y-1">
               <div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Loading transactions...</div>
@@ -9362,6 +9368,10 @@
       if (tabName !== 'identity') {
         const contentId = `profileTabContent${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`;
         document.getElementById(contentId).classList.remove('hidden');
+        // Attach category listeners for activity tab
+        if (tabName === 'activity') {
+          attachActivityCategoryListeners();
+        }
       } else {
         // For identity tab, show the Identity tab content div (which is empty) and core content above
         document.getElementById('profileTabContentIdentity').classList.remove('hidden');
@@ -9767,20 +9777,37 @@
 
     // Activity transactions offset tracking
     let activityTransactionsOffset = 0;
+    let currentActivityCategory = 'all';
 
     async function loadProfileActivity() {
       activityTransactionsOffset = 0;
-      await loadActivityTransactions(0);
+      currentActivityCategory = 'all';
+      updateActivityCategoryButtons();
+      await loadActivityTransactions(0, 'all');
     }
 
-    async function loadActivityTransactions(offset) {
+    function updateActivityCategoryButtons() {
+      document.querySelectorAll('.activity-category-btn').forEach(btn => {
+        const category = btn.getAttribute('data-category');
+        if (category === currentActivityCategory) {
+          btn.classList.remove('text-zinc-700', 'dark:text-zinc-400', 'border-b-transparent');
+          btn.classList.add('text-cyan-600', 'dark:text-cyan-400', 'border-b-cyan-600', 'dark:border-b-cyan-500');
+        } else {
+          btn.classList.remove('text-cyan-600', 'dark:text-cyan-400', 'border-b-cyan-600', 'dark:border-b-cyan-500');
+          btn.classList.add('text-zinc-700', 'dark:text-zinc-400', 'border-b-transparent');
+        }
+      });
+    }
+
+    async function loadActivityTransactions(offset, category = currentActivityCategory) {
       try {
         // Clean up any existing polling timers when refreshing list
         if (offset === 0) {
           cleanupActivityPolling();
         }
 
-        const response = await apiCall(`/api/transactions-by-user?limit=20&offset=${offset}`);
+        const categoryParam = category && category !== 'all' ? `&category=${category}` : '';
+        const response = await apiCall(`/api/transactions-by-user?limit=20&offset=${offset}${categoryParam}`);
         if (!response || !response.transactions) {
           if (offset === 0) {
             document.getElementById('activityTransactionsList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">No transactions yet</div>';
@@ -9825,7 +9852,7 @@
           loadMoreBtn.setAttribute('data-load-more', 'transactions');
           loadMoreBtn.className = 'w-full py-2 px-3 text-xs font-medium text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition border border-cyan-600 dark:border-cyan-500 rounded';
           loadMoreBtn.textContent = 'Load more transactions';
-          loadMoreBtn.onclick = () => loadActivityTransactions(offset + 20);
+          loadMoreBtn.onclick = () => loadActivityTransactions(offset + 20, category);
           document.getElementById('activityTransactionsList').appendChild(loadMoreBtn);
         }
       } catch (err) {
@@ -9834,6 +9861,17 @@
           document.getElementById('activityTransactionsList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-400">Error loading transactions</div>';
         }
       }
+    }
+
+    function attachActivityCategoryListeners() {
+      document.querySelectorAll('.activity-category-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const category = btn.getAttribute('data-category');
+          currentActivityCategory = category;
+          updateActivityCategoryButtons();
+          await loadActivityTransactions(0, category);
+        });
+      });
     }
 
 

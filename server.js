@@ -6714,9 +6714,19 @@ app.get('/api/transactions-by-user', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const { limit = 50, offset = 0 } = req.query;
+    const { limit = 50, offset = 0, category } = req.query;
     const parsedLimit = Math.min(parseInt(limit) || 50, 500);
     const parsedOffset = Math.max(parseInt(offset) || 0, 0);
+
+    let whereClause = 'bal.user_id = $1';
+    let params = [req.user.id];
+
+    // Apply category filter
+    if (category === 'messages') {
+      whereClause += " AND bal.message_type IN ('message', 'token_transfer')";
+    } else if (category === 'group') {
+      whereClause += " AND bal.message_type IN ('group_create', 'group_add_members', 'group_remove_member', 'group_update', 'group_delete', 'group_leave')";
+    }
 
     const result = await pool.query(`
       SELECT
@@ -6736,14 +6746,14 @@ app.get('/api/transactions-by-user', async (req, res) => {
       LEFT JOIN messages m ON bal.message_id = m.id
       LEFT JOIN conversations c ON m.conversation_id = c.id
       LEFT JOIN users u ON u.id = CASE WHEN c.participant_a_id = bal.user_id THEN c.participant_b_id ELSE c.participant_a_id END
-      WHERE bal.user_id = $1
+      WHERE ${whereClause}
       ORDER BY bal.created_at DESC
       LIMIT $2 OFFSET $3
-    `, [req.user.id, parsedLimit, parsedOffset]);
+    `, [...params, parsedLimit, parsedOffset]);
 
     const countResult = await pool.query(`
-      SELECT COUNT(*) as total FROM blockchain_audit_logs WHERE user_id = $1
-    `, [req.user.id]);
+      SELECT COUNT(*) as total FROM blockchain_audit_logs WHERE ${whereClause}
+    `, params);
 
     const transactions = result.rows.map(row => ({
       id: row.id,
