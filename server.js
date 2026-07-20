@@ -2579,29 +2579,32 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
       // Use user's networkMode if provided, otherwise fall back to server NETWORK_MODE
       const effectiveNetworkMode = networkMode || NETWORK_MODE;
 
-      // For testnet mode with RPC: submit real transaction, store null tx_hash initially
-      // For devnet: generate synthetic hash, mark confirmed
-      // For testnet without RPC: will be set later via fallback
-      if (effectiveNetworkMode === 'testnet' && NODE_RPC_URL && !txHash) {
-        // Real testnet mode: insert with null tx_hash, will be updated after RPC submission
-        auditStatus = 'pending';
-        networkOriginValue = 'testnet';
-        actualTxHash = null;
-      } else if (txHash) {
-        // Frontend provided a real tx hash
-        actualTxHash = txHash;
-        auditStatus = 'pending';
-        networkOriginValue = 'blockchain';
-      } else if (effectiveNetworkMode === 'devnet') {
+      // Map effectiveNetworkMode to network_origin value
+      if (effectiveNetworkMode === 'devnet') {
         // Devnet mode: generate synthetic hash, confirm immediately
         actualTxHash = 'ut1devnet-message-' + messageId + '-' + Date.now();
         auditStatus = 'confirmed';
         networkOriginValue = 'database';
-      } else {
+      } else if (effectiveNetworkMode === 'testnet' && NODE_RPC_URL && !txHash) {
+        // Real testnet mode with RPC: insert with null tx_hash, will be updated after RPC submission
+        auditStatus = 'pending';
+        networkOriginValue = 'testnet';
+        actualTxHash = null;
+      } else if (effectiveNetworkMode === 'testnet' && !NODE_RPC_URL) {
         // Testnet without RPC: store null, will be populated later
         actualTxHash = null;
         auditStatus = 'pending';
         networkOriginValue = 'bridge';
+      } else if (txHash) {
+        // Frontend provided a real tx hash (mainnet or other blockchain)
+        actualTxHash = txHash;
+        auditStatus = 'pending';
+        networkOriginValue = 'blockchain';
+      } else {
+        // Default fallback: testnet
+        actualTxHash = null;
+        auditStatus = 'pending';
+        networkOriginValue = 'testnet';
       }
 
       // Log audit creation with all critical fields
@@ -3956,24 +3959,29 @@ app.post('/api/groups', async (req, res) => {
     // Use user's networkMode if provided, otherwise fall back to server NETWORK_MODE
     const effectiveNetworkMode = networkMode || NETWORK_MODE;
 
-    // For testnet mode with RPC: submit real transaction, store null tx_hash initially
-    if (effectiveNetworkMode === 'testnet' && NODE_RPC_URL && !txHash) {
-      auditStatus = 'pending';
-      networkOriginValue = 'testnet';
-      actualTxHash = null;
-    } else if (txHash) {
-      actualTxHash = txHash;
-      auditStatus = 'pending';
-      networkOriginValue = 'blockchain';
-    } else if (effectiveNetworkMode === 'devnet') {
+    // Map effectiveNetworkMode to network_origin value
+    if (effectiveNetworkMode === 'devnet') {
       actualTxHash = 'ut1devnet-group-' + groupId + '-' + Date.now();
       auditStatus = 'confirmed';
       networkOriginValue = 'database';
-    } else {
+    } else if (effectiveNetworkMode === 'testnet' && NODE_RPC_URL && !txHash) {
+      auditStatus = 'pending';
+      networkOriginValue = 'testnet';
+      actualTxHash = null;
+    } else if (effectiveNetworkMode === 'testnet' && !NODE_RPC_URL) {
       // Testnet without RPC: store null, will be populated later
       actualTxHash = null;
       auditStatus = 'pending';
       networkOriginValue = 'bridge';
+    } else if (txHash) {
+      actualTxHash = txHash;
+      auditStatus = 'pending';
+      networkOriginValue = 'blockchain';
+    } else {
+      // Default fallback: testnet
+      actualTxHash = null;
+      auditStatus = 'pending';
+      networkOriginValue = 'testnet';
     }
 
     let blockchainRecordingId;
@@ -4446,24 +4454,29 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
     // Use user's networkMode if provided, otherwise fall back to server NETWORK_MODE
     const effectiveNetworkMode = networkMode || NETWORK_MODE;
 
-    // For testnet mode with RPC: submit real transaction, store null tx_hash initially
-    if (effectiveNetworkMode === 'testnet' && NODE_RPC_URL && !txHash) {
-      auditStatus = 'pending';
-      networkOriginValue = 'testnet';
-      actualTxHash = null;
-    } else if (txHash) {
-      actualTxHash = txHash;
-      auditStatus = 'pending';
-      networkOriginValue = 'testnet';
-    } else if (effectiveNetworkMode === 'devnet') {
+    // Map effectiveNetworkMode to network_origin value
+    if (effectiveNetworkMode === 'devnet') {
       actualTxHash = 'ut1devnet-message-' + messageId + '-' + Date.now();
       auditStatus = 'confirmed';
       networkOriginValue = 'database';
-    } else {
+    } else if (effectiveNetworkMode === 'testnet' && NODE_RPC_URL && !txHash) {
+      auditStatus = 'pending';
+      networkOriginValue = 'testnet';
+      actualTxHash = null;
+    } else if (effectiveNetworkMode === 'testnet' && !NODE_RPC_URL) {
       // Testnet without RPC: store null, will be populated later
       actualTxHash = null;
       auditStatus = 'pending';
       networkOriginValue = 'bridge';
+    } else if (txHash) {
+      actualTxHash = txHash;
+      auditStatus = 'pending';
+      networkOriginValue = 'blockchain';
+    } else {
+      // Default fallback: testnet
+      actualTxHash = null;
+      auditStatus = 'pending';
+      networkOriginValue = 'testnet';
     }
 
     let blockchainRecordingId;
@@ -6411,6 +6424,8 @@ app.post('/api/tokens/send', async (req, res) => {
       let networkOriginValue = 'testnet';
       if (effectiveNetworkMode === 'devnet') {
         networkOriginValue = 'database';
+      } else if (effectiveNetworkMode === 'testnet' && !NODE_RPC_URL) {
+        networkOriginValue = 'bridge';
       }
 
       try {
