@@ -2447,7 +2447,7 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
     }
 
     const { convId } = req.params;
-    const { type, content, txHash, auditLogId, contentHash: frontendContentHash } = req.body;
+    const { type, content, txHash, auditLogId, contentHash: frontendContentHash, networkMode } = req.body;
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
@@ -2571,15 +2571,18 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
         throw new Error('Failed to create valid transaction payload');
       }
 
-      // Determine audit status and network origin based on mode
+      // Determine audit status and network origin based on user's network mode or server mode
       let auditStatus = 'pending';
       let networkOriginValue = null;
       let actualTxHash = null;
 
+      // Use user's networkMode if provided, otherwise fall back to server NETWORK_MODE
+      const effectiveNetworkMode = networkMode || NETWORK_MODE;
+
       // For testnet mode with RPC: submit real transaction, store null tx_hash initially
       // For devnet: generate synthetic hash, mark confirmed
       // For testnet without RPC: will be set later via fallback
-      if (NETWORK_MODE === 'testnet' && NODE_RPC_URL && !txHash) {
+      if (effectiveNetworkMode === 'testnet' && NODE_RPC_URL && !txHash) {
         // Real testnet mode: insert with null tx_hash, will be updated after RPC submission
         auditStatus = 'pending';
         networkOriginValue = 'testnet';
@@ -2589,7 +2592,7 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
         actualTxHash = txHash;
         auditStatus = 'pending';
         networkOriginValue = 'blockchain';
-      } else if (NETWORK_MODE === 'devnet') {
+      } else if (effectiveNetworkMode === 'devnet') {
         // Devnet mode: generate synthetic hash, confirm immediately
         actualTxHash = 'ut1devnet-message-' + messageId + '-' + Date.now();
         auditStatus = 'confirmed';
@@ -3834,7 +3837,7 @@ app.post('/api/groups', async (req, res) => {
     }
     console.log(`[POST /api/groups::VALIDATE] Authentication successful: userId=${req.user.id}`);
 
-    const { name, description, initialMemberIds, txHash, auditLogId, contentHash: frontendContentHash } = req.body;
+    const { name, description, initialMemberIds, txHash, auditLogId, contentHash: frontendContentHash, networkMode } = req.body;
 
     // Validation: parse and validate user ID
     const userId = parseInt(req.user.id, 10);
@@ -3945,13 +3948,16 @@ app.post('/api/groups', async (req, res) => {
     const memo = signTransactionMemo(transactionPayload);
 
     // Blockchain: Use existing audit log if provided, otherwise create new one
-    // Determine audit status and network origin based on mode
+    // Determine audit status and network origin based on user's network mode or server mode
     let auditStatus = 'pending';
     let networkOriginValue = null;
     let actualTxHash = null;
 
+    // Use user's networkMode if provided, otherwise fall back to server NETWORK_MODE
+    const effectiveNetworkMode = networkMode || NETWORK_MODE;
+
     // For testnet mode with RPC: submit real transaction, store null tx_hash initially
-    if (NETWORK_MODE === 'testnet' && NODE_RPC_URL && !txHash) {
+    if (effectiveNetworkMode === 'testnet' && NODE_RPC_URL && !txHash) {
       auditStatus = 'pending';
       networkOriginValue = 'testnet';
       actualTxHash = null;
@@ -3959,7 +3965,7 @@ app.post('/api/groups', async (req, res) => {
       actualTxHash = txHash;
       auditStatus = 'pending';
       networkOriginValue = 'blockchain';
-    } else if (NETWORK_MODE === 'devnet') {
+    } else if (effectiveNetworkMode === 'devnet') {
       actualTxHash = 'ut1devnet-group-' + groupId + '-' + Date.now();
       auditStatus = 'confirmed';
       networkOriginValue = 'database';
@@ -4373,7 +4379,7 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
     }
 
     const { groupId } = req.params;
-    const { type, content, txHash, auditLogId } = req.body;
+    const { type, content, txHash, auditLogId, networkMode } = req.body;
     const userId = parseInt(req.user.id, 10);
     if (isNaN(userId)) {
       return res.status(401).json({ error: 'Invalid user ID' });
@@ -4432,13 +4438,16 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
       network: network
     };
 
-    // Determine audit status and network origin based on mode
+    // Determine audit status and network origin based on user's network mode or server mode
     let auditStatus = 'pending';
     let networkOriginValue = null;
     let actualTxHash = null;
 
+    // Use user's networkMode if provided, otherwise fall back to server NETWORK_MODE
+    const effectiveNetworkMode = networkMode || NETWORK_MODE;
+
     // For testnet mode with RPC: submit real transaction, store null tx_hash initially
-    if (NETWORK_MODE === 'testnet' && NODE_RPC_URL && !txHash) {
+    if (effectiveNetworkMode === 'testnet' && NODE_RPC_URL && !txHash) {
       auditStatus = 'pending';
       networkOriginValue = 'testnet';
       actualTxHash = null;
@@ -4446,7 +4455,7 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
       actualTxHash = txHash;
       auditStatus = 'pending';
       networkOriginValue = 'testnet';
-    } else if (NETWORK_MODE === 'devnet') {
+    } else if (effectiveNetworkMode === 'devnet') {
       actualTxHash = 'ut1devnet-message-' + messageId + '-' + Date.now();
       auditStatus = 'confirmed';
       networkOriginValue = 'database';
@@ -6359,7 +6368,7 @@ app.post('/api/tokens/send', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const { recipientAddress, amount, memo } = req.body;
+    const { recipientAddress, amount, memo, networkMode } = req.body;
 
     if (!recipientAddress || !amount) {
       return res.status(400).json({ error: 'Recipient address and amount are required' });
@@ -6369,7 +6378,10 @@ app.post('/api/tokens/send', async (req, res) => {
       return res.status(400).json({ error: 'Amount must be a positive number' });
     }
 
-    if (NETWORK_MODE === 'devnet') {
+    // Use user's networkMode if provided, otherwise fall back to server NETWORK_MODE
+    const effectiveNetworkMode = networkMode || NETWORK_MODE;
+
+    if (effectiveNetworkMode === 'devnet') {
       const demo = {
         success: true,
         txHash: `demo_token_${Date.now()}`,
@@ -6382,7 +6394,7 @@ app.post('/api/tokens/send', async (req, res) => {
       return res.json(demo);
     }
 
-    if (NETWORK_MODE === 'testnet') {
+    if (effectiveNetworkMode === 'testnet') {
       const payload = {
         sender: req.user.usernode_pubkey || APP_PUBKEY,
         recipient: recipientAddress,

@@ -5131,11 +5131,13 @@
       if (!name) return alert('Group name is required');
 
       try {
+        const settings = loadSettings();
         const data = await apiCall('/api/groups', {
           method: 'POST',
           body: JSON.stringify({
             name,
-            description: desc || null
+            description: desc || null,
+            networkMode: settings.networkMode
           })
         });
 
@@ -7038,7 +7040,8 @@
         const endpoint = currentGroupId ? `/api/groups/${currentGroupId}/messages` : `/api/conversations/${currentConvId}/messages`;
         const payload = {
           type: 'text',
-          content: { text }
+          content: { text },
+          networkMode: settings.networkMode
         };
         if (txHash) {
           payload.txHash = txHash;
@@ -10079,10 +10082,11 @@
           return;
         }
 
+        const settings = loadSettings();
         const response = await fetch('/api/tokens/send', {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'x-usernode-token': token },
-          body: JSON.stringify({ recipientAddress: recipient, amount: amount, memo: memo })
+          body: JSON.stringify({ recipientAddress: recipient, amount: amount, memo: memo, networkMode: settings.networkMode })
         });
 
         const result = await response.json();
