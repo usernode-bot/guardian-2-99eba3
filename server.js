@@ -6443,6 +6443,10 @@ app.post('/api/tokens/send', async (req, res) => {
 
 app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
     const { auditLogId } = req.params;
 
     const result = await pool.query(`
@@ -6455,17 +6459,10 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
         bal.confirmed_at,
         bal.error_message,
         bal.created_at,
-        bal.network_origin,
-        bal.transaction_payload,
-        g.name as group_name,
-        m.recipient_id,
-        u.username as recipient_username
+        bal.updated_at
       FROM blockchain_audit_logs bal
-      LEFT JOIN groups g ON bal.group_id = g.id
-      LEFT JOIN messages m ON bal.message_id = m.id
-      LEFT JOIN users u ON m.recipient_id = u.id
-      WHERE bal.id = $1
-    `, [auditLogId]);
+      WHERE bal.id = $1 AND bal.user_id = $2
+    `, [auditLogId, req.user.id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Audit log not found' });
@@ -6474,21 +6471,21 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
     const row = result.rows[0];
     const explorerUrl = getExplorerUrl(row.tx_hash, row.status);
 
-    // Format response with blockchainStatus object for consistency with Activity list
+    // Format response with proper camelCase aliases for frontend compatibility
     const responseData = {
-      ...row,
-      // Add camelCase aliases for frontend compatibility
-      createdAt: row.created_at,
+      id: row.id,
+      userId: row.user_id,
+      messageType: row.message_type,
+      txHash: row.tx_hash,
+      status: row.status,
       confirmedAt: row.confirmed_at,
       errorMessage: row.error_message,
-      txHash: row.tx_hash,
-      messageType: row.message_type,
-      networkOrigin: row.network_origin,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
       explorerUrl: explorerUrl,
       blockchainStatus: {
         status: row.status,
         txHash: row.tx_hash,
-        networkOrigin: row.network_origin,
         explorerUrl: explorerUrl
       }
     };
