@@ -5419,7 +5419,7 @@ app.get('/api/channels', async (req, res) => {
     const featured = req.query.featured === 'true';
 
     let query = `
-      SELECT c.id, c.name, c.description, c.is_system, c.owner_id, c.category, c.is_verified, c.verified_at, c.is_featured, c.created_at, c.updated_at,
+      SELECT c.id, c.name, c.description, c.is_system, c.owner_id, c.category, c.is_verified, c.verified_at, c.is_featured, c.created_at, c.updated_at, c.avatar_url,
              u.username as ownerUsername,
              (SELECT COUNT(*) FROM channel_unread WHERE user_id = $1 AND channel_id = c.id AND unread_count > 0)::INTEGER as unreadCount,
              (SELECT COUNT(*) FROM pinned_channels WHERE user_id = $1 AND channel_id = c.id)::INTEGER as isPinned,
@@ -5459,6 +5459,7 @@ app.get('/api/channels', async (req, res) => {
         isSystem: c.is_system,
         createdAt: c.created_at,
         updatedAt: c.updated_at,
+        avatarUrl: c.avatar_url,
         unreadCount: parseInt(c.unreadCount) || 0,
         isPinned: parseInt(c.isPinned) > 0,
         followerCount: parseInt(c.followerCount) || 0,
@@ -5554,7 +5555,7 @@ app.post('/api/channels/:channelId/posts', async (req, res) => {
 
     const channelId = parseInt(req.params.channelId);
     const userId = parseInt(req.user.id, 10);
-    const { content, imageUrls } = req.body;
+    const { content, imageUrls, txHash, auditLogId } = req.body;
 
     if (isNaN(channelId) || isNaN(userId)) {
       return res.status(400).json({ error: 'Invalid channel or user ID' });
@@ -5577,7 +5578,7 @@ app.post('/api/channels/:channelId/posts', async (req, res) => {
       return res.status(400).json({ error: 'Maximum 4 images per post' });
     }
 
-    // Check channel exists and user is owner or follower
+    // Check channel exists and user is owner or member
     const { rows: channelCheck } = await pool.query(`
       SELECT id, owner_id FROM channels WHERE id = $1
     `, [channelId]);
@@ -5589,28 +5590,38 @@ app.post('/api/channels/:channelId/posts', async (req, res) => {
     const isOwner = channelCheck[0].owner_id === userId;
 
     if (!isOwner) {
-      // Check if user is a follower
-      const { rows: followerCheck } = await pool.query(`
-        SELECT 1 FROM channel_followers WHERE user_id = $1 AND channel_id = $2
+      // Check if user is a channel member
+      const { rows: memberCheck } = await pool.query(`
+        SELECT 1 FROM channel_members WHERE user_id = $1 AND channel_id = $2
       `, [userId, channelId]);
 
-      if (followerCheck.length === 0) {
-        return res.status(403).json({ error: 'You must follow this channel to post in it' });
+      if (memberCheck.length === 0) {
+        return res.status(403).json({ error: 'You must be a member of this channel to post in it' });
       }
     }
 
     // Insert the post
     const { rows: postRows } = await pool.query(`
       INSERT INTO feed_posts (user_id, content, channel_id, on_chain, image_urls, created_at, updated_at)
-      VALUES ($1, $2, $3, FALSE, $4, NOW(), NOW())
+      VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
       RETURNING id, user_id, content, image_urls, created_at, updated_at, on_chain
-    `, [userId, JSON.stringify({ text: trimmedContent }), channelId, JSON.stringify(images)]);
+    `, [userId, JSON.stringify({ text: trimmedContent }), channelId, txHash ? true : false, JSON.stringify(images)]);
 
     if (postRows.length === 0) {
       return res.status(500).json({ error: 'Failed to create post' });
     }
 
     const post = postRows[0];
+
+    // Update audit log with feed_post_id and txHash if provided
+    if (auditLogId && txHash) {
+      await pool.query(`
+        UPDATE blockchain_audit_logs
+        SET feed_post_id = $1, tx_hash = $2, status = 'pending'
+        WHERE id = $3 AND user_id = $4
+      `, [post.id, txHash, auditLogId, userId]);
+    }
+
     const { rows: userRows } = await pool.query(`
       SELECT username, verified_at, avatar_url FROM users WHERE id = $1
     `, [userId]);
@@ -5818,7 +5829,7 @@ app.post('/api/channels', async (req, res) => {
       return res.status(401).json({ error: walletValidation.error });
     }
 
-    const { name, description, category, txHash, auditLogId } = req.body;
+    const { name, description, category, txHash, auditLogId, avatarUrl } = req.body;
 
     // Validate channel name
     if (!name || typeof name !== 'string' || name.trim().length === 0 || name.length > 255) {
@@ -5849,12 +5860,12 @@ app.post('/api/channels', async (req, res) => {
       return res.status(400).json({ error: 'Transaction hash and audit log ID are required' });
     }
 
-    // Insert new channel
+    // Insert new channel with optional avatar_url
     const { rows: channelRows } = await pool.query(`
-      INSERT INTO channels (name, description, owner_id, category, is_system, is_verified, is_featured)
-      VALUES ($1, $2, $3, $4, FALSE, FALSE, FALSE)
-      RETURNING id, name, description, owner_id, category, is_verified, verified_at, is_featured, is_system, created_at, updated_at
-    `, [name, description || null, userId, category]);
+      INSERT INTO channels (name, description, owner_id, category, is_system, is_verified, is_featured, avatar_url)
+      VALUES ($1, $2, $3, $4, FALSE, FALSE, FALSE, $5)
+      RETURNING id, name, description, owner_id, category, is_verified, verified_at, is_featured, is_system, created_at, updated_at, avatar_url
+    `, [name, description || null, userId, category, avatarUrl || null]);
 
     if (channelRows.length === 0) {
       return res.status(500).json({ error: 'Failed to create channel' });
@@ -5876,14 +5887,21 @@ app.post('/api/channels', async (req, res) => {
       ON CONFLICT (user_id, channel_id) DO NOTHING
     `, [userId, channel.id]);
 
-    // Update audit log with txHash
+    // Auto-add creator to channel_members
+    await pool.query(`
+      INSERT INTO channel_members (channel_id, user_id, added_by)
+      VALUES ($1, $2, $2)
+      ON CONFLICT (channel_id, user_id) DO NOTHING
+    `, [channel.id, userId]);
+
+    // Update audit log with txHash and channel_id
     if (auditLogId) {
       const auditStatusForChannel = 'pending';
       await pool.query(`
         UPDATE blockchain_audit_logs
-        SET tx_hash = $1, status = $2
-        WHERE id = $3 AND user_id = $4
-      `, [txHash, auditStatusForChannel, auditLogId, userId]);
+        SET tx_hash = $1, status = $2, channel_id = $3
+        WHERE id = $4 AND user_id = $5
+      `, [txHash, auditStatusForChannel, channel.id, auditLogId, userId]);
     }
 
     res.status(201).json({
@@ -5898,7 +5916,8 @@ app.post('/api/channels', async (req, res) => {
       isFeatured: channel.is_featured,
       isSystem: channel.is_system,
       createdAt: channel.created_at,
-      updatedAt: channel.updated_at
+      updatedAt: channel.updated_at,
+      avatarUrl: channel.avatar_url
     });
   } catch (err) {
     console.error('Error creating channel:', err);
@@ -5914,15 +5933,15 @@ app.put('/api/channels/:channelId', async (req, res) => {
     }
 
     const channelId = parseInt(req.params.channelId);
-    const { name, description } = req.body;
+    const { name, description, avatarUrl } = req.body;
 
     if (isNaN(channelId)) {
       return res.status(400).json({ error: 'Invalid channel ID' });
     }
 
-    // Validate input
-    if (!name || typeof name !== 'string' || name.trim().length === 0 || name.length > 255) {
-      return res.status(400).json({ error: 'Channel name is required and must be 1-255 characters' });
+    // Validate input - name and description are optional for updates
+    if (name && (typeof name !== 'string' || name.trim().length === 0 || name.length > 255)) {
+      return res.status(400).json({ error: 'Channel name must be 1-255 characters' });
     }
 
     if (description && (typeof description !== 'string' || description.length > 1000)) {
@@ -5931,7 +5950,7 @@ app.put('/api/channels/:channelId', async (req, res) => {
 
     // Check if channel exists and verify ownership
     const { rows: channelCheck } = await pool.query(`
-      SELECT id, owner_id FROM channels WHERE id = $1
+      SELECT id, owner_id, name, description, avatar_url FROM channels WHERE id = $1
     `, [channelId]);
 
     if (channelCheck.length === 0) {
@@ -5942,13 +5961,17 @@ app.put('/api/channels/:channelId', async (req, res) => {
       return res.status(403).json({ error: 'Only the channel owner can edit this channel' });
     }
 
-    // Update channel
+    // Update channel - only provided fields are updated
+    const updateName = name ? name.trim() : channelCheck[0].name;
+    const updateDesc = description !== undefined ? description : channelCheck[0].description;
+    const updateAvatar = avatarUrl !== undefined ? avatarUrl : channelCheck[0].avatar_url;
+
     const { rows: updated } = await pool.query(`
       UPDATE channels
-      SET name = $1, description = $2, updated_at = NOW()
-      WHERE id = $3
-      RETURNING id, name, description, owner_id, category, is_verified, verified_at, is_featured, is_system, created_at, updated_at
-    `, [name.trim(), description || null, channelId]);
+      SET name = $1, description = $2, avatar_url = $3, updated_at = NOW()
+      WHERE id = $4
+      RETURNING id, name, description, owner_id, category, is_verified, verified_at, is_featured, is_system, created_at, updated_at, avatar_url
+    `, [updateName, updateDesc || null, updateAvatar || null, channelId]);
 
     if (updated.length === 0) {
       return res.status(500).json({ error: 'Failed to update channel' });
@@ -5975,7 +5998,8 @@ app.put('/api/channels/:channelId', async (req, res) => {
       isFeatured: channel.is_featured,
       isSystem: channel.is_system,
       createdAt: channel.created_at,
-      updatedAt: channel.updated_at
+      updatedAt: channel.updated_at,
+      avatarUrl: channel.avatar_url
     });
   } catch (err) {
     console.error('Error updating channel:', err);
@@ -7063,6 +7087,368 @@ app.get('/api/feed/posts', async (req, res) => {
 // consider a fallback lookup by memo signature or sender+timestamp if the real hash cannot be found.
 // Explorer API endpoint removed
 
+// ===== GUARDIAN POSTS ENDPOINTS =====
+
+// POST /api/blockchain-audit/channel-create - Pre-auth endpoint for channel creation
+app.post('/api/blockchain-audit/channel-create', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = parseInt(req.user.id, 10);
+    const { name, description, category } = req.body;
+
+    // Validate inputs
+    if (!name || typeof name !== 'string' || name.trim().length === 0) {
+      return res.status(400).json({ error: 'Channel name is required' });
+    }
+    if (description && typeof description !== 'string' && description !== null) {
+      return res.status(400).json({ error: 'Description must be a string' });
+    }
+    if (!category || typeof category !== 'string') {
+      return res.status(400).json({ error: 'Category is required' });
+    }
+
+    // Create pending blockchain audit log
+    const signingPayload = {
+      type: 'blockchain',
+      action: 'channel_create',
+      data: { name: name.trim(), description: description || null, category },
+      timestamp: Date.now()
+    };
+
+    const { rows } = await pool.query(`
+      INSERT INTO blockchain_audit_logs (user_id, message_type, status, transaction_payload, network_origin)
+      VALUES ($1, 'channel_create', 'pending', $2, $3)
+      RETURNING id
+    `, [userId, JSON.stringify(signingPayload), NETWORK_MODE]);
+
+    const auditLogId = rows[0].id;
+
+    res.json({
+      auditLogId,
+      signingPayload,
+      message: 'Please sign to create channel'
+    });
+  } catch (err) {
+    console.error('Error creating pre-auth channel audit log:', err);
+    res.status(500).json({ error: 'Failed to create audit log' });
+  }
+});
+
+// POST /api/blockchain-audit/feed-post-create - Pre-auth endpoint for article creation
+app.post('/api/blockchain-audit/feed-post-create', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = parseInt(req.user.id, 10);
+    const { channelId, content, imageUrls } = req.body;
+
+    // Validate inputs
+    if (!channelId || isNaN(parseInt(channelId))) {
+      return res.status(400).json({ error: 'Channel ID is required and must be a number' });
+    }
+    if (!content || typeof content !== 'string' || content.trim().length === 0) {
+      return res.status(400).json({ error: 'Content is required' });
+    }
+
+    // Verify channel exists
+    const { rows: channelCheck } = await pool.query(`
+      SELECT id FROM channels WHERE id = $1
+    `, [parseInt(channelId)]);
+
+    if (channelCheck.length === 0) {
+      return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    // Create pending blockchain audit log
+    const signingPayload = {
+      type: 'blockchain',
+      action: 'feed_post_create',
+      data: { channelId: parseInt(channelId), content: content.trim(), imageUrls: imageUrls || [] },
+      timestamp: Date.now()
+    };
+
+    const { rows } = await pool.query(`
+      INSERT INTO blockchain_audit_logs (user_id, message_type, status, transaction_payload, channel_id, network_origin)
+      VALUES ($1, 'feed_post_create', 'pending', $2, $3, $4)
+      RETURNING id
+    `, [userId, JSON.stringify(signingPayload), parseInt(channelId), NETWORK_MODE]);
+
+    const auditLogId = rows[0].id;
+
+    res.json({
+      auditLogId,
+      signingPayload,
+      message: 'Please sign to publish article'
+    });
+  } catch (err) {
+    console.error('Error creating pre-auth feed post audit log:', err);
+    res.status(500).json({ error: 'Failed to create audit log' });
+  }
+});
+
+// GET /api/channels/:channelId/members - List channel members
+app.get('/api/channels/:channelId/members', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const channelId = parseInt(req.params.channelId);
+    if (isNaN(channelId)) {
+      return res.status(400).json({ error: 'Invalid channel ID' });
+    }
+
+    // Verify channel exists
+    const { rows: channelCheck } = await pool.query(`
+      SELECT id FROM channels WHERE id = $1
+    `, [channelId]);
+
+    if (channelCheck.length === 0) {
+      return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    // Get members from channel_members table
+    const { rows: members } = await pool.query(`
+      SELECT cm.user_id, u.username, cm.added_at, cm.added_by
+      FROM channel_members cm
+      JOIN users u ON cm.user_id = u.id
+      WHERE cm.channel_id = $1
+      ORDER BY cm.added_at ASC
+    `, [channelId]);
+
+    res.json({
+      members: members.map(m => ({
+        userId: m.user_id,
+        username: m.username,
+        addedAt: m.added_at,
+        addedBy: m.added_by
+      }))
+    });
+  } catch (err) {
+    console.error('Error fetching channel members:', err);
+    res.status(500).json({ error: 'Failed to fetch channel members' });
+  }
+});
+
+// POST /api/channels/:channelId/members - Add member to channel (owner only)
+app.post('/api/channels/:channelId/members', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const channelId = parseInt(req.params.channelId);
+    const userId = parseInt(req.user.id, 10);
+    const { userId: newMemberId } = req.body;
+
+    if (isNaN(channelId) || !newMemberId || isNaN(parseInt(newMemberId))) {
+      return res.status(400).json({ error: 'Invalid channel ID or user ID' });
+    }
+
+    const newUserIdInt = parseInt(newMemberId);
+
+    // Get channel and verify ownership
+    const { rows: channelRows } = await pool.query(`
+      SELECT owner_id FROM channels WHERE id = $1
+    `, [channelId]);
+
+    if (channelRows.length === 0) {
+      return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    if (channelRows[0].owner_id !== userId) {
+      return res.status(403).json({ error: 'Only channel owner can add members' });
+    }
+
+    // Verify user to add exists
+    const { rows: userCheck } = await pool.query(`
+      SELECT id FROM users WHERE id = $1
+    `, [newUserIdInt]);
+
+    if (userCheck.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Add member to channel
+    await pool.query(`
+      INSERT INTO channel_members (channel_id, user_id, added_by)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (channel_id, user_id) DO NOTHING
+    `, [channelId, newUserIdInt, userId]);
+
+    res.json({ success: true, message: 'Member added to channel' });
+  } catch (err) {
+    console.error('Error adding channel member:', err);
+    res.status(500).json({ error: 'Failed to add member' });
+  }
+});
+
+// DELETE /api/channels/:channelId/members/:userId - Remove member from channel (owner only, cannot remove owner)
+app.delete('/api/channels/:channelId/members/:userId', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const channelId = parseInt(req.params.channelId);
+    const memberUserId = parseInt(req.params.userId);
+    const userId = parseInt(req.user.id, 10);
+
+    if (isNaN(channelId) || isNaN(memberUserId)) {
+      return res.status(400).json({ error: 'Invalid channel ID or user ID' });
+    }
+
+    // Get channel and verify ownership
+    const { rows: channelRows } = await pool.query(`
+      SELECT owner_id FROM channels WHERE id = $1
+    `, [channelId]);
+
+    if (channelRows.length === 0) {
+      return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    if (channelRows[0].owner_id !== userId) {
+      return res.status(403).json({ error: 'Only channel owner can remove members' });
+    }
+
+    // Cannot remove owner
+    if (memberUserId === channelRows[0].owner_id) {
+      return res.status(400).json({ error: 'Cannot remove channel owner' });
+    }
+
+    // Remove member
+    await pool.query(`
+      DELETE FROM channel_members
+      WHERE channel_id = $1 AND user_id = $2
+    `, [channelId, memberUserId]);
+
+    res.json({ success: true, message: 'Member removed from channel' });
+  } catch (err) {
+    console.error('Error removing channel member:', err);
+    res.status(500).json({ error: 'Failed to remove member' });
+  }
+});
+
+// GET /api/feed/home - Fetch global feed (posts from all followed channels)
+app.get('/api/feed/home', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const userId = req.user.id;
+    const limit = Math.min(parseInt(req.query.limit || 50), 100);
+    const offset = parseInt(req.query.offset || 0);
+
+    // Get posts from channels the user follows (channels with channel_followers entries)
+    const { rows: posts } = await pool.query(`
+      SELECT fp.id, fp.user_id, fp.content, fp.image_urls, fp.created_at, fp.deleted_at,
+             c.id as channelId, c.name as channelName, c.avatar_url as channelAvatarUrl,
+             u.username, u.avatar_url as userAvatarUrl,
+             (SELECT tx_hash FROM blockchain_audit_logs
+              WHERE feed_post_id = fp.id AND message_type = 'feed_post_create'
+              ORDER BY created_at DESC LIMIT 1) as tx_hash,
+             (SELECT status FROM blockchain_audit_logs
+              WHERE feed_post_id = fp.id AND message_type = 'feed_post_create'
+              ORDER BY created_at DESC LIMIT 1) as tx_status
+      FROM feed_posts fp
+      JOIN channels c ON fp.channel_id = c.id
+      JOIN users u ON fp.user_id = u.id
+      WHERE fp.deleted_at IS NULL
+        AND fp.channel_id IN (
+          SELECT channel_id FROM channel_followers WHERE user_id = $1
+        )
+      ORDER BY fp.created_at DESC
+      LIMIT $2
+      OFFSET $3
+    `, [userId, limit, offset]);
+
+    res.json({
+      posts: posts.map(p => ({
+        id: p.id,
+        userId: p.user_id,
+        username: p.username,
+        userAvatarUrl: p.userAvatarUrl,
+        channelId: p.channelId,
+        channelName: p.channelName,
+        channelAvatarUrl: p.channelAvatarUrl,
+        content: p.content ? JSON.parse(p.content) : null,
+        imageUrls: p.image_urls ? JSON.parse(p.image_urls) : [],
+        createdAt: p.created_at,
+        txHash: p.tx_hash,
+        txStatus: p.tx_status
+      }))
+    });
+  } catch (err) {
+    console.error('Error fetching home feed:', err);
+    res.status(500).json({ error: 'Failed to fetch feed' });
+  }
+});
+
+// DELETE /api/channels/:channelId/posts/:postId - Soft-delete article (author or owner only)
+app.delete('/api/channels/:channelId/posts/:postId', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const channelId = parseInt(req.params.channelId);
+    const postId = parseInt(req.params.postId);
+    const userId = parseInt(req.user.id, 10);
+
+    if (isNaN(channelId) || isNaN(postId)) {
+      return res.status(400).json({ error: 'Invalid channel ID or post ID' });
+    }
+
+    // Get channel owner
+    const { rows: channelRows } = await pool.query(`
+      SELECT owner_id FROM channels WHERE id = $1
+    `, [channelId]);
+
+    if (channelRows.length === 0) {
+      return res.status(404).json({ error: 'Channel not found' });
+    }
+
+    // Get post and verify it belongs to this channel
+    const { rows: postRows } = await pool.query(`
+      SELECT user_id, channel_id FROM feed_posts WHERE id = $1
+    `, [postId]);
+
+    if (postRows.length === 0) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    const post = postRows[0];
+
+    // Verify post belongs to the channel
+    if (post.channel_id !== channelId) {
+      return res.status(400).json({ error: 'Post does not belong to this channel' });
+    }
+
+    // Check authorization: author or channel owner
+    if (post.user_id !== userId && channelRows[0].owner_id !== userId) {
+      return res.status(403).json({ error: 'Only author or channel owner can delete this post' });
+    }
+
+    // Soft delete
+    await pool.query(`
+      UPDATE feed_posts
+      SET deleted_at = NOW()
+      WHERE id = $1
+    `, [postId]);
+
+    res.json({ success: true, message: 'Post deleted' });
+  } catch (err) {
+    console.error('Error deleting post:', err);
+    res.status(500).json({ error: 'Failed to delete post' });
+  }
+});
+
 // ===== BRIDGE DIAGNOSTICS ENDPOINT =====
 
 app.post('/api/diagnostics/bridge', async (req, res) => {
@@ -7915,6 +8301,130 @@ async function start() {
         VALUES (1, 3, 'pending', 'pending')
         ON CONFLICT (participant_a_id, participant_b_id) DO NOTHING
       `);
+
+      // Seed Guardian Posts data for staging
+      // Create sample channels with avatars
+      const aliceChanResult = await pool.query(`
+        INSERT INTO channels (name, description, owner_id, category, avatar_url)
+        VALUES ('Alices News', 'Breaking news and updates', 1, 'General', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mP8z8DwHwMxxGAIwAAADkkBkMTjF4UAAAAASUVORK5CYII=')
+        ON CONFLICT (name) DO NOTHING
+        RETURNING id
+      `);
+      let aliceChanId = null;
+      if (aliceChanResult.rows.length > 0) {
+        aliceChanId = aliceChanResult.rows[0].id;
+      }
+
+      const bobChanResult = await pool.query(`
+        INSERT INTO channels (name, description, owner_id, category, avatar_url)
+        VALUES ('Bobs Tech Tips', 'Latest in tech', 2, 'General', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mNk+M9QxMDAwMjAwMAAAP//AwCTigIIImKJnwAAAABJRU5ErkJggg==')
+        ON CONFLICT (name) DO NOTHING
+        RETURNING id
+      `);
+      let bobChanId = null;
+      if (bobChanResult.rows.length > 0) {
+        bobChanId = bobChanResult.rows[0].id;
+      }
+
+      // Add channel members
+      if (aliceChanId) {
+        await pool.query(`
+          INSERT INTO channel_members (channel_id, user_id, added_by)
+          VALUES ($1, 1, 1), ($1, 3, 1)
+          ON CONFLICT (channel_id, user_id) DO NOTHING
+        `, [aliceChanId]);
+      }
+
+      if (bobChanId) {
+        await pool.query(`
+          INSERT INTO channel_members (channel_id, user_id, added_by)
+          VALUES ($1, 2, 2), ($1, 4, 2)
+          ON CONFLICT (channel_id, user_id) DO NOTHING
+        `, [bobChanId]);
+      }
+
+      // Add channel followers for feed population
+      if (aliceChanId && bobChanId) {
+        await pool.query(`
+          INSERT INTO channel_followers (user_id, channel_id)
+          VALUES (2, $1), (3, $2), (4, $1)
+          ON CONFLICT (user_id, channel_id) DO NOTHING
+        `, [aliceChanId, bobChanId]);
+      }
+
+      // Seed sample posts with blockchain audit records
+      if (aliceChanId) {
+        // Create sample post 1
+        const post1Result = await pool.query(`
+          INSERT INTO feed_posts (user_id, content, channel_id, image_urls, on_chain, created_at)
+          VALUES (1, $1, $2, $3, TRUE, NOW() - INTERVAL '2 hours')
+          ON CONFLICT DO NOTHING
+          RETURNING id
+        `, [JSON.stringify({ text: 'Welcome to staging! This is a test post with **bold** formatting.' }), aliceChanId, JSON.stringify([])]);
+
+        if (post1Result.rows.length > 0) {
+          const postId = post1Result.rows[0].id;
+          await pool.query(`
+            INSERT INTO blockchain_audit_logs (user_id, feed_post_id, channel_id, message_type, tx_hash, status, network_origin)
+            VALUES (1, $1, $2, 'feed_post_create', 'synthetic_tx_post_1', 'confirmed', 'devnet')
+            ON CONFLICT (tx_hash) DO NOTHING
+          `, [postId, aliceChanId]);
+        }
+
+        // Create sample post 2 with image
+        const sampleImage = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mNkYGD4DwMxxGAIwAAADkkBkMTjF4UAAAAASUVORK5CYII=';
+        const post2Result = await pool.query(`
+          INSERT INTO feed_posts (user_id, content, channel_id, image_urls, on_chain, created_at)
+          VALUES (3, $1, $2, $3, TRUE, NOW() - INTERVAL '1 hour')
+          ON CONFLICT DO NOTHING
+          RETURNING id
+        `, [JSON.stringify({ text: 'Check out this image from the staging environment!' }), aliceChanId, JSON.stringify([sampleImage])]);
+
+        if (post2Result.rows.length > 0) {
+          const postId = post2Result.rows[0].id;
+          await pool.query(`
+            INSERT INTO blockchain_audit_logs (user_id, feed_post_id, channel_id, message_type, tx_hash, status, network_origin)
+            VALUES (3, $1, $2, 'feed_post_create', 'synthetic_tx_post_2', 'confirmed', 'devnet')
+            ON CONFLICT (tx_hash) DO NOTHING
+          `, [postId, aliceChanId]);
+        }
+      }
+
+      if (bobChanId) {
+        // Create sample post in Bob's channel
+        const post3Result = await pool.query(`
+          INSERT INTO feed_posts (user_id, content, channel_id, image_urls, on_chain, created_at)
+          VALUES (2, $1, $2, $3, TRUE, NOW() - INTERVAL '30 minutes')
+          ON CONFLICT DO NOTHING
+          RETURNING id
+        `, [JSON.stringify({ text: 'Tech tip: Always test your staging deployments thoroughly!' }), bobChanId, JSON.stringify([])]);
+
+        if (post3Result.rows.length > 0) {
+          const postId = post3Result.rows[0].id;
+          await pool.query(`
+            INSERT INTO blockchain_audit_logs (user_id, feed_post_id, channel_id, message_type, tx_hash, status, network_origin)
+            VALUES (2, $1, $2, 'feed_post_create', 'synthetic_tx_post_3', 'confirmed', 'devnet')
+            ON CONFLICT (tx_hash) DO NOTHING
+          `, [postId, bobChanId]);
+        }
+      }
+
+      // Seed blockchain audit logs for channel creation
+      if (aliceChanId) {
+        await pool.query(`
+          INSERT INTO blockchain_audit_logs (user_id, channel_id, message_type, tx_hash, status, network_origin)
+          VALUES (1, $1, 'channel_create', 'synthetic_tx_channel_alice', 'confirmed', 'devnet')
+          ON CONFLICT (tx_hash) DO NOTHING
+        `, [aliceChanId]);
+      }
+
+      if (bobChanId) {
+        await pool.query(`
+          INSERT INTO blockchain_audit_logs (user_id, channel_id, message_type, tx_hash, status, network_origin)
+          VALUES (2, $1, 'channel_create', 'synthetic_tx_channel_bob', 'confirmed', 'devnet')
+          ON CONFLICT (tx_hash) DO NOTHING
+        `, [bobChanId]);
+      }
     }
 
     // Create blockchain_audit_logs table (marked private)
@@ -8105,6 +8615,39 @@ async function start() {
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_channels_owner_id
         ON channels(owner_id)
+    `);
+
+    // Add avatar_url column to channels for Guardian Posts feature
+    await pool.query(`
+      ALTER TABLE channels
+      ADD COLUMN IF NOT EXISTS avatar_url TEXT
+    `);
+
+    // Create channel_members table for Guardian Posts feature (tracks who can post to channels)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS channel_members (
+        id BIGSERIAL PRIMARY KEY,
+        channel_id BIGINT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        added_at TIMESTAMPTZ DEFAULT NOW(),
+        added_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        UNIQUE(channel_id, user_id)
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_channel_members_channel_user
+        ON channel_members(channel_id, user_id)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_channel_members_user
+        ON channel_members(user_id)
+    `);
+
+    // Add channel_id and feed_post_id columns to blockchain_audit_logs for Guardian Posts tracking
+    await pool.query(`
+      ALTER TABLE blockchain_audit_logs
+      ADD COLUMN IF NOT EXISTS channel_id BIGINT REFERENCES channels(id) ON DELETE SET NULL,
+      ADD COLUMN IF NOT EXISTS feed_post_id BIGINT REFERENCES feed_posts(id) ON DELETE SET NULL
     `);
 
     // Create pinned_channels table
