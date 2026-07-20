@@ -845,7 +845,7 @@
         <!-- Content area (avatar, username, wallet, share button) -->
         <div class="p-4 flex flex-col items-center">
           <!-- Avatar (centered) -->
-          <div id="sidebarAvatarContainer" class="mb-3 w-16 h-16 rounded-full cursor-pointer hover:opacity-80 transition flex items-center justify-center flex-shrink-0" onclick="openAvatarModal(); toggleSidebar()">
+          <div id="sidebarAvatarContainer" class="mb-3 w-16 h-16 rounded-full cursor-pointer hover:opacity-80 transition flex items-center justify-center flex-shrink-0" onclick="showProfileView(); toggleSidebar()">
             <div id="sidebarAvatarImage" class="w-full h-full rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center text-white text-lg font-semibold">A</div>
           </div>
 
@@ -1161,16 +1161,16 @@
           <div id="profileCoreContent" class="p-4 space-y-4">
             <!-- Avatar Section -->
             <div class="flex justify-center pt-4 pb-2">
-              <div class="relative">
-                <img id="profileAvatar" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23d4d4d8' width='100' height='100'/%3E%3Ccircle cx='50' cy='35' r='18' fill='%23a1a1a9'/%3E%3Cpath d='M20 75 Q20 55 50 55 Q80 55 80 75' fill='%23a1a1a9'/%3E%3C/svg%3E" alt="Profile Avatar" class="w-32 h-32 rounded-full bg-zinc-200 dark:bg-zinc-700 border-2 border-cyan-600 dark:border-cyan-500 cursor-pointer hover:opacity-80 transition" onclick="openAvatarUpload()">
-                <div id="avatarUploadSpinner" class="hidden absolute inset-0 rounded-full bg-black bg-opacity-40 flex items-center justify-center">
+              <div class="relative cursor-pointer" onclick="openProfileAvatarModal()">
+                <img id="profileAvatar" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23d4d4d8' width='100' height='100'/%3E%3Ccircle cx='50' cy='35' r='18' fill='%23a1a1a9'/%3E%3Cpath d='M20 75 Q20 55 50 55 Q80 55 80 75' fill='%23a1a1a9'/%3E%3C/svg%3E" alt="Profile Avatar" class="w-32 h-32 rounded-full bg-zinc-200 dark:bg-zinc-700 border-2 border-cyan-600 dark:border-cyan-500 hover:opacity-80 transition">
+                <div id="profileAvatarSpinner" class="hidden absolute inset-0 rounded-full bg-black bg-opacity-40 flex items-center justify-center">
                   <svg class="animate-spin w-8 h-8 text-white" fill="none" viewBox="0 0 24 24">
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
                   </svg>
                 </div>
-                <div class="absolute bottom-0 right-0 bg-cyan-600 dark:bg-cyan-500 hover:bg-cyan-700 dark:hover:bg-cyan-400 text-white rounded-full p-2 cursor-pointer transition" onclick="openAvatarUpload()" title="Change avatar">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div class="absolute top-0 right-0 bg-cyan-600 dark:bg-cyan-500 hover:bg-cyan-700 dark:hover:bg-cyan-400 text-white rounded-full p-2 transition" title="Change avatar">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
@@ -1712,32 +1712,37 @@
   </div>
 
   <!-- Avatar Modal -->
-  <div id="avatarModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
+  <!-- Profile Avatar Modal -->
+  <div id="profileAvatarModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-sm">
       <div class="p-6 border-b border-zinc-300 dark:border-zinc-700 flex justify-between items-start">
         <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">Avatar</h2>
-        <button onclick="closeAvatarModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
+        <button onclick="closeProfileAvatarModal()" class="text-zinc-600 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300">✕</button>
       </div>
       <div class="p-6 space-y-4 flex flex-col items-center">
-        <!-- Avatar display (160px) -->
+        <!-- Avatar display (160px) with camera icon overlay -->
         <div class="relative">
-          <div id="avatarModalDisplay" class="w-40 h-40 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center text-white text-6xl font-semibold overflow-hidden">
-            <span id="avatarModalInitial">A</span>
-            <img id="avatarModalImg" src="" alt="Avatar" class="w-full h-full object-cover hidden">
+          <div id="profileAvatarModalDisplay" class="w-40 h-40 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center text-white text-6xl font-semibold overflow-hidden">
+            <span id="profileAvatarModalInitial">A</span>
+            <img id="profileAvatarModalImg" src="" alt="Avatar" class="w-full h-full object-cover hidden">
           </div>
-          <div id="avatarModalSpinner" class="hidden absolute inset-0 rounded-full bg-black bg-opacity-40 flex items-center justify-center">
+          <div id="profileAvatarModalSpinner" class="hidden absolute inset-0 rounded-full bg-black bg-opacity-40 flex items-center justify-center">
             <svg class="animate-spin w-8 h-8 text-white" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
             </svg>
           </div>
+          <!-- Camera icon overlay (top-right) -->
+          <button id="profileAvatarCameraBtn" onclick="openProfileAvatarFilePicker()" class="absolute top-0 right-0 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-full p-2 transition" title="Change avatar">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
         </div>
-        <!-- Buttons -->
-        <div class="w-full flex gap-2">
-          <button id="avatarModalChangeBtn" onclick="openAvatarModalFilePicker()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Change</button>
-          <button id="avatarModalDeleteBtn" onclick="deleteAvatar()" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 dark:hover:bg-red-500 text-white rounded-lg transition font-medium">Delete</button>
-        </div>
-        <input id="avatarModalFileInput" type="file" accept="image/png,image/jpeg" class="hidden">
+        <!-- Delete button (only if avatar exists) -->
+        <button id="profileAvatarDeleteBtn" onclick="deleteProfileAvatar()" class="hidden px-4 py-2 bg-red-600 hover:bg-red-700 dark:hover:bg-red-500 text-white rounded-lg transition font-medium text-sm">Delete Avatar</button>
+        <input id="profileAvatarFileInput" type="file" accept="image/png,image/jpeg" class="hidden">
       </div>
     </div>
   </div>
@@ -9858,13 +9863,14 @@
       }
     }
 
-    function openAvatarModal() {
-      const modal = document.getElementById('avatarModal');
-      const deleteBtn = document.getElementById('avatarModalDeleteBtn');
-      const avatarImg = document.getElementById('avatarModalImg');
-      const initial = document.getElementById('avatarModalInitial');
+    function openProfileAvatarModal() {
+      const modal = document.getElementById('profileAvatarModal');
+      const deleteBtn = document.getElementById('profileAvatarDeleteBtn');
+      const avatarImg = document.getElementById('profileAvatarModalImg');
+      const initial = document.getElementById('profileAvatarModalInitial');
+      const cameraBtn = document.getElementById('profileAvatarCameraBtn');
 
-      // Show/hide delete button based on whether avatar exists
+      // Show/hide delete button and show avatar based on whether avatar exists
       if (currentUser?.avatar_url) {
         deleteBtn.classList.remove('hidden');
         avatarImg.src = currentUser.avatar_url;
@@ -9878,26 +9884,26 @@
       }
 
       modal.classList.remove('hidden');
-      modal.onclick = (e) => { if (e.target === modal) closeAvatarModal(); };
+      modal.onclick = (e) => { if (e.target === modal) closeProfileAvatarModal(); };
     }
 
-    function closeAvatarModal() {
-      const modal = document.getElementById('avatarModal');
+    function closeProfileAvatarModal() {
+      const modal = document.getElementById('profileAvatarModal');
       modal.classList.add('hidden');
     }
 
-    function openAvatarModalFilePicker() {
-      const fileInput = document.getElementById('avatarModalFileInput');
+    function openProfileAvatarFilePicker() {
+      const fileInput = document.getElementById('profileAvatarFileInput');
       fileInput.onchange = async (e) => {
         const file = e.target.files[0];
         if (file) {
-          await uploadAvatarFromModal(file);
+          await uploadProfileAvatar(file);
         }
       };
       fileInput.click();
     }
 
-    async function uploadAvatarFromModal(file) {
+    async function uploadProfileAvatar(file) {
       // Validate file size (max 2MB)
       if (file.size > 2 * 1024 * 1024) {
         showToast('Image size must be less than 2MB', 'error');
@@ -9911,11 +9917,11 @@
       }
 
       // Show loading state
-      const spinner = document.getElementById('avatarModalSpinner');
-      const changeBtn = document.getElementById('avatarModalChangeBtn');
-      const deleteBtn = document.getElementById('avatarModalDeleteBtn');
+      const spinner = document.getElementById('profileAvatarModalSpinner');
+      const cameraBtn = document.getElementById('profileAvatarCameraBtn');
+      const deleteBtn = document.getElementById('profileAvatarDeleteBtn');
       if (spinner) spinner.classList.remove('hidden');
-      changeBtn.disabled = true;
+      cameraBtn.disabled = true;
       deleteBtn.disabled = true;
 
       try {
@@ -9968,11 +9974,14 @@
           currentUser.avatar_url = data.avatar_url;
 
           // Update modal display
-          const avatarImg = document.getElementById('avatarModalImg');
-          const initial = document.getElementById('avatarModalInitial');
+          const avatarImg = document.getElementById('profileAvatarModalImg');
+          const initial = document.getElementById('profileAvatarModalInitial');
           avatarImg.src = data.avatar_url;
           avatarImg.classList.remove('hidden');
           initial.classList.add('hidden');
+
+          // Show delete button
+          deleteBtn.classList.remove('hidden');
 
           // Update sidebar avatar
           const sidebarAvatarImage = document.getElementById('sidebarAvatarImage');
@@ -9990,7 +9999,7 @@
 
           // Auto-close after 1-2 seconds
           setTimeout(() => {
-            closeAvatarModal();
+            closeProfileAvatarModal();
           }, 1500);
         }
       } catch (err) {
@@ -9998,18 +10007,18 @@
         showToast('Error uploading avatar: ' + err.message, 'error');
       } finally {
         if (spinner) spinner.classList.add('hidden');
-        changeBtn.disabled = false;
+        cameraBtn.disabled = false;
         deleteBtn.disabled = false;
       }
     }
 
-    async function deleteAvatar() {
+    async function deleteProfileAvatar() {
       // Show loading state
-      const spinner = document.getElementById('avatarModalSpinner');
-      const changeBtn = document.getElementById('avatarModalChangeBtn');
-      const deleteBtn = document.getElementById('avatarModalDeleteBtn');
+      const spinner = document.getElementById('profileAvatarModalSpinner');
+      const cameraBtn = document.getElementById('profileAvatarCameraBtn');
+      const deleteBtn = document.getElementById('profileAvatarDeleteBtn');
       if (spinner) spinner.classList.remove('hidden');
-      changeBtn.disabled = true;
+      cameraBtn.disabled = true;
       deleteBtn.disabled = true;
 
       try {
@@ -10030,8 +10039,8 @@
         currentUser.avatar_url = null;
 
         // Update modal display to show initial
-        const avatarImg = document.getElementById('avatarModalImg');
-        const initial = document.getElementById('avatarModalInitial');
+        const avatarImg = document.getElementById('profileAvatarModalImg');
+        const initial = document.getElementById('profileAvatarModalInitial');
         avatarImg.classList.add('hidden');
         initial.classList.remove('hidden');
         initial.textContent = currentUser?.username?.charAt(0).toUpperCase() || 'A';
@@ -10055,14 +10064,14 @@
 
         // Auto-close after 1-2 seconds
         setTimeout(() => {
-          closeAvatarModal();
+          closeProfileAvatarModal();
         }, 1500);
       } catch (err) {
         console.error('Error deleting avatar:', err);
         showToast('Error deleting avatar: ' + err.message, 'error');
       } finally {
         if (spinner) spinner.classList.add('hidden');
-        changeBtn.disabled = false;
+        cameraBtn.disabled = false;
         deleteBtn.disabled = false;
       }
     }
