@@ -6514,10 +6514,26 @@ app.get('/api/user/latest-transaction/:messageType', async (req, res) => {
     }
 
     const result = await pool.query(`
-      SELECT id, user_id, message_type, tx_hash, status, created_at
-      FROM blockchain_audit_logs
-      WHERE user_id = $1 AND message_type = $2
-      ORDER BY created_at DESC
+      SELECT
+        bal.id,
+        bal.user_id,
+        bal.message_type,
+        bal.tx_hash,
+        bal.status,
+        bal.confirmed_at,
+        bal.error_message,
+        bal.created_at,
+        bal.network_origin,
+        bal.transaction_payload,
+        g.name as group_name,
+        m.recipient_id,
+        u.username as recipient_username
+      FROM blockchain_audit_logs bal
+      LEFT JOIN groups g ON bal.group_id = g.id
+      LEFT JOIN messages m ON bal.message_id = m.id
+      LEFT JOIN users u ON m.recipient_id = u.id
+      WHERE bal.user_id = $1 AND bal.message_type = $2
+      ORDER BY bal.created_at DESC
       LIMIT 1
     `, [req.user.id, messageType]);
 
@@ -6525,7 +6541,30 @@ app.get('/api/user/latest-transaction/:messageType', async (req, res) => {
       return res.json({ transaction: null });
     }
 
-    res.json(result.rows[0]);
+    const row = result.rows[0];
+    const explorerUrl = getExplorerUrl(row.tx_hash, row.status);
+
+    // Format response with camelCase aliases for frontend compatibility
+    const responseData = {
+      ...row,
+      // Add camelCase aliases for frontend compatibility
+      auditLogId: row.id,
+      createdAt: row.created_at,
+      confirmedAt: row.confirmed_at,
+      errorMessage: row.error_message,
+      txHash: row.tx_hash,
+      messageType: row.message_type,
+      networkOrigin: row.network_origin,
+      explorerUrl: explorerUrl,
+      blockchainStatus: {
+        status: row.status,
+        txHash: row.tx_hash,
+        networkOrigin: row.network_origin,
+        explorerUrl: explorerUrl
+      }
+    };
+
+    res.json(responseData);
   } catch (err) {
     console.error('Error fetching latest transaction:', err);
     res.status(500).json({ error: 'Failed to fetch transaction', details: err.message });
