@@ -6694,11 +6694,15 @@ app.get('/api/transactions-by-user', async (req, res) => {
         bal.status,
         bal.created_at,
         bal.network_origin,
-        bal.transaction_payload,
         bal.error_message,
-        g.name as group_name
+        g.name as group_name,
+        u.id as recipient_id,
+        u.username as recipient_username
       FROM blockchain_audit_logs bal
       LEFT JOIN groups g ON bal.group_id = g.id
+      LEFT JOIN messages m ON bal.message_id = m.id
+      LEFT JOIN conversations c ON m.conversation_id = c.id
+      LEFT JOIN users u ON u.id = CASE WHEN c.participant_a_id = bal.user_id THEN c.participant_b_id ELSE c.participant_a_id END
       WHERE bal.user_id = $1
       ORDER BY bal.created_at DESC
       LIMIT $2 OFFSET $3
@@ -6717,7 +6721,8 @@ app.get('/api/transactions-by-user', async (req, res) => {
       createdAt: row.created_at,
       networkOrigin: row.network_origin,
       errorMessage: row.error_message,
-      transactionPayload: row.transaction_payload,
+      recipientId: row.recipient_id,
+      recipientUsername: row.recipient_username,
       groupName: row.group_name,
       explorerUrl: getExplorerUrl(row.tx_hash, row.status),
       blockchainStatus: {
