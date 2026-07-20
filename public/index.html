@@ -828,6 +828,12 @@
           </svg>
           Group
         </button>
+        <button id="navGuardianPostsBtn" onclick="showGuardianPostsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
+          <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v2h2a2 2 0 012 2v10a2 2 0 01-2 2z" />
+          </svg>
+          Guardian Posts
+        </button>
       </nav>
 
       <div id="sidebarUser" class="border-t border-zinc-200 dark:border-zinc-800">
@@ -3955,6 +3961,31 @@
         typeof window.usernode === 'object' &&
         window.usernode !== null
       );
+    }
+
+    // Sign a message with the user's wallet
+    async function signMessage(payload) {
+      if (isDemoMode) {
+        // In demo mode, return a synthetic signature
+        return {
+          txHash: 'synthetic_tx_' + Math.random().toString(36).substr(2, 9),
+          payload: payload,
+          signature: 'demo_signature'
+        };
+      }
+
+      if (typeof window.usernode !== 'object' || window.usernode === null) {
+        throw new Error('Usernode wallet not available');
+      }
+
+      // Use bridge to sign message
+      if (typeof window.usernode.signMessage === 'function') {
+        return await window.usernode.signMessage(payload);
+      } else if (typeof window.usernode.requestSignMessage === 'function') {
+        return await window.usernode.requestSignMessage(payload);
+      } else {
+        throw new Error('Wallet signing not supported');
+      }
     }
 
     // Pre-flight check for testnet transactions
@@ -10389,6 +10420,445 @@
       } catch (err) {
         console.error('[VISIBILITY] Error:', err);
       }
+    }
+
+    // ===== GUARDIAN POSTS FUNCTIONS =====
+
+    async function showGuardianPostsView() {
+      currentView = 'guardianPosts';
+      updateSidebar();
+      const mainContent = document.getElementById('mainContent');
+      mainContent.innerHTML = getGuardianPostsHTML();
+      document.getElementById('guardianHomeTab').click();
+      loadGuardianHome();
+    }
+
+    function getGuardianPostsHTML() {
+      return `
+        <div id="guardianPostsView" class="h-full flex flex-col">
+          <!-- Tab bar -->
+          <div class="flex border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 sticky top-0 z-10">
+            <button id="guardianHomeTab" class="flex-1 py-3 px-4 text-center font-semibold border-b-2 border-transparent hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors" onclick="switchGuardianTab('home')">
+              Home
+            </button>
+            <button id="guardianChannelsTab" class="flex-1 py-3 px-4 text-center font-semibold border-b-2 border-transparent hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors" onclick="switchGuardianTab('myChannels')">
+              My Channels
+            </button>
+            <button id="guardianDiscoverTab" class="flex-1 py-3 px-4 text-center font-semibold border-b-2 border-transparent hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors" onclick="switchGuardianTab('discover')">
+              Discover
+            </button>
+            <button id="guardianPostsTab" class="flex-1 py-3 px-4 text-center font-semibold border-b-2 border-transparent hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors" onclick="switchGuardianTab('myPosts')">
+              My Posts
+            </button>
+          </div>
+
+          <!-- Content area -->
+          <div id="guardianContent" class="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900"></div>
+        </div>
+      `;
+    }
+
+    function switchGuardianTab(tabName) {
+      const tabs = ['home', 'myChannels', 'discover', 'myPosts'];
+      const tabButtons = {
+        home: document.getElementById('guardianHomeTab'),
+        myChannels: document.getElementById('guardianChannelsTab'),
+        discover: document.getElementById('guardianDiscoverTab'),
+        myPosts: document.getElementById('guardianPostsTab')
+      };
+
+      // Update active tab styling
+      tabs.forEach(tab => {
+        const btn = tabButtons[tab];
+        if (tab === tabName) {
+          btn.classList.add('border-blue-500', 'text-blue-600', 'dark:text-blue-400', 'dark:border-blue-400');
+          btn.classList.remove('border-transparent', 'text-gray-600', 'dark:text-gray-400');
+        } else {
+          btn.classList.remove('border-blue-500', 'text-blue-600', 'dark:text-blue-400', 'dark:border-blue-400');
+          btn.classList.add('border-transparent', 'text-gray-600', 'dark:text-gray-400');
+        }
+      });
+
+      // Load content based on tab
+      switch(tabName) {
+        case 'home': loadGuardianHome(); break;
+        case 'myChannels': loadGuardianMyChannels(); break;
+        case 'discover': loadGuardianDiscover(); break;
+        case 'myPosts': loadGuardianMyPosts(); break;
+      }
+    }
+
+    async function loadGuardianHome() {
+      const content = document.getElementById('guardianContent');
+      content.innerHTML = '<div class="p-4">Loading...</div>';
+      try {
+        const response = await fetch('/api/feed/home?limit=50&offset=0', { headers });
+        const data = await response.json();
+        const posts = data.posts || [];
+
+        content.innerHTML = posts.length === 0 ?
+          '<div class="p-8 text-center text-gray-500">No posts yet. Follow channels to see articles!</div>' :
+          `<div class="max-w-2xl mx-auto">${posts.map(p => getArticleCardHTML(p)).join('')}</div>`;
+      } catch (err) {
+        content.innerHTML = `<div class="p-4 text-red-500">Error loading feed: ${err.message}</div>`;
+      }
+    }
+
+    async function loadGuardianMyChannels() {
+      const content = document.getElementById('guardianContent');
+      content.innerHTML = '<div class="p-4">Loading...</div>';
+      try {
+        const response = await fetch('/api/channels', { headers });
+        const data = await response.json();
+        const channels = (data.channels || []).filter(c => c.ownerId === currentUser.id);
+
+        content.innerHTML = `
+          <div class="max-w-4xl mx-auto p-4">
+            <button onclick="showCreateChannelModal()" class="mb-4 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg">
+              + Create Channel
+            </button>
+            <div class="grid gap-4">
+              ${channels.map(c => getChannelCardHTML(c)).join('')}
+            </div>
+            ${channels.length === 0 ? '<div class="text-center text-gray-500 py-8">No channels yet. Create one to get started!</div>' : ''}
+          </div>
+        `;
+      } catch (err) {
+        content.innerHTML = `<div class="p-4 text-red-500">Error loading channels: ${err.message}</div>`;
+      }
+    }
+
+    async function loadGuardianDiscover() {
+      const content = document.getElementById('guardianContent');
+      content.innerHTML = '<div class="p-4">Loading...</div>';
+      try {
+        const response = await fetch('/api/channels', { headers });
+        const data = await response.json();
+        const channels = data.channels || [];
+
+        content.innerHTML = `
+          <div class="max-w-4xl mx-auto p-4">
+            <div class="grid gap-4">
+              ${channels.map(c => getChannelDiscoverCardHTML(c)).join('')}
+            </div>
+            ${channels.length === 0 ? '<div class="text-center text-gray-500 py-8">No channels available</div>' : ''}
+          </div>
+        `;
+      } catch (err) {
+        content.innerHTML = `<div class="p-4 text-red-500">Error loading channels: ${err.message}</div>`;
+      }
+    }
+
+    async function loadGuardianMyPosts() {
+      const content = document.getElementById('guardianContent');
+      content.innerHTML = '<div class="p-4">Loading...</div>';
+      try {
+        const response = await fetch('/api/channels', { headers });
+        const data = await response.json();
+        const channels = data.channels || [];
+
+        let allPosts = [];
+        for (const channel of channels) {
+          const postsRes = await fetch(`/api/channels/${channel.id}/posts?limit=100`, { headers });
+          const postsData = await postsRes.json();
+          allPosts = allPosts.concat((postsData.posts || []).map(p => ({ ...p, channelName: channel.name, channelAvatarUrl: channel.avatarUrl })));
+        }
+
+        allPosts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+        content.innerHTML = allPosts.length === 0 ?
+          '<div class="p-8 text-center text-gray-500">No posts yet. Create an article to get started!</div>' :
+          `<div class="max-w-2xl mx-auto">${allPosts.map(p => getArticleCardHTML(p, true)).join('')}</div>`;
+      } catch (err) {
+        content.innerHTML = `<div class="p-4 text-red-500">Error loading posts: ${err.message}</div>`;
+      }
+    }
+
+    function getChannelCardHTML(channel) {
+      const isOwner = channel.ownerId === currentUser.id;
+      return `
+        <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow">
+          <div class="flex items-start gap-4">
+            ${channel.avatarUrl ? `<img src="${channel.avatarUrl}" alt="${channel.name}" class="w-16 h-16 rounded-full object-cover flex-shrink-0">` : '<div class="w-16 h-16 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center flex-shrink-0"><span class="text-2xl">📰</span></div>'}
+            <div class="flex-1">
+              <h3 class="font-bold text-lg">${channel.name}</h3>
+              <p class="text-sm text-gray-600 dark:text-gray-400">${channel.description || 'No description'}</p>
+              <div class="flex gap-4 mt-2 text-sm text-gray-500 dark:text-gray-400">
+                <span>Created: ${new Date(channel.createdAt).toLocaleDateString()}</span>
+                <span>${channel.followerCount || 0} followers</span>
+              </div>
+            </div>
+            ${isOwner ? `<button onclick="showEditChannelModal(${channel.id})" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm whitespace-nowrap">Edit Channel</button>` : ''}
+          </div>
+        </div>
+      `;
+    }
+
+    function getChannelDiscoverCardHTML(channel) {
+      return `
+        <div class="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow">
+          <div class="flex items-start gap-4">
+            ${channel.avatarUrl ? `<img src="${channel.avatarUrl}" alt="${channel.name}" class="w-16 h-16 rounded-full object-cover flex-shrink-0">` : '<div class="w-16 h-16 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center flex-shrink-0"><span class="text-2xl">📰</span></div>'}
+            <div class="flex-1">
+              <h3 class="font-bold text-lg">${channel.name}</h3>
+              <p class="text-sm text-gray-600 dark:text-gray-400">${channel.description || 'No description'}</p>
+              <div class="mt-2 text-sm"><span class="bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded">${channel.category || 'General'}</span></div>
+            </div>
+            <button onclick="toggleFollowChannel(${channel.id})" class="${channel.isFollowing ? 'bg-gray-500 hover:bg-gray-600' : 'bg-blue-500 hover:bg-blue-600'} text-white px-3 py-2 rounded text-sm whitespace-nowrap">
+              ${channel.isFollowing ? 'Following' : 'Follow'}
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    function getArticleCardHTML(post, showActions = false) {
+      return `
+        <div class="bg-white dark:bg-gray-800 rounded-lg p-4 mb-4 shadow-sm hover:shadow-md transition-shadow">
+          <div class="flex items-start gap-3 mb-3">
+            ${post.userAvatarUrl ? `<img src="${post.userAvatarUrl}" alt="${post.username}" class="w-10 h-10 rounded-full object-cover">` : '<div class="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700"></div>'}
+            <div class="flex-1">
+              <div class="flex items-center gap-2">
+                <span class="font-semibold">${post.username}</span>
+                ${post.channelName ? `<span class="text-sm text-gray-600 dark:text-gray-400">in <strong>${post.channelName}</strong></span>` : ''}
+              </div>
+              <div class="text-xs text-gray-500 dark:text-gray-400">${new Date(post.createdAt).toLocaleDateString()}</div>
+            </div>
+            ${post.txStatus ? `<span class="text-sm ${post.txStatus === 'confirmed' ? 'text-green-600 dark:text-green-400' : post.txStatus === 'pending' ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}">
+              ${post.txStatus === 'confirmed' ? '✓ Created' : post.txStatus === 'pending' ? 'Creating...' : '✗ Failed'}
+            </span>` : ''}
+          </div>
+          <div class="mb-3 text-gray-800 dark:text-gray-200">${(post.content?.text || '').substring(0, 200)}${(post.content?.text || '').length > 200 ? '...' : ''}</div>
+          ${post.imageUrls && post.imageUrls.length > 0 ? `<div class="mb-3 flex gap-2">${post.imageUrls.slice(0,2).map(img => `<img src="${img}" alt="attachment" class="max-h-32 rounded">`).join('')}</div>` : ''}
+          ${showActions ? `<div class="flex gap-2"><button onclick="editArticle()" class="text-blue-500 text-sm hover:underline">Edit</button><button onclick="deleteArticle()" class="text-red-500 text-sm hover:underline">Delete</button></div>` : ''}
+        </div>
+      `;
+    }
+
+    function showCreateChannelModal() {
+      const modal = document.createElement('div');
+      modal.id = 'createChannelModal';
+      modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+      modal.innerHTML = `
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
+          <div class="p-6">
+            <h2 class="text-2xl font-bold mb-4">Create Channel</h2>
+            <form onsubmit="createChannelSubmit(event)">
+              <div class="mb-4">
+                <label class="block text-sm font-medium mb-1">Channel Name *</label>
+                <input type="text" id="channelName" placeholder="My Channel" class="w-full border border-gray-300 dark:border-gray-600 rounded px-3 py-2 dark:bg-gray-700" required>
+              </div>
+              <div class="mb-4">
+                <label class="block text-sm font-medium mb-1">Description</label>
+                <textarea id="channelDesc" placeholder="Optional description" class="w-full border border-gray-300 dark:border-gray-600 rounded px-3 py-2 dark:bg-gray-700" rows="3"></textarea>
+              </div>
+              <div class="mb-4">
+                <label class="block text-sm font-medium mb-1">Category *</label>
+                <select id="channelCat" class="w-full border border-gray-300 dark:border-gray-600 rounded px-3 py-2 dark:bg-gray-700" required>
+                  <option value="General">General</option>
+                  <option value="News">News</option>
+                  <option value="Technology">Technology</option>
+                  <option value="Entertainment">Entertainment</option>
+                </select>
+              </div>
+              <div class="mb-4">
+                <label class="block text-sm font-medium mb-1">Channel Avatar (optional)</label>
+                <input type="file" id="channelAvatar" accept="image/*" class="w-full border border-gray-300 dark:border-gray-600 rounded px-3 py-2 dark:bg-gray-700" onchange="previewChannelAvatar(event)">
+                <div id="avatarPreview" class="mt-2"></div>
+              </div>
+              <div class="flex gap-2">
+                <button type="button" onclick="closeModal('createChannelModal')" class="flex-1 bg-gray-300 hover:bg-gray-400 dark:bg-gray-700 text-gray-900 dark:text-white px-4 py-2 rounded">Cancel</button>
+                <button type="submit" class="flex-1 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded">Create</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+    }
+
+    async function createChannelSubmit(e) {
+      e.preventDefault();
+      const name = document.getElementById('channelName').value;
+      const description = document.getElementById('channelDesc').value;
+      const category = document.getElementById('channelCat').value;
+      const avatarFile = document.getElementById('channelAvatar').files[0];
+
+      let avatarUrl = null;
+      if (avatarFile) {
+        const reader = new FileReader();
+        avatarUrl = await new Promise((resolve) => {
+          reader.onload = (e) => resolve(e.target.result);
+          reader.readAsDataURL(avatarFile);
+        });
+      }
+
+      try {
+        // Pre-auth
+        const preAuthRes = await fetch('/api/blockchain-audit/channel-create', {
+          method: 'POST',
+          headers: { ...headers, 'content-type': 'application/json' },
+          body: JSON.stringify({ name, description, category, avatarUrl })
+        });
+        const { auditLogId, signingPayload } = await preAuthRes.json();
+
+        // Sign
+        const signed = await window.signMessage(signingPayload);
+
+        // Register tx
+        await fetch(`/api/blockchain-audit/${auditLogId}/register-tx`, {
+          method: 'POST',
+          headers: { ...headers, 'content-type': 'application/json' },
+          body: JSON.stringify({ txHash: signed.txHash, transactionPayload: signed })
+        });
+
+        // Create
+        const createRes = await fetch('/api/channels', {
+          method: 'POST',
+          headers: { ...headers, 'content-type': 'application/json' },
+          body: JSON.stringify({ name, description, category, avatarUrl, txHash: signed.txHash, auditLogId })
+        });
+
+        if (!createRes.ok) throw new Error('Failed to create channel');
+        closeModal('createChannelModal');
+        showToast('Channel created successfully!', 'success');
+        loadGuardianMyChannels();
+      } catch (err) {
+        showToast(`Error: ${err.message}`, 'error');
+      }
+    }
+
+    function previewChannelAvatar(event) {
+      const file = event.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          document.getElementById('avatarPreview').innerHTML = `<img src="${e.target.result}" alt="avatar" class="w-20 h-20 rounded-full object-cover">`;
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+
+    function showEditChannelModal(channelId) {
+      const modal = document.createElement('div');
+      modal.id = 'editChannelModal';
+      modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto';
+      modal.innerHTML = `
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg max-w-md w-full mx-4 my-4">
+          <div class="p-6">
+            <h2 class="text-2xl font-bold mb-4">Edit Channel Settings</h2>
+            <div class="mb-4">
+              <h3 class="text-lg font-semibold mb-3">Settings</h3>
+              <div class="mb-3">
+                <label class="block text-sm font-medium mb-1">Description</label>
+                <textarea id="editChannelDesc" placeholder="Channel description" class="w-full border border-gray-300 dark:border-gray-600 rounded px-3 py-2 dark:bg-gray-700" rows="2"></textarea>
+              </div>
+              <div class="mb-3">
+                <label class="block text-sm font-medium mb-1">Channel Avatar</label>
+                <input type="file" id="editChannelAvatar" accept="image/*" class="w-full border border-gray-300 dark:border-gray-600 rounded px-3 py-2 dark:bg-gray-700" onchange="previewEditChannelAvatar(event)">
+                <div id="editAvatarPreview" class="mt-2"></div>
+              </div>
+              <button onclick="saveChannelSettings(${channelId})" class="w-full bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded mb-3">Save Settings</button>
+            </div>
+            <div>
+              <h3 class="text-lg font-semibold mb-3">Members</h3>
+              <div id="membersList" class="mb-3 bg-gray-50 dark:bg-gray-700 rounded p-3 max-h-40 overflow-y-auto"></div>
+              <input type="text" id="searchUser" placeholder="Search users..." class="w-full border border-gray-300 dark:border-gray-600 rounded px-3 py-2 dark:bg-gray-700 mb-2">
+              <div id="searchResults" class="mb-3"></div>
+            </div>
+            <button type="button" onclick="closeModal('editChannelModal')" class="w-full bg-gray-300 hover:bg-gray-400 dark:bg-gray-700 text-gray-900 dark:text-white px-4 py-2 rounded">Close</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      loadChannelMembers(channelId);
+    }
+
+    function previewEditChannelAvatar(event) {
+      const file = event.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          document.getElementById('editAvatarPreview').innerHTML = `<img src="${e.target.result}" alt="avatar" class="w-20 h-20 rounded-full object-cover">`;
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+
+    async function loadChannelMembers(channelId) {
+      try {
+        const res = await fetch(`/api/channels/${channelId}/members`, { headers });
+        const { members } = await res.json();
+        document.getElementById('membersList').innerHTML = members.map(m => `
+          <div class="flex items-center justify-between py-2 border-b dark:border-gray-600 last:border-b-0">
+            <span>${m.username}</span>
+            <button onclick="removeMember(${channelId}, ${m.userId})" class="text-red-500 text-sm hover:underline">Remove</button>
+          </div>
+        `).join('');
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    async function saveChannelSettings(channelId) {
+      const description = document.getElementById('editChannelDesc').value;
+      const avatarFile = document.getElementById('editChannelAvatar').files[0];
+
+      let avatarUrl = null;
+      if (avatarFile) {
+        const reader = new FileReader();
+        avatarUrl = await new Promise((resolve) => {
+          reader.onload = (e) => resolve(e.target.result);
+          reader.readAsDataURL(avatarFile);
+        });
+      }
+
+      try {
+        await fetch(`/api/channels/${channelId}`, {
+          method: 'PUT',
+          headers: { ...headers, 'content-type': 'application/json' },
+          body: JSON.stringify({ description, avatarUrl })
+        });
+        showToast('Channel settings saved!', 'success');
+        closeModal('editChannelModal');
+        loadGuardianMyChannels();
+      } catch (err) {
+        showToast(`Error: ${err.message}`, 'error');
+      }
+    }
+
+    async function removeMember(channelId, userId) {
+      try {
+        await fetch(`/api/channels/${channelId}/members/${userId}`, {
+          method: 'DELETE',
+          headers
+        });
+        showToast('Member removed', 'success');
+        loadChannelMembers(channelId);
+      } catch (err) {
+        showToast(`Error: ${err.message}`, 'error');
+      }
+    }
+
+    async function toggleFollowChannel(channelId) {
+      try {
+        const channels = (await (await fetch('/api/channels', { headers })).json()).channels;
+        const channel = channels.find(c => c.id === channelId);
+
+        if (channel.isFollowing) {
+          await fetch(`/api/channels/${channelId}/follow`, { method: 'DELETE', headers });
+        } else {
+          await fetch(`/api/channels/${channelId}/follow`, { method: 'POST', headers });
+        }
+        loadGuardianDiscover();
+      } catch (err) {
+        showToast(`Error: ${err.message}`, 'error');
+      }
+    }
+
+    function closeModal(modalId) {
+      const modal = document.getElementById(modalId);
+      if (modal) modal.remove();
     }
 
     // ===== WELCOME SCREEN FUNCTIONS =====
