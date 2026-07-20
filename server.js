@@ -6407,6 +6407,12 @@ app.post('/api/tokens/send', async (req, res) => {
 
       const txHash = `pending_token_${Date.now()}`;
 
+      // Map effectiveNetworkMode to network_origin value
+      let networkOriginValue = 'testnet';
+      if (effectiveNetworkMode === 'devnet') {
+        networkOriginValue = 'database';
+      }
+
       try {
         const auditRes = await pool.query(`
           INSERT INTO blockchain_audit_logs (
@@ -6421,7 +6427,7 @@ app.post('/api/tokens/send', async (req, res) => {
           'pending',
           req.user.usernode_pubkey || APP_PUBKEY,
           new Date().toISOString(),
-          'testnet'
+          networkOriginValue
         ]);
 
         const auditLogId = auditRes.rows[0]?.id;
