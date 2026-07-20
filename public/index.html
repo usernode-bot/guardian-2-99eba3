@@ -9505,45 +9505,10 @@
         ? `<img src="${escapeHtml(user.avatar_url)}" alt="${escapeHtml(user.username)}" class="w-20 h-20 rounded-full object-cover" onerror="this.style.display='none'">`
         : `<div class="w-20 h-20 rounded-full bg-gradient-to-br from-cyan-500 to-cyan-700 flex items-center justify-center text-white text-2xl font-semibold">${avatarInitial}</div>`;
 
-      // Determine progress to next tier
-      const hours = user.foregroundHours || 0;
-      const rank = user.rank || 'New Guardian';
-      let nextTierHours = 10;
-      let progressPercentage = 0;
-      let tierDescription = '';
-
-      if (hours < 10) {
-        nextTierHours = 10;
-        progressPercentage = (hours / 10) * 100;
-        tierDescription = 'A new contributor to the network. Keep building your presence!';
-      } else if (hours < 50) {
-        nextTierHours = 50;
-        progressPercentage = ((hours - 10) / 40) * 100;
-        tierDescription = 'An active contributor showing consistent engagement with the network.';
-      } else if (hours < 200) {
-        nextTierHours = 200;
-        progressPercentage = ((hours - 50) / 150) * 100;
-        tierDescription = 'A trusted member of the community with significant contributions.';
-      } else {
-        nextTierHours = null;
-        progressPercentage = 100;
-        tierDescription = 'An elite contributor and valued leader in the Guardian network.';
-      }
-
-      const progressHTML = nextTierHours
-        ? `<div class="mt-6 space-y-2">
-             <div class="flex justify-between text-sm text-zinc-700 dark:text-zinc-400">
-               <span>Progress to next tier</span>
-               <span>${hours}/${nextTierHours}h</span>
-             </div>
-             <div class="w-full bg-zinc-300 dark:bg-zinc-700 rounded-full h-2">
-               <div class="bg-cyan-600 dark:bg-cyan-500 h-2 rounded-full transition-all" style="width: ${Math.min(progressPercentage, 100)}%"></div>
-             </div>
-           </div>`
-        : `<div class="mt-6 text-center text-cyan-600 dark:text-cyan-400 font-semibold">Maximum Tier Achieved</div>`;
-
       const verifiedBadge = user.verified ? '<span class="text-cyan-600 dark:text-cyan-400 text-sm">✓ Verified</span>' : '';
       const bioSection = user.bio ? `<p class="text-sm text-zinc-700 dark:text-zinc-400">${escapeHtml(user.bio)}</p>` : `<p class="text-sm text-zinc-500 dark:text-zinc-500 italic">No bio added</p>`;
+      const walletAddress = user.usernode_pubkey || 'No wallet linked';
+      const walletSection = `<p class="text-sm text-zinc-700 dark:text-zinc-400 break-all font-mono">${escapeHtml(walletAddress)}</p>`;
 
       modal.innerHTML = `
         <div class="bg-white dark:bg-zinc-900 rounded-lg p-6 w-full max-w-md shadow-lg space-y-4">
@@ -9564,16 +9529,10 @@
             <div class="pt-2 border-t border-zinc-200 dark:border-zinc-700">
               ${bioSection}
             </div>
-            <p class="text-sm text-zinc-700 dark:text-zinc-400">${tierDescription}</p>
-            <div class="bg-cyan-50 dark:bg-cyan-900/30 border border-cyan-200 dark:border-cyan-800 rounded-lg p-4">
-              <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Foreground Hours</div>
-              <div class="text-3xl font-bold text-cyan-600 dark:text-cyan-400">${hours}</div>
+            <div class="pt-2 border-t border-zinc-200 dark:border-zinc-700">
+              <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Wallet Address</div>
+              ${walletSection}
             </div>
-            <div class="bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg p-4">
-              <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Guardian Rank</div>
-              <div class="text-xl font-bold text-zinc-900 dark:text-white">${rank}</div>
-            </div>
-            ${progressHTML}
           </div>
         </div>
       `;
