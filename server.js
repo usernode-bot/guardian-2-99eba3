@@ -6459,7 +6459,8 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
         bal.confirmed_at,
         bal.error_message,
         bal.created_at,
-        bal.updated_at
+        bal.updated_at,
+        bal.network_origin
       FROM blockchain_audit_logs bal
       WHERE bal.id = $1 AND bal.user_id = $2
     `, [auditLogId, req.user.id]);
@@ -6482,10 +6483,12 @@ app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
       errorMessage: row.error_message,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      networkOrigin: row.network_origin,
       explorerUrl: explorerUrl,
       blockchainStatus: {
         status: row.status,
         txHash: row.tx_hash,
+        networkOrigin: row.network_origin,
         explorerUrl: explorerUrl
       }
     };
