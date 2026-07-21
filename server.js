@@ -6735,13 +6735,13 @@ app.get('/api/transactions-by-user', async (req, res) => {
         bal.network_origin,
         bal.error_message,
         g.name as group_name,
-        u.id as recipient_id,
-        u.username as recipient_username
+        CASE WHEN bal.message_id IS NOT NULL THEN u.id ELSE NULL END as recipient_id,
+        CASE WHEN bal.message_id IS NOT NULL THEN u.username ELSE NULL END as recipient_username
       FROM blockchain_audit_logs bal
       LEFT JOIN groups g ON bal.group_id = g.id
-      LEFT JOIN messages m ON bal.message_id = m.id
-      LEFT JOIN conversations c ON m.conversation_id = c.id
-      LEFT JOIN users u ON u.id = CASE WHEN c.participant_a_id = bal.user_id THEN c.participant_b_id ELSE c.participant_a_id END
+      LEFT JOIN messages m ON bal.message_id = m.id AND bal.message_id IS NOT NULL
+      LEFT JOIN conversations c ON m.conversation_id = c.id AND m.id IS NOT NULL
+      LEFT JOIN users u ON bal.message_id IS NOT NULL AND u.id = CASE WHEN c.participant_a_id = bal.user_id THEN c.participant_b_id ELSE c.participant_a_id END
       WHERE ${whereClause}
       ORDER BY bal.created_at DESC
       LIMIT $2 OFFSET $3
