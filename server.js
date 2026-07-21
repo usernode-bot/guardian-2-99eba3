@@ -5531,20 +5531,31 @@ app.post('/api/guardian-posts/channels', express.json({ limit: '2mb' }), async (
       return res.status(400).json({ error: 'Channel name is required' });
     }
     if (name.length > 100) {
+      console.error(`[POST /api/guardian-posts/channels::VALIDATE] Channel name too long: length=${name.length}`);
       return res.status(400).json({ error: 'Channel name must be 100 characters or less' });
     }
+
     if (description && description.length > 500) {
+      console.error(`[POST /api/guardian-posts/channels::VALIDATE] Description too long: length=${description.length}`);
       return res.status(400).json({ error: 'Description must be 500 characters or less' });
     }
 
+    console.log(`[POST /api/guardian-posts/channels::VALIDATE] Description validation passed: length=${description ? description.length : 0}`);
+
     // Validate coverImageUrl if provided
     if (coverImageUrl) {
+      console.log(`[POST /api/guardian-posts/channels::VALIDATE] Validating coverImageUrl: length=${coverImageUrl.length}, startsWithDataImage=${coverImageUrl.startsWith('data:image/')}`);
       if (!coverImageUrl.startsWith('data:image/')) {
+        console.error(`[POST /api/guardian-posts/channels::VALIDATE] Image format invalid: does not start with 'data:image/'`);
         return res.status(400).json({ error: 'Invalid image format' });
       }
       if (!coverImageUrl.match(/^data:image\/(jpeg|png)/i)) {
+        console.error(`[POST /api/guardian-posts/channels::VALIDATE] Image type invalid: not JPEG or PNG`);
         return res.status(400).json({ error: 'Only JPEG and PNG images are supported' });
       }
+      console.log(`[POST /api/guardian-posts/channels::VALIDATE] Image validation passed`);
+    } else {
+      console.log(`[POST /api/guardian-posts/channels::VALIDATE] No coverImageUrl provided`);
     }
 
     console.log(`[POST /api/guardian-posts/channels::VALIDATE] All validations passed`);
@@ -5725,7 +5736,14 @@ app.post('/api/guardian-posts/channels', express.json({ limit: '2mb' }), async (
       blockchainRecordingId: blockchainRecordingId
     });
   } catch (err) {
-    console.error('Error creating channel:', err);
+    console.error('[POST /api/guardian-posts/channels::ERROR] Uncaught error during channel creation:', { message: err.message, code: err.code, detail: err.detail, stack: err.stack });
+    if (err.code === 'ENOENT') {
+      console.error('[POST /api/guardian-posts/channels::ERROR] File not found error - likely database connection issue');
+    } else if (err.code === '23505') {
+      console.error('[POST /api/guardian-posts/channels::ERROR] Unique constraint violation - channel may already exist');
+    } else if (err.code === '23503') {
+      console.error('[POST /api/guardian-posts/channels::ERROR] Foreign key constraint violation - user may not exist');
+    }
     res.status(500).json({ error: 'Failed to create channel' });
   }
 });

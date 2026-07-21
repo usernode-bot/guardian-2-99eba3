@@ -1989,6 +1989,7 @@
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token') || '';
     const headers = token ? { 'x-usernode-token': token } : {};
+    console.log('[INIT] Token initialization: tokenPresent=' + (token.length > 0) + ', tokenLength=' + token.length + ', headersBuilt=' + JSON.stringify(Object.keys(headers)));
 
     // Detect active chain from user's network mode preference
     if (typeof window.usernode === 'object') {
@@ -3032,7 +3033,9 @@
 
     function getNetworkMode() {
       const settings = loadSettings();
-      return settings.networkMode || null;
+      const networkMode = settings.networkMode || null;
+      console.log('[GETNETWORKMODE] Retrieved network mode: networkMode=' + networkMode + ', settingsKeys=' + Object.keys(settings).join(','));
+      return networkMode;
     }
 
     function saveSettings(settings) {
@@ -3690,11 +3693,14 @@
     }
 
     async function apiCall(path, opts = {}) {
+      const mergedHeaders = { 'Content-Type': 'application/json', ...headers, ...opts.headers };
+      console.log('[APICALL] Request to ' + path + ':', { method: opts.method || 'GET', headersPresent: Object.keys(mergedHeaders), tokenInHeaders: !!mergedHeaders['x-usernode-token'] });
       try {
         const response = await fetch(path, {
           ...opts,
-          headers: { 'Content-Type': 'application/json', ...headers, ...opts.headers }
+          headers: mergedHeaders
         });
+        console.log('[APICALL] Response received from ' + path + ':', { status: response.status, ok: response.ok });
         if (!response.ok) {
           try {
             const data = await response.json();
@@ -3702,24 +3708,25 @@
             if (data && typeof data === 'object' && data.error) {
               errorMsg = typeof data.error === 'string' ? data.error : 'Request failed';
             }
-            console.error(`API error (${response.status}) on ${path}:`, { errorMsg, data });
+            console.error(`[APICALL] API error (${response.status}) on ${path}:`, { errorMsg, data });
             return { error: errorMsg, status: response.status };
           } catch (parseErr) {
             const text = await response.text().catch(() => '');
-            console.error(`API error (${response.status}) on ${path} with invalid JSON:`, text);
+            console.error(`[APICALL] API error (${response.status}) on ${path} with invalid JSON:`, text);
             return { error: 'Request failed', status: response.status };
           }
         }
         try {
           const data = await response.json();
+          console.log('[APICALL] Successful response from ' + path + ':', { hasError: !!data.error, dataKeys: Object.keys(data || {}).slice(0, 5) });
           return data;
         } catch (err) {
           const text = await response.text().catch(() => '');
-          console.error(`Failed to parse JSON response from ${path}:`, { error: err.message, text });
+          console.error(`[APICALL] Failed to parse JSON response from ${path}:`, { error: err.message, text });
           return { error: 'Invalid response format', status: response.status };
         }
       } catch (err) {
-        console.error(`Network error on ${path}:`, err.message);
+        console.error(`[APICALL::NETWORK] Network/fetch error on ${path}:`, { message: err.message, name: err.name, type: err.type, status: 0 });
         return { error: err.message || 'Network error', status: 0 };
       }
     }
@@ -10856,7 +10863,10 @@
       const description = document.getElementById('guardianChannelDescription').value.trim();
       const imageInput = document.getElementById('guardianChannelImageInput');
 
+      console.log('[CHANNEL] submitGuardianChannel() started: name=' + name + ', hasDescription=' + (description.length > 0) + ', hasImage=' + (imageInput.files.length > 0));
+
       if (!name) {
+        console.error('[CHANNEL] Validation failed: channel name is required');
         showToast('Channel name is required', 'error');
         return;
       }
@@ -10864,22 +10874,29 @@
       let coverImageUrl = null;
       if (imageInput.files.length > 0) {
         const file = imageInput.files[0];
+        console.log('[CHANNEL] Processing image: filename=' + file.name + ', size=' + file.size + ', type=' + file.type);
         coverImageUrl = await new Promise((resolve) => {
           const reader = new FileReader();
           reader.onload = (e) => resolve(e.target.result);
           reader.readAsDataURL(file);
         });
+        console.log('[CHANNEL] Image processed: base64Url length=' + coverImageUrl.length);
       }
 
       try {
         const settings = loadSettings();
         const networkMode = getNetworkMode();
+        console.log('[CHANNEL] Network mode retrieved: networkMode=' + networkMode + ', settings present=' + (!!settings));
+
+        if (!networkMode) {
+          console.warn('[CHANNEL] Network mode is null - wallet signature will be skipped, channel creation may fail if testnet is required');
+        }
 
         // Phase 1: Request wallet signature if in testnet mode
         let txHash = null;
         if (networkMode === 'testnet' || networkMode === 'real_testnet') {
+          console.log('[CHANNEL::PHASE1] Testnet/real_testnet mode detected, requesting wallet signature...');
           try {
-            console.log('[CHANNEL] Testnet mode detected, requesting wallet signature...');
             const txResult = await executeWalletSignature('channel', {
               name: name,
               description: description || null,
@@ -10887,16 +10904,23 @@
             });
             if (txResult) {
               txHash = txResult;
-              console.log('[CHANNEL] Wallet signature obtained: txHash=' + txHash);
+              console.log('[CHANNEL::PHASE1] Wallet signature succeeded: txHash=' + txHash);
+            } else {
+              console.warn('[CHANNEL::PHASE1] Wallet signature returned no txHash');
             }
           } catch (signErr) {
+            console.error('[CHANNEL::PHASE1] Wallet signature error:', { message: signErr.message, stack: signErr.stack });
             if (signErr.message && (signErr.message.includes('User cancelled') || signErr.message.includes('cancelled'))) {
-              console.log('[CHANNEL] User cancelled wallet signature');
+              console.log('[CHANNEL::PHASE1] User cancelled wallet signature');
               showToast('Channel creation cancelled', 'info');
               return;
             }
-            throw new Error('Wallet signature failed: ' + signErr.message);
+            const wrappedError = 'Wallet signature failed: ' + signErr.message;
+            console.error('[CHANNEL::PHASE1] Throwing wrapped error:', wrappedError);
+            throw new Error(wrappedError);
           }
+        } else {
+          console.log('[CHANNEL::PHASE1] Non-testnet mode (' + networkMode + ') - skipping wallet signature phase');
         }
 
         // Phase 2: Create channel with txHash (if obtained from wallet)
@@ -10910,16 +10934,21 @@
           requestBody.txHash = txHash;
         }
 
+        console.log('[CHANNEL::PHASE2] Sending API request to /api/guardian-posts/channels with: name=' + name + ', hasCoverImage=' + (!!coverImageUrl) + ', networkMode=' + networkMode + ', hasTxHash=' + (!!txHash));
         const response = await apiCall('/api/guardian-posts/channels', {
           method: 'POST',
           body: JSON.stringify(requestBody)
         });
 
+        console.log('[CHANNEL::PHASE2] API response received:', { hasError: !!response.error, errorMsg: response.error, responseKeys: Object.keys(response || {}) });
+
         if (response && !response.error) {
+          console.log('[CHANNEL::PHASE2] Channel creation succeeded: id=' + response.id + ', blockchainRecordingId=' + response.blockchainRecordingId);
           const statusMsg = 'Channel created';
           showToast(`✓ ${statusMsg}`, 'success');
 
           if (response.blockchainRecordingId) {
+            console.log('[CHANNEL::PHASE2] Showing persistent notification for blockchain recording');
             showPersistentNotification('channel_create', {
               blockchainRecordingId: response.blockchainRecordingId,
               channelName: name
@@ -10928,13 +10957,14 @@
           closeGuardianChannelModal();
           await loadGuardianMyChannels();
         } else if (response && response.error) {
+          console.error('[CHANNEL::PHASE2] API returned error:', { error: response.error, status: response.status });
           showToast(`Failed to create channel: ${response.error}`, 'error');
-          throw new Error(response.error);
+          return;
         }
       } catch (err) {
         const isCancelledError = err.message && (err.message.includes('User cancelled') || err.message.includes('cancelled'));
+        console.error('[CHANNEL::CATCH] Uncaught error in submitGuardianChannel:', { message: err.message, isCancelled: isCancelledError, stack: err.stack });
         if (!isCancelledError) {
-          console.error('Create channel error:', err);
           showToast(`Error: ${err.message}`, 'error');
         }
       }
