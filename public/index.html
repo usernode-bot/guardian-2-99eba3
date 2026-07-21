@@ -10897,6 +10897,22 @@
         if (networkMode === 'testnet' || networkMode === 'real_testnet') {
           console.log('[CHANNEL::PHASE1] Testnet/real_testnet mode detected, requesting wallet signature...');
 
+          // Ensure bridge is loaded before attempting wallet signature
+          console.log('[CHANNEL::PHASE1] Checking bridge availability...');
+          const bridgeAvailable = typeof window.sendTransaction === 'function';
+          if (!bridgeAvailable) {
+            console.log('[CHANNEL::PHASE1] Bridge not immediately available, waiting for it to load...');
+            const bridgeLoaded = await waitForBridge(5000, 'testnet');
+            if (!bridgeLoaded) {
+              console.error('[CHANNEL::PHASE1] Bridge failed to load within 5 second timeout');
+              showToast('Wallet bridge failed to load. Please try again.', 'error');
+              return;
+            }
+            console.log('[CHANNEL::PHASE1] Bridge loaded successfully after waiting');
+          } else {
+            console.log('[CHANNEL::PHASE1] Bridge is ready, proceeding with wallet signature');
+          }
+
           // Build transaction payload following the channel_create pattern
           const txPayload = {
             type: 'channel_create',
@@ -10939,8 +10955,8 @@
             };
 
             // Call usernode.sendTransaction(txPayload, onSuccess, onError)
-            if (typeof usernode !== 'undefined' && usernode.sendTransaction) {
-              usernode.sendTransaction(txPayload, onSuccess, onError);
+            if (typeof window.sendTransaction === 'function' && typeof window.usernode === 'object' && window.usernode !== null) {
+              window.sendTransaction(txPayload, onSuccess, onError);
             } else {
               reject(new Error('Wallet bridge is not available. Please ensure your wallet extension is enabled.'));
             }
