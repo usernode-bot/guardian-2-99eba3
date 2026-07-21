@@ -10822,6 +10822,10 @@
     }
 
     function closeGuardianChannelModal() {
+      document.getElementById('guardianChannelName').value = '';
+      document.getElementById('guardianChannelDescription').value = '';
+      document.getElementById('guardianChannelImageInput').value = '';
+      document.getElementById('guardianChannelImagePreview').classList.add('hidden');
       document.getElementById('guardianChannelModal').classList.add('hidden');
     }
 
@@ -10835,6 +10839,10 @@
     }
 
     function closeGuardianArticleModal() {
+      document.getElementById('guardianArticleTitle').value = '';
+      document.getElementById('guardianArticleBody').value = '';
+      document.getElementById('guardianArticleImageInput').value = '';
+      document.getElementById('guardianArticleImagePreview').classList.add('hidden');
       document.getElementById('guardianArticleModal').classList.add('hidden');
     }
 
@@ -10863,6 +10871,10 @@
           method: 'POST',
           body: JSON.stringify({ name, description, coverImageUrl })
         });
+        if (response.error) {
+          showToast(response.error || 'Failed to create channel', 'error');
+          return;
+        }
         showToast('Channel created!', 'success');
         closeGuardianChannelModal();
         await loadGuardianMyChannels();
@@ -10905,10 +10917,14 @@
       }
 
       try {
-        await apiCall(`/api/guardian-posts/channels/${guardianCurrentChannelId}/articles`, {
+        const response = await apiCall(`/api/guardian-posts/channels/${guardianCurrentChannelId}/articles`, {
           method: 'POST',
           body: JSON.stringify({ title, body, imageUrl, status })
         });
+        if (response.error) {
+          showToast(response.error || 'Failed to create article', 'error');
+          return;
+        }
         showToast(status === 'draft' ? 'Draft saved!' : 'Article published!', 'success');
         closeGuardianArticleModal();
         await loadGuardianChannelArticles(guardianCurrentChannelId);
