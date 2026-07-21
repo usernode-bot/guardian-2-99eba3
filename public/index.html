@@ -10867,20 +10867,41 @@
       }
 
       try {
+        const settings = loadSettings();
+        const requestBody = {
+          name,
+          description: description || null,
+          coverImageUrl: coverImageUrl || null,
+          networkMode: settings.networkMode
+        };
+
         const response = await apiCall('/api/guardian-posts/channels', {
           method: 'POST',
-          body: JSON.stringify({ name, description, coverImageUrl })
+          body: JSON.stringify(requestBody)
         });
-        if (response.error) {
-          showToast(response.error || 'Failed to create channel', 'error');
-          return;
+
+        if (response && !response.error) {
+          const statusMsg = 'Channel created';
+          showToast(`✓ ${statusMsg}`, 'success');
+
+          if (response.blockchainRecordingId) {
+            showPersistentNotification('channel_create', {
+              blockchainRecordingId: response.blockchainRecordingId,
+              channelName: name
+            });
+          }
+          closeGuardianChannelModal();
+          await loadGuardianMyChannels();
+        } else if (response && response.error) {
+          showToast(`Failed to create channel: ${response.error}`, 'error');
+          throw new Error(response.error);
         }
-        showToast('Channel created!', 'success');
-        closeGuardianChannelModal();
-        await loadGuardianMyChannels();
       } catch (err) {
-        console.error('Error creating channel:', err);
-        showToast('Failed to create channel', 'error');
+        const isCancelledError = err.message && (err.message.includes('User cancelled') || err.message.includes('cancelled'));
+        if (!isCancelledError) {
+          console.error('Create channel error:', err);
+          showToast(`Error: ${err.message}`, 'error');
+        }
       }
     }
 

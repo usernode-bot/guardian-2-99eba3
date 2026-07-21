@@ -5490,26 +5490,230 @@ app.get('/api/guardian-posts/channels/discover', async (req, res) => {
   }
 });
 
-// POST /api/guardian-posts/channels - Create new channel
+// POST /api/guardian-posts/channels - Create new channel with on-chain integration
 app.post('/api/guardian-posts/channels', express.json({ limit: '2mb' }), async (req, res) => {
+  const requestId = Math.random().toString(36).substr(2, 9);
+  const startTime = new Date().toISOString();
+  console.log(`[POST /api/guardian-posts/channels::ENTRY] Request ID=${requestId}, timestamp=${startTime}, env=${IS_STAGING ? 'staging' : 'production'}`);
+  console.log(`[POST /api/guardian-posts/channels::ENTRY] Payload: name="${req.body.name}", description="${req.body.description || '(none)'}", networkMode=${req.body.networkMode || 'default'}`);
+
   try {
-    if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+    // Validation: check authentication
+    console.log(`[POST /api/guardian-posts/channels::VALIDATE] Checking authentication: req.user exists=${!!req.user}`);
+    if (!req.user) {
+      console.error(`[POST /api/guardian-posts/channels::VALIDATE] Authentication failed - no req.user`);
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    console.log(`[POST /api/guardian-posts/channels::VALIDATE] Authentication successful: userId=${req.user.id}`);
+
+    const { name, description, coverImageUrl, networkMode, txHash, auditLogId, contentHash: frontendContentHash } = req.body;
+
+    // Validation: parse and validate user ID
     const userId = parseInt(req.user.id, 10);
-    const { name, description, coverImageUrl } = req.body;
+    console.log(`[POST /api/guardian-posts/channels::VALIDATE] User ID parsing: raw=${req.user.id}, parsed=${userId}, isNaN=${isNaN(userId)}`);
+    if (isNaN(userId)) {
+      console.error(`[POST /api/guardian-posts/channels::VALIDATE] Invalid user ID: ${req.user.id}`);
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
 
-    if (!name || !name.trim()) return res.status(400).json({ error: 'Channel name is required' });
-    if (name.length > 100) return res.status(400).json({ error: 'Channel name must be 100 characters or less' });
-    if (description && description.length > 500) return res.status(400).json({ error: 'Description must be 500 characters or less' });
+    // Validation: check wallet connection before proceeding with channel creation (skip in demo mode)
+    console.log(`[POST /api/guardian-posts/channels::VALIDATE] Checking wallet connection: usernode_pubkey=${req.user.usernode_pubkey ? 'present' : 'missing'}, NETWORK_MODE=${NETWORK_MODE}`);
+    const walletValidation = await validateWalletForMode(NETWORK_MODE, userId, req.user.usernode_pubkey);
+    if (!walletValidation.valid) {
+      console.error(`[POST /api/guardian-posts/channels::VALIDATE] Wallet validation failed: ${walletValidation.error}`);
+      return res.status(401).json({ error: walletValidation.error });
+    }
 
-    const { rows: newChannel } = await pool.query(`
-      INSERT INTO guardian_posts_channels (owner_id, name, description, cover_image_url)
-      VALUES ($1, $2, $3, $4)
-      RETURNING id, owner_id, name, description, cover_image_url, created_at, updated_at
+    // Validation: check channel name
+    console.log(`[POST /api/guardian-posts/channels::VALIDATE] Channel name validation: provided="${name}", trimmed="${name ? name.trim() : '(null)'}", length=${name ? name.trim().length : 0}`);
+    if (!name || name.trim().length === 0) {
+      console.error(`[POST /api/guardian-posts/channels::VALIDATE] Channel name validation failed: empty or missing`);
+      return res.status(400).json({ error: 'Channel name is required' });
+    }
+    if (name.length > 100) {
+      return res.status(400).json({ error: 'Channel name must be 100 characters or less' });
+    }
+    if (description && description.length > 500) {
+      return res.status(400).json({ error: 'Description must be 500 characters or less' });
+    }
+
+    // Validate coverImageUrl if provided
+    if (coverImageUrl) {
+      if (!coverImageUrl.startsWith('data:image/')) {
+        return res.status(400).json({ error: 'Invalid image format' });
+      }
+      if (!coverImageUrl.match(/^data:image\/(jpeg|png)/i)) {
+        return res.status(400).json({ error: 'Only JPEG and PNG images are supported' });
+      }
+    }
+
+    console.log(`[POST /api/guardian-posts/channels::VALIDATE] All validations passed`);
+
+    const network = 'testnet';
+    const now = new Date();
+
+    // Database: Create channel
+    console.log(`[POST /api/guardian-posts/channels::DB] Creating channel with: owner_id=${userId}, name="${name.trim()}", description="${description || '(null)'}", hasCoverImage=${!!coverImageUrl}, network=${network}`);
+    const result = await pool.query(`
+      INSERT INTO guardian_posts_channels (owner_id, name, description, cover_image_url, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, NOW(), NOW())
+      RETURNING id, name, description, cover_image_url, owner_id, created_at, updated_at
     `, [userId, name.trim(), description || null, coverImageUrl || null]);
 
-    if (newChannel.length === 0) return res.status(500).json({ error: 'Failed to create channel' });
+    if (result.rows.length === 0) {
+      console.error(`[POST /api/guardian-posts/channels::DB] Channel insert returned no rows`);
+      throw new Error('Channel creation query returned no results');
+    }
+    const channelId = result.rows[0].id;
+    console.log(`[POST /api/guardian-posts/channels::DB] Channel created successfully: id=${channelId}, name="${result.rows[0].name}"`);
 
-    const channel = newChannel[0];
+    // Blockchain: Prepare transaction payload (Usernode chain format)
+    const contentHash = frontendContentHash || computeContentHash(name.trim());
+    const transactionPayload = {
+      type: 'channel_create',
+      channelId: channelId,
+      channelName: name.trim(),
+      creatorPubkey: req.user.usernode_pubkey || APP_PUBKEY,
+      contentHash: contentHash,
+      timestamp: now.toISOString(),
+      network: network,
+      rpcEndpoint: NODE_RPC_URL
+    };
+    console.log(`[POST /api/guardian-posts/channels::BLOCKCHAIN] Transaction payload prepared: type=${transactionPayload.type}, channelId=${transactionPayload.channelId}, creatorPubkeyPresent=${!!transactionPayload.creatorPubkey}, network=${transactionPayload.network}`);
+
+    // Sign memo following Last One Wins pattern
+    const memo = signTransactionMemo(transactionPayload);
+
+    // Blockchain: Use existing audit log if provided, otherwise create new one
+    // Determine audit status and network origin based on user's network mode or server mode
+    let auditStatus = 'pending';
+    let networkOriginValue = null;
+    let actualTxHash = null;
+
+    // Use user's networkMode if provided, otherwise fall back to server NETWORK_MODE
+    const effectiveNetworkMode = networkMode || NETWORK_MODE;
+
+    // Map effectiveNetworkMode to network_origin value
+    if (effectiveNetworkMode === 'devnet') {
+      actualTxHash = 'ut1devnet-channel-' + channelId + '-' + Date.now();
+      auditStatus = 'confirmed';
+      networkOriginValue = 'database';
+    } else if (effectiveNetworkMode === 'testnet' && NODE_RPC_URL && !txHash) {
+      auditStatus = 'pending';
+      networkOriginValue = 'testnet';
+      actualTxHash = null;
+    } else if (effectiveNetworkMode === 'testnet' && !NODE_RPC_URL) {
+      // Testnet without RPC: store null, will be populated later
+      actualTxHash = null;
+      auditStatus = 'pending';
+      networkOriginValue = 'bridge';
+    } else if (txHash) {
+      actualTxHash = txHash;
+      auditStatus = 'pending';
+      networkOriginValue = 'blockchain';
+    } else {
+      // Default fallback: testnet
+      actualTxHash = null;
+      auditStatus = 'pending';
+      networkOriginValue = 'testnet';
+    }
+
+    let blockchainRecordingId;
+    if (auditLogId) {
+      // Two-phase flow: audit log already exists from wallet signature, just update it
+      console.log(`[POST /api/guardian-posts/channels::BLOCKCHAIN] Using existing audit log: id=${auditLogId}`);
+      await pool.query(`
+        UPDATE blockchain_audit_logs
+        SET channel_id = $1, message_type = $2, tx_hash = $3, transaction_payload = $4, status = $5, confirmed_at = $6, content_hash = $7, user_pubkey = $8, action_timestamp = $9, network_origin = $10, updated_at = NOW()
+        WHERE id = $11 AND user_id = $12
+      `, [channelId, 'channel_create', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, req.user.usernode_pubkey || null, now, networkOriginValue, auditLogId, userId]);
+      blockchainRecordingId = auditLogId;
+      console.log(`[POST /api/guardian-posts/channels::BLOCKCHAIN] Updated existing audit log: id=${blockchainRecordingId}`);
+    } else {
+      // Single-phase flow: create new audit log
+      console.log(`[AUDIT LOG] CHANNEL_CREATE: txHash=${actualTxHash || 'pending'}, channelId=${channelId}, status=${auditStatus}`);
+      console.log(`[POST /api/guardian-posts/channels::BLOCKCHAIN] Creating new audit log: txHash=${actualTxHash || 'pending'}, status=${auditStatus}, env=${IS_STAGING ? 'staging' : 'production'}`);
+
+      const auditRes = await pool.query(`
+        INSERT INTO blockchain_audit_logs (user_id, channel_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, network_origin, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
+        RETURNING id
+      `, [userId, channelId, 'channel_create', actualTxHash, JSON.stringify(transactionPayload), auditStatus, (auditStatus === 'confirmed' ? now : null), contentHash, req.user.usernode_pubkey || null, now, networkOriginValue, now]);
+
+      if (auditRes.rows.length === 0) {
+        console.error(`[POST /api/guardian-posts/channels::BLOCKCHAIN] Audit log insert returned no rows`);
+        throw new Error('Audit log creation query returned no results');
+      }
+      blockchainRecordingId = auditRes.rows[0].id;
+      console.log(`[POST /api/guardian-posts/channels::BLOCKCHAIN] Audit log created: id=${blockchainRecordingId}, rowCount=${auditRes.rowCount}`);
+    }
+
+    // Blockchain: If real tx hash provided from frontend, start polling immediately (skip for devnet)
+    if (txHash && NETWORK_MODE !== 'devnet') {
+      console.log(`[POST /api/guardian-posts/channels::BLOCKCHAIN] Real txHash provided from frontend, starting polling`);
+      (async () => {
+        try {
+          await pollTransactionStatus('testnet', txHash, blockchainRecordingId);
+        } catch (err) {
+          console.error('Error polling transaction status:', err);
+        }
+      })();
+    } else if (NETWORK_MODE === 'testnet' && NODE_RPC_URL && !txHash) {
+      // Testnet with RPC: submit real transaction
+      console.log(`[POST /api/guardian-posts/channels::BLOCKCHAIN] Spawning background blockchain submission task (testnet RPC)`);
+      (async () => {
+        try {
+          console.log(`[POST /api/guardian-posts/channels::BLOCKCHAIN::ASYNC] Background task started for auditId=${blockchainRecordingId}`);
+
+          // Validate memo before calling RPC
+          if (!memo) {
+            throw new Error('Failed to sign transaction memo');
+          }
+
+          const result = await sendGroupToBlockchain(transactionPayload, memo, [], network);
+          console.log(`[POST /api/guardian-posts/channels::BLOCKCHAIN::ASYNC] RPC returned txHash=${result.transactionHash}`);
+
+          const updateRes = await pool.query(`
+            UPDATE blockchain_audit_logs SET tx_hash = $1, network_origin = 'testnet', updated_at = NOW() WHERE id = $2
+          `, [result.transactionHash, blockchainRecordingId]);
+          console.log(`[POST /api/guardian-posts/channels::BLOCKCHAIN::ASYNC] Audit log updated with real txHash, rowCount=${updateRes.rowCount}`);
+
+          console.log(`[POST /api/guardian-posts/channels::BLOCKCHAIN::ASYNC] Starting chain polling`);
+          startChainPoller(network, result.transactionHash, blockchainRecordingId).catch(err => {
+            console.error(`[POST /api/guardian-posts/channels::BLOCKCHAIN::ASYNC] Error starting chain poller: ${err.message}`, err);
+          });
+        } catch (err) {
+          const errorClass = classifyRPCError(err);
+          console.error(`[BLOCKCHAIN-FALLBACK] RPC failed (${errorClass.type}), using bridge fallback for channelId=${channelId}: ${err.message}`);
+
+          // Fallback: try bridge approach
+          try {
+            const bridgeResult = await sendTransactionToBridge(transactionPayload, null, network);
+
+            await pool.query(`
+              UPDATE blockchain_audit_logs SET tx_hash = $1, network_origin = 'bridge', updated_at = NOW() WHERE id = $2
+            `, [bridgeResult.txHash, blockchainRecordingId]);
+
+            console.log(`[BLOCKCHAIN-FALLBACK] Updated audit log with bridge tx hash: txHash=${bridgeResult.txHash}, auditLogId=${blockchainRecordingId}`);
+
+            // Start polling with placeholder so it eventually marks as 'failed'
+            startChainPoller(network, bridgeResult.txHash, blockchainRecordingId).catch(err => {
+              console.error(`[BLOCKCHAIN-FALLBACK] Error polling bridge result: ${err.message}`);
+            });
+          } catch (bridgeErr) {
+            console.error(`[BLOCKCHAIN-FALLBACK] Bridge also failed: ${bridgeErr.message}`);
+            await pool.query(`
+              UPDATE blockchain_audit_logs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2
+            `, [`RPC and bridge both failed: ${err.message}`, blockchainRecordingId]);
+          }
+        }
+      })();
+    } else if (NETWORK_MODE === 'devnet') {
+      // Devnet: no async task needed, tx is already confirmed with fake hash
+      console.log(`[POST /api/guardian-posts/channels::BLOCKCHAIN] Devnet mode: using fake tx hash, no blockchain submission`);
+    }
+
+    const channel = result.rows[0];
     res.status(201).json({
       id: channel.id,
       ownerId: channel.owner_id,
@@ -5517,7 +5721,8 @@ app.post('/api/guardian-posts/channels', express.json({ limit: '2mb' }), async (
       description: channel.description,
       coverImageUrl: channel.cover_image_url,
       createdAt: channel.created_at,
-      updatedAt: channel.updated_at
+      updatedAt: channel.updated_at,
+      blockchainRecordingId: blockchainRecordingId
     });
   } catch (err) {
     console.error('Error creating channel:', err);
@@ -6848,6 +7053,10 @@ async function start() {
     `);
 
     await pool.query(`
+      ALTER TABLE blockchain_audit_logs ADD COLUMN IF NOT EXISTS channel_id BIGINT REFERENCES guardian_posts_channels(id) ON DELETE SET NULL
+    `);
+
+    await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_blockchain_audit_logs_message_id
         ON blockchain_audit_logs(message_id)
     `);
@@ -6858,6 +7067,10 @@ async function start() {
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_blockchain_audit_logs_group_id
         ON blockchain_audit_logs(group_id)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_blockchain_audit_logs_channel_id
+        ON blockchain_audit_logs(channel_id)
     `);
 
     // Create groups table (marked private)
@@ -6997,14 +7210,34 @@ async function start() {
     // Staging: seed guardian posts data
     if (IS_STAGING) {
       // Create test channels
-      await pool.query(`
+      const { rows: newChannels } = await pool.query(`
         INSERT INTO guardian_posts_channels (owner_id, name, description, created_at)
         VALUES
-          (1, 'Tech Tips', 'Sharing programming tricks and best practices', NOW()),
-          (1, 'Life Updates', 'Personal thoughts and life moments', NOW()),
-          (2, 'Design Inspiration', 'Beautiful design references and inspiration', NOW())
+          (1, '[Staging demo] Tech Tips', 'Sharing programming tricks and best practices', NOW()),
+          (1, '[Staging demo] Life Updates', 'Personal thoughts and life moments', NOW()),
+          (2, '[Staging demo] Design Inspiration', 'Beautiful design references and inspiration', NOW())
         ON CONFLICT DO NOTHING
+        RETURNING id, owner_id, name
       `);
+
+      // Create blockchain audit logs for channels (confirmed status for devnet/database)
+      for (const channel of newChannels) {
+        const contentHash = computeContentHash(channel.name);
+        const transactionPayload = {
+          type: 'channel_create',
+          channelId: channel.id,
+          channelName: channel.name,
+          creatorPubkey: 'ut1staging-demo-001',
+          contentHash: contentHash,
+          timestamp: new Date().toISOString(),
+          network: 'testnet'
+        };
+        await pool.query(`
+          INSERT INTO blockchain_audit_logs (user_id, channel_id, message_type, tx_hash, transaction_payload, status, confirmed_at, content_hash, user_pubkey, action_timestamp, network_origin, created_at, updated_at)
+          VALUES ($1, $2, 'channel_create', $3, $4, 'confirmed', NOW(), $5, $6, NOW(), 'database', NOW(), NOW())
+          ON CONFLICT DO NOTHING
+        `, [channel.owner_id, channel.id, `ut1staging-channel-${channel.id}-seed`, JSON.stringify(transactionPayload), contentHash, 'ut1staging-demo-001']);
+      }
 
       // Create test articles
       const { rows: channels } = await pool.query(`SELECT id, owner_id FROM guardian_posts_channels LIMIT 3`);
@@ -7012,9 +7245,9 @@ async function start() {
         await pool.query(`
           INSERT INTO guardian_posts_articles (channel_id, author_id, title, body, status, created_at)
           VALUES
-            ($1, $2, 'Getting Started with Node.js', 'Node.js is a great runtime...', 'published', NOW() - INTERVAL '5 days'),
-            ($1, $2, 'React Hooks Guide', 'Hooks are a powerful feature...', 'published', NOW() - INTERVAL '3 days'),
-            ($1, $2, 'Draft: Advanced Patterns', 'This is a work in progress...', 'draft', NOW() - INTERVAL '1 day')
+            ($1, $2, '[Staging demo] Getting Started with Node.js', 'Node.js is a great runtime...', 'published', NOW() - INTERVAL '5 days'),
+            ($1, $2, '[Staging demo] React Hooks Guide', 'Hooks are a powerful feature...', 'published', NOW() - INTERVAL '3 days'),
+            ($1, $2, '[Staging demo] Draft: Advanced Patterns', 'This is a work in progress...', 'draft', NOW() - INTERVAL '1 day')
           ON CONFLICT DO NOTHING
         `, [channels[0].id, channels[0].owner_id]);
       }
@@ -7022,7 +7255,7 @@ async function start() {
         await pool.query(`
           INSERT INTO guardian_posts_articles (channel_id, author_id, title, body, status, created_at)
           VALUES
-            ($1, $2, 'Design Process Deep Dive', 'Understanding user-centered design...', 'published', NOW() - INTERVAL '2 days')
+            ($1, $2, '[Staging demo] Design Process Deep Dive', 'Understanding user-centered design...', 'published', NOW() - INTERVAL '2 days')
           ON CONFLICT DO NOTHING
         `, [channels[1].id, channels[1].owner_id]);
       }
