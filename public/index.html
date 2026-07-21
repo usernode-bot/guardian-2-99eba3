@@ -10868,12 +10868,41 @@
 
       try {
         const settings = loadSettings();
+
+        // Phase 1: Request wallet signature if in testnet mode
+        let txHash = null;
+        if (settings.networkMode === 'testnet' || settings.networkMode === 'real_testnet') {
+          try {
+            console.log('[CHANNEL] Testnet mode detected, requesting wallet signature...');
+            const txResult = await executeWalletSignature('channel', {
+              name: name,
+              description: description || null,
+              timestamp: new Date().toISOString()
+            });
+            if (txResult) {
+              txHash = txResult;
+              console.log('[CHANNEL] Wallet signature obtained: txHash=' + txHash);
+            }
+          } catch (signErr) {
+            if (signErr.message && (signErr.message.includes('User cancelled') || signErr.message.includes('cancelled'))) {
+              console.log('[CHANNEL] User cancelled wallet signature');
+              showToast('Channel creation cancelled', 'info');
+              return;
+            }
+            throw new Error('Wallet signature failed: ' + signErr.message);
+          }
+        }
+
+        // Phase 2: Create channel with txHash (if obtained from wallet)
         const requestBody = {
           name,
           description: description || null,
           coverImageUrl: coverImageUrl || null,
           networkMode: settings.networkMode
         };
+        if (txHash) {
+          requestBody.txHash = txHash;
+        }
 
         const response = await apiCall('/api/guardian-posts/channels', {
           method: 'POST',
