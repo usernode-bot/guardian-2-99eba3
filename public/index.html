@@ -5017,7 +5017,7 @@
       // Check if this is an initial load (empty list) or an update
       const isInitialLoad = list.children.length === 0;
       const wasAtBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 500;
-      list.innerHTML = data.messages.map(msg => renderMessage(msg, 'group')).join('');
+      list.innerHTML = data.messages.reverse().map(msg => renderMessage(msg, 'group')).join('');
 
       // Auto-scroll to bottom on initial load or if user was already at bottom (within 500px)
       if (isInitialLoad || wasAtBottom) {
@@ -7102,7 +7102,7 @@
       const oldMessageIds = new Set(Array.from(list.querySelectorAll('[data-message-id]')).map(el => parseInt(el.getAttribute('data-message-id'))));
 
       // Re-render message list with IDs for stable DOM references
-      list.innerHTML = data.messages.map(msg => renderMessage(msg, 'dm')).join('');
+      list.innerHTML = data.messages.reverse().map(msg => renderMessage(msg, 'dm')).join('');
 
       // Auto-scroll to bottom on initial load or if user was already at bottom (within 500px)
       if (isInitialLoad || wasAtBottom) {
