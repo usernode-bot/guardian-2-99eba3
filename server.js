@@ -2375,7 +2375,7 @@ app.get('/api/conversations/:convId', async (req, res) => {
       WHERE conversation_id = $1
         AND created_at < $2
         AND (deleted_by IS NULL OR NOT (deleted_by @> ARRAY[$3]::integer[]))
-      ORDER BY created_at ASC
+      ORDER BY created_at DESC
       LIMIT $4
     `, [convId, before, userId, limit]);
     const msgList = messages.map(m => ({
@@ -4306,7 +4306,7 @@ app.get('/api/groups/:groupId/messages', async (req, res) => {
       WHERE group_id = $1
         AND created_at < $2
         AND (deleted_by IS NULL OR NOT (deleted_by @> ARRAY[$3]::integer[]))
-      ORDER BY created_at ASC
+      ORDER BY created_at DESC
       LIMIT $4
     `, [groupId, before, userId, limit]);
     const msgList = messages.map(m => ({
