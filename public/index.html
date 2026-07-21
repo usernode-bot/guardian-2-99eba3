@@ -376,6 +376,12 @@
       margin-bottom: 0;
     }
 
+    /* Ensure messages don't get hidden behind fixed input footer */
+    #messageList,
+    #channelChatList {
+      padding-bottom: 12rem !important;
+    }
+
     /* Feed layout CSS: proper positioning and overflow handling */
     #feedMainContent {
       min-height: 0;
@@ -1061,12 +1067,12 @@
 
       <!-- Chat View -->
       <div id="chatView" class="hidden flex flex-col flex-1 overflow-hidden">
-        <div id="messageList" class="flex-1 overflow-y-auto space-y-1 p-4 pb-28 pt-20"></div>
+        <div id="messageList" class="flex-1 overflow-y-auto space-y-1 p-4 pb-32 pt-20"></div>
       </div>
 
       <!-- Channel Chat View (dedicated container for channel posts) -->
       <div id="channelChatView" class="hidden flex flex-col flex-1 overflow-hidden">
-        <div id="channelChatList" class="flex-1 overflow-y-auto space-y-1 p-4 pt-20 pb-28"></div>
+        <div id="channelChatList" class="flex-1 overflow-y-auto space-y-1 p-4 pt-20 pb-32"></div>
       </div>
 
       <!-- Channels View -->
@@ -5017,7 +5023,7 @@
       // Check if this is an initial load (empty list) or an update
       const isInitialLoad = list.children.length === 0;
       const wasAtBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 500;
-      list.innerHTML = data.messages.map(msg => renderMessage(msg, 'group')).join('');
+      list.innerHTML = data.messages.reverse().map(msg => renderMessage(msg, 'group')).join('');
 
       // Auto-scroll to bottom on initial load or if user was already at bottom (within 500px)
       if (isInitialLoad || wasAtBottom) {
@@ -7102,7 +7108,7 @@
       const oldMessageIds = new Set(Array.from(list.querySelectorAll('[data-message-id]')).map(el => parseInt(el.getAttribute('data-message-id'))));
 
       // Re-render message list with IDs for stable DOM references
-      list.innerHTML = data.messages.map(msg => renderMessage(msg, 'dm')).join('');
+      list.innerHTML = data.messages.reverse().map(msg => renderMessage(msg, 'dm')).join('');
 
       // Auto-scroll to bottom on initial load or if user was already at bottom (within 500px)
       if (isInitialLoad || wasAtBottom) {
