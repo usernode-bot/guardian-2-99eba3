@@ -10860,153 +10860,60 @@
 
     async function submitGuardianChannel() {
       const name = document.getElementById('guardianChannelName').value.trim();
-      const description = document.getElementById('guardianChannelDescription').value.trim();
+      const desc = document.getElementById('guardianChannelDescription').value.trim();
       const imageInput = document.getElementById('guardianChannelImageInput');
 
-      console.log('[CHANNEL] submitGuardianChannel() started: name=' + name + ', hasDescription=' + (description.length > 0) + ', hasImage=' + (imageInput.files.length > 0));
-
-      if (!name) {
-        console.error('[CHANNEL] Validation failed: channel name is required');
-        showToast('Channel name is required', 'error');
-        return;
-      }
-
-      let coverImageUrl = null;
-      if (imageInput.files.length > 0) {
-        const file = imageInput.files[0];
-        console.log('[CHANNEL] Processing image: filename=' + file.name + ', size=' + file.size + ', type=' + file.type);
-        coverImageUrl = await new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = (e) => resolve(e.target.result);
-          reader.readAsDataURL(file);
-        });
-        console.log('[CHANNEL] Image processed: base64Url length=' + coverImageUrl.length);
-      }
+      if (!name) return alert('Channel name is required');
 
       try {
-        const settings = loadSettings();
-        const networkMode = getNetworkMode();
-        console.log('[CHANNEL] Network mode retrieved: networkMode=' + networkMode + ', settings present=' + (!!settings));
-
-        if (!networkMode) {
-          console.warn('[CHANNEL] Network mode is null - wallet signature will be skipped, channel creation may fail if testnet is required');
-        }
-
-        // Phase 1: Request wallet signature if in testnet mode
-        let txHash = null;
-        if (networkMode === 'testnet' || networkMode === 'real_testnet') {
-          console.log('[CHANNEL::PHASE1] Testnet/real_testnet mode detected, requesting wallet signature...');
-
-          // Ensure bridge is loaded before attempting wallet signature
-          console.log('[CHANNEL::PHASE1] Checking bridge availability...');
-          const bridgeAvailable = typeof window.sendTransaction === 'function';
-          if (!bridgeAvailable) {
-            console.log('[CHANNEL::PHASE1] Bridge not immediately available, waiting for it to load...');
-            const bridgeLoaded = await waitForBridge(5000, 'testnet');
-            if (!bridgeLoaded) {
-              console.error('[CHANNEL::PHASE1] Bridge failed to load within 5 second timeout');
-              showToast('Wallet bridge failed to load. Please try again.', 'error');
-              return;
-            }
-            console.log('[CHANNEL::PHASE1] Bridge loaded successfully after waiting');
-          } else {
-            console.log('[CHANNEL::PHASE1] Bridge is ready, proceeding with wallet signature');
-          }
-
-          // Build transaction payload following the channel_create pattern
-          const txPayload = {
-            type: 'channel_create',
-            name: name,
-            description: description || null,
-            timestamp: new Date().toISOString()
-          };
-
-          // Call usernode.sendTransaction with success and error callbacks
-          await new Promise((resolve, reject) => {
-            console.log('[CHANNEL::PHASE1] Calling usernode.sendTransaction with payload:', txPayload);
-
-            const onSuccess = (result) => {
-              console.log('[CHANNEL::PHASE1] usernode.sendTransaction success callback received:', result);
-
-              // Extract txHash from result (handle multiple field name variants)
-              const extractedTxHash = result?.txHash || result?.hash || result?.transactionHash || result?.result?.txHash;
-              if (extractedTxHash) {
-                txHash = extractedTxHash;
-                console.log('[CHANNEL::PHASE1] Wallet signature succeeded: txHash=' + txHash);
-                resolve(txHash);
-              } else {
-                const errMsg = 'Bridge response missing transaction hash. Response: ' + JSON.stringify(result);
-                console.error('[CHANNEL::PHASE1]', errMsg);
-                reject(new Error(errMsg));
-              }
-            };
-
-            const onError = (err) => {
-              console.error('[CHANNEL::PHASE1] usernode.sendTransaction error callback:', err);
-
-              // Check for user cancellation
-              if (err && (typeof err === 'string' ? err.includes('cancelled') : err.message && err.message.includes('cancelled'))) {
-                console.log('[CHANNEL::PHASE1] User cancelled wallet signature');
-                reject(new Error('User cancelled'));
-              } else {
-                const errMsg = typeof err === 'string' ? err : err?.message || 'Wallet signature failed';
-                reject(new Error(errMsg));
-              }
-            };
-
-            // Call usernode.sendTransaction(txPayload, onSuccess, onError)
-            if (typeof window.sendTransaction === 'function' && typeof window.usernode === 'object' && window.usernode !== null) {
-              window.sendTransaction(txPayload, onSuccess, onError);
-            } else {
-              reject(new Error('Wallet bridge is not available. Please ensure your wallet extension is enabled.'));
-            }
+        let coverImageUrl = null;
+        if (imageInput.files.length > 0) {
+          const file = imageInput.files[0];
+          coverImageUrl = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.readAsDataURL(file);
           });
-        } else {
-          console.log('[CHANNEL::PHASE1] Non-testnet mode (' + networkMode + ') - skipping wallet signature phase');
         }
 
-        // Phase 2: Create channel with txHash (if obtained from wallet)
+        const settings = loadSettings();
         const requestBody = {
           name,
-          description: description || null,
-          coverImageUrl: coverImageUrl || null,
-          networkMode: networkMode
+          description: desc || null,
+          networkMode: settings.networkMode
         };
-        if (txHash) {
-          requestBody.txHash = txHash;
+
+        // Include cover image if one was selected
+        if (coverImageUrl) {
+          requestBody.coverImageUrl = coverImageUrl;
         }
 
-        console.log('[CHANNEL::PHASE2] Sending API request to /api/guardian-posts/channels with: name=' + name + ', hasCoverImage=' + (!!coverImageUrl) + ', networkMode=' + networkMode + ', hasTxHash=' + (!!txHash));
-        const response = await apiCall('/api/guardian-posts/channels', {
+        const data = await apiCall('/api/guardian-posts/channels', {
           method: 'POST',
           body: JSON.stringify(requestBody)
         });
 
-        console.log('[CHANNEL::PHASE2] API response received:', { hasError: !!response.error, errorMsg: response.error, responseKeys: Object.keys(response || {}) });
-
-        if (response && !response.error) {
-          console.log('[CHANNEL::PHASE2] Channel creation succeeded: id=' + response.id + ', blockchainRecordingId=' + response.blockchainRecordingId);
+        if (data && !data.error) {
           const statusMsg = 'Channel created';
           showToast(`✓ ${statusMsg}`, 'success');
 
-          if (response.blockchainRecordingId) {
-            console.log('[CHANNEL::PHASE2] Showing persistent notification for blockchain recording');
+          if (data.blockchainRecordingId) {
             showPersistentNotification('channel_create', {
-              blockchainRecordingId: response.blockchainRecordingId,
+              blockchainRecordingId: data.blockchainRecordingId,
               channelName: name
             });
           }
           closeGuardianChannelModal();
           await loadGuardianMyChannels();
-        } else if (response && response.error) {
-          console.error('[CHANNEL::PHASE2] API returned error:', { error: response.error, status: response.status });
-          showToast(`Failed to create channel: ${response.error}`, 'error');
-          return;
+        } else if (data && data.error) {
+          showToast(`Failed to create channel: ${data.error}`, 'error');
+          throw new Error(data.error);
         }
       } catch (err) {
+        // Handle errors from submitGuardianChannel
         const isCancelledError = err.message && (err.message.includes('User cancelled') || err.message.includes('cancelled'));
-        console.error('[CHANNEL::CATCH] Uncaught error in submitGuardianChannel:', { message: err.message, isCancelled: isCancelledError, stack: err.stack });
         if (!isCancelledError) {
+          console.error('Create channel error:', err);
           showToast(`Error: ${err.message}`, 'error');
         }
       }
