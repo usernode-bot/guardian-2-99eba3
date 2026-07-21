@@ -1,0 +1,12 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]: GUARDIAN
+    - generic [ref=e4]: Decentralized Social Communication
+    - generic [ref=e5]: Built on UserNode
+  - generic [ref=e7]:
+    - button "Toggle sidebar" [ref=e8] [cursor=pointer]
+    - generic [ref=e11]:
+      - generic [ref=e12]:
+        - generic [ref=e13]: Guardian
+        - generic [ref=e14]: Network Status
+      - generic [ref=e16]: Chat
