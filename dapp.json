@@ -86,6 +86,21 @@
       "name": "Network Mode selector in settings",
       "path": "/",
       "expectSelector": "#networkModeSelect"
+    },
+    {
+      "name": "Guardian Posts view opens",
+      "path": "/",
+      "expectSelector": "#guardianPostsView"
+    },
+    {
+      "name": "Guardian Posts My Channels tab loads",
+      "path": "/",
+      "expectSelector": "#guardianMyChannelsList"
+    },
+    {
+      "name": "Guardian Posts Discover tab loads",
+      "path": "/",
+      "expectSelector": "#guardianDiscoverChannelsList"
     }
   ],
   "visibility": {

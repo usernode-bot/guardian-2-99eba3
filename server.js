@@ -5409,494 +5409,148 @@ app.get('/api/activity', async (req, res) => {
 // ===== CHANNEL ENDPOINTS =====
 
 // GET /api/channels - List all channels
-app.get('/api/channels', async (req, res) => {
+// ===== GUARDIAN POSTS FEATURE =====
+
+// GET /api/guardian-posts/channels/my - Fetch channels owned by user
+app.get('/api/guardian-posts/channels/my', async (req, res) => {
   try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
+    if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+    const userId = parseInt(req.user.id, 10);
 
-    const category = req.query.category || null;
-    const featured = req.query.featured === 'true';
+    const { rows: channels } = await pool.query(`
+      SELECT 
+        gpc.id, 
+        gpc.owner_id, 
+        gpc.name, 
+        gpc.description,
+        gpc.cover_image_url,
+        gpc.created_at, 
+        gpc.updated_at,
+        COUNT(DISTINCT gpf.user_id)::INTEGER as "followerCount",
+        COUNT(DISTINCT gpa.id)::INTEGER as "articleCount"
+      FROM guardian_posts_channels gpc
+      LEFT JOIN guardian_posts_followers gpf ON gpc.id = gpf.channel_id
+      LEFT JOIN guardian_posts_articles gpa ON gpc.id = gpa.channel_id
+      WHERE gpc.owner_id = $1
+      GROUP BY gpc.id
+      ORDER BY gpc.created_at DESC
+    `, [userId]);
 
-    let query = `
-      SELECT c.id, c.name, c.description, c.is_system, c.owner_id, c.category, c.is_verified, c.verified_at, c.is_featured, c.created_at, c.updated_at,
-             u.username as ownerUsername,
-             (SELECT COUNT(*) FROM channel_unread WHERE user_id = $1 AND channel_id = c.id AND unread_count > 0)::INTEGER as unreadCount,
-             (SELECT COUNT(*) FROM pinned_channels WHERE user_id = $1 AND channel_id = c.id)::INTEGER as isPinned,
-             (SELECT COUNT(*) FROM channel_followers WHERE channel_id = c.id)::INTEGER as followerCount,
-             (SELECT COUNT(*) FROM channel_followers WHERE user_id = $1 AND channel_id = c.id)::INTEGER as isFollowing
-      FROM channels c
-      LEFT JOIN users u ON c.owner_id = u.id
-      WHERE 1=1
-    `;
-    const params = [req.user.id];
-    let paramCount = 1;
-
-    if (featured) {
-      query += ` AND c.is_featured = TRUE`;
-    }
-    if (category) {
-      paramCount++;
-      query += ` AND c.category = $${paramCount}`;
-      params.push(category);
-    }
-
-    query += ` ORDER BY c.is_featured DESC, c.is_system DESC, c.created_at DESC`;
-
-    const { rows: channels } = await pool.query(query, params);
-
-    res.json({
-      channels: channels.map(c => ({
-        id: c.id,
-        name: c.name,
-        description: c.description,
-        ownerId: c.owner_id,
-        ownerUsername: c.ownerUsername || (c.owner_id && c.owner_id !== -1 ? `user-${c.owner_id}` : null),
-        category: c.category,
-        isVerified: c.is_verified,
-        verifiedAt: c.verified_at,
-        isFeatured: c.is_featured,
-        isSystem: c.is_system,
-        createdAt: c.created_at,
-        updatedAt: c.updated_at,
-        unreadCount: parseInt(c.unreadCount) || 0,
-        isPinned: parseInt(c.isPinned) > 0,
-        followerCount: parseInt(c.followerCount) || 0,
-        isFollowing: parseInt(c.isFollowing) > 0
-      }))
-    });
+    res.json({ channels: channels.map(ch => ({
+      id: ch.id,
+      name: ch.name,
+      description: ch.description,
+      coverImageUrl: ch.cover_image_url,
+      followerCount: ch.followerCount,
+      articleCount: ch.articleCount,
+      createdAt: ch.created_at,
+      updatedAt: ch.updated_at
+    }))});
   } catch (err) {
-    console.error('Error fetching channels:', err);
+    console.error('Error fetching my channels:', err);
     res.status(500).json({ error: 'Failed to fetch channels' });
   }
 });
 
-// GET /api/channels/:channelId/posts - Fetch paginated posts for a specific channel
-app.get('/api/channels/:channelId/posts', async (req, res) => {
+// GET /api/guardian-posts/channels/discover - Discover all channels
+app.get('/api/guardian-posts/channels/discover', async (req, res) => {
   try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const channelId = parseInt(req.params.channelId);
+    if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+    const userId = parseInt(req.user.id, 10);
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
     const offset = parseInt(req.query.offset || 0);
+    const search = req.query.search || '';
 
-    // Verify channel exists
-    const { rows: channelCheck } = await pool.query(`
-      SELECT id FROM channels WHERE id = $1
-    `, [channelId]);
-
-    if (channelCheck.length === 0) {
-      return res.status(404).json({ error: 'Channel not found' });
+    let whereClause = '';
+    let params = [userId, limit, offset];
+    if (search && search.trim()) {
+      whereClause = 'WHERE gpc.name ILIKE $4 OR gpc.description ILIKE $4';
+      params.push(`%${search}%`);
     }
 
-    // Fetch posts for this channel
-    const { rows: posts } = await pool.query(`
-      SELECT
-        fp.id,
-        fp.user_id,
-        fp.content,
-        fp.image_urls,
-        fp.created_at,
-        fp.updated_at,
-        fp.on_chain,
-        u.username,
-        u.verified_at,
-        u.avatar_url,
-        c.name as channel_name
-      FROM feed_posts fp
-      JOIN users u ON u.id = fp.user_id
-      LEFT JOIN channels c ON fp.channel_id = c.id
-      WHERE fp.channel_id = $1 AND fp.deleted_at IS NULL
-      ORDER BY fp.created_at DESC
+    const { rows: channels } = await pool.query(`
+      SELECT 
+        gpc.id,
+        gpc.owner_id,
+        gpc.name,
+        gpc.description,
+        gpc.cover_image_url,
+        gpc.created_at,
+        gpc.updated_at,
+        u.username as "owner_username",
+        u.avatar_url as "owner_avatar",
+        COUNT(DISTINCT gpf.user_id)::INTEGER as "followerCount",
+        COUNT(DISTINCT gpa.id)::INTEGER as "articleCount",
+        (SELECT 1 FROM guardian_posts_followers WHERE user_id = $1 AND channel_id = gpc.id LIMIT 1)::BOOLEAN as "isFollowing"
+      FROM guardian_posts_channels gpc
+      LEFT JOIN users u ON gpc.owner_id = u.id
+      LEFT JOIN guardian_posts_followers gpf ON gpc.id = gpf.channel_id
+      LEFT JOIN guardian_posts_articles gpa ON gpc.id = gpa.channel_id AND gpa.status = 'published'
+      ${whereClause}
+      GROUP BY gpc.id, u.username, u.avatar_url
+      ORDER BY gpc.created_at DESC
       LIMIT $2 OFFSET $3
-    `, [channelId, limit, offset]);
+    `, params);
 
-    const resultPosts = posts.map(post => ({
-      id: post.id,
-      userId: post.user_id,
-      username: post.username,
-      verified: !!post.verified_at,
-      avatarUrl: post.avatar_url,
-      content: post.content,
-      imageUrls: post.image_urls || [],
-      createdAt: post.created_at,
-      updatedAt: post.updated_at,
-      isEdited: post.updated_at && post.created_at && (new Date(post.updated_at) - new Date(post.created_at)) > 1000,
-      onChain: post.on_chain || false,
-      channelName: post.channel_name
-    }));
+    const countParams = [userId];
+    let countQuery = 'SELECT COUNT(DISTINCT gpc.id) as count FROM guardian_posts_channels gpc LEFT JOIN users u ON gpc.owner_id = u.id LEFT JOIN guardian_posts_followers gpf ON gpc.id = gpf.channel_id LEFT JOIN guardian_posts_articles gpa ON gpc.id = gpa.channel_id AND gpa.status = \'published\'';
+    if (search && search.trim()) {
+      countQuery += ' WHERE gpc.name ILIKE $2 OR gpc.description ILIKE $2';
+      countParams.push(`%${search}%`);
+    }
 
-    const { rows: countResult } = await pool.query(`
-      SELECT COUNT(*) as count FROM feed_posts WHERE channel_id = $1 AND deleted_at IS NULL
-    `, [channelId]);
-
+    const { rows: countResult } = await pool.query(countQuery, countParams);
     const total = parseInt(countResult[0].count);
     const hasMore = offset + limit < total;
 
-    res.json({
-      posts: resultPosts,
+    res.json({ 
+      channels: channels.map(ch => ({
+        id: ch.id,
+        name: ch.name,
+        description: ch.description,
+        coverImageUrl: ch.cover_image_url,
+        ownerUsername: ch.owner_username,
+        ownerAvatar: ch.owner_avatar,
+        followerCount: ch.followerCount,
+        articleCount: ch.articleCount,
+        isFollowing: !!ch.isFollowing,
+        createdAt: ch.created_at,
+        updatedAt: ch.updated_at
+      })),
       hasMore
     });
   } catch (err) {
-    console.error('Error fetching channel posts:', err);
-    res.status(500).json({ error: 'Failed to fetch channel posts' });
+    console.error('Error fetching discover channels:', err);
+    res.status(500).json({ error: 'Failed to fetch channels' });
   }
 });
 
-// POST /api/channels/:channelId/posts - Create a new post in a channel (owner only)
-app.post('/api/channels/:channelId/posts', async (req, res) => {
+// POST /api/guardian-posts/channels - Create new channel
+app.post('/api/guardian-posts/channels', express.json({ limit: '2mb' }), async (req, res) => {
   try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const channelId = parseInt(req.params.channelId);
+    if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
     const userId = parseInt(req.user.id, 10);
-    const { content, imageUrls } = req.body;
+    const { name, description, coverImageUrl } = req.body;
 
-    if (isNaN(channelId) || isNaN(userId)) {
-      return res.status(400).json({ error: 'Invalid channel or user ID' });
-    }
+    if (!name || !name.trim()) return res.status(400).json({ error: 'Channel name is required' });
+    if (name.length > 100) return res.status(400).json({ error: 'Channel name must be 100 characters or less' });
+    if (description && description.length > 500) return res.status(400).json({ error: 'Description must be 500 characters or less' });
 
-    // Validate content and images
-    const trimmedContent = content ? content.trim() : '';
-    const images = Array.isArray(imageUrls) ? imageUrls : [];
+    const { rows: newChannel } = await pool.query(`
+      INSERT INTO guardian_posts_channels (owner_id, name, description, cover_image_url)
+      VALUES ($1, $2, $3, $4)
+      RETURNING id, owner_id, name, description, cover_image_url, created_at, updated_at
+    `, [userId, name.trim(), description || null, coverImageUrl || null]);
 
-    // At least one of content or images must be provided
-    if (trimmedContent.length === 0 && images.length === 0) {
-      return res.status(400).json({ error: 'Post must contain either text or images' });
-    }
+    if (newChannel.length === 0) return res.status(500).json({ error: 'Failed to create channel' });
 
-    if (trimmedContent.length > 2000) {
-      return res.status(400).json({ error: 'Post is too long (exceeds 2000 characters)' });
-    }
-
-    if (images.length > 4) {
-      return res.status(400).json({ error: 'Maximum 4 images per post' });
-    }
-
-    // Check channel exists and user is owner or follower
-    const { rows: channelCheck } = await pool.query(`
-      SELECT id, owner_id FROM channels WHERE id = $1
-    `, [channelId]);
-
-    if (channelCheck.length === 0) {
-      return res.status(404).json({ error: 'Channel not found' });
-    }
-
-    const isOwner = channelCheck[0].owner_id === userId;
-
-    if (!isOwner) {
-      // Check if user is a follower
-      const { rows: followerCheck } = await pool.query(`
-        SELECT 1 FROM channel_followers WHERE user_id = $1 AND channel_id = $2
-      `, [userId, channelId]);
-
-      if (followerCheck.length === 0) {
-        return res.status(403).json({ error: 'You must follow this channel to post in it' });
-      }
-    }
-
-    // Insert the post
-    const { rows: postRows } = await pool.query(`
-      INSERT INTO feed_posts (user_id, content, channel_id, on_chain, image_urls, created_at, updated_at)
-      VALUES ($1, $2, $3, FALSE, $4, NOW(), NOW())
-      RETURNING id, user_id, content, image_urls, created_at, updated_at, on_chain
-    `, [userId, JSON.stringify({ text: trimmedContent }), channelId, JSON.stringify(images)]);
-
-    if (postRows.length === 0) {
-      return res.status(500).json({ error: 'Failed to create post' });
-    }
-
-    const post = postRows[0];
-    const { rows: userRows } = await pool.query(`
-      SELECT username, verified_at, avatar_url FROM users WHERE id = $1
-    `, [userId]);
-
-    const username = userRows.length > 0 ? userRows[0].username : 'user' + userId;
-    const verified = userRows.length > 0 && !!userRows[0].verified_at;
-    const avatarUrl = userRows.length > 0 ? userRows[0].avatar_url : null;
-
-    res.status(201).json({
-      id: post.id,
-      userId: post.user_id,
-      username: username,
-      verified: verified,
-      avatarUrl: avatarUrl,
-      content: post.content,
-      imageUrls: post.image_urls || [],
-      createdAt: post.created_at,
-      updatedAt: post.updated_at,
-      isEdited: false,
-      onChain: post.on_chain || false
-    });
-  } catch (err) {
-    console.error('Error creating channel post:', err);
-    res.status(500).json({ error: 'Failed to create post' });
-  }
-});
-
-// POST /api/channels/:channelId/posts/:postId - Edit a post (owner or channel owner)
-app.post('/api/channels/:channelId/posts/:postId', async (req, res) => {
-  try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const channelId = parseInt(req.params.channelId);
-    const postId = parseInt(req.params.postId);
-    const userId = parseInt(req.user.id, 10);
-    const { content } = req.body;
-
-    if (isNaN(channelId) || isNaN(postId) || isNaN(userId)) {
-      return res.status(400).json({ error: 'Invalid channel, post, or user ID' });
-    }
-
-    // Validate content
-    if (!content || typeof content !== 'string') {
-      return res.status(400).json({ error: 'Post content is required' });
-    }
-
-    const trimmedContent = content.trim();
-    if (trimmedContent.length === 0) {
-      return res.status(400).json({ error: 'Post content cannot be empty' });
-    }
-
-    if (trimmedContent.length > 2000) {
-      return res.status(400).json({ error: 'Post is too long (exceeds 2000 characters)' });
-    }
-
-    // Get channel and post information
-    const { rows: channelCheck } = await pool.query(`
-      SELECT owner_id FROM channels WHERE id = $1
-    `, [channelId]);
-
-    if (channelCheck.length === 0) {
-      return res.status(404).json({ error: 'Channel not found' });
-    }
-
-    const { rows: postCheck } = await pool.query(`
-      SELECT user_id FROM feed_posts WHERE id = $1 AND channel_id = $2 AND deleted_at IS NULL
-    `, [postId, channelId]);
-
-    if (postCheck.length === 0) {
-      return res.status(404).json({ error: 'Post not found' });
-    }
-
-    // Check permission: post owner or channel owner
-    const postOwnerId = postCheck[0].user_id;
-    const channelOwnerId = channelCheck[0].owner_id;
-
-    if (userId !== postOwnerId && userId !== channelOwnerId) {
-      return res.status(403).json({ error: 'You do not have permission to edit this post' });
-    }
-
-    // Update the post
-    const { rows: updatedPost } = await pool.query(`
-      UPDATE feed_posts
-      SET content = $1, updated_at = NOW()
-      WHERE id = $2
-      RETURNING id, user_id, content, created_at, updated_at, on_chain
-    `, [JSON.stringify({ text: trimmedContent }), postId]);
-
-    if (updatedPost.length === 0) {
-      return res.status(500).json({ error: 'Failed to update post' });
-    }
-
-    const post = updatedPost[0];
-    const { rows: userRows } = await pool.query(`
-      SELECT username, verified_at, avatar_url FROM users WHERE id = $1
-    `, [post.user_id]);
-
-    const username = userRows.length > 0 ? userRows[0].username : 'user' + post.user_id;
-    const verified = userRows.length > 0 && !!userRows[0].verified_at;
-    const avatarUrl = userRows.length > 0 ? userRows[0].avatar_url : null;
-
-    res.status(200).json({
-      id: post.id,
-      userId: post.user_id,
-      username: username,
-      verified: verified,
-      avatarUrl: avatarUrl,
-      content: post.content,
-      createdAt: post.created_at,
-      updatedAt: post.updated_at,
-      isEdited: true,
-      onChain: post.on_chain || false
-    });
-  } catch (err) {
-    console.error('Error editing channel post:', err);
-    res.status(500).json({ error: 'Failed to edit post' });
-  }
-});
-
-// DELETE /api/channels/:channelId/posts/:postId - Delete a post (soft delete, owner or channel owner)
-app.delete('/api/channels/:channelId/posts/:postId', async (req, res) => {
-  try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const channelId = parseInt(req.params.channelId);
-    const postId = parseInt(req.params.postId);
-    const userId = parseInt(req.user.id, 10);
-
-    if (isNaN(channelId) || isNaN(postId) || isNaN(userId)) {
-      return res.status(400).json({ error: 'Invalid channel, post, or user ID' });
-    }
-
-    // Demo mode: return mock success
-    // Get channel and post information
-    const { rows: channelCheck } = await pool.query(`
-      SELECT owner_id FROM channels WHERE id = $1
-    `, [channelId]);
-
-    if (channelCheck.length === 0) {
-      return res.status(404).json({ error: 'Channel not found' });
-    }
-
-    const { rows: postCheck } = await pool.query(`
-      SELECT user_id FROM feed_posts WHERE id = $1 AND channel_id = $2 AND deleted_at IS NULL
-    `, [postId, channelId]);
-
-    if (postCheck.length === 0) {
-      return res.status(404).json({ error: 'Post not found' });
-    }
-
-    // Check permission: post owner or channel owner
-    const postOwnerId = postCheck[0].user_id;
-    const channelOwnerId = channelCheck[0].owner_id;
-
-    if (userId !== postOwnerId && userId !== channelOwnerId) {
-      return res.status(403).json({ error: 'You do not have permission to delete this post' });
-    }
-
-    // Soft delete: set deleted_at
-    await pool.query(`
-      UPDATE feed_posts
-      SET deleted_at = NOW()
-      WHERE id = $1
-    `, [postId]);
-
-    res.status(200).json({ success: true, message: 'Post deleted' });
-  } catch (err) {
-    console.error('Error deleting channel post:', err);
-    res.status(500).json({ error: 'Failed to delete post' });
-  }
-});
-
-// GET /api/channels/categories - List all available categories
-app.get('/api/channels/categories', async (req, res) => {
-  try {
-    const { rows: categories } = await pool.query(`
-      SELECT id, name, description FROM channel_categories ORDER BY name
-    `);
-    res.json({ categories });
-  } catch (err) {
-    console.error('Error fetching categories:', err);
-    res.status(500).json({ error: 'Failed to fetch categories' });
-  }
-});
-
-// POST /api/channels - Create a new channel
-app.post('/api/channels', async (req, res) => {
-  try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const userId = parseInt(req.user.id, 10);
-    if (isNaN(userId)) {
-      return res.status(400).json({ error: 'Invalid user ID' });
-    }
-
-    // Verify wallet is connected
-    const walletValidation = await validateWalletForMode(NETWORK_MODE, userId, req.user.usernode_pubkey);
-    if (!walletValidation.valid) {
-      return res.status(401).json({ error: walletValidation.error });
-    }
-
-    const { name, description, category, txHash, auditLogId } = req.body;
-
-    // Validate channel name
-    if (!name || typeof name !== 'string' || name.trim().length === 0 || name.length > 255) {
-      return res.status(400).json({ error: 'Channel name is required and must be 1-255 characters' });
-    }
-
-    // Validate description
-    if (description && (typeof description !== 'string' || description.length > 1000)) {
-      return res.status(400).json({ error: 'Description must be max 1000 characters' });
-    }
-
-    // Validate category
-    if (!category || typeof category !== 'string' || category.trim().length === 0) {
-      return res.status(400).json({ error: 'Category is required' });
-    }
-
-    // Check if category exists
-    const { rows: categoryCheck } = await pool.query(`
-      SELECT id FROM channel_categories WHERE name = $1
-    `, [category]);
-
-    if (categoryCheck.length === 0) {
-      return res.status(400).json({ error: 'Invalid channel category' });
-    }
-
-    // Validate txHash and auditLogId
-    if (!txHash || !auditLogId) {
-      return res.status(400).json({ error: 'Transaction hash and audit log ID are required' });
-    }
-
-    // Insert new channel
-    const { rows: channelRows } = await pool.query(`
-      INSERT INTO channels (name, description, owner_id, category, is_system, is_verified, is_featured)
-      VALUES ($1, $2, $3, $4, FALSE, FALSE, FALSE)
-      RETURNING id, name, description, owner_id, category, is_verified, verified_at, is_featured, is_system, created_at, updated_at
-    `, [name, description || null, userId, category]);
-
-    if (channelRows.length === 0) {
-      return res.status(500).json({ error: 'Failed to create channel' });
-    }
-
-    const channel = channelRows[0];
-
-    // Get owner username
-    const { rows: userRows } = await pool.query(`
-      SELECT username FROM users WHERE id = $1
-    `, [userId]);
-
-    const ownerUsername = (userRows.length > 0 && userRows[0].username) ? userRows[0].username : `user-${userId}`;
-
-    // Auto-follow: creator automatically follows their own channel
-    await pool.query(`
-      INSERT INTO channel_followers (user_id, channel_id, followed_at)
-      VALUES ($1, $2, NOW())
-      ON CONFLICT (user_id, channel_id) DO NOTHING
-    `, [userId, channel.id]);
-
-    // Update audit log with txHash
-    if (auditLogId) {
-      const auditStatusForChannel = 'pending';
-      await pool.query(`
-        UPDATE blockchain_audit_logs
-        SET tx_hash = $1, status = $2
-        WHERE id = $3 AND user_id = $4
-      `, [txHash, auditStatusForChannel, auditLogId, userId]);
-    }
-
+    const channel = newChannel[0];
     res.status(201).json({
       id: channel.id,
+      ownerId: channel.owner_id,
       name: channel.name,
       description: channel.description,
-      ownerId: channel.owner_id,
-      ownerUsername: ownerUsername,
-      category: channel.category,
-      isVerified: channel.is_verified,
-      verifiedAt: channel.verified_at,
-      isFeatured: channel.is_featured,
-      isSystem: channel.is_system,
+      coverImageUrl: channel.cover_image_url,
       createdAt: channel.created_at,
       updatedAt: channel.updated_at
     });
@@ -5906,76 +5560,61 @@ app.post('/api/channels', async (req, res) => {
   }
 });
 
-// PUT /api/channels/:channelId - Update a channel (owner only)
-app.put('/api/channels/:channelId', async (req, res) => {
+// PUT /api/guardian-posts/channels/:channelId - Update channel
+app.put('/api/guardian-posts/channels/:channelId', express.json({ limit: '2mb' }), async (req, res) => {
   try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
+    if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+    const userId = parseInt(req.user.id, 10);
+    const channelId = parseInt(req.params.channelId, 10);
+    const { name, description, coverImageUrl } = req.body;
+
+    const { rows: channel } = await pool.query('SELECT owner_id FROM guardian_posts_channels WHERE id = $1', [channelId]);
+    if (channel.length === 0) return res.status(404).json({ error: 'Channel not found' });
+    if (channel[0].owner_id !== userId) return res.status(403).json({ error: 'Only channel owner can edit' });
+
+    let updates = [];
+    let params = [];
+    let paramIndex = 1;
+
+    if (name !== undefined && name && name.length <= 100) {
+      updates.push(`name = $${paramIndex}`);
+      params.push(name.trim());
+      paramIndex++;
+    }
+    if (description !== undefined) {
+      if (!description || description.length <= 500) {
+        updates.push(`description = $${paramIndex}`);
+        params.push(description || null);
+        paramIndex++;
+      }
+    }
+    if (coverImageUrl !== undefined) {
+      updates.push(`cover_image_url = $${paramIndex}`);
+      params.push(coverImageUrl || null);
+      paramIndex++;
     }
 
-    const channelId = parseInt(req.params.channelId);
-    const { name, description } = req.body;
+    if (updates.length === 0) return res.status(400).json({ error: 'No valid fields to update' });
 
-    if (isNaN(channelId)) {
-      return res.status(400).json({ error: 'Invalid channel ID' });
-    }
+    updates.push(`updated_at = NOW()`);
+    params.push(channelId);
 
-    // Validate input
-    if (!name || typeof name !== 'string' || name.trim().length === 0 || name.length > 255) {
-      return res.status(400).json({ error: 'Channel name is required and must be 1-255 characters' });
-    }
-
-    if (description && (typeof description !== 'string' || description.length > 1000)) {
-      return res.status(400).json({ error: 'Description must be max 1000 characters' });
-    }
-
-    // Check if channel exists and verify ownership
-    const { rows: channelCheck } = await pool.query(`
-      SELECT id, owner_id FROM channels WHERE id = $1
-    `, [channelId]);
-
-    if (channelCheck.length === 0) {
-      return res.status(404).json({ error: 'Channel not found' });
-    }
-
-    if (channelCheck[0].owner_id !== req.user.id) {
-      return res.status(403).json({ error: 'Only the channel owner can edit this channel' });
-    }
-
-    // Update channel
     const { rows: updated } = await pool.query(`
-      UPDATE channels
-      SET name = $1, description = $2, updated_at = NOW()
-      WHERE id = $3
-      RETURNING id, name, description, owner_id, category, is_verified, verified_at, is_featured, is_system, created_at, updated_at
-    `, [name.trim(), description || null, channelId]);
+      UPDATE guardian_posts_channels
+      SET ${updates.join(', ')}
+      WHERE id = $${paramIndex}
+      RETURNING id, owner_id, name, description, cover_image_url, created_at, updated_at
+    `, params);
 
-    if (updated.length === 0) {
-      return res.status(500).json({ error: 'Failed to update channel' });
-    }
-
-    const channel = updated[0];
-
-    // Get owner username
-    const { rows: userRows } = await pool.query(`
-      SELECT username FROM users WHERE id = $1
-    `, [channel.owner_id]);
-
-    const ownerUsername = userRows.length > 0 ? userRows[0].username : null;
-
+    const ch = updated[0];
     res.json({
-      id: channel.id,
-      name: channel.name,
-      description: channel.description,
-      ownerId: channel.owner_id,
-      ownerUsername: ownerUsername,
-      category: channel.category,
-      isVerified: channel.is_verified,
-      verifiedAt: channel.verified_at,
-      isFeatured: channel.is_featured,
-      isSystem: channel.is_system,
-      createdAt: channel.created_at,
-      updatedAt: channel.updated_at
+      id: ch.id,
+      ownerId: ch.owner_id,
+      name: ch.name,
+      description: ch.description,
+      coverImageUrl: ch.cover_image_url,
+      createdAt: ch.created_at,
+      updatedAt: ch.updated_at
     });
   } catch (err) {
     console.error('Error updating channel:', err);
@@ -5983,1064 +5622,327 @@ app.put('/api/channels/:channelId', async (req, res) => {
   }
 });
 
-// DELETE /api/channels/:channelId - Delete a channel (owner only)
-app.delete('/api/channels/:channelId', async (req, res) => {
+// DELETE /api/guardian-posts/channels/:channelId - Delete channel
+app.delete('/api/guardian-posts/channels/:channelId', async (req, res) => {
   try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
+    if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+    const userId = parseInt(req.user.id, 10);
+    const channelId = parseInt(req.params.channelId, 10);
 
-    const channelId = parseInt(req.params.channelId);
+    const { rows: channel } = await pool.query('SELECT owner_id FROM guardian_posts_channels WHERE id = $1', [channelId]);
+    if (channel.length === 0) return res.status(404).json({ error: 'Channel not found' });
+    if (channel[0].owner_id !== userId) return res.status(403).json({ error: 'Only channel owner can delete' });
 
-    if (isNaN(channelId)) {
-      return res.status(400).json({ error: 'Invalid channel ID' });
-    }
-
-    // Check if channel exists and verify ownership
-    const { rows: channelCheck } = await pool.query(`
-      SELECT id, owner_id FROM channels WHERE id = $1
-    `, [channelId]);
-
-    if (channelCheck.length === 0) {
-      return res.status(404).json({ error: 'Channel not found' });
-    }
-
-    if (channelCheck[0].owner_id !== req.user.id) {
-      return res.status(403).json({ error: 'Only the channel owner can delete this channel' });
-    }
-
-    // Delete all posts in the channel first
-    await pool.query(`
-      DELETE FROM feed_posts WHERE channel_id = $1
-    `, [channelId]);
-
-    // Delete the channel
-    await pool.query(`
-      DELETE FROM channels WHERE id = $1
-    `, [channelId]);
-
-    res.json({ success: true, message: 'Channel deleted successfully' });
+    await pool.query('DELETE FROM guardian_posts_channels WHERE id = $1', [channelId]);
+    res.json({ success: true });
   } catch (err) {
     console.error('Error deleting channel:', err);
     res.status(500).json({ error: 'Failed to delete channel' });
   }
 });
 
-// GET /api/user/followed-channels - List owned channels and channels the user follows with latest post preview (deduplicated) + user contacts
-app.get('/api/user/followed-channels', async (req, res) => {
+// POST /api/guardian-posts/channels/:channelId/follow - Follow channel
+app.post('/api/guardian-posts/channels/:channelId/follow', async (req, res) => {
   try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
+    if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+    const userId = parseInt(req.user.id, 10);
+    const channelId = parseInt(req.params.channelId, 10);
 
-    // Get deduplicated channels (owned or followed)
-    const { rows: allChannels } = await pool.query(`
-      SELECT DISTINCT ON (c.id)
-             c.id, c.name, c.description, c.owner_id, c.category, c.is_verified, c.verified_at, c.is_featured, c.is_system, c.created_at, c.updated_at,
-             u.username as ownerUsername,
-             cf.followed_at,
-             (SELECT COUNT(*) FROM channel_followers WHERE channel_id = c.id)::INTEGER as followerCount,
-             fp.id as latestPostId,
-             fp.user_id as latestPostUserId,
-             fp.content as latestPostContent,
-             fp.created_at as latestPostCreatedAt,
-             pu.username as latestPostUsername
-      FROM channels c
-      LEFT JOIN users u ON c.owner_id = u.id
-      LEFT JOIN channel_followers cf ON c.id = cf.channel_id AND cf.user_id = $1
-      LEFT JOIN (
-        SELECT DISTINCT ON (channel_id) id, user_id, content, created_at, channel_id
-        FROM feed_posts
-        ORDER BY channel_id, created_at DESC
-      ) fp ON c.id = fp.channel_id
-      LEFT JOIN users pu ON fp.user_id = pu.id
-      WHERE c.owner_id = $1 OR cf.user_id = $1
-      ORDER BY c.id, cf.followed_at DESC NULLS LAST, c.created_at DESC
-    `, [req.user.id]);
+    const { rows: channel } = await pool.query('SELECT id FROM guardian_posts_channels WHERE id = $1', [channelId]);
+    if (channel.length === 0) return res.status(404).json({ error: 'Channel not found' });
 
-    const channels = allChannels.map(ch => {
-      const contentObj = ch.latestPostContent ? JSON.parse(ch.latestPostContent) : null;
-      const contentSnippet = contentObj?.text ? contentObj.text.substring(0, 100) + (contentObj.text.length > 100 ? '...' : '') : null;
-
-      return {
-        id: ch.id,
-        name: ch.name,
-        description: ch.description,
-        ownerId: ch.owner_id,
-        ownerUsername: ch.ownerUsername,
-        category: ch.category,
-        isVerified: ch.is_verified,
-        verifiedAt: ch.verified_at,
-        isFeatured: ch.is_featured,
-        isSystem: ch.is_system,
-        createdAt: ch.created_at,
-        updatedAt: ch.updated_at,
-        followerCount: parseInt(ch.followerCount) || 0,
-        followedAt: ch.followed_at,
-        isFollowing: !!ch.followed_at,
-        isOwner: ch.owner_id === req.user.id,
-        latestPost: ch.latestPostId ? {
-          id: ch.latestPostId,
-          authorUsername: ch.latestPostUsername,
-          contentSnippet: contentSnippet,
-          createdAt: ch.latestPostCreatedAt
-        } : null
-      };
-    });
-
-    // Sort channels by latest post date (most recent first)
-    channels.sort((a, b) => {
-      if (!a.latestPost && !b.latestPost) return 0;
-      if (!a.latestPost) return 1;
-      if (!b.latestPost) return -1;
-      return new Date(b.latestPost.createdAt) - new Date(a.latestPost.createdAt);
-    });
-
-    // Get user contacts
-    const { rows: userContacts } = await pool.query(`
-      SELECT uc.id, u.id as user_id, u.username, u.usernode_pubkey, u.verified_at, u.avatar_url, uc.nickname
-      FROM user_contacts uc
-      JOIN users u ON uc.contact_user_id = u.id
-      WHERE uc.user_id = $1 AND (uc.archived_by IS NULL OR NOT $1 = ANY(uc.archived_by))
-      ORDER BY u.username ASC
-    `, [req.user.id]);
-
-    const users = userContacts.map(r => ({
-      id: r.id,
-      userId: r.user_id,
-      username: r.username,
-      usernode_pubkey: r.usernode_pubkey || null,
-      nickname: r.nickname,
-      verified: !!r.verified_at,
-      avatar_url: r.avatar_url || null
-    }));
-
-    res.json({ channels, users });
-  } catch (err) {
-    console.error('Error fetching followed channels:', err);
-    res.status(500).json({ error: 'Failed to fetch followed channels' });
-  }
-});
-
-// POST /api/channels/:channelId/follow - Follow a channel
-app.post('/api/channels/:channelId/follow', async (req, res) => {
-  try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const channelId = parseInt(req.params.channelId);
-    if (isNaN(channelId)) {
-      return res.status(400).json({ error: 'Invalid channel ID' });
-    }
-
-    // Check if channel exists
-    const { rows: channelCheck } = await pool.query(`
-      SELECT id FROM channels WHERE id = $1
-    `, [channelId]);
-
-    if (channelCheck.length === 0) {
-      return res.status(404).json({ error: 'Channel not found' });
-    }
-
-    // Try to insert follower relationship
-    const { rows: result } = await pool.query(`
-      INSERT INTO channel_followers (user_id, channel_id, followed_at)
-      VALUES ($1, $2, NOW())
+    await pool.query(`
+      INSERT INTO guardian_posts_followers (user_id, channel_id)
+      VALUES ($1, $2)
       ON CONFLICT (user_id, channel_id) DO NOTHING
-      RETURNING id
-    `, [req.user.id, channelId]);
+    `, [userId, channelId]);
 
-    if (result.length === 0) {
-      return res.status(409).json({ error: 'Already following this channel' });
-    }
-
-    res.json({ success: true, message: 'Channel followed' });
+    res.json({ success: true, isFollowing: true });
   } catch (err) {
     console.error('Error following channel:', err);
     res.status(500).json({ error: 'Failed to follow channel' });
   }
 });
 
-// DELETE /api/channels/:channelId/follow - Unfollow a channel
-app.delete('/api/channels/:channelId/follow', async (req, res) => {
+// DELETE /api/guardian-posts/channels/:channelId/follow - Unfollow channel
+app.delete('/api/guardian-posts/channels/:channelId/follow', async (req, res) => {
   try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
+    if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+    const userId = parseInt(req.user.id, 10);
+    const channelId = parseInt(req.params.channelId, 10);
 
-    const channelId = parseInt(req.params.channelId);
-    if (isNaN(channelId)) {
-      return res.status(400).json({ error: 'Invalid channel ID' });
-    }
-
-    const { rows: result } = await pool.query(`
-      DELETE FROM channel_followers
-      WHERE user_id = $1 AND channel_id = $2
-      RETURNING id
-    `, [req.user.id, channelId]);
-
-    if (result.length === 0) {
-      return res.status(404).json({ error: 'Not following this channel' });
-    }
-
-    res.json({ success: true, message: 'Channel unfollowed' });
+    await pool.query('DELETE FROM guardian_posts_followers WHERE user_id = $1 AND channel_id = $2', [userId, channelId]);
+    res.json({ success: true, isFollowing: false });
   } catch (err) {
     console.error('Error unfollowing channel:', err);
     res.status(500).json({ error: 'Failed to unfollow channel' });
   }
 });
 
-// GET /api/user/pinned-channels - List user's pinned channels
-app.get('/api/user/pinned-channels', async (req, res) => {
+// GET /api/guardian-posts/channels/:channelId/articles - Fetch articles from channel
+app.get('/api/guardian-posts/channels/:channelId/articles', async (req, res) => {
   try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const { rows: channels } = await pool.query(`
-      SELECT c.id, c.name, c.description, c.owner_id, c.category, c.is_verified, c.verified_at, c.is_featured, c.is_system,
-             u.username as ownerUsername,
-             (SELECT COUNT(*) FROM channel_unread WHERE user_id = $1 AND channel_id = c.id AND unread_count > 0)::INTEGER as unreadCount
-      FROM channels c
-      JOIN pinned_channels pc ON c.id = pc.channel_id
-      LEFT JOIN users u ON c.owner_id = u.id
-      WHERE pc.user_id = $1
-      ORDER BY pc.pinned_at DESC
-    `, [req.user.id]);
-
-    res.json({
-      channels: channels.map(ch => ({
-        id: ch.id,
-        name: ch.name,
-        description: ch.description,
-        ownerId: ch.owner_id,
-        ownerUsername: ch.ownerUsername,
-        category: ch.category,
-        isVerified: ch.is_verified,
-        verifiedAt: ch.verified_at,
-        isFeatured: ch.is_featured,
-        isSystem: ch.is_system,
-        unreadCount: parseInt(ch.unreadCount) || 0
-      }))
-    });
-  } catch (err) {
-    console.error('Error fetching pinned channels:', err);
-    res.status(500).json({ error: 'Failed to fetch pinned channels' });
-  }
-});
-
-// POST /api/user/pinned-channels/:channelId - Pin a channel
-app.post('/api/user/pinned-channels/:channelId', async (req, res) => {
-  try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const channelId = parseInt(req.params.channelId);
-
-    await pool.query(`
-      INSERT INTO pinned_channels (user_id, channel_id)
-      VALUES ($1, $2)
-      ON CONFLICT DO NOTHING
-    `, [req.user.id, channelId]);
-
-    res.json({ success: true });
-  } catch (err) {
-    console.error('Error pinning channel:', err);
-    res.status(500).json({ error: 'Failed to pin channel' });
-  }
-});
-
-// ============= BLOCKCHAIN API ENDPOINTS =============
-
-app.put('/api/user/network-mode', async (req, res) => {
-  try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const { networkMode } = req.body;
-    if (!['devnet', 'testnet', 'real_testnet', 'mainnet'].includes(networkMode)) {
-      return res.status(400).json({ error: 'Invalid input: networkMode must be "testnet", "devnet", or "mainnet"' });
-    }
-
-    const storedMode = networkMode === 'real_testnet' ? 'testnet' : networkMode;
-    const skipSignatureValue = storedMode === 'devnet' ? true : false;
-
-    await pool.query(
-      `UPDATE users SET network_mode = $1, skip_signature_in_devnet = $2 WHERE id = $3`,
-      [storedMode, skipSignatureValue, req.user.id]
-    );
-    res.json({ networkMode: storedMode, status: 'updated' });
-  } catch (err) {
-    console.error('Error updating network-mode:', err);
-    res.status(500).json({ error: 'Failed to update network-mode' });
-  }
-});
-
-app.put('/api/config/network-mode', async (req, res) => {
-  try {
-    const { networkMode } = req.body;
-    if (!['devnet', 'testnet', 'real_testnet', 'mainnet'].includes(networkMode)) {
-      return res.status(400).json({ error: 'Invalid networkMode' });
-    }
-
-    const storedMode = networkMode === 'real_testnet' ? 'testnet' : networkMode;
-    NETWORK_MODE = storedMode;
-
-    await pool.query(
-      `INSERT INTO config_state (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2`,
-      ['NETWORK_MODE', storedMode]
-    );
-
-    res.json({ networkMode: storedMode, status: 'updated' });
-  } catch (err) {
-    console.error('Error updating config network-mode:', err);
-    res.status(500).json({ error: 'Failed to update config' });
-  }
-});
-
-app.get('/api/active_chain', async (req, res) => {
-  try {
-    res.json({
-      chainId: NETWORK_MODE === 'testnet' ? 'testnet' : NETWORK_MODE === 'devnet' ? 'devnet' : 'unknown',
-      networkMode: NETWORK_MODE,
-      rpcUrl: NODE_RPC_URL || null,
-      appPubkey: APP_PUBKEY
-    });
-  } catch (err) {
-    console.error('Error getting active chain:', err);
-    res.status(500).json({ error: 'Failed to get active chain' });
-  }
-});
-
-app.get('/api/health/rpc', async (req, res) => {
-  try {
-    const health = await checkRPCHealth();
-    res.json(health);
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to check RPC health', details: err.message });
-  }
-});
-
-app.put('/api/config/rpc-endpoint', async (req, res) => {
-  try {
-    const { rpcUrl } = req.body;
-
-    if (!rpcUrl) {
-      return res.status(400).json({ error: 'RPC URL is required' });
-    }
-
-    try {
-      new URL(rpcUrl);
-    } catch (err) {
-      return res.status(400).json({ error: 'Invalid RPC URL format', details: err.message });
-    }
-
-    NODE_RPC_URL = rpcUrl;
-
-    await pool.query(
-      `INSERT INTO config_state (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2`,
-      ['NODE_RPC_URL', rpcUrl]
-    );
-
-    const health = await checkRPCHealth();
-
-    res.json({
-      rpcUrl: rpcUrl,
-      status: health.reachable ? 'healthy' : 'unreachable',
-      health: health
-    });
-  } catch (err) {
-    console.error('Error updating RPC endpoint:', err);
-    res.status(500).json({ error: 'Failed to update RPC endpoint', details: err.message });
-  }
-});
-
-app.post('/api/tokens/send', async (req, res) => {
-  try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const { recipientAddress, amount, memo, networkMode } = req.body;
-
-    if (!recipientAddress || !amount) {
-      return res.status(400).json({ error: 'Recipient address and amount are required' });
-    }
-
-    if (isNaN(amount) || amount <= 0) {
-      return res.status(400).json({ error: 'Amount must be a positive number' });
-    }
-
-    // Use user's networkMode if provided, otherwise fall back to server NETWORK_MODE
-    const effectiveNetworkMode = networkMode || NETWORK_MODE;
-
-    if (effectiveNetworkMode === 'devnet') {
-      const demo = {
-        success: true,
-        txHash: `demo_token_${Date.now()}`,
-        amount: amount,
-        recipient: recipientAddress,
-        mode: 'devnet',
-        message: 'Demo token transfer (no actual transaction)'
-      };
-
-      return res.json(demo);
-    }
-
-    if (effectiveNetworkMode === 'testnet') {
-      const payload = {
-        sender: req.user.usernode_pubkey || APP_PUBKEY,
-        recipient: recipientAddress,
-        amount: amount,
-        memo: memo || null,
-        timestamp: new Date().toISOString()
-      };
-
-      console.log(`[TOKEN SEND] User ${req.user.id} requesting token transfer to ${recipientAddress} for ${amount}`);
-
-      const txHash = `pending_token_${Date.now()}`;
-
-      // Map effectiveNetworkMode to network_origin value
-      let networkOriginValue = 'testnet';
-      if (effectiveNetworkMode === 'devnet') {
-        networkOriginValue = 'database';
-      } else if (effectiveNetworkMode === 'testnet' && !NODE_RPC_URL) {
-        networkOriginValue = 'bridge';
-      }
-
-      try {
-        const auditRes = await pool.query(`
-          INSERT INTO blockchain_audit_logs (
-            user_id, message_type, tx_hash, transaction_payload, status, user_pubkey, action_timestamp, network_origin, created_at, updated_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
-          RETURNING id
-        `, [
-          req.user.id,
-          'token_transfer',
-          txHash,
-          JSON.stringify(payload),
-          'pending',
-          req.user.usernode_pubkey || APP_PUBKEY,
-          new Date().toISOString(),
-          networkOriginValue
-        ]);
-
-        const auditLogId = auditRes.rows[0]?.id;
-
-        if (auditLogId) {
-          // Use startChainPoller for testnet tokens (matches message/group behavior)
-          startChainPoller('testnet', txHash, auditLogId).catch(err => {
-            console.error('[TOKEN SEND] Error starting chain poller:', err);
-          });
-        }
-      } catch (auditErr) {
-        console.error('[TOKEN SEND] Error creating audit log:', auditErr);
-      }
-
-      return res.json({
-        success: true,
-        txHash: txHash,
-        amount: amount,
-        recipient: recipientAddress,
-        status: 'pending',
-        mode: 'testnet'
-      });
-    }
-
-    res.status(400).json({ error: 'Invalid network mode' });
-  } catch (err) {
-    console.error('[TOKEN SEND] Error:', err);
-    res.status(500).json({ error: 'Failed to send tokens', details: err.message });
-  }
-});
-
-app.get('/api/blockchain-audit/:auditLogId', async (req, res) => {
-  try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const { auditLogId } = req.params;
-
-    const result = await pool.query(`
-      SELECT
-        bal.id,
-        bal.user_id,
-        bal.message_type,
-        bal.tx_hash,
-        bal.status,
-        bal.error_message,
-        bal.created_at,
-        bal.network_origin,
-        bal.transaction_payload,
-        g.name as group_name
-      FROM blockchain_audit_logs bal
-      LEFT JOIN groups g ON bal.group_id = g.id
-      WHERE bal.id = $1 AND bal.user_id = $2
-    `, [auditLogId, req.user.id]);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Audit log not found' });
-    }
-
-    const row = result.rows[0];
-    const explorerUrl = getExplorerUrl(row.tx_hash, row.status);
-
-    // Format response with proper camelCase aliases for frontend compatibility
-    const responseData = {
-      id: row.id,
-      userId: row.user_id,
-      messageType: row.message_type,
-      txHash: row.tx_hash,
-      status: row.status,
-      errorMessage: row.error_message,
-      createdAt: row.created_at,
-      networkOrigin: row.network_origin,
-      transactionPayload: row.transaction_payload,
-      groupName: row.group_name,
-      explorerUrl: explorerUrl,
-      blockchainStatus: {
-        status: row.status,
-        txHash: row.tx_hash,
-        networkOrigin: row.network_origin,
-        explorerUrl: explorerUrl
-      }
-    };
-
-    res.json(responseData);
-  } catch (err) {
-    console.error('Error fetching blockchain audit log:', err);
-    res.status(500).json({ error: 'Failed to fetch audit log', details: err.message });
-  }
-});
-
-app.get('/api/user/latest-transaction/:messageType', async (req, res) => {
-  try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const { messageType } = req.params;
-    const validTypes = ['message', 'group', 'channel', 'token_transfer'];
-
-    if (!validTypes.includes(messageType)) {
-      return res.status(400).json({ error: 'Invalid message type' });
-    }
-
-    const result = await pool.query(`
-      SELECT
-        bal.id,
-        bal.user_id,
-        bal.message_type,
-        bal.tx_hash,
-        bal.status,
-        bal.confirmed_at,
-        bal.error_message,
-        bal.created_at,
-        bal.network_origin,
-        bal.transaction_payload,
-        g.name as group_name,
-        m.recipient_id,
-        u.username as recipient_username
-      FROM blockchain_audit_logs bal
-      LEFT JOIN groups g ON bal.group_id = g.id
-      LEFT JOIN messages m ON bal.message_id = m.id
-      LEFT JOIN users u ON m.recipient_id = u.id
-      WHERE bal.user_id = $1 AND bal.message_type = $2
-      ORDER BY bal.created_at DESC
-      LIMIT 1
-    `, [req.user.id, messageType]);
-
-    if (result.rows.length === 0) {
-      return res.json({ transaction: null });
-    }
-
-    const row = result.rows[0];
-    const explorerUrl = getExplorerUrl(row.tx_hash, row.status);
-
-    // Format response with camelCase aliases for frontend compatibility
-    const responseData = {
-      ...row,
-      // Add camelCase aliases for frontend compatibility
-      auditLogId: row.id,
-      createdAt: row.created_at,
-      confirmedAt: row.confirmed_at,
-      errorMessage: row.error_message,
-      txHash: row.tx_hash,
-      messageType: row.message_type,
-      networkOrigin: row.network_origin,
-      explorerUrl: explorerUrl,
-      blockchainStatus: {
-        status: row.status,
-        txHash: row.tx_hash,
-        networkOrigin: row.network_origin,
-        explorerUrl: explorerUrl
-      }
-    };
-
-    res.json(responseData);
-  } catch (err) {
-    console.error('Error fetching latest transaction:', err);
-    res.status(500).json({ error: 'Failed to fetch transaction', details: err.message });
-  }
-});
-
-app.post('/api/blockchain-audit/:auditLogId/retry', async (req, res) => {
-  try {
-    const { auditLogId } = req.params;
-
-    const auditResult = await pool.query(`
-      SELECT tx_hash, status, user_id FROM blockchain_audit_logs WHERE id = $1
-    `, [auditLogId]);
-
-    if (auditResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Audit log not found' });
-    }
-
-    const audit = auditResult.rows[0];
-
-    if (audit.status === 'confirmed') {
-      return res.json({ status: 'already_confirmed', txHash: audit.tx_hash });
-    }
-
-    console.log(`[RETRY] Retrying transaction ${audit.tx_hash} for audit log ${auditLogId}`);
-
-    await pool.query(`
-      UPDATE blockchain_audit_logs SET status = 'pending', updated_at = NOW()
-      WHERE id = $1
-    `, [auditLogId]);
-
-    setImmediate(() => monitorBlockchainStatus(auditLogId, audit.tx_hash));
-
-    res.json({ status: 'retry_initiated', auditLogId: auditLogId });
-  } catch (err) {
-    console.error('Error retrying transaction:', err);
-    res.status(500).json({ error: 'Failed to retry transaction', details: err.message });
-  }
-});
-
-app.post('/api/transactions/create-pending-audit', async (req, res) => {
-  try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const { messageType, txHash, payload } = req.body;
-
-    if (!messageType || !txHash) {
-      return res.status(400).json({ error: 'messageType and txHash are required' });
-    }
-
-    const validTypes = ['message', 'group', 'channel', 'token_transfer'];
-    if (!validTypes.includes(messageType)) {
-      return res.status(400).json({ error: 'Invalid messageType' });
-    }
-
-    const result = await pool.query(`
-      INSERT INTO blockchain_audit_logs (
-        user_id, message_type, tx_hash, transaction_payload, status, user_pubkey, action_timestamp, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-      RETURNING id
-    `, [
-      req.user.id,
-      messageType,
-      txHash,
-      JSON.stringify(payload || {}),
-      'pending',
-      req.user.usernode_pubkey || APP_PUBKEY,
-      new Date().toISOString()
-    ]);
-
-    const auditLogId = result.rows[0].id;
-
-    setImmediate(() => monitorBlockchainStatus(auditLogId, txHash));
-
-    res.json({ auditLogId: auditLogId, status: 'pending' });
-  } catch (err) {
-    console.error('Error creating pending audit:', err);
-    res.status(500).json({ error: 'Failed to create audit log', details: err.message });
-  }
-});
-
-app.post('/api/blockchain-audit/:auditLogId/register-tx', async (req, res) => {
-  try {
-    const { auditLogId } = req.params;
-    const { txHash } = req.body;
-
-    if (!txHash) {
-      return res.status(400).json({ error: 'txHash is required' });
-    }
-
-    await pool.query(`
-      UPDATE blockchain_audit_logs
-      SET tx_hash = $1, updated_at = NOW()
-      WHERE id = $2
-    `, [txHash, auditLogId]);
-
-    console.log(`[REGISTER TX] Registered txHash ${txHash} for audit log ${auditLogId}`);
-
-    setImmediate(() => monitorBlockchainStatus(auditLogId, txHash));
-
-    res.json({ status: 'registered', auditLogId: auditLogId, txHash: txHash });
-  } catch (err) {
-    console.error('Error registering transaction:', err);
-    res.status(500).json({ error: 'Failed to register transaction', details: err.message });
-  }
-});
-
-app.get('/api/transactions-by-user', async (req, res) => {
-  try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const { limit = 50, offset = 0 } = req.query;
-    const parsedLimit = Math.min(parseInt(limit) || 50, 500);
-    const parsedOffset = Math.max(parseInt(offset) || 0, 0);
-
-    const result = await pool.query(`
-      SELECT
-        bal.id,
-        bal.user_id,
-        bal.message_type,
-        bal.tx_hash,
-        bal.status,
-        bal.created_at,
-        bal.network_origin,
-        bal.error_message,
-        g.name as group_name,
-        u.id as recipient_id,
-        u.username as recipient_username
-      FROM blockchain_audit_logs bal
-      LEFT JOIN groups g ON bal.group_id = g.id
-      LEFT JOIN messages m ON bal.message_id = m.id
-      LEFT JOIN conversations c ON m.conversation_id = c.id
-      LEFT JOIN users u ON u.id = CASE WHEN c.participant_a_id = bal.user_id THEN c.participant_b_id ELSE c.participant_a_id END
-      WHERE bal.user_id = $1
-      ORDER BY bal.created_at DESC
-      LIMIT $2 OFFSET $3
-    `, [req.user.id, parsedLimit, parsedOffset]);
-
-    const countResult = await pool.query(`
-      SELECT COUNT(*) as total FROM blockchain_audit_logs WHERE user_id = $1
-    `, [req.user.id]);
-
-    const transactions = result.rows.map(row => ({
-      id: row.id,
-      userId: row.user_id,
-      messageType: row.message_type,
-      txHash: row.tx_hash,
-      status: row.status,
-      createdAt: row.created_at,
-      networkOrigin: row.network_origin,
-      errorMessage: row.error_message,
-      recipientId: row.recipient_id,
-      recipientUsername: row.recipient_username,
-      groupName: row.group_name,
-      explorerUrl: getExplorerUrl(row.tx_hash, row.status),
-      blockchainStatus: {
-        status: row.status,
-        txHash: row.tx_hash,
-        networkOrigin: row.network_origin,
-        explorerUrl: getExplorerUrl(row.tx_hash, row.status)
-      }
-    }));
-
-    res.json({
-      transactions: transactions,
-      total: parseInt(countResult.rows[0].total),
-      limit: parsedLimit,
-      offset: parsedOffset
-    });
-  } catch (err) {
-    console.error('Error fetching user transactions:', err);
-    res.status(500).json({ error: 'Failed to fetch transactions', details: err.message });
-  }
-});
-
-app.get('/explorer-api/:chainId/transactions/:txHash', async (req, res) => {
-  try {
-    const { chainId, txHash } = req.params;
-
-    console.log(`[EXPLORER PROXY] Proxying explorer request for chainId=${chainId}, txHash=${txHash}`);
-
-    if (!EXPLORER_URL || !EXPLORER_HEALTHY) {
-      return res.status(503).json({
-        error: 'Explorer not available',
-        status: 'unknown',
-        blockNumber: null
-      });
-    }
-
-    return new Promise((resolve) => {
-      const explorerPath = EXPLORER_FORMAT === 'api/tx'
-        ? `/api/tx/${txHash}`
-        : `/api/transaction/${txHash}`;
-
-      const fullUrl = `${EXPLORER_URL}${explorerPath}`;
-      const url = new URL(fullUrl);
-      const isHttps = url.protocol === 'https:';
-      const client = isHttps ? https : http;
-
-      const options = {
-        hostname: url.hostname,
-        port: url.port,
-        path: url.pathname + (url.search || ''),
-        method: 'GET',
-        timeout: 5000
-      };
-
-      const req = client.request(options, (res) => {
-        let data = '';
-        res.on('data', chunk => { data += chunk; });
-        res.on('end', () => {
-          try {
-            const parsed = JSON.parse(data);
-            const result = {
-              status: parsed.status || parsed.state || 'unknown',
-              blockNumber: parsed.blockNumber || parsed.block || null,
-              timestamp: parsed.timestamp || null,
-              raw: parsed
-            };
-            resolve(res.json(result));
-          } catch (err) {
-            resolve(res.status(500).json({ error: 'Failed to parse explorer response' }));
-          }
-        });
-      });
-
-      req.on('error', (err) => {
-        console.warn(`[EXPLORER PROXY] Error proxying explorer request:`, err.message);
-        resolve(res.status(503).json({
-          error: 'Explorer request failed',
-          details: err.message,
-          status: 'unknown'
-        }));
-      });
-
-      req.on('timeout', () => {
-        req.destroy();
-        resolve(res.status(504).json({
-          error: 'Explorer request timeout',
-          status: 'unknown'
-        }));
-      });
-
-      req.end();
-    });
-  } catch (err) {
-    console.error('[EXPLORER PROXY] Error:', err);
-    res.status(500).json({ error: 'Failed to proxy explorer request', details: err.message });
-  }
-});
-
-// ============= END BLOCKCHAIN API ENDPOINTS =============
-
-// DELETE /api/user/pinned-channels/:channelId - Unpin a channel
-app.delete('/api/user/pinned-channels/:channelId', async (req, res) => {
-  try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const channelId = parseInt(req.params.channelId);
-
-    await pool.query(`
-      DELETE FROM pinned_channels WHERE user_id = $1 AND channel_id = $2
-    `, [req.user.id, channelId]);
-
-    res.json({ success: true });
-  } catch (err) {
-    console.error('Error unpinning channel:', err);
-    res.status(500).json({ error: 'Failed to unpin channel' });
-  }
-});
-
-// PUT /api/channels/:channelId/read - Mark channel as read
-app.put('/api/channels/:channelId/read', async (req, res) => {
-  try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const channelId = parseInt(req.params.channelId);
-    const { lastReadPostId } = req.body;
-
-    await pool.query(`
-      INSERT INTO channel_unread (user_id, channel_id, unread_count, last_read_post_id, last_read_at)
-      VALUES ($1, $2, 0, $3, NOW())
-      ON CONFLICT (user_id, channel_id)
-      DO UPDATE SET unread_count = 0, last_read_post_id = $3, last_read_at = NOW()
-    `, [req.user.id, channelId, lastReadPostId || null]);
-
-    res.json({ success: true, unreadCount: 0 });
-  } catch (err) {
-    console.error('Error marking channel as read:', err);
-    res.status(500).json({ error: 'Failed to mark channel as read' });
-  }
-});
-
-// GET /api/channels/:channelId/unread - Get unread count for a channel
-app.get('/api/channels/:channelId/unread', async (req, res) => {
-  try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const channelId = parseInt(req.params.channelId);
-
-    const { rows } = await pool.query(`
-      SELECT unread_count, last_read_at FROM channel_unread
-      WHERE user_id = $1 AND channel_id = $2
-    `, [req.user.id, channelId]);
-
-    const unreadInfo = rows.length > 0 ? rows[0] : { unread_count: 0, last_read_at: null };
-
-    res.json({
-      unreadCount: unreadInfo.unread_count || 0,
-      lastReadAt: unreadInfo.last_read_at
-    });
-  } catch (err) {
-    console.error('Error fetching unread count:', err);
-    res.status(500).json({ error: 'Failed to fetch unread count' });
-  }
-});
-
-// ===== FEED ENDPOINTS =====
-
-// Helper function to fetch link preview metadata
-async function fetchLinkPreview(url) {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000);
-
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; Guardian/1.0)'
-      },
-      signal: controller.signal
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) return null;
-
-    const html = await response.text();
-    const titleMatch = html.match(/<meta\s+property=["']og:title["']\s+content=["']([^"']+)["']/i);
-    const imageMatch = html.match(/<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']/i);
-
-    return {
-      title: titleMatch ? titleMatch[1] : null,
-      image: imageMatch ? imageMatch[1] : null
-    };
-  } catch (err) {
-    return null;
-  }
-}
-
-// GET /api/feed/posts - Fetch paginated posts from followed channels
-// When no channel_id is provided, fetches posts from followed channels only
-app.get('/api/feed/posts', async (req, res) => {
-  try {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
+    if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+    const userId = parseInt(req.user.id, 10);
+    const channelId = parseInt(req.params.channelId, 10);
     const limit = Math.min(parseInt(req.query.limit || 50), 100);
     const offset = parseInt(req.query.offset || 0);
-    const channelId = req.query.channel_id ? parseInt(req.query.channel_id) : null;
 
-    // Build query based on whether channel_id is provided
-    let whereClause = '';
-    let params = [req.user.id, limit, offset];
+    const { rows: channelCheck } = await pool.query('SELECT owner_id FROM guardian_posts_channels WHERE id = $1', [channelId]);
+    if (channelCheck.length === 0) return res.status(404).json({ error: 'Channel not found' });
 
-    if (channelId) {
-      whereClause = 'WHERE fp.channel_id = $3';
-      params = [req.user.id, limit, offset, channelId];
-    } else {
-      // When no channel_id provided, fetch posts from followed channels only
-      whereClause = `WHERE fp.channel_id IN (
-        SELECT channel_id FROM channel_followers WHERE user_id = $1
-      )`;
+    const isOwner = channelCheck[0].owner_id === userId;
+    const { rows: isFollower } = await pool.query(
+      'SELECT 1 FROM guardian_posts_followers WHERE user_id = $1 AND channel_id = $2',
+      [userId, channelId]
+    );
+
+    let statusFilter = '';
+    if (!isOwner) {
+      statusFilter = 'AND gpa.status = \'published\'';
     }
 
-    // Fetch posts (optionally filtered by channel, or by followed channels)
-    const { rows: posts } = await pool.query(`
+    const { rows: articles } = await pool.query(`
       SELECT
-        fp.id,
-        fp.user_id,
-        fp.content,
-        fp.image_urls,
-        fp.created_at,
-        fp.updated_at,
-        fp.on_chain,
-        fp.channel_id,
+        gpa.id,
+        gpa.channel_id,
+        gpa.author_id,
+        gpa.title,
+        gpa.body,
+        gpa.image_url,
+        gpa.status,
+        gpa.created_at,
+        gpa.updated_at,
         u.username,
-        u.verified_at,
-        u.avatar_url,
-        c.name as channel_name
-      FROM feed_posts fp
-      JOIN users u ON u.id = fp.user_id
-      LEFT JOIN channels c ON fp.channel_id = c.id
-      ${whereClause}
-      ORDER BY fp.created_at DESC
+        u.avatar_url
+      FROM guardian_posts_articles gpa
+      JOIN users u ON gpa.author_id = u.id
+      WHERE gpa.channel_id = $1 ${statusFilter}
+      ORDER BY gpa.created_at DESC
       LIMIT $2 OFFSET $3
-    `, channelId ? [req.user.id, limit, offset, channelId] : params);
+    `, [channelId, limit, offset]);
 
-    const resultPosts = posts.map(post => ({
-      id: post.id,
-      userId: post.user_id,
-      username: post.username,
-      verified: !!post.verified_at,
-      avatarUrl: post.avatar_url,
-      content: post.content,
-      imageUrls: post.image_urls || [],
-      createdAt: post.created_at,
-      updatedAt: post.updated_at,
-      isEdited: post.updated_at && post.created_at && (new Date(post.updated_at) - new Date(post.created_at)) > 1000,
-      onChain: post.on_chain,
-      isMilestone: post.user_id === -1,
-      channelName: post.channel_name
-    }));
-
-    // Build count query based on whether channel_id is provided
-    let countQuery = '';
-    let countParams = [];
-
-    if (channelId) {
-      countQuery = 'SELECT COUNT(*) as count FROM feed_posts WHERE channel_id = $1';
-      countParams = [channelId];
-    } else {
-      countQuery = `SELECT COUNT(*) as count FROM feed_posts WHERE channel_id IN (
-        SELECT channel_id FROM channel_followers WHERE user_id = $1
-      )`;
-      countParams = [req.user.id];
-    }
-
-    const { rows: countResult } = await pool.query(countQuery, countParams);
-    const total = parseInt(countResult[0].count);
+    const countQuery = `
+      SELECT COUNT(*)::INTEGER as count
+      FROM guardian_posts_articles gpa
+      WHERE gpa.channel_id = $1 ${statusFilter}
+    `;
+    const { rows: countResult } = await pool.query(countQuery, [channelId]);
+    const total = countResult[0].count;
     const hasMore = offset + limit < total;
 
     res.json({
-      posts: resultPosts,
+      articles: articles.map(a => ({
+        id: a.id,
+        channelId: a.channel_id,
+        authorId: a.author_id,
+        title: a.title,
+        body: a.body,
+        imageUrl: a.image_url,
+        status: a.status,
+        authorName: a.username,
+        authorAvatar: a.avatar_url,
+        createdAt: a.created_at,
+        updatedAt: a.updated_at
+      })),
       hasMore
     });
   } catch (err) {
-    console.error('Error fetching feed posts:', err);
-    res.status(500).json({ error: 'Failed to fetch feed' });
+    console.error('Error fetching channel articles:', err);
+    res.status(500).json({ error: 'Failed to fetch articles' });
   }
 });
 
-// ===== FEED COMMENTS ENDPOINTS =====
+// POST /api/guardian-posts/channels/:channelId/articles - Create article
+app.post('/api/guardian-posts/channels/:channelId/articles', express.json({ limit: '2mb' }), async (req, res) => {
+  try {
+    if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+    const userId = parseInt(req.user.id, 10);
+    const channelId = parseInt(req.params.channelId, 10);
+    const { title, body, imageUrl, status } = req.body;
 
+    if (!title || !title.trim()) return res.status(400).json({ error: 'Title is required' });
+    if (title.length > 200) return res.status(400).json({ error: 'Title must be 200 characters or less' });
+    if (!body || !body.trim()) return res.status(400).json({ error: 'Body is required' });
+    const validStatus = status === 'draft' || status === 'published' ? status : 'draft';
 
+    const { rows: channelCheck } = await pool.query('SELECT id FROM guardian_posts_channels WHERE id = $1', [channelId]);
+    if (channelCheck.length === 0) return res.status(404).json({ error: 'Channel not found' });
 
+    const { rows: newArticle } = await pool.query(`
+      INSERT INTO guardian_posts_articles (channel_id, author_id, title, body, image_url, status)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING id, channel_id, author_id, title, body, image_url, status, created_at, updated_at
+    `, [channelId, userId, title.trim(), body.trim(), imageUrl || null, validStatus]);
 
+    if (newArticle.length === 0) return res.status(500).json({ error: 'Failed to create article' });
 
+    const article = newArticle[0];
+    res.status(201).json({
+      id: article.id,
+      channelId: article.channel_id,
+      authorId: article.author_id,
+      title: article.title,
+      body: article.body,
+      imageUrl: article.image_url,
+      status: article.status,
+      createdAt: article.created_at,
+      updatedAt: article.updated_at
+    });
+  } catch (err) {
+    console.error('Error creating article:', err);
+    res.status(500).json({ error: 'Failed to create article' });
+  }
+});
 
+// PUT /api/guardian-posts/articles/:articleId - Update article
+app.put('/api/guardian-posts/articles/:articleId', express.json({ limit: '2mb' }), async (req, res) => {
+  try {
+    if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+    const userId = parseInt(req.user.id, 10);
+    const articleId = parseInt(req.params.articleId, 10);
+    const { title, body, imageUrl, status } = req.body;
+
+    const { rows: article } = await pool.query('SELECT author_id FROM guardian_posts_articles WHERE id = $1', [articleId]);
+    if (article.length === 0) return res.status(404).json({ error: 'Article not found' });
+    if (article[0].author_id !== userId) return res.status(403).json({ error: 'Only author can edit article' });
+
+    let updates = [];
+    let params = [];
+    let paramIndex = 1;
+
+    if (title !== undefined && title && title.length <= 200) {
+      updates.push(`title = $${paramIndex}`);
+      params.push(title.trim());
+      paramIndex++;
+    }
+    if (body !== undefined && body && body.length > 0) {
+      updates.push(`body = $${paramIndex}`);
+      params.push(body.trim());
+      paramIndex++;
+    }
+    if (imageUrl !== undefined) {
+      updates.push(`image_url = $${paramIndex}`);
+      params.push(imageUrl || null);
+      paramIndex++;
+    }
+    if (status !== undefined && (status === 'draft' || status === 'published')) {
+      updates.push(`status = $${paramIndex}`);
+      params.push(status);
+      paramIndex++;
+    }
+
+    if (updates.length === 0) return res.status(400).json({ error: 'No valid fields to update' });
+
+    updates.push(`updated_at = NOW()`);
+    params.push(articleId);
+
+    const { rows: updated } = await pool.query(`
+      UPDATE guardian_posts_articles
+      SET ${updates.join(', ')}
+      WHERE id = $${paramIndex}
+      RETURNING id, channel_id, author_id, title, body, image_url, status, created_at, updated_at
+    `, params);
+
+    if (updated.length === 0) return res.status(500).json({ error: 'Failed to update article' });
+
+    const art = updated[0];
+    res.json({
+      id: art.id,
+      channelId: art.channel_id,
+      authorId: art.author_id,
+      title: art.title,
+      body: art.body,
+      imageUrl: art.image_url,
+      status: art.status,
+      createdAt: art.created_at,
+      updatedAt: art.updated_at
+    });
+  } catch (err) {
+    console.error('Error updating article:', err);
+    res.status(500).json({ error: 'Failed to update article' });
+  }
+});
+
+// DELETE /api/guardian-posts/articles/:articleId - Delete article
+app.delete('/api/guardian-posts/articles/:articleId', async (req, res) => {
+  try {
+    if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+    const userId = parseInt(req.user.id, 10);
+    const articleId = parseInt(req.params.articleId, 10);
+
+    const { rows: article } = await pool.query('SELECT author_id FROM guardian_posts_articles WHERE id = $1', [articleId]);
+    if (article.length === 0) return res.status(404).json({ error: 'Article not found' });
+    if (article[0].author_id !== userId) return res.status(403).json({ error: 'Only author can delete article' });
+
+    await pool.query('DELETE FROM guardian_posts_articles WHERE id = $1', [articleId]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting article:', err);
+    res.status(500).json({ error: 'Failed to delete article' });
+  }
+});
+
+// GET /api/guardian-posts/articles/:articleId - Get full article
+app.get('/api/guardian-posts/articles/:articleId', async (req, res) => {
+  try {
+    if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+    const userId = parseInt(req.user.id, 10);
+    const articleId = parseInt(req.params.articleId, 10);
+
+    const { rows: article } = await pool.query(`
+      SELECT
+        gpa.id,
+        gpa.channel_id,
+        gpa.author_id,
+        gpa.title,
+        gpa.body,
+        gpa.image_url,
+        gpa.status,
+        gpa.created_at,
+        gpa.updated_at,
+        gpc.owner_id as "channel_owner_id",
+        u.username,
+        u.avatar_url
+      FROM guardian_posts_articles gpa
+      JOIN guardian_posts_channels gpc ON gpa.channel_id = gpc.id
+      JOIN users u ON gpa.author_id = u.id
+      WHERE gpa.id = $1
+    `, [articleId]);
+
+    if (article.length === 0) return res.status(404).json({ error: 'Article not found' });
+
+    const art = article[0];
+    const isAuthor = art.author_id === userId;
+    const isChannelOwner = art.channel_owner_id === userId;
+    const { rows: isFollower } = await pool.query(
+      'SELECT 1 FROM guardian_posts_followers WHERE user_id = $1 AND channel_id = $2',
+      [userId, art.channel_id]
+    );
+
+    // Check visibility
+    if (!isAuthor && !isChannelOwner && (art.status !== 'published' || (!isFollower || isFollower.length === 0))) {
+      return res.status(403).json({ error: 'You do not have access to this article' });
+    }
+
+    res.json({
+      id: art.id,
+      channelId: art.channel_id,
+      authorId: art.author_id,
+      title: art.title,
+      body: art.body,
+      imageUrl: art.image_url,
+      status: art.status,
+      authorName: art.username,
+      authorAvatar: art.avatar_url,
+      createdAt: art.created_at,
+      updatedAt: art.updated_at
+    });
+  } catch (err) {
+    console.error('Error fetching article:', err);
+    res.status(500).json({ error: 'Failed to fetch article' });
+  }
+});
 
 
 // PUT /api/feed/posts/:postId - Edit a feed post's text (owner only)
@@ -8067,243 +6969,106 @@ async function start() {
       )
     `);
 
-    // Create channels table (public - for organizing feed posts by channel)
+    // ===== GUARDIAN POSTS TABLES =====
+    // Create guardian_posts_channels table
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS channels (
+      CREATE TABLE IF NOT EXISTS guardian_posts_channels (
         id BIGSERIAL PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        description TEXT,
-        is_system BOOLEAN DEFAULT FALSE,
+        owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name VARCHAR(100) NOT NULL,
+        description VARCHAR(500),
+        cover_image_url TEXT,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )
     `);
     await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_channels_is_system_created
-        ON channels(is_system DESC, created_at DESC)
+      CREATE INDEX IF NOT EXISTS idx_gp_channels_owner_id
+        ON guardian_posts_channels(owner_id)
     `);
 
-    // Add columns to channels table for new features
+    // Create guardian_posts_articles table
     await pool.query(`
-      ALTER TABLE channels
-      ADD COLUMN IF NOT EXISTS owner_id INTEGER DEFAULT -1,
-      ADD COLUMN IF NOT EXISTS category VARCHAR(100) DEFAULT 'General',
-      ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT FALSE,
-      ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ,
-      ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT FALSE
-    `);
-
-    // Create additional indexes
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_channels_is_featured
-        ON channels(is_featured DESC, created_at DESC)
-    `);
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_channels_category
-        ON channels(category, is_featured DESC)
-    `);
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_channels_owner_id
-        ON channels(owner_id)
-    `);
-
-    // Create pinned_channels table
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS pinned_channels (
+      CREATE TABLE IF NOT EXISTS guardian_posts_articles (
         id BIGSERIAL PRIMARY KEY,
-        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        channel_id BIGINT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
-        pinned_at TIMESTAMPTZ DEFAULT NOW(),
-        UNIQUE(user_id, channel_id)
+        channel_id BIGINT NOT NULL REFERENCES guardian_posts_channels(id) ON DELETE CASCADE,
+        author_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        title VARCHAR(200) NOT NULL,
+        body TEXT NOT NULL,
+        image_url TEXT,
+        status VARCHAR(20) NOT NULL DEFAULT 'draft',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
       )
     `);
     await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_pinned_channels_user_id
-        ON pinned_channels(user_id, pinned_at DESC)
+      CREATE INDEX IF NOT EXISTS idx_gp_articles_channel_id
+        ON guardian_posts_articles(channel_id)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_gp_articles_author_id
+        ON guardian_posts_articles(author_id)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_gp_articles_status_created
+        ON guardian_posts_articles(status, created_at DESC)
     `);
 
-    // Create channel_unread table
+    // Create guardian_posts_followers table
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS channel_unread (
+      CREATE TABLE IF NOT EXISTS guardian_posts_followers (
         id BIGSERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        channel_id BIGINT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
-        unread_count INTEGER DEFAULT 0,
-        last_read_post_id BIGINT,
-        last_read_at TIMESTAMPTZ,
-        UNIQUE(user_id, channel_id)
-      )
-    `);
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_channel_unread_user_channel
-        ON channel_unread(user_id, channel_id)
-    `);
-
-    // Create channel_followers table
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS channel_followers (
-        id BIGSERIAL PRIMARY KEY,
-        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        channel_id BIGINT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+        channel_id BIGINT NOT NULL REFERENCES guardian_posts_channels(id) ON DELETE CASCADE,
         followed_at TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE(user_id, channel_id)
       )
     `);
     await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_channel_followers_user_id
-        ON channel_followers(user_id, followed_at DESC)
-    `);
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_channel_followers_channel_id
-        ON channel_followers(channel_id)
+      CREATE INDEX IF NOT EXISTS idx_gp_followers_user_channel
+        ON guardian_posts_followers(user_id, channel_id)
     `);
 
-    // Create channel_categories table
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS channel_categories (
-        id SERIAL PRIMARY KEY,
-        name VARCHAR(100) NOT NULL UNIQUE,
-        description TEXT,
-        created_at TIMESTAMPTZ DEFAULT NOW()
-      )
-    `);
-
-    // Create or ensure Guardian Updates system channel exists with new fields
-    const guardianChannelResult = await pool.query(`
-      SELECT id FROM channels WHERE name = 'Guardian Updates' AND is_system = TRUE
-    `);
-    let guardianChannelId;
-    if (guardianChannelResult.rows.length === 0) {
-      const insertResult = await pool.query(`
-        INSERT INTO channels (name, description, is_system, owner_id, is_verified, verified_at, is_featured, category)
-        VALUES ('Guardian Updates', 'System notifications and milestones', TRUE, -1, TRUE, NOW(), TRUE, 'Updates')
-        RETURNING id
-      `);
-      guardianChannelId = insertResult.rows[0].id;
-    } else {
-      guardianChannelId = guardianChannelResult.rows[0].id;
-      // Update existing Guardian Updates channel with new fields
+    // Staging: seed guardian posts data
+    if (IS_STAGING) {
+      // Create test channels
       await pool.query(`
-        UPDATE channels
-        SET owner_id = -1, is_verified = TRUE, verified_at = NOW(), is_featured = TRUE, category = 'Updates'
-        WHERE id = $1
-      `, [guardianChannelId]);
-    }
-
-    // Seed categories if empty
-    const categoriesCheck = await pool.query(`SELECT COUNT(*) FROM channel_categories`);
-    if (parseInt(categoriesCheck.rows[0].count) === 0) {
-      await pool.query(`
-        INSERT INTO channel_categories (name, description)
+        INSERT INTO guardian_posts_channels (owner_id, name, description, created_at)
         VALUES
-          ('Updates', 'System and important updates'),
-          ('General', 'General discussion'),
-          ('Announcements', 'Official announcements'),
-          ('Community', 'Community-driven content')
-      `);
-    }
-
-    // Staging: seed featured channels and example data
-    if (process.env.USERNODE_ENV === 'staging') {
-      await pool.query(`
-        INSERT INTO channels (name, description, owner_id, category, is_featured)
-        VALUES
-          ('Community Highlights', 'Best posts from the community', -1, 'Community', TRUE),
-          ('Announcements', 'Important network announcements', -1, 'Announcements', TRUE),
-          ('[Staging] General Discussion', 'Staging demo general channel', -1, 'General', FALSE),
-          ('[Staging] Dev Updates', 'Staging demo dev channel', -1, 'Updates', FALSE)
-        ON CONFLICT (name) DO NOTHING
-      `);
-    }
-
-    // Create feed_posts table (public - feed posts are shared with all users)
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS feed_posts (
-        id BIGSERIAL PRIMARY KEY,
-        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        content JSONB NOT NULL,
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-      )
-    `);
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_feed_posts_created
-        ON feed_posts(created_at DESC)
-    `);
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_feed_posts_user_id
-        ON feed_posts(user_id)
-    `);
-
-
-    // Add channel_id column to feed_posts if it doesn't exist
-    await pool.query(`
-      ALTER TABLE feed_posts
-      ADD COLUMN IF NOT EXISTS channel_id BIGINT REFERENCES channels(id) ON DELETE CASCADE
-    `);
-
-    // Create index on channel_id and created_at for efficient post queries
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_feed_posts_channel_created
-        ON feed_posts(channel_id, created_at DESC)
-    `);
-
-    // Backfill existing posts to Guardian Updates channel if they don't have a channel
-    await pool.query(`
-      UPDATE feed_posts
-      SET channel_id = $1
-      WHERE channel_id IS NULL
-    `, [guardianChannelId]);
-
-    // Add on_chain column to feed_posts if it doesn't exist
-    await pool.query(`
-      ALTER TABLE feed_posts
-      ADD COLUMN IF NOT EXISTS on_chain BOOLEAN DEFAULT FALSE
-    `);
-
-    // Add deleted_at column to feed_posts for soft deletes
-    await pool.query(`
-      ALTER TABLE feed_posts
-      ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ
-    `);
-
-    // Add image_urls column to feed_posts for image attachments
-    await pool.query(`
-      ALTER TABLE feed_posts
-      ADD COLUMN IF NOT EXISTS image_urls JSONB DEFAULT '[]'
-    `);
-
-    // Staging: seed example posts if in staging mode
-    if (process.env.USERNODE_ENV === 'staging') {
-      // Seed a system post
-      await pool.query(`
-        INSERT INTO feed_posts (user_id, content, channel_id, image_urls, created_at)
-        VALUES (-1, $1, $2, $3, NOW())
+          (1, 'Tech Tips', 'Sharing programming tricks and best practices', NOW()),
+          (1, 'Life Updates', 'Personal thoughts and life moments', NOW()),
+          (2, 'Design Inspiration', 'Beautiful design references and inspiration', NOW())
         ON CONFLICT DO NOTHING
-      `, [JSON.stringify({ type: 'text', text: '[Staging] Guardian Updates - Initial System Message' }), guardianChannelId, JSON.stringify([])]);
-
-      // Find a staging channel to seed with sample posts
-      const { rows: stagingChannels } = await pool.query(`
-        SELECT id FROM channels WHERE name = '[Staging] General Discussion' LIMIT 1
       `);
 
-      if (stagingChannels.length > 0) {
-        const stagingChannelId = stagingChannels[0].id;
-
-        // Seed a sample post with text only
+      // Create test articles
+      const { rows: channels } = await pool.query(`SELECT id, owner_id FROM guardian_posts_channels LIMIT 3`);
+      if (channels.length >= 1) {
         await pool.query(`
-          INSERT INTO feed_posts (user_id, content, channel_id, image_urls, created_at)
-          VALUES (1, $1, $2, $3, NOW() - INTERVAL '1 hour')
+          INSERT INTO guardian_posts_articles (channel_id, author_id, title, body, status, created_at)
+          VALUES
+            ($1, $2, 'Getting Started with Node.js', 'Node.js is a great runtime...', 'published', NOW() - INTERVAL '5 days'),
+            ($1, $2, 'React Hooks Guide', 'Hooks are a powerful feature...', 'published', NOW() - INTERVAL '3 days'),
+            ($1, $2, 'Draft: Advanced Patterns', 'This is a work in progress...', 'draft', NOW() - INTERVAL '1 day')
           ON CONFLICT DO NOTHING
-        `, [JSON.stringify({ text: '[Staging] Welcome to the demo channel! This is a test post.' }), stagingChannelId, JSON.stringify([])]);
-
-        // Seed a sample post with an image
-        const sampleImage = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVR42mP8z8DwHwMxxGAIwAAADkkBkMTjF4UAAAAASUVORK5CYII=';
+        `, [channels[0].id, channels[0].owner_id]);
+      }
+      if (channels.length >= 2) {
         await pool.query(`
-          INSERT INTO feed_posts (user_id, content, channel_id, image_urls, created_at)
-          VALUES (1, $1, $2, $3, NOW() - INTERVAL '30 minutes')
+          INSERT INTO guardian_posts_articles (channel_id, author_id, title, body, status, created_at)
+          VALUES
+            ($1, $2, 'Design Process Deep Dive', 'Understanding user-centered design...', 'published', NOW() - INTERVAL '2 days')
           ON CONFLICT DO NOTHING
-        `, [JSON.stringify({ text: '[Staging] Check out this sample image in a channel post!' }), stagingChannelId, JSON.stringify([sampleImage])]);
+        `, [channels[1].id, channels[1].owner_id]);
+      }
+
+      // Create follow relationships
+      if (channels.length >= 2) {
+        await pool.query(`
+          INSERT INTO guardian_posts_followers (user_id, channel_id, followed_at)
+          VALUES (3, $1, NOW()), (3, $2, NOW())
+          ON CONFLICT DO NOTHING
+        `, [channels[0].id, channels[1].id]);
       }
     }
 

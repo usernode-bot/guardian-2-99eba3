@@ -828,6 +828,12 @@
           </svg>
           Group
         </button>
+        <button id="navGuardianPostsBtn" onclick="showGuardianPostsView(); toggleSidebar()" class="w-full text-left px-4 py-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-cyan-300">
+          <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          Guardian Posts
+        </button>
       </nav>
 
       <div id="sidebarUser" class="border-t border-zinc-200 dark:border-zinc-800">
@@ -1150,6 +1156,88 @@
               <!-- Filled by renderYourContactsSection -->
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Guardian Posts View -->
+      <div id="guardianPostsView" class="hidden flex flex-col flex-1 overflow-hidden">
+        <!-- Tab Navigation -->
+        <div class="flex border-b border-zinc-200 dark:border-zinc-700">
+          <button onclick="switchGuardianTab('my')" class="flex-1 px-4 py-3 text-sm font-medium text-cyan-600 dark:text-cyan-400 border-b-2 border-cyan-600 dark:border-cyan-500 hover:text-cyan-700 dark:hover:text-cyan-300 transition" id="guardianTabMy">
+            My Channels
+          </button>
+          <button onclick="switchGuardianTab('discover')" class="flex-1 px-4 py-3 text-sm font-medium text-zinc-700 dark:text-zinc-400 border-b-2 border-transparent hover:text-zinc-900 dark:hover:text-zinc-100 transition" id="guardianTabDiscover">
+            Discover
+          </button>
+        </div>
+
+        <!-- Tab Content: My Channels -->
+        <div id="guardianTabMyChannels" class="flex-1 flex flex-col overflow-hidden">
+          <!-- Header with Create Button -->
+          <div class="p-4 flex items-center justify-between border-b border-zinc-200 dark:border-zinc-700">
+            <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">My Channels</h2>
+            <button onclick="openGuardianChannelModal()" class="px-3 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg text-sm font-medium transition">
+              + Create
+            </button>
+          </div>
+          <!-- Channels List -->
+          <div id="guardianMyChannelsList" class="flex-1 overflow-y-auto p-4 space-y-3">
+            <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading channels...</div>
+          </div>
+        </div>
+
+        <!-- Tab Content: Discover Channels -->
+        <div id="guardianTabDiscoverChannels" class="hidden flex-1 flex flex-col overflow-hidden">
+          <!-- Search and Header -->
+          <div class="p-4 border-b border-zinc-200 dark:border-zinc-700">
+            <input type="text" id="guardianChannelSearch" placeholder="Search channels..." oninput="guardianChannelSearch()" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 transition" />
+          </div>
+          <!-- Channels List -->
+          <div id="guardianDiscoverChannelsList" class="flex-1 overflow-y-auto p-4 space-y-3">
+            <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading channels...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Guardian Channel Detail View -->
+      <div id="guardianChannelDetailView" class="hidden flex flex-col flex-1 overflow-hidden">
+        <!-- Header -->
+        <div class="p-4 border-b border-zinc-200 dark:border-zinc-700 flex items-center justify-between">
+          <div class="flex-1">
+            <button onclick="backToGuardianChannels()" class="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 text-sm mb-2">← Back</button>
+            <h2 id="guardianChannelDetailName" class="text-lg font-semibold text-zinc-900 dark:text-white">Channel Name</h2>
+            <p id="guardianChannelDetailDesc" class="text-sm text-zinc-600 dark:text-zinc-400">Channel description</p>
+            <p id="guardianChannelDetailFollowers" class="text-xs text-zinc-500 dark:text-zinc-500 mt-1">0 followers</p>
+          </div>
+          <button onclick="openGuardianArticleModal()" class="px-3 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg text-sm font-medium transition">
+            + Article
+          </button>
+        </div>
+        <!-- Articles List -->
+        <div id="guardianArticlesList" class="flex-1 overflow-y-auto p-4 space-y-3">
+          <div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Loading articles...</div>
+        </div>
+      </div>
+
+      <!-- Guardian Article Detail View -->
+      <div id="guardianArticleDetailView" class="hidden flex flex-col flex-1 overflow-hidden">
+        <div class="p-4 border-b border-zinc-200 dark:border-zinc-700">
+          <button onclick="backToGuardianArticles()" class="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 text-sm mb-2">← Back</button>
+          <h2 id="guardianArticleTitle" class="text-2xl font-bold text-zinc-900 dark:text-white mb-2">Article Title</h2>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <img id="guardianArticleAuthorAvatar" src="" alt="Author" class="w-8 h-8 rounded-full bg-cyan-500" />
+              <div>
+                <p id="guardianArticleAuthor" class="text-sm font-medium text-zinc-900 dark:text-white">Author</p>
+                <p id="guardianArticleDate" class="text-xs text-zinc-500">Date</p>
+              </div>
+            </div>
+            <div id="guardianArticleActions" class="space-x-2"></div>
+          </div>
+        </div>
+        <div id="guardianArticleContent" class="flex-1 overflow-y-auto p-4">
+          <div id="guardianArticleBody" class="prose dark:prose-invert max-w-none text-zinc-900 dark:text-zinc-100 whitespace-pre-wrap">Article body</div>
+          <img id="guardianArticleImage" src="" alt="Article image" class="mt-4 max-w-full rounded-lg hidden" />
         </div>
       </div>
 
@@ -1833,6 +1921,63 @@
       <div class="p-6 border-t border-zinc-300 dark:border-zinc-700 flex gap-2">
         <button onclick="closeDeleteChannelConfirm()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100 font-medium">Cancel</button>
         <button onclick="submitDeleteChannel()" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 dark:hover:bg-red-500 text-white rounded-lg transition font-medium">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Guardian Posts: Create/Edit Channel Modal -->
+  <div id="guardianChannelModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
+      <div class="p-6 border-b border-zinc-300 dark:border-zinc-700">
+        <h2 id="guardianChannelModalTitle" class="text-lg font-semibold text-zinc-900 dark:text-white">Create Channel</h2>
+      </div>
+      <div class="p-6 space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-zinc-900 dark:text-white mb-2">Channel Name</label>
+          <input id="guardianChannelName" type="text" maxlength="100" placeholder="Enter channel name" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-zinc-900 dark:text-white mb-2">Description</label>
+          <textarea id="guardianChannelDescription" maxlength="500" placeholder="Enter channel description" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 h-20 resize-none"></textarea>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-zinc-900 dark:text-white mb-2">Cover Image (optional)</label>
+          <input id="guardianChannelImageInput" type="file" accept="image/*" class="w-full text-sm text-zinc-500" />
+          <img id="guardianChannelImagePreview" src="" alt="Preview" class="mt-2 max-w-full h-32 object-cover rounded-lg hidden" />
+        </div>
+      </div>
+      <div class="p-6 border-t border-zinc-300 dark:border-zinc-700 flex gap-2">
+        <button onclick="closeGuardianChannelModal()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100 font-medium">Cancel</button>
+        <button onclick="submitGuardianChannel()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Guardian Posts: Create/Edit Article Modal -->
+  <div id="guardianArticleModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
+      <div class="p-6 border-b border-zinc-300 dark:border-zinc-700">
+        <h2 id="guardianArticleModalTitle" class="text-lg font-semibold text-zinc-900 dark:text-white">Create Article</h2>
+      </div>
+      <div class="p-6 space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-zinc-900 dark:text-white mb-2">Title</label>
+          <input id="guardianArticleTitle" type="text" maxlength="200" placeholder="Enter article title" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-zinc-900 dark:text-white mb-2">Body</label>
+          <textarea id="guardianArticleBody" placeholder="Enter article body" class="w-full px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 h-32 resize-none"></textarea>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-zinc-900 dark:text-white mb-2">Image (optional)</label>
+          <input id="guardianArticleImageInput" type="file" accept="image/*" class="w-full text-sm text-zinc-500" />
+          <img id="guardianArticleImagePreview" src="" alt="Preview" class="mt-2 max-w-full h-32 object-cover rounded-lg hidden" />
+        </div>
+      </div>
+      <div class="p-6 border-t border-zinc-300 dark:border-zinc-700 flex gap-2">
+        <button onclick="closeGuardianArticleModal()" class="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 hover:bg-zinc-400 dark:hover:bg-zinc-600 rounded-lg transition text-zinc-900 dark:text-zinc-100 font-medium">Cancel</button>
+        <button onclick="submitGuardianArticleDraft()" class="flex-1 px-4 py-2 bg-zinc-600 hover:bg-zinc-700 dark:hover:bg-zinc-500 text-white rounded-lg transition font-medium text-sm">Save Draft</button>
+        <button onclick="submitGuardianArticlePublish()" class="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 dark:hover:bg-cyan-500 text-white rounded-lg transition font-medium text-sm">Publish</button>
       </div>
     </div>
   </div>
@@ -3446,6 +3591,7 @@
         'messages': document.getElementById('navMessagesBtn'),
         'contacts': document.getElementById('navContactsBtn'),
         'groups': document.getElementById('navGroupsBtn'),
+        'guardianposts': document.getElementById('navGuardianPostsBtn'),
         'settings': document.getElementById('navSettingsBtn'),
         'profile': document.getElementById('navProfileBtn')
       };
@@ -10388,6 +10534,383 @@
         }
       } catch (err) {
         console.error('[VISIBILITY] Error:', err);
+      }
+    }
+
+    // ===== GUARDIAN POSTS FUNCTIONS =====
+
+    let guardianCurrentChannelId = null;
+    let guardianCurrentArticleId = null;
+    let guardianMyChannels = [];
+    let guardianDiscoverChannels = [];
+    let guardianChannelArticles = [];
+
+    async function showGuardianPostsView() {
+      updateMenuHighlight('guardianposts');
+      document.getElementById('messagesView').classList.add('hidden');
+      document.getElementById('conversationsView').classList.add('hidden');
+      document.getElementById('chatView').classList.add('hidden');
+      document.getElementById('contactsView').classList.add('hidden');
+      document.getElementById('groupsView').classList.add('hidden');
+      document.getElementById('profileView').classList.add('hidden');
+      document.getElementById('guardianPostsView').classList.remove('hidden');
+      document.getElementById('guardianChannelDetailView').classList.add('hidden');
+      document.getElementById('guardianArticleDetailView').classList.add('hidden');
+      document.getElementById('inputFooter').classList.add('hidden');
+      document.getElementById('header').classList.remove('header-chat-fixed');
+      document.getElementById('headerTitle').textContent = 'Guardian Posts';
+      document.getElementById('headerPageLabel').textContent = 'Posts';
+      document.getElementById('backBtnContainer').classList.add('hidden');
+      document.getElementById('menuBtn').classList.remove('hidden');
+
+      switchGuardianTab('my');
+    }
+
+    async function switchGuardianTab(tab) {
+      if (tab === 'my') {
+        document.getElementById('guardianTabMy').classList.add('text-cyan-600', 'dark:text-cyan-400', 'border-cyan-600', 'dark:border-cyan-500');
+        document.getElementById('guardianTabMy').classList.remove('text-zinc-700', 'dark:text-zinc-400', 'border-transparent');
+        document.getElementById('guardianTabMyChannels').classList.remove('hidden');
+        document.getElementById('guardianTabDiscover').classList.remove('text-cyan-600', 'dark:text-cyan-400', 'border-cyan-600', 'dark:border-cyan-500');
+        document.getElementById('guardianTabDiscover').classList.add('text-zinc-700', 'dark:text-zinc-400', 'border-transparent');
+        document.getElementById('guardianTabDiscoverChannels').classList.add('hidden');
+        await loadGuardianMyChannels();
+      } else {
+        document.getElementById('guardianTabDiscover').classList.add('text-cyan-600', 'dark:text-cyan-400', 'border-cyan-600', 'dark:border-cyan-500');
+        document.getElementById('guardianTabDiscover').classList.remove('text-zinc-700', 'dark:text-zinc-400', 'border-transparent');
+        document.getElementById('guardianTabDiscoverChannels').classList.remove('hidden');
+        document.getElementById('guardianTabMy').classList.remove('text-cyan-600', 'dark:text-cyan-400', 'border-cyan-600', 'dark:border-cyan-500');
+        document.getElementById('guardianTabMy').classList.add('text-zinc-700', 'dark:text-zinc-400', 'border-transparent');
+        document.getElementById('guardianTabMyChannels').classList.add('hidden');
+        await loadGuardianDiscoverChannels();
+      }
+    }
+
+    async function loadGuardianMyChannels() {
+      try {
+        const data = await apiCall('/api/guardian-posts/channels/my');
+        if (!data || !data.channels) {
+          document.getElementById('guardianMyChannelsList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Failed to load channels</div>';
+          return;
+        }
+        guardianMyChannels = data.channels;
+        if (guardianMyChannels.length === 0) {
+          document.getElementById('guardianMyChannelsList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">No channels yet. Create one to get started!</div>';
+        } else {
+          document.getElementById('guardianMyChannelsList').innerHTML = guardianMyChannels.map(ch => renderGuardianChannelCard(ch, 'my')).join('');
+        }
+      } catch (err) {
+        console.error('Error loading my channels:', err);
+        showToast('Failed to load channels', 'error');
+      }
+    }
+
+    async function loadGuardianDiscoverChannels(search = '') {
+      try {
+        const params = new URLSearchParams({ limit: 50, offset: 0 });
+        if (search) params.append('search', search);
+        const data = await apiCall(`/api/guardian-posts/channels/discover?${params}`);
+        if (!data || !data.channels) {
+          document.getElementById('guardianDiscoverChannelsList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Failed to load channels</div>';
+          return;
+        }
+        guardianDiscoverChannels = data.channels;
+        if (guardianDiscoverChannels.length === 0) {
+          document.getElementById('guardianDiscoverChannelsList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">No channels found</div>';
+        } else {
+          document.getElementById('guardianDiscoverChannelsList').innerHTML = guardianDiscoverChannels.map(ch => renderGuardianChannelCard(ch, 'discover')).join('');
+        }
+      } catch (err) {
+        console.error('Error loading discover channels:', err);
+        showToast('Failed to load channels', 'error');
+      }
+    }
+
+    function renderGuardianChannelCard(channel, view) {
+      const name = escapeHtml(channel.name);
+      const desc = escapeHtml(channel.description || '');
+      const followers = channel.followerCount || 0;
+      const articles = channel.articleCount || 0;
+      const owner = escapeHtml(channel.ownerUsername || 'Unknown');
+
+      if (view === 'my') {
+        return `
+          <div class="p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg border border-zinc-200 dark:border-zinc-700">
+            <h3 class="font-semibold text-zinc-900 dark:text-white">${name}</h3>
+            <p class="text-sm text-zinc-600 dark:text-zinc-400 mt-1">${desc}</p>
+            <div class="flex justify-between items-center mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+              <span>${followers} followers • ${articles} articles</span>
+              <button onclick="openGuardianChannel(${channel.id})" class="px-2 py-1 bg-cyan-600 hover:bg-cyan-700 text-white rounded text-xs font-medium transition">View</button>
+            </div>
+          </div>
+        `;
+      } else {
+        const isFollowing = channel.isFollowing;
+        return `
+          <div class="p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg border border-zinc-200 dark:border-zinc-700">
+            <div class="flex justify-between items-start">
+              <div class="flex-1">
+                <h3 class="font-semibold text-zinc-900 dark:text-white">${name}</h3>
+                <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">by ${owner}</p>
+              </div>
+              <button onclick="toggleGuardianFollow(${channel.id}, ${isFollowing})" class="px-2 py-1 text-xs font-medium transition rounded ${isFollowing ? 'bg-zinc-300 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100' : 'bg-cyan-600 hover:bg-cyan-700 text-white'}">${isFollowing ? 'Following' : 'Follow'}</button>
+            </div>
+            <p class="text-sm text-zinc-600 dark:text-zinc-400 mt-2">${desc}</p>
+            <div class="flex justify-between items-center mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+              <span>${followers} followers • ${articles} articles</span>
+              <button onclick="openGuardianChannel(${channel.id})" class="px-2 py-1 bg-cyan-600 hover:bg-cyan-700 text-white rounded text-xs font-medium transition">View</button>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    async function openGuardianChannel(channelId) {
+      guardianCurrentChannelId = channelId;
+      document.getElementById('guardianPostsView').classList.add('hidden');
+      document.getElementById('guardianChannelDetailView').classList.remove('hidden');
+      await loadGuardianChannelDetails(channelId);
+    }
+
+    async function loadGuardianChannelDetails(channelId) {
+      try {
+        // Find channel in lists
+        let channel = guardianMyChannels.find(ch => ch.id === channelId) || guardianDiscoverChannels.find(ch => ch.id === channelId);
+        if (!channel) {
+          showToast('Channel not found', 'error');
+          return;
+        }
+
+        document.getElementById('guardianChannelDetailName').textContent = escapeHtml(channel.name);
+        document.getElementById('guardianChannelDetailDesc').textContent = escapeHtml(channel.description || '');
+        document.getElementById('guardianChannelDetailFollowers').textContent = (channel.followerCount || 0) + ' followers';
+
+        await loadGuardianChannelArticles(channelId);
+      } catch (err) {
+        console.error('Error loading channel details:', err);
+        showToast('Failed to load channel', 'error');
+      }
+    }
+
+    async function loadGuardianChannelArticles(channelId) {
+      try {
+        const data = await apiCall(`/api/guardian-posts/channels/${channelId}/articles?limit=50&offset=0`);
+        if (!data || !data.articles) {
+          document.getElementById('guardianArticlesList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">Failed to load articles</div>';
+          return;
+        }
+        guardianChannelArticles = data.articles;
+        if (guardianChannelArticles.length === 0) {
+          document.getElementById('guardianArticlesList').innerHTML = '<div class="text-center py-8 text-zinc-600 dark:text-zinc-500">No articles yet</div>';
+        } else {
+          document.getElementById('guardianArticlesList').innerHTML = guardianChannelArticles.map(art => renderGuardianArticlePreview(art)).join('');
+        }
+      } catch (err) {
+        console.error('Error loading articles:', err);
+        showToast('Failed to load articles', 'error');
+      }
+    }
+
+    function renderGuardianArticlePreview(article) {
+      const title = escapeHtml(article.title);
+      const body = escapeHtml(article.body.substring(0, 150) + (article.body.length > 150 ? '...' : ''));
+      const author = escapeHtml(article.authorName);
+      const date = new Date(article.createdAt).toLocaleDateString();
+      const status = article.status === 'draft' ? '<span class="text-xs bg-zinc-300 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 px-2 py-1 rounded">Draft</span>' : '';
+
+      return `
+        <div class="p-3 bg-zinc-100 dark:bg-zinc-800 rounded-lg border border-zinc-200 dark:border-zinc-700 cursor-pointer hover:border-cyan-400 dark:hover:border-cyan-600 transition" onclick="openGuardianArticle(${article.id})">
+          <div class="flex justify-between items-start">
+            <div class="flex-1">
+              <h4 class="font-semibold text-zinc-900 dark:text-white">${title}</h4>
+              <p class="text-sm text-zinc-600 dark:text-zinc-400 mt-1">${body}</p>
+            </div>
+            ${status}
+          </div>
+          <div class="flex items-center justify-between mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+            <span>${author} • ${date}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    async function openGuardianArticle(articleId) {
+      guardianCurrentArticleId = articleId;
+      document.getElementById('guardianChannelDetailView').classList.add('hidden');
+      document.getElementById('guardianArticleDetailView').classList.remove('hidden');
+      await loadGuardianArticleDetail(articleId);
+    }
+
+    async function loadGuardianArticleDetail(articleId) {
+      try {
+        const data = await apiCall(`/api/guardian-posts/articles/${articleId}`);
+        if (!data) {
+          showToast('Article not found', 'error');
+          return;
+        }
+
+        document.getElementById('guardianArticleTitle').textContent = escapeHtml(data.title);
+        document.getElementById('guardianArticleAuthor').textContent = escapeHtml(data.authorName);
+        document.getElementById('guardianArticleDate').textContent = new Date(data.createdAt).toLocaleDateString();
+        if (data.authorAvatar) {
+          document.getElementById('guardianArticleAuthorAvatar').src = data.authorAvatar;
+        }
+        document.getElementById('guardianArticleBody').textContent = data.body;
+
+        if (data.imageUrl) {
+          const img = document.getElementById('guardianArticleImage');
+          img.src = data.imageUrl;
+          img.classList.remove('hidden');
+        } else {
+          document.getElementById('guardianArticleImage').classList.add('hidden');
+        }
+
+        // Show edit/delete buttons if author
+        const actionsDiv = document.getElementById('guardianArticleActions');
+        actionsDiv.innerHTML = '';
+        // (Edit/delete will be added in next phase)
+      } catch (err) {
+        console.error('Error loading article:', err);
+        showToast('Failed to load article', 'error');
+      }
+    }
+
+    function backToGuardianChannels() {
+      document.getElementById('guardianChannelDetailView').classList.add('hidden');
+      document.getElementById('guardianArticleDetailView').classList.add('hidden');
+      document.getElementById('guardianPostsView').classList.remove('hidden');
+      guardianCurrentChannelId = null;
+    }
+
+    function backToGuardianArticles() {
+      document.getElementById('guardianArticleDetailView').classList.add('hidden');
+      document.getElementById('guardianChannelDetailView').classList.remove('hidden');
+      guardianCurrentArticleId = null;
+    }
+
+    async function toggleGuardianFollow(channelId, isFollowing) {
+      try {
+        if (isFollowing) {
+          await apiCall(`/api/guardian-posts/channels/${channelId}/follow`, { method: 'DELETE' });
+        } else {
+          await apiCall(`/api/guardian-posts/channels/${channelId}/follow`, { method: 'POST' });
+        }
+        await loadGuardianDiscoverChannels();
+        showToast(isFollowing ? 'Unfollowed' : 'Followed', 'success');
+      } catch (err) {
+        console.error('Error toggling follow:', err);
+        showToast('Failed to update follow status', 'error');
+      }
+    }
+
+    function guardianChannelSearch() {
+      const search = document.getElementById('guardianChannelSearch').value;
+      loadGuardianDiscoverChannels(search);
+    }
+
+    function openGuardianChannelModal() {
+      document.getElementById('guardianChannelModalTitle').textContent = 'Create Channel';
+      document.getElementById('guardianChannelName').value = '';
+      document.getElementById('guardianChannelDescription').value = '';
+      document.getElementById('guardianChannelImageInput').value = '';
+      document.getElementById('guardianChannelImagePreview').classList.add('hidden');
+      document.getElementById('guardianChannelModal').classList.remove('hidden');
+    }
+
+    function closeGuardianChannelModal() {
+      document.getElementById('guardianChannelModal').classList.add('hidden');
+    }
+
+    function openGuardianArticleModal() {
+      document.getElementById('guardianArticleModalTitle').textContent = 'Create Article';
+      document.getElementById('guardianArticleTitle').value = '';
+      document.getElementById('guardianArticleBody').value = '';
+      document.getElementById('guardianArticleImageInput').value = '';
+      document.getElementById('guardianArticleImagePreview').classList.add('hidden');
+      document.getElementById('guardianArticleModal').classList.remove('hidden');
+    }
+
+    function closeGuardianArticleModal() {
+      document.getElementById('guardianArticleModal').classList.add('hidden');
+    }
+
+    async function submitGuardianChannel() {
+      const name = document.getElementById('guardianChannelName').value.trim();
+      const description = document.getElementById('guardianChannelDescription').value.trim();
+      const imageInput = document.getElementById('guardianChannelImageInput');
+
+      if (!name) {
+        showToast('Channel name is required', 'error');
+        return;
+      }
+
+      let coverImageUrl = null;
+      if (imageInput.files.length > 0) {
+        const file = imageInput.files[0];
+        coverImageUrl = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target.result);
+          reader.readAsDataURL(file);
+        });
+      }
+
+      try {
+        const response = await apiCall('/api/guardian-posts/channels', {
+          method: 'POST',
+          body: JSON.stringify({ name, description, coverImageUrl })
+        });
+        showToast('Channel created!', 'success');
+        closeGuardianChannelModal();
+        await loadGuardianMyChannels();
+      } catch (err) {
+        console.error('Error creating channel:', err);
+        showToast('Failed to create channel', 'error');
+      }
+    }
+
+    async function submitGuardianArticleDraft() {
+      await submitGuardianArticle('draft');
+    }
+
+    async function submitGuardianArticlePublish() {
+      await submitGuardianArticle('published');
+    }
+
+    async function submitGuardianArticle(status) {
+      const title = document.getElementById('guardianArticleTitle').value.trim();
+      const body = document.getElementById('guardianArticleBody').value.trim();
+      const imageInput = document.getElementById('guardianArticleImageInput');
+
+      if (!title) {
+        showToast('Title is required', 'error');
+        return;
+      }
+      if (!body) {
+        showToast('Body is required', 'error');
+        return;
+      }
+
+      let imageUrl = null;
+      if (imageInput.files.length > 0) {
+        const file = imageInput.files[0];
+        imageUrl = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target.result);
+          reader.readAsDataURL(file);
+        });
+      }
+
+      try {
+        await apiCall(`/api/guardian-posts/channels/${guardianCurrentChannelId}/articles`, {
+          method: 'POST',
+          body: JSON.stringify({ title, body, imageUrl, status })
+        });
+        showToast(status === 'draft' ? 'Draft saved!' : 'Article published!', 'success');
+        closeGuardianArticleModal();
+        await loadGuardianChannelArticles(guardianCurrentChannelId);
+      } catch (err) {
+        console.error('Error creating article:', err);
+        showToast('Failed to create article', 'error');
       }
     }
 
