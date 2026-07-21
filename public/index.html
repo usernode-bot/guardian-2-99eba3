@@ -3030,6 +3030,11 @@
       };
     }
 
+    function getNetworkMode() {
+      const settings = loadSettings();
+      return settings.networkMode || null;
+    }
+
     function saveSettings(settings) {
       if (!currentUser) return;
       // Ensure networkMode is included when saving
@@ -10868,10 +10873,11 @@
 
       try {
         const settings = loadSettings();
+        const networkMode = getNetworkMode();
 
         // Phase 1: Request wallet signature if in testnet mode
         let txHash = null;
-        if (settings.networkMode === 'testnet' || settings.networkMode === 'real_testnet') {
+        if (networkMode === 'testnet' || networkMode === 'real_testnet') {
           try {
             console.log('[CHANNEL] Testnet mode detected, requesting wallet signature...');
             const txResult = await executeWalletSignature('channel', {
@@ -10898,7 +10904,7 @@
           name,
           description: description || null,
           coverImageUrl: coverImageUrl || null,
-          networkMode: settings.networkMode
+          networkMode: networkMode
         };
         if (txHash) {
           requestBody.txHash = txHash;
