@@ -2459,41 +2459,6 @@ app.post('/api/conversations/:convId/messages', async (req, res) => {
     // Use frontend-provided content hash or compute it
     const contentHash = frontendContentHash || computeContentHash(content);
 
-    // Check for duplicate transactions (race condition detection)
-    // Same user + content_hash + message_type within 2 minutes = likely duplicate from retry
-    const duplicateCheck = await pool.query(`
-      SELECT id, tx_hash, created_at FROM blockchain_audit_logs
-      WHERE user_id = $1
-      AND message_type = $2
-      AND content_hash = $3
-      AND created_at > NOW() - INTERVAL '2 minutes'
-      ORDER BY created_at DESC
-      LIMIT 1
-    `, [userId, 'message', contentHash]);
-
-    if (duplicateCheck.rows.length > 0) {
-      const existingLog = duplicateCheck.rows[0];
-      const timeSincePrevious = Date.now() - new Date(existingLog.created_at).getTime();
-      console.log(`\n🔄 [DUPLICATE DETECTED] ========================================`);
-      console.log(`   User: ${username} (${userId})`);
-      console.log(`   Content Hash: ${contentHash}`);
-      console.log(`   Existing Audit ID: ${existingLog.id}`);
-      console.log(`   Existing TX Hash: ${existingLog.tx_hash}`);
-      console.log(`   Time Since First Attempt: ${timeSincePrevious}ms`);
-      console.log(`   Action: Reusing existing transaction instead of creating duplicate`);
-      console.log(`============================================================\n`);
-      // Return the existing audit log instead of creating a duplicate
-      res.json({
-        id: 0, // Dummy, not used
-        createdAt: new Date(now),
-        blockchainRecordingId: existingLog.id,
-        isDuplicate: true,
-        existingTxHash: existingLog.tx_hash,
-        note: 'Transaction already recorded - previous attempt succeeded despite timeout error'
-      });
-      return;
-    }
-
     // Start a database transaction for atomic INSERT + UPDATE
     const client = await pool.connect();
     try {
