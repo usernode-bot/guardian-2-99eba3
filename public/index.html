@@ -211,6 +211,94 @@
     .layout-compact #inputFooter { padding: 0.75rem; gap: 0.25rem; }
     .layout-compact nav.flex-1 { gap: 0.25rem; }
 
+    /* Border separator for conversation/group lists in compact mode */
+    .layout-compact #directList {
+      border-right: 2px solid #a4a4a8;
+    }
+
+    .dark.layout-compact #directList {
+      border-right-color: #52525b;
+    }
+
+    .layout-compact #groupsList {
+      border-right: 2px solid #a4a4a8;
+    }
+
+    .dark.layout-compact #groupsList {
+      border-right-color: #52525b;
+    }
+
+    .layout-compact #convList {
+      border-right: 2px solid #a4a4a8;
+    }
+
+    .dark.layout-compact #convList {
+      border-right-color: #52525b;
+    }
+
+    /* Compact conversation/group list item sizing - reduce padding */
+    .layout-compact #directList > div[class*="p-4"],
+    .layout-compact #groupsList > div[class*="p-4"] {
+      padding: 0.625rem 0.75rem !important;
+    }
+
+    /* Reduce avatar sizes - target w-10 h-10 directly */
+    .layout-compact #directList img[class*="w-10"] {
+      width: 2rem !important;
+      height: 2rem !important;
+    }
+
+    .layout-compact #directList div[class*="w-10"][class*="h-10"][class*="rounded-full"] {
+      width: 2rem !important;
+      height: 2rem !important;
+    }
+
+    .layout-compact #groupsList img[class*="w-10"] {
+      width: 2rem !important;
+      height: 2rem !important;
+    }
+
+    .layout-compact #groupsList div[class*="w-10"][class*="h-10"] {
+      width: 2rem !important;
+      height: 2rem !important;
+    }
+
+    /* Reduce gap between avatar and text */
+    .layout-compact #directList > div[class*="gap-3"] {
+      gap: 0.625rem !important;
+    }
+
+    .layout-compact #groupsList > div[class*="gap-3"] {
+      gap: 0.625rem !important;
+    }
+
+    /* Reduce font sizes in conversation items */
+    .layout-compact #directList div[class*="text-sm"]:not([class*="text-xs"]):not([class*="font-semibold"]) {
+      font-size: 0.75rem !important;
+      line-height: 1rem !important;
+    }
+
+    .layout-compact #groupsList div[class*="text-sm"]:not([class*="text-xs"]):not([class*="font-semibold"]) {
+      font-size: 0.75rem !important;
+      line-height: 1rem !important;
+    }
+
+    /* Compact section headers */
+    .layout-compact #directList div[class*="bg-zinc-50"],
+    .layout-compact #directList div[class*="dark:bg-zinc-800"] {
+      padding: 0.5rem 0.75rem !important;
+    }
+
+    .layout-compact #groupsList div[class*="bg-zinc-50"],
+    .layout-compact #groupsList div[class*="dark:bg-zinc-800"] {
+      padding: 0.5rem 0.75rem !important;
+    }
+
+    .layout-compact #convList div[class*="bg-zinc-50"],
+    .layout-compact #convList div[class*="dark:bg-zinc-800"] {
+      padding: 0.5rem 0.75rem !important;
+    }
+
     /* Mobile view mode */
     .layout-mobile #sidebar {
       position: fixed;
