@@ -1,0 +1,32 @@
+[     216ms] [WARNING] cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation @ http://127.0.0.1:3100/:96
+[     425ms] [LOG] [bridge top 127.0.0.1:3100] loaded; inIframe=false hasNativeChannel=false hasUsernode=undefined @ http://127.0.0.1:3100/:96
+[     520ms] [LOG] [INIT] Token initialization: tokenPresent=false, tokenLength=0, headersBuilt=[] @ http://127.0.0.1:3100/:96
+[     521ms] [LOG] === Guardian 2 Initialization === @ http://127.0.0.1:3100/:96
+[     521ms] [LOG] [Bridge-Telemetry-STARTUP] Guardian 2 initialization started {timestamp: 1784622023798, userAgent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.0.0 Safa} @ http://127.0.0.1:3100/:96
+[     521ms] [LOG] ╔════════════════════════════════════════════════════════════════╗ @ http://127.0.0.1:3100/:96
+[     521ms] [LOG] ║        UserNode Bridge Diagnostic Report (For Maintainers)      ║ @ http://127.0.0.1:3100/:96
+[     522ms] [LOG] ╚════════════════════════════════════════════════════════════════╝ @ http://127.0.0.1:3100/:96
+[     522ms] [LOG] Environment: {userAgent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36…ike Gecko) HeadlessChrome/151.0.0.0 Safari/537.36, location: http://127.0.0.1:3100/, frameContext: top-level} @ http://127.0.0.1:3100/:96
+[     522ms] [LOG] Bridge Script: {scriptTagLoaded: true, scriptSrc: https://social-vibecoding.usernodelabs.org/usernode-bridge/v1/bridge.js} @ http://127.0.0.1:3100/:96
+[     522ms] [LOG] Bridge Load State: {scriptLoaded: false, bridgeReady: false, loadStartTime: null, loadCompleteTime: null, loadFailed: false} @ http://127.0.0.1:3100/:96
+[     522ms] [LOG] window.usernode Status: {exists: true, type: object, isObject: true, isFunction: false} @ http://127.0.0.1:3100/:96
+[     522ms] [LOG] Available Bridge Methods: {isNative: boolean, configure: function, acknowledgeTransaction: function, isMockEnabled: function, getHomeScreenShortcutSupport: function} @ http://127.0.0.1:3100/:96
+[     522ms] [LOG] Wallet Provider Detection: {sendTransaction: undefined, sendTransactionIsFunction: false, getNodeAddress: undefined, requestLlmAccess: function, getLlmAccess: function} @ http://127.0.0.1:3100/:96
+[     522ms] [LOG] Global Wallet Providers: {ethereum: undefined, web3: undefined, solana: undefined, phantom: undefined, metaMask: undefined} @ http://127.0.0.1:3100/:96
+[     522ms] [LOG] Full Diagnostic Object: {timestamp: 2026-07-21T08:20:23.798Z, environment: Object, bridgeScript: Object, windowUsernode: Object, bridgeMethods: Object} @ http://127.0.0.1:3100/:96
+[     522ms] [LOG] Diagnostic stored at window.__guardianBridgeDiagnostic @ http://127.0.0.1:3100/:96
+[     524ms] [LOG] Diagnostic also stored to sessionStorage @ http://127.0.0.1:3100/:96
+[     524ms] [LOG] === Page Load: Checking UserNode Bridge === @ http://127.0.0.1:3100/:96
+[     524ms] [LOG] window.sendTransaction exists (main bridge API): true @ http://127.0.0.1:3100/:96
+[     524ms] [LOG] window.usernode exists (supporting APIs): true @ http://127.0.0.1:3100/:96
+[     524ms] [LOG] Available methods on usernode: [isNative, configure, acknowledgeTransaction, isMockEnabled, getHomeScreenShortcutSupport, addHomeScreenShortcut, getHomeScreenShortcuts, removeHomeScreenShortcut, reorderHomeScreenShortcuts, requestLlmAccess, getLlmAccess, getLlmUsage, invariants] @ http://127.0.0.1:3100/:96
+[     524ms] [LOG] usernode.getNodeAddress exists: false @ http://127.0.0.1:3100/:96
+[     524ms] [LOG] usernode.requestLlmAccess exists: true @ http://127.0.0.1:3100/:96
+[     524ms] [LOG] ✓ Bridge wallet API (window.sendTransaction) is available @ http://127.0.0.1:3100/:96
+[     524ms] [LOG] [APICALL] Request to /api/user: {method: GET, headersPresent: Array(1), tokenInHeaders: false} @ http://127.0.0.1:3100/:96
+[     600ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:3100/api/active_chain:0
+[     617ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:3100/api/user:0
+[     618ms] [LOG] [APICALL] Response received from /api/user: {status: 401, ok: false} @ http://127.0.0.1:3100/:96
+[     618ms] [LOG] [CHAIN] Active chain detected: undefined (network mode: undefined) @ http://127.0.0.1:3100/:96
+[     618ms] [ERROR] [APICALL] API error (401) on /api/user: {errorMsg: Not authenticated, data: Object} @ http://127.0.0.1:3100/:96
+[     618ms] [ERROR] Failed to load user: Not authenticated @ http://127.0.0.1:3100/:96
