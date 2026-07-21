@@ -10896,29 +10896,55 @@
         let txHash = null;
         if (networkMode === 'testnet' || networkMode === 'real_testnet') {
           console.log('[CHANNEL::PHASE1] Testnet/real_testnet mode detected, requesting wallet signature...');
-          try {
-            const txResult = await executeWalletSignature('channel', {
-              name: name,
-              description: description || null,
-              timestamp: new Date().toISOString()
-            });
-            if (txResult) {
-              txHash = txResult;
-              console.log('[CHANNEL::PHASE1] Wallet signature succeeded: txHash=' + txHash);
+
+          // Build transaction payload following the channel_create pattern
+          const txPayload = {
+            type: 'channel_create',
+            name: name,
+            description: description || null,
+            timestamp: new Date().toISOString()
+          };
+
+          // Call usernode.sendTransaction with success and error callbacks
+          await new Promise((resolve, reject) => {
+            console.log('[CHANNEL::PHASE1] Calling usernode.sendTransaction with payload:', txPayload);
+
+            const onSuccess = (result) => {
+              console.log('[CHANNEL::PHASE1] usernode.sendTransaction success callback received:', result);
+
+              // Extract txHash from result (handle multiple field name variants)
+              const extractedTxHash = result?.txHash || result?.hash || result?.transactionHash || result?.result?.txHash;
+              if (extractedTxHash) {
+                txHash = extractedTxHash;
+                console.log('[CHANNEL::PHASE1] Wallet signature succeeded: txHash=' + txHash);
+                resolve(txHash);
+              } else {
+                const errMsg = 'Bridge response missing transaction hash. Response: ' + JSON.stringify(result);
+                console.error('[CHANNEL::PHASE1]', errMsg);
+                reject(new Error(errMsg));
+              }
+            };
+
+            const onError = (err) => {
+              console.error('[CHANNEL::PHASE1] usernode.sendTransaction error callback:', err);
+
+              // Check for user cancellation
+              if (err && (typeof err === 'string' ? err.includes('cancelled') : err.message && err.message.includes('cancelled'))) {
+                console.log('[CHANNEL::PHASE1] User cancelled wallet signature');
+                reject(new Error('User cancelled'));
+              } else {
+                const errMsg = typeof err === 'string' ? err : err?.message || 'Wallet signature failed';
+                reject(new Error(errMsg));
+              }
+            };
+
+            // Call usernode.sendTransaction(txPayload, onSuccess, onError)
+            if (typeof usernode !== 'undefined' && usernode.sendTransaction) {
+              usernode.sendTransaction(txPayload, onSuccess, onError);
             } else {
-              console.warn('[CHANNEL::PHASE1] Wallet signature returned no txHash');
+              reject(new Error('Wallet bridge is not available. Please ensure your wallet extension is enabled.'));
             }
-          } catch (signErr) {
-            console.error('[CHANNEL::PHASE1] Wallet signature error:', { message: signErr.message, stack: signErr.stack });
-            if (signErr.message && (signErr.message.includes('User cancelled') || signErr.message.includes('cancelled'))) {
-              console.log('[CHANNEL::PHASE1] User cancelled wallet signature');
-              showToast('Channel creation cancelled', 'info');
-              return;
-            }
-            const wrappedError = 'Wallet signature failed: ' + signErr.message;
-            console.error('[CHANNEL::PHASE1] Throwing wrapped error:', wrappedError);
-            throw new Error(wrappedError);
-          }
+          });
         } else {
           console.log('[CHANNEL::PHASE1] Non-testnet mode (' + networkMode + ') - skipping wallet signature phase');
         }
