@@ -1448,6 +1448,39 @@
     </div>
   </div>
 
+  <!-- Message Context Menu -->
+  <div id="messageContextMenu" class="hidden fixed bg-white dark:bg-zinc-800 shadow-lg rounded-lg p-1 z-[998] max-h-[90vh] overflow-y-auto" style="min-width: 160px;">
+    <button id="copyMessageBtn" onclick="copyMessageText()" class="w-full text-left px-3 py-2 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded transition">📋 Copy</button>
+    <button id="replyMessageBtn" onclick="event.stopPropagation(); showToast('Reply feature coming soon', 'info')" class="w-full text-left px-3 py-2 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded transition">↩️ Reply</button>
+    <button id="editMessageBtn" onclick="event.stopPropagation(); showToast('Edit feature coming soon', 'info')" class="hidden w-full text-left px-3 py-2 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded transition">✏️ Edit</button>
+    <button id="deleteMessageBtn" onclick="deleteMessageFromContext()" class="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition">🗑️ Delete</button>
+    <button id="addReactionBtn" onclick="showEmojiPicker()" class="w-full text-left px-3 py-2 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded transition">😊 React</button>
+  </div>
+
+  <!-- Emoji Picker Modal -->
+  <div id="emojiPickerModal" class="hidden fixed inset-0 bg-black/50 z-[999] flex items-end" onclick="if(event.target===this) closeEmojiPicker()">
+    <div class="bg-white dark:bg-zinc-800 w-full rounded-t-lg p-4 max-h-[80vh] flex flex-col" onclick="event.stopPropagation()">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="font-semibold text-zinc-900 dark:text-white">React</h3>
+        <button onclick="closeEmojiPicker()" class="text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200">✕</button>
+      </div>
+      <div id="emojiGrid" class="grid grid-cols-6 gap-2 overflow-y-auto">
+        <button onclick="addReactionEmoji('😂')" class="text-2xl hover:scale-110 transition">😂</button>
+        <button onclick="addReactionEmoji('👍')" class="text-2xl hover:scale-110 transition">👍</button>
+        <button onclick="addReactionEmoji('❤️')" class="text-2xl hover:scale-110 transition">❤️</button>
+        <button onclick="addReactionEmoji('🎉')" class="text-2xl hover:scale-110 transition">🎉</button>
+        <button onclick="addReactionEmoji('😍')" class="text-2xl hover:scale-110 transition">😍</button>
+        <button onclick="addReactionEmoji('😢')" class="text-2xl hover:scale-110 transition">😢</button>
+        <button onclick="addReactionEmoji('🔥')" class="text-2xl hover:scale-110 transition">🔥</button>
+        <button onclick="addReactionEmoji('🚀')" class="text-2xl hover:scale-110 transition">🚀</button>
+        <button onclick="addReactionEmoji('💯')" class="text-2xl hover:scale-110 transition">💯</button>
+        <button onclick="addReactionEmoji('🎈')" class="text-2xl hover:scale-110 transition">🎈</button>
+        <button onclick="addReactionEmoji('😂')" class="text-2xl hover:scale-110 transition">😂</button>
+        <button onclick="addReactionEmoji('🤔')" class="text-2xl hover:scale-110 transition">🤔</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Create Group Modal -->
   <div id="createGroupModal" class="hidden fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg w-full max-w-sm">
@@ -5018,6 +5051,11 @@
       const wasAtBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 500;
       list.innerHTML = data.messages.map(msg => renderMessage(msg, 'group')).join('');
 
+      // Load reactions for all messages
+      for (const msg of data.messages) {
+        loadReactions(msg.id, 'group').catch(err => console.error('Error loading reactions:', err));
+      }
+
       // Auto-scroll to bottom on initial load or if user was already at bottom (within 500px)
       if (isInitialLoad || wasAtBottom) {
         setTimeout(() => {
@@ -7103,6 +7141,11 @@
       // Re-render message list with IDs for stable DOM references
       list.innerHTML = data.messages.map(msg => renderMessage(msg, 'dm')).join('');
 
+      // Load reactions for all messages
+      for (const msg of data.messages) {
+        loadReactions(msg.id, 'dm').catch(err => console.error('Error loading reactions:', err));
+      }
+
       // Auto-scroll to bottom on initial load or if user was already at bottom (within 500px)
       if (isInitialLoad || wasAtBottom) {
         setTimeout(() => {
@@ -7133,12 +7176,20 @@
         const senderNameLine = shouldShowSenderName ? `<div class="text-xs opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'} mb-1 cursor-pointer hover:opacity-100" onclick="event.stopPropagation(); showUserProfileModal(${msg.senderId})">${msg.senderUsername}</div>` : '';
         const bubbleClasses = isMobile ? 'px-3 py-1.5 rounded-xl text-xs' : 'px-4 py-2 rounded-2xl text-sm';
         return `
-          <div class="flex ${alignClass} ${marginClass}" data-message-id="${msg.id}">
-            <div class="max-w-xs ${bubbleClasses} ${baseClass} message-bubble cursor-pointer hover:opacity-90 transition" onclick="showMessageDetailsModal(${msg.id}, '${msg.createdAt}', '${msg.blockchainAuditLogId || ''}')">
-              ${senderNameLine}
-              <div>${msg.content.text}</div>
-              <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-1">${formatTime(new Date(msg.createdAt))}</div>
+          <div class="flex flex-col ${alignClass} ${marginClass}" data-message-id="${msg.id}">
+            <div class="flex ${alignClass}">
+              <div class="max-w-xs ${bubbleClasses} ${baseClass} message-bubble cursor-pointer hover:opacity-90 transition"
+                   oncontextmenu="openMessageContextMenu(event, ${msg.id}, ${isOwn}, '${context}')"
+                   data-message-id="${msg.id}"
+                   data-context="${context}"
+                   data-is-own="${isOwn}"
+                   onclick="showMessageDetailsModal(${msg.id}, '${msg.createdAt}', '${msg.blockchainAuditLogId || ''}')">
+                ${senderNameLine}
+                <div>${msg.content.text}</div>
+                <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-1">${formatTime(new Date(msg.createdAt))}</div>
+              </div>
             </div>
+            <div class="flex flex-wrap gap-1 mt-1 ${isOwn ? 'justify-end' : 'justify-start'}" id="reactions-${msg.id}" data-message-id="${msg.id}"></div>
           </div>
         `;
       }
@@ -7147,11 +7198,19 @@
         const senderNameLine = shouldShowSenderName ? `<div class="text-xs px-4 py-2 opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'} cursor-pointer hover:opacity-100" onclick="event.stopPropagation(); showUserProfileModal(${msg.senderId})">${msg.senderUsername}</div>` : '';
         const borderRadius = isMobile ? 'rounded-lg' : 'rounded-2xl';
         return `
-          <div class="flex ${alignClass} ${marginClass}" data-message-id="${msg.id}">
-            <div class="max-w-xs ${borderRadius} overflow-hidden ${baseClass} cursor-pointer hover:opacity-90 transition" onclick="showMessageDetailsModal(${msg.id}, '${msg.createdAt}', '${msg.blockchainAuditLogId || ''}')">
-              <img src="${msg.content.imageUrl}" alt="Message image" class="max-w-xs cursor-pointer hover:opacity-80 transition" onclick="event.stopPropagation(); showLightbox('${msg.content.imageUrl}')">
-              ${senderNameLine}
+          <div class="flex flex-col ${alignClass} ${marginClass}" data-message-id="${msg.id}">
+            <div class="flex ${alignClass}">
+              <div class="max-w-xs ${borderRadius} overflow-hidden ${baseClass} cursor-pointer hover:opacity-90 transition"
+                   oncontextmenu="openMessageContextMenu(event, ${msg.id}, ${isOwn}, '${context}')"
+                   data-message-id="${msg.id}"
+                   data-context="${context}"
+                   data-is-own="${isOwn}"
+                   onclick="showMessageDetailsModal(${msg.id}, '${msg.createdAt}', '${msg.blockchainAuditLogId || ''}')">
+                <img src="${msg.content.imageUrl}" alt="Message image" class="max-w-xs cursor-pointer hover:opacity-80 transition" onclick="event.stopPropagation(); showLightbox('${msg.content.imageUrl}')">
+                ${senderNameLine}
+              </div>
             </div>
+            <div class="flex flex-wrap gap-1 mt-1 ${isOwn ? 'justify-end' : 'justify-start'}" id="reactions-${msg.id}" data-message-id="${msg.id}"></div>
           </div>
         `;
       }
@@ -7163,21 +7222,251 @@
         const bubbleClasses = isMobile ? 'px-2.5 py-1.5 rounded-lg text-xs' : 'px-3 py-2 rounded-2xl text-sm';
         const senderNameLine = shouldShowSenderName ? `<div class="text-xs opacity-80 ${isOwn ? 'text-cyan-100' : 'text-zinc-600 dark:text-zinc-300'} mb-1 cursor-pointer hover:opacity-100" onclick="event.stopPropagation(); showUserProfileModal(${msg.senderId})">${msg.senderUsername}</div>` : '';
         return `
-          <div class="flex ${alignClass} ${marginClass}" data-message-id="${msg.id}">
-            <div class="max-w-xs ${bubbleClasses} ${baseClass} border-2 border-yellow-500/40 message-bubble cursor-pointer hover:opacity-90 transition" onclick="showMessageDetailsModal(${msg.id}, '${msg.createdAt}', '${msg.blockchainAuditLogId || ''}')">
-              ${senderNameLine}
-              <div class="font-bold ${isMobile ? 'text-sm' : 'text-base'} flex items-center justify-between gap-2">
-                <span>💰 ${c.amount} tokens</span>
-                <span class="text-xs">${statusIcon}</span>
+          <div class="flex flex-col ${alignClass} ${marginClass}" data-message-id="${msg.id}">
+            <div class="flex ${alignClass}">
+              <div class="max-w-xs ${bubbleClasses} ${baseClass} border-2 border-yellow-500/40 message-bubble cursor-pointer hover:opacity-90 transition"
+                   oncontextmenu="openMessageContextMenu(event, ${msg.id}, ${isOwn}, '${context}')"
+                   data-message-id="${msg.id}"
+                   data-context="${context}"
+                   data-is-own="${isOwn}"
+                   onclick="showMessageDetailsModal(${msg.id}, '${msg.createdAt}', '${msg.blockchainAuditLogId || ''}')">
+                ${senderNameLine}
+                <div class="font-bold ${isMobile ? 'text-sm' : 'text-base'} flex items-center justify-between gap-2">
+                  <span>💰 ${c.amount} tokens</span>
+                  <span class="text-xs">${statusIcon}</span>
+                </div>
+                ${memoLine}
+                <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-1">${formatTime(new Date(msg.createdAt))}</div>
               </div>
-              ${memoLine}
-              <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-1">${formatTime(new Date(msg.createdAt))}</div>
             </div>
+            <div class="flex flex-wrap gap-1 mt-1 ${isOwn ? 'justify-end' : 'justify-start'}" id="reactions-${msg.id}" data-message-id="${msg.id}"></div>
           </div>
         `;
       }
 
       return '';
+    }
+
+    // Context menu state
+    let currentContextMenuMessageId = null;
+    let currentContextMenuContext = null;
+    let currentContextMenuIsOwn = false;
+
+    function openMessageContextMenu(event, messageId, isOwn, context) {
+      event.preventDefault();
+      event.stopPropagation();
+
+      currentContextMenuMessageId = messageId;
+      currentContextMenuContext = context;
+      currentContextMenuIsOwn = isOwn;
+
+      const menu = document.getElementById('messageContextMenu');
+      const editBtn = document.getElementById('editMessageBtn');
+
+      // Show edit button only for own messages
+      if (isOwn) {
+        editBtn.classList.remove('hidden');
+      } else {
+        editBtn.classList.add('hidden');
+      }
+
+      // Show menu with visibility hidden first to measure it
+      menu.style.visibility = 'hidden';
+      menu.classList.remove('hidden');
+
+      let x = event.clientX || event.pageX;
+      let y = event.clientY || event.pageY;
+
+      // Get menu dimensions for smart positioning
+      const menuRect = menu.getBoundingClientRect();
+      const menuWidth = menuRect.width || 160; // fallback to min-width
+      const menuHeight = menuRect.height || 200;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+
+      // Adjust horizontal position if menu would go off-screen
+      if (x + menuWidth + 10 > viewportWidth) {
+        // Position from right edge instead
+        x = viewportWidth - menuWidth - 10;
+      } else {
+        // Normal position with slight offset
+        x = Math.max(10, x - 10);
+      }
+
+      // Adjust vertical position if menu would go off-screen
+      if (y + menuHeight + 10 > viewportHeight) {
+        // Position above the click point instead
+        y = Math.max(10, y - menuHeight - 10);
+      } else {
+        // Normal position with slight offset
+        y = Math.max(10, y - 10);
+      }
+
+      menu.style.left = x + 'px';
+      menu.style.top = y + 'px';
+      menu.style.visibility = 'visible';
+
+      document.addEventListener('click', closeContextMenuOnClickOutside);
+    }
+
+    function closeContextMenuOnClickOutside(e) {
+      const menu = document.getElementById('messageContextMenu');
+      if (!menu.contains(e.target) && !e.target.closest('[data-message-id]')) {
+        closeMessageContextMenu();
+      }
+    }
+
+    function closeMessageContextMenu() {
+      const menu = document.getElementById('messageContextMenu');
+      menu.classList.add('hidden');
+      document.removeEventListener('click', closeContextMenuOnClickOutside);
+    }
+
+    function copyMessageText() {
+      if (!currentContextMenuMessageId) return;
+
+      const bubble = document.querySelector(`[data-message-id="${currentContextMenuMessageId}"]`);
+      if (!bubble) return;
+
+      let textToCopy = '';
+      const contentDiv = bubble.querySelector('div');
+      if (contentDiv) {
+        textToCopy = contentDiv.innerText || '';
+      }
+
+      if (textToCopy) {
+        navigator.clipboard.writeText(textToCopy).then(() => {
+          showToast('Copied to clipboard', 'success');
+          closeMessageContextMenu();
+        }).catch(err => {
+          console.error('Failed to copy:', err);
+          showToast('Failed to copy', 'error');
+        });
+      }
+    }
+
+    async function deleteMessageFromContext() {
+      if (!currentContextMenuMessageId || !currentContextMenuContext) return;
+
+      const messageId = currentContextMenuMessageId;
+      const context = currentContextMenuContext;
+
+      try {
+        const endpoint = context === 'group'
+          ? `/api/groups/${currentGroupId}/messages/${messageId}/delete`
+          : `/api/conversations/${currentConvId}/messages/${messageId}/delete`;
+
+        const result = await apiCall(endpoint, { method: 'POST' });
+
+        if (result && !result.error) {
+          showToast('Message deleted', 'success');
+          closeMessageContextMenu();
+
+          // Reload messages
+          if (context === 'group') {
+            loadGroupMessages(currentGroupId);
+          } else {
+            loadMessages();
+          }
+        } else {
+          showToast(result?.error || 'Failed to delete message', 'error');
+        }
+      } catch (err) {
+        console.error('Error deleting message:', err);
+        showToast('Error: ' + err.message, 'error');
+      }
+    }
+
+    function showEmojiPicker() {
+      closeMessageContextMenu();
+      const modal = document.getElementById('emojiPickerModal');
+      modal.classList.remove('hidden');
+    }
+
+    function closeEmojiPicker() {
+      const modal = document.getElementById('emojiPickerModal');
+      modal.classList.add('hidden');
+      currentContextMenuMessageId = null;
+      currentContextMenuContext = null;
+    }
+
+    async function addReactionEmoji(emoji) {
+      if (!currentContextMenuMessageId || !currentContextMenuContext) {
+        closeEmojiPicker();
+        return;
+      }
+
+      const messageId = currentContextMenuMessageId;
+      const context = currentContextMenuContext;
+
+      try {
+        const endpoint = context === 'group'
+          ? `/api/groups/${currentGroupId}/messages/${messageId}/reactions`
+          : `/api/conversations/${currentConvId}/messages/${messageId}/reactions`;
+
+        const result = await apiCall(endpoint, {
+          method: 'POST',
+          body: JSON.stringify({ emoji })
+        });
+
+        if (result && !result.error) {
+          closeEmojiPicker();
+          await loadReactions(messageId, context);
+          showToast('Reaction added', 'success');
+        } else {
+          showToast(result?.error || 'Failed to add reaction', 'error');
+        }
+      } catch (err) {
+        console.error('Error adding reaction:', err);
+        showToast('Error: ' + err.message, 'error');
+      }
+    }
+
+    async function loadReactions(messageId, context) {
+      try {
+        const endpoint = context === 'group'
+          ? `/api/groups/${currentGroupId}/messages/${messageId}/reactions`
+          : `/api/conversations/${currentConvId}/messages/${messageId}/reactions`;
+
+        const data = await apiCall(endpoint);
+        if (!data || data.error) return;
+
+        const reactionsContainer = document.getElementById(`reactions-${messageId}`);
+        if (!reactionsContainer) return;
+
+        const reactions = data.reactions || [];
+        reactionsContainer.innerHTML = reactions.map(r => `
+          <div class="inline-flex items-center gap-1 bg-zinc-100 dark:bg-zinc-700 px-2 py-1 rounded-full text-xs cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-600 transition"
+               onclick="toggleReaction(${messageId}, '${r.emoji}', '${context}')">
+            <span>${r.emoji}</span>
+            <span class="text-zinc-700 dark:text-zinc-300">${r.count}</span>
+          </div>
+        `).join('');
+      } catch (err) {
+        console.error('Error loading reactions:', err);
+      }
+    }
+
+    async function toggleReaction(messageId, emoji, context) {
+      try {
+        const endpoint = context === 'group'
+          ? `/api/groups/${currentGroupId}/messages/${messageId}/reactions`
+          : `/api/conversations/${currentConvId}/messages/${messageId}/reactions`;
+
+        const result = await apiCall(endpoint, {
+          method: 'POST',
+          body: JSON.stringify({ emoji })
+        });
+
+        if (result && !result.error) {
+          await loadReactions(messageId, context);
+        } else {
+          showToast(result?.error || 'Failed to toggle reaction', 'error');
+        }
+      } catch (err) {
+        console.error('Error toggling reaction:', err);
+        showToast('Error: ' + err.message, 'error');
+      }
     }
 
     // FIX #4: Function-level guard to prevent duplicate message submission

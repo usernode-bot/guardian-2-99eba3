@@ -86,6 +86,21 @@
       "name": "Network Mode selector in settings",
       "path": "/",
       "expectSelector": "#networkModeSelect"
+    },
+    {
+      "name": "Message context menu appears on right-click",
+      "path": "/",
+      "expectSelector": "#messageContextMenu"
+    },
+    {
+      "name": "Emoji picker modal loads",
+      "path": "/",
+      "expectSelector": "#emojiPickerModal"
+    },
+    {
+      "name": "Message reactions render",
+      "path": "/",
+      "expectSelector": "[id^='reactions-']"
     }
   ],
   "visibility": {

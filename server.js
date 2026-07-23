@@ -2691,6 +2691,90 @@ app.post('/api/conversations/:convId/messages/:messageId/delete', async (req, re
   }
 });
 
+app.get('/api/conversations/:convId/messages/:messageId/reactions', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { convId, messageId } = req.params;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    const { rows } = await pool.query(`
+      SELECT emoji, COUNT(*) as count, array_agg(json_build_object('id', u.id, 'username', u.username)) as users
+      FROM message_reactions mr
+      JOIN users u ON mr.user_id = u.id
+      WHERE mr.message_id = $1 AND mr.message_type = 'dm'
+      GROUP BY emoji
+      ORDER BY MAX(mr.created_at) DESC
+    `, [messageId]);
+
+    res.json({ reactions: rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/conversations/:convId/messages/:messageId/reactions', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { convId, messageId } = req.params;
+    const { emoji } = req.body;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    if (!emoji) {
+      return res.status(400).json({ error: 'Emoji required' });
+    }
+
+    const result = await pool.query(`
+      INSERT INTO message_reactions (message_id, message_type, user_id, emoji)
+      VALUES ($1, 'dm', $2, $3)
+      ON CONFLICT (message_id, message_type, user_id, emoji) DO DELETE
+      RETURNING (SELECT count(*) FROM message_reactions WHERE message_id = $1 AND emoji = $3) as remaining
+    `, [messageId, userId, emoji]);
+
+    const added = result.rows.length > 0 && result.rows[0].remaining > 0;
+    res.json({ ok: true, added });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/conversations/:convId/messages/:messageId/reactions/:emoji', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { convId, messageId, emoji } = req.params;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    await pool.query(`
+      DELETE FROM message_reactions
+      WHERE message_id = $1 AND message_type = 'dm' AND user_id = $2 AND emoji = $3
+    `, [messageId, userId, emoji]);
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.put('/api/conversations/:convId/read', async (req, res) => {
   try {
     if (!req.user) {
@@ -4627,6 +4711,90 @@ app.post('/api/groups/:groupId/messages/delete-all', async (req, res) => {
     res.json({ ok: true, deletedCount: deletedRows.length });
   } catch (err) {
     console.error('Error deleting all group messages:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/groups/:groupId/messages/:messageId/reactions', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { groupId, messageId } = req.params;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    const { rows } = await pool.query(`
+      SELECT emoji, COUNT(*) as count, array_agg(json_build_object('id', u.id, 'username', u.username)) as users
+      FROM message_reactions mr
+      JOIN users u ON mr.user_id = u.id
+      WHERE mr.message_id = $1 AND mr.message_type = 'group' AND mr.group_id = $2
+      GROUP BY emoji
+      ORDER BY MAX(mr.created_at) DESC
+    `, [messageId, groupId]);
+
+    res.json({ reactions: rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/groups/:groupId/messages/:messageId/reactions', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { groupId, messageId } = req.params;
+    const { emoji } = req.body;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    if (!emoji) {
+      return res.status(400).json({ error: 'Emoji required' });
+    }
+
+    const result = await pool.query(`
+      INSERT INTO message_reactions (message_id, message_type, group_id, user_id, emoji)
+      VALUES ($1, 'group', $2, $3, $4)
+      ON CONFLICT (message_id, message_type, user_id, emoji) DO DELETE
+      RETURNING (SELECT count(*) FROM message_reactions WHERE message_id = $1 AND emoji = $4) as remaining
+    `, [messageId, groupId, userId, emoji]);
+
+    const added = result.rows.length > 0 && result.rows[0].remaining > 0;
+    res.json({ ok: true, added });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/groups/:groupId/messages/:messageId/reactions/:emoji', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { groupId, messageId, emoji } = req.params;
+    const userId = parseInt(req.user.id, 10);
+    if (isNaN(userId)) {
+      return res.status(401).json({ error: 'Invalid user ID' });
+    }
+
+    await pool.query(`
+      DELETE FROM message_reactions
+      WHERE message_id = $1 AND message_type = 'group' AND group_id = $2 AND user_id = $3 AND emoji = $4
+    `, [messageId, groupId, userId, emoji]);
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -8371,6 +8539,24 @@ async function start() {
         ON user_foreground_sessions(user_id, created_at DESC)
     `);
 
+    // Create message_reactions table (marked private)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS message_reactions (
+        id BIGSERIAL PRIMARY KEY,
+        message_id BIGINT NOT NULL,
+        message_type VARCHAR(10) NOT NULL,
+        group_id BIGINT,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        emoji VARCHAR(10) NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(message_id, message_type, user_id, emoji)
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_message_reactions_lookup
+        ON message_reactions(message_id, message_type)
+    `);
+
     // Mark tables as private
     await pool.query(`COMMENT ON TABLE conversations IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE messages IS 'staging:private'`);
@@ -8383,6 +8569,7 @@ async function start() {
     await pool.query(`COMMENT ON TABLE group_read_receipts IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE user_peers IS 'staging:private'`);
     await pool.query(`COMMENT ON TABLE user_foreground_sessions IS 'staging:private'`);
+    await pool.query(`COMMENT ON TABLE message_reactions IS 'staging:private'`);
 
         // Schema initialization complete. Start the server immediately so healthchecks pass.
         // All seeding and non-critical initialization will run in the background.
@@ -9391,6 +9578,35 @@ async function start() {
         VALUES ($1, $2, NOW()), ($3, $2, NOW())
         ON CONFLICT (user_id, group_id) DO NOTHING
       `, [alice, testGroupId, david]);
+
+      // Seed demo reactions for testing context menu and emoji reactions
+      try {
+        // Add demo reactions to some group messages (testing purposes)
+        const demoEmojis = ['👍', '😂', '🎉', '❤️'];
+        const demoUsers = [alice, bob, charlie, david];
+
+        // Get a few group messages to add reactions to
+        const { rows: groupMsgs } = await pool.query(`
+          SELECT id FROM group_messages WHERE group_id = $1 LIMIT 3
+        `, [testGroupId]);
+
+        for (const msg of groupMsgs) {
+          // Add 2-3 different emoji reactions from different users
+          for (let i = 0; i < 2; i++) {
+            const emoji = demoEmojis[i % demoEmojis.length];
+            const userId = demoUsers[i % demoUsers.length];
+            await pool.query(`
+              INSERT INTO message_reactions (message_id, message_type, group_id, user_id, emoji)
+              VALUES ($1, 'group', $2, $3, $4)
+              ON CONFLICT (message_id, message_type, user_id, emoji) DO NOTHING
+            `, [msg.id, testGroupId, userId, emoji]);
+          }
+        }
+
+        console.log('[STAGING SEED] Demo reactions seeded successfully');
+      } catch (reactionSeedErr) {
+        console.warn('[STAGING SEED] Demo reactions seeding failed (non-critical):', reactionSeedErr.message);
+      }
 
       // Seed network milestone posts for staging
       const milestones = [
