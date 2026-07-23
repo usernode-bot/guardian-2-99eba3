@@ -1449,7 +1449,7 @@
   </div>
 
   <!-- Message Context Menu -->
-  <div id="messageContextMenu" class="hidden fixed bg-white dark:bg-zinc-800 shadow-lg rounded-lg p-1 z-[998]" style="min-width: 160px;">
+  <div id="messageContextMenu" class="hidden fixed bg-white dark:bg-zinc-800 shadow-lg rounded-lg p-1 z-[998] max-h-[90vh] overflow-y-auto" style="min-width: 160px;">
     <button id="copyMessageBtn" onclick="copyMessageText()" class="w-full text-left px-3 py-2 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded transition">📋 Copy</button>
     <button id="replyMessageBtn" onclick="event.stopPropagation(); showToast('Reply feature coming soon', 'info')" class="w-full text-left px-3 py-2 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded transition">↩️ Reply</button>
     <button id="editMessageBtn" onclick="event.stopPropagation(); showToast('Edit feature coming soon', 'info')" class="hidden w-full text-left px-3 py-2 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded transition">✏️ Edit</button>
@@ -1459,12 +1459,12 @@
 
   <!-- Emoji Picker Modal -->
   <div id="emojiPickerModal" class="hidden fixed inset-0 bg-black/50 z-[999] flex items-end" onclick="if(event.target===this) closeEmojiPicker()">
-    <div class="bg-white dark:bg-zinc-800 w-full rounded-t-lg p-4" onclick="event.stopPropagation()">
+    <div class="bg-white dark:bg-zinc-800 w-full rounded-t-lg p-4 max-h-[80vh] flex flex-col" onclick="event.stopPropagation()">
       <div class="flex justify-between items-center mb-3">
         <h3 class="font-semibold text-zinc-900 dark:text-white">React</h3>
         <button onclick="closeEmojiPicker()" class="text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200">✕</button>
       </div>
-      <div id="emojiGrid" class="grid grid-cols-6 gap-2">
+      <div id="emojiGrid" class="grid grid-cols-6 gap-2 overflow-y-auto">
         <button onclick="addReactionEmoji('😂')" class="text-2xl hover:scale-110 transition">😂</button>
         <button onclick="addReactionEmoji('👍')" class="text-2xl hover:scale-110 transition">👍</button>
         <button onclick="addReactionEmoji('❤️')" class="text-2xl hover:scale-110 transition">❤️</button>
@@ -7270,12 +7270,41 @@
         editBtn.classList.add('hidden');
       }
 
-      const x = event.clientX || event.pageX;
-      const y = event.clientY || event.pageY;
-
-      menu.style.left = (x - 10) + 'px';
-      menu.style.top = (y - 10) + 'px';
+      // Show menu with visibility hidden first to measure it
+      menu.style.visibility = 'hidden';
       menu.classList.remove('hidden');
+
+      let x = event.clientX || event.pageX;
+      let y = event.clientY || event.pageY;
+
+      // Get menu dimensions for smart positioning
+      const menuRect = menu.getBoundingClientRect();
+      const menuWidth = menuRect.width || 160; // fallback to min-width
+      const menuHeight = menuRect.height || 200;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+
+      // Adjust horizontal position if menu would go off-screen
+      if (x + menuWidth + 10 > viewportWidth) {
+        // Position from right edge instead
+        x = viewportWidth - menuWidth - 10;
+      } else {
+        // Normal position with slight offset
+        x = Math.max(10, x - 10);
+      }
+
+      // Adjust vertical position if menu would go off-screen
+      if (y + menuHeight + 10 > viewportHeight) {
+        // Position above the click point instead
+        y = Math.max(10, y - menuHeight - 10);
+      } else {
+        // Normal position with slight offset
+        y = Math.max(10, y - 10);
+      }
+
+      menu.style.left = x + 'px';
+      menu.style.top = y + 'px';
+      menu.style.visibility = 'visible';
 
       document.addEventListener('click', closeContextMenuOnClickOutside);
     }
