@@ -197,7 +197,6 @@
     .message-bubble {
       word-wrap: break-word;
       overflow-wrap: break-word;
-      min-width: 150px;
     }
 
     /* Compact layout mode */
@@ -1061,12 +1060,12 @@
 
       <!-- Chat View -->
       <div id="chatView" class="hidden flex flex-col flex-1 overflow-hidden">
-        <div id="messageList" class="flex-1 overflow-y-auto space-y-1 p-4 pb-28 pt-20"></div>
+        <div id="messageList" class="flex-1 overflow-y-auto space-y-1 p-4 pb-28 pt-2.5"></div>
       </div>
 
       <!-- Channel Chat View (dedicated container for channel posts) -->
       <div id="channelChatView" class="hidden flex flex-col flex-1 overflow-hidden">
-        <div id="channelChatList" class="flex-1 overflow-y-auto space-y-1 p-4 pt-20 pb-28"></div>
+        <div id="channelChatList" class="flex-1 overflow-y-auto space-y-1 p-4 pt-2.5 pb-28"></div>
       </div>
 
       <!-- Channels View -->
@@ -7138,7 +7137,7 @@
             <div class="max-w-xs ${bubbleClasses} ${baseClass} message-bubble cursor-pointer hover:opacity-90 transition" onclick="showMessageDetailsModal(${msg.id}, '${msg.createdAt}', '${msg.blockchainAuditLogId || ''}')">
               ${senderNameLine}
               <div>${msg.content.text}</div>
-              <div class="text-xs mt-1.5 opacity-70">${formatTime(new Date(msg.createdAt))}</div>
+              <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-1">${formatTime(new Date(msg.createdAt))}</div>
             </div>
           </div>
         `;
@@ -7172,7 +7171,7 @@
                 <span class="text-xs">${statusIcon}</span>
               </div>
               ${memoLine}
-              <div class="text-xs mt-1.5 opacity-70">${formatTime(new Date(msg.createdAt))}</div>
+              <div class="text-xs text-zinc-500 dark:text-zinc-500 mt-1">${formatTime(new Date(msg.createdAt))}</div>
             </div>
           </div>
         `;
