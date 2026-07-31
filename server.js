@@ -39,7 +39,7 @@ pool.on('error', (err) => {
   console.error('[DB] Pool error:', err.message);
 });
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const USERNODE_JWT_PUBLIC_KEY = process.env.USERNODE_JWT_PUBLIC_KEY;
 const IS_STAGING = process.env.USERNODE_ENV === 'staging';
 
 // Initialize network mode with priority: NETWORK_MODE env var > default 'testnet'
@@ -1771,8 +1771,15 @@ function selectRandomFriendlyReply() {
 app.use(express.json());
 app.use(async (req, res, next) => {
   const token = req.query.token || req.headers['x-usernode-token'];
-  if (token && JWT_SECRET) {
-    try { req.user = jwt.verify(token, JWT_SECRET); } catch (e) {
+  if (token && USERNODE_JWT_PUBLIC_KEY) {
+    try {
+      const payload = jwt.verify(token, USERNODE_JWT_PUBLIC_KEY, { algorithms: ['RS256'], issuer: 'usernode', audience: 'usernode:app:' + process.env.USERNODE_APP_ID });
+      if (payload.pur === 'iframe') {
+        req.user = payload;
+      } else {
+        console.error('JWT verification failed: unexpected pur claim');
+      }
+    } catch (e) {
       console.error('JWT verification failed:', e.message);
     }
   }
@@ -1834,32 +1841,8 @@ app.get('/health', async (_req, res) => {
   }
 });
 
-// Staging-only endpoint to generate test tokens for Accept/Decline testing
-app.get('/api/staging/test-token/:userId', (_req, res) => {
-  if (!IS_STAGING) {
-    return res.status(403).json({ error: 'Only available in staging' });
-  }
-
-  const userId = parseInt(req.params.userId, 10);
-  if (isNaN(userId)) {
-    return res.status(400).json({ error: 'Invalid user ID' });
-  }
-
-  if (!JWT_SECRET) {
-    return res.status(500).json({ error: 'JWT_SECRET not configured' });
-  }
-
-  try {
-    const token = jwt.sign(
-      { id: userId, username: `staging-demo-user-${userId}`, usernode_pubkey: null },
-      JWT_SECRET,
-      { expiresIn: '24h' }
-    );
-    res.json({ token, userId, url: `/?token=${token}` });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// Staging-only test-token endpoint removed: platform tokens are now RS256-signed
+// by the platform, so this app cannot mint them.
 
 // Debug endpoint to verify GuardiAI user exists (public for troubleshooting)
 app.get('/api/debug/guardiAI', async (_req, res) => {
