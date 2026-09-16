@@ -1837,7 +1837,7 @@
   </div>
 
   <!-- UserNode Bridge for wallet signing -->
-  <script src="https://social-vibecoding.usernodelabs.org/usernode-bridge/v1/bridge.js"></script>
+  <script src="/usernode-bridge/v1/bridge.js"></script>
 
   <script>
     const params = new URLSearchParams(window.location.search);
@@ -4095,7 +4095,7 @@
         },
         bridgeScript: {
           scriptTagLoaded: document.querySelector('script[src*="usernode-bridge"]') !== null,
-          scriptSrc: 'https://social-vibecoding.usernodelabs.org/usernode-bridge/v1/bridge.js'
+          scriptSrc: '/usernode-bridge/v1/bridge.js'
         },
         windowUsernode: {
           exists: typeof window.usernode !== 'undefined',
